@@ -1,0 +1,168 @@
+{"id": "tr-000", "text": "1980/02/22", "locale": "EU", "family": "iso", "gold": "1980-02-22", "fold": 0}
+{"id": "tr-001", "text": "1991/04/06", "locale": "EU", "family": "iso", "gold": "1991-04-06", "fold": 1}
+{"id": "tr-002", "text": "2021-06-11", "locale": "US", "family": "iso", "gold": "2021-06-11", "fold": 2}
+{"id": "tr-003", "text": "2026-04-15", "locale": "EU", "family": "iso", "gold": "2026-04-15", "fold": 3}
+{"id": "tr-004", "text": "2035.06.02", "locale": "US", "family": "iso", "gold": "2035-06-02", "fold": 4}
+{"id": "tr-005", "text": "20240101", "locale": "EU", "family": "iso", "gold": "2024-01-01", "fold": 0}
+{"id": "tr-006", "text": "1990.04.07", "locale": "EU", "family": "iso", "gold": "1990-04-07", "fold": 1}
+{"id": "tr-007", "text": "2016-05-11", "locale": "EU", "family": "iso", "gold": "2016-05-11", "fold": 2}
+{"id": "tr-008", "text": "1997-08-06", "locale": "US", "family": "iso", "gold": "1997-08-06", "fold": 3}
+{"id": "tr-009", "text": "2033-07-01", "locale": "EU", "family": "iso", "gold": "2033-07-01", "fold": 4}
+{"id": "tr-010", "text": "2032-09-27 19:38", "locale": "US", "family": "iso", "gold": "2032-09-27", "fold": 0}
+{"id": "tr-011", "text": "1994-06-16", "locale": "US", "family": "iso", "gold": "1994-06-16", "fold": 1}
+{"id": "tr-012", "text": "19990826", "locale": "US", "family": "iso", "gold": "1999-08-26", "fold": 2}
+{"id": "tr-013", "text": "1999-09-04", "locale": "US", "family": "iso", "gold": "1999-09-04", "fold": 3}
+{"id": "tr-014", "text": "2011.04.12", "locale": "EU", "family": "iso", "gold": "2011-04-12", "fold": 4}
+{"id": "tr-015", "text": "1979-11-02 19:37", "locale": "US", "family": "iso", "gold": "1979-11-02", "fold": 0}
+{"id": "tr-016", "text": "2035-10-22 20:45", "locale": "US", "family": "iso", "gold": "2035-10-22", "fold": 1}
+{"id": "tr-017", "text": "2028-04-02T17:20:36Z", "locale": "EU", "family": "iso", "gold": "2028-04-02", "fold": 2}
+{"id": "tr-018", "text": "2000-02-05T03:09:06Z", "locale": "EU", "family": "iso", "gold": "2000-02-05", "fold": 3}
+{"id": "tr-019", "text": "2029-06-11 17:13", "locale": "US", "family": "iso", "gold": "2029-06-11", "fold": 4}
+{"id": "tr-020", "text": "2032-07-01", "locale": "US", "family": "iso", "gold": "2032-07-01", "fold": 0}
+{"id": "tr-021", "text": "05-08-1999", "locale": "US", "family": "numeric", "gold": "1999-05-08", "fold": 0}
+{"id": "tr-022", "text": "04-08-1985", "locale": "EU", "family": "numeric", "gold": "1985-08-04", "fold": 1}
+{"id": "tr-023", "text": "22/5/1977", "locale": "EU", "family": "numeric", "gold": "1977-05-22", "fold": 2}
+{"id": "tr-024", "text": "11-1-1998", "locale": "EU", "family": "numeric", "gold": "1998-01-11", "fold": 3}
+{"id": "tr-025", "text": "14/01/2028", "locale": "EU", "family": "numeric", "gold": "2028-01-14", "fold": 4}
+{"id": "tr-026", "text": "8/10/2013", "locale": "EU", "family": "numeric", "gold": "2013-10-08", "fold": 0}
+{"id": "tr-027", "text": "06.04.2016", "locale": "US", "family": "numeric", "gold": "2016-06-04", "fold": 1}
+{"id": "tr-028", "text": "20/11/2031", "locale": "EU", "family": "numeric", "gold": "2031-11-20", "fold": 2}
+{"id": "tr-029", "text": "02.02.18", "locale": "US", "family": "numeric", "gold": "2018-02-02", "fold": 3}
+{"id": "tr-030", "text": "05/02/2006", "locale": "US", "family": "numeric", "gold": "2006-05-02", "fold": 4}
+{"id": "tr-031", "text": "03/03/90", "locale": "EU", "family": "numeric", "gold": "1990-03-03", "fold": 0}
+{"id": "tr-032", "text": "28.12.2024", "locale": "EU", "family": "numeric", "gold": "2024-12-28", "fold": 1}
+{"id": "tr-033", "text": "08-05-1980", "locale": "EU", "family": "numeric", "gold": "1980-05-08", "fold": 2}
+{"id": "tr-034", "text": "24-1-96", "locale": "EU", "family": "numeric", "gold": "1996-01-24", "fold": 3}
+{"id": "tr-035", "text": "8.9.2026", "locale": "US", "family": "numeric", "gold": "2026-08-09", "fold": 4}
+{"id": "tr-036", "text": "11/09/1999", "locale": "US", "family": "numeric", "gold": "1999-11-09", "fold": 0}
+{"id": "tr-037", "text": "19/12/2008", "locale": "EU", "family": "numeric", "gold": "2008-12-19", "fold": 1}
+{"id": "tr-038", "text": "27/05/1979", "locale": "EU", "family": "numeric", "gold": "1979-05-27", "fold": 2}
+{"id": "tr-039", "text": "03-12-2015", "locale": "EU", "family": "numeric", "gold": "2015-12-03", "fold": 3}
+{"id": "tr-040", "text": "1.4.77", "locale": "US", "family": "numeric", "gold": "1977-01-04", "fold": 4}
+{"id": "tr-041", "text": "05-11-1990", "locale": "US", "family": "numeric", "gold": "1990-05-11", "fold": 0}
+{"id": "tr-042", "text": "4 March 1983", "locale": "EU", "family": "textual_en", "gold": "1983-03-04", "fold": 0}
+{"id": "tr-043", "text": "august 31 1986", "locale": "EU", "family": "textual_en", "gold": "1986-08-31", "fold": 1}
+{"id": "tr-044", "text": "Feb. 20, 2035", "locale": "EU", "family": "textual_en", "gold": "2035-02-20", "fold": 2}
+{"id": "tr-045", "text": "Feb. 16, 2007", "locale": "EU", "family": "textual_en", "gold": "2007-02-16", "fold": 3}
+{"id": "tr-046", "text": "9 October 1986", "locale": "US", "family": "textual_en", "gold": "1986-10-09", "fold": 4}
+{"id": "tr-047", "text": "26 April 1984", "locale": "US", "family": "textual_en", "gold": "1984-04-26", "fold": 0}
+{"id": "tr-048", "text": "Mar 23rd 1992", "locale": "EU", "family": "textual_en", "gold": "1992-03-23", "fold": 1}
+{"id": "tr-049", "text": "Thu 8 Feb 2029", "locale": "US", "family": "textual_en", "gold": "2029-02-08", "fold": 2}
+{"id": "tr-050", "text": "Jan 21st 1999", "locale": "EU", "family": "textual_en", "gold": "1999-01-21", "fold": 3}
+{"id": "tr-051", "text": "Apr 13th 2034", "locale": "US", "family": "textual_en", "gold": "2034-04-13", "fold": 4}
+{"id": "tr-052", "text": "7 October 1983", "locale": "EU", "family": "textual_en", "gold": "1983-10-07", "fold": 0}
+{"id": "tr-053", "text": "Saturday, November 13, 1993", "locale": "EU", "family": "textual_en", "gold": "1993-11-13", "fold": 1}
+{"id": "tr-054", "text": "9 September 2006", "locale": "EU", "family": "textual_en", "gold": "2006-09-09", "fold": 2}
+{"id": "tr-055", "text": "Tuesday, August 23, 2011", "locale": "EU", "family": "textual_en", "gold": "2011-08-23", "fold": 3}
+{"id": "tr-056", "text": "Feb. 27, 2002", "locale": "EU", "family": "textual_en", "gold": "2002-02-27", "fold": 4}
+{"id": "tr-057", "text": "Apr 29th 2030", "locale": "US", "family": "textual_en", "gold": "2030-04-29", "fold": 0}
+{"id": "tr-058", "text": "April 21, 2008", "locale": "EU", "family": "textual_en", "gold": "2008-04-21", "fold": 1}
+{"id": "tr-059", "text": "7 September 2021", "locale": "US", "family": "textual_en", "gold": "2021-09-07", "fold": 2}
+{"id": "tr-060", "text": "30th of December, 1977", "locale": "EU", "family": "textual_en", "gold": "1977-12-30", "fold": 3}
+{"id": "tr-061", "text": "Jul. 26, 2003", "locale": "US", "family": "textual_en", "gold": "2003-07-26", "fold": 4}
+{"id": "tr-062", "text": "2001 May 31", "locale": "EU", "family": "textual_en", "gold": "2001-05-31", "fold": 0}
+{"id": "tr-063", "text": "le 1er juin 1980", "locale": "EU", "family": "textual_intl", "gold": "1980-06-01", "fold": 0}
+{"id": "tr-064", "text": "26 octobre 1976", "locale": "EU", "family": "textual_intl", "gold": "1976-10-26", "fold": 1}
+{"id": "tr-065", "text": "26-sep-2008", "locale": "EU", "family": "textual_intl", "gold": "2008-09-26", "fold": 2}
+{"id": "tr-066", "text": "17 de ago. de 2020", "locale": "EU", "family": "textual_intl", "gold": "2020-08-17", "fold": 3}
+{"id": "tr-067", "text": "jeudi 5 janv. 1989", "locale": "EU", "family": "textual_intl", "gold": "1989-01-05", "fold": 4}
+{"id": "tr-068", "text": "le 15 mars 1987", "locale": "EU", "family": "textual_intl", "gold": "1987-03-15", "fold": 0}
+{"id": "tr-069", "text": "am 14. Dezember 1985", "locale": "EU", "family": "textual_intl", "gold": "1985-12-14", "fold": 1}
+{"id": "tr-070", "text": "28 nov. 1987", "locale": "EU", "family": "textual_intl", "gold": "1987-11-28", "fold": 2}
+{"id": "tr-071", "text": "8 AVRIL 2009", "locale": "EU", "family": "textual_intl", "gold": "2009-04-08", "fold": 3}
+{"id": "tr-072", "text": "16. Okt. 2030", "locale": "EU", "family": "textual_intl", "gold": "2030-10-16", "fold": 4}
+{"id": "tr-073", "text": "11 marzo 2017", "locale": "EU", "family": "textual_intl", "gold": "2017-03-11", "fold": 0}
+{"id": "tr-074", "text": "22. Aug. 2015", "locale": "EU", "family": "textual_intl", "gold": "2015-08-22", "fold": 1}
+{"id": "tr-075", "text": "13 dic. 2030", "locale": "EU", "family": "textual_intl", "gold": "2030-12-13", "fold": 2}
+{"id": "tr-076", "text": "jeudi 12 nov. 1981", "locale": "EU", "family": "textual_intl", "gold": "1981-11-12", "fold": 3}
+{"id": "tr-077", "text": "am 26. Januar 2035", "locale": "EU", "family": "textual_intl", "gold": "2035-01-26", "fold": 4}
+{"id": "tr-078", "text": "02. Dez. 2021", "locale": "EU", "family": "textual_intl", "gold": "2021-12-02", "fold": 0}
+{"id": "tr-079", "text": "8 JUILLET 2002", "locale": "EU", "family": "textual_intl", "gold": "2002-07-08", "fold": 1}
+{"id": "tr-080", "text": "5 JANV. 1998", "locale": "EU", "family": "textual_intl", "gold": "1998-01-05", "fold": 2}
+{"id": "tr-081", "text": "LE 16 JANVIER 2026", "locale": "EU", "family": "textual_intl", "gold": "2026-01-16", "fold": 3}
+{"id": "tr-082", "text": "29. Jun. 2004", "locale": "EU", "family": "textual_intl", "gold": "2004-06-29", "fold": 4}
+{"id": "tr-083", "text": "4 octubre 1993", "locale": "EU", "family": "textual_intl", "gold": "1993-10-04", "fold": 0}
+{"id": "tr-084", "text": "the sixth of April 2034", "locale": "EU", "family": "ordinal_words", "gold": "2034-04-06", "fold": 0}
+{"id": "tr-085", "text": "the thirty-first of July 2012", "locale": "US", "family": "ordinal_words", "gold": "2012-07-31", "fold": 1}
+{"id": "tr-086", "text": "July fourteenth, 2006", "locale": "US", "family": "ordinal_words", "gold": "2006-07-14", "fold": 2}
+{"id": "tr-087", "text": "May seventh 1995", "locale": "EU", "family": "ordinal_words", "gold": "1995-05-07", "fold": 3}
+{"id": "tr-088", "text": "May first, 2011", "locale": "US", "family": "ordinal_words", "gold": "2011-05-01", "fold": 4}
+{"id": "tr-089", "text": "November fifteenth 1991", "locale": "EU", "family": "ordinal_words", "gold": "1991-11-15", "fold": 0}
+{"id": "tr-090", "text": "September twenty-second 2032", "locale": "EU", "family": "ordinal_words", "gold": "2032-09-22", "fold": 1}
+{"id": "tr-091", "text": "November twenty-ninth, 2034", "locale": "EU", "family": "ordinal_words", "gold": "2034-11-29", "fold": 2}
+{"id": "tr-092", "text": "The twenty sixth of October, 1999", "locale": "EU", "family": "ordinal_words", "gold": "1999-10-26", "fold": 3}
+{"id": "tr-093", "text": "May eighth, 2027", "locale": "EU", "family": "ordinal_words", "gold": "2027-05-08", "fold": 4}
+{"id": "tr-094", "text": "November fourth, 2009", "locale": "EU", "family": "ordinal_words", "gold": "2009-11-04", "fold": 0}
+{"id": "tr-095", "text": "September fifteenth, 2003", "locale": "US", "family": "ordinal_words", "gold": "2003-09-15", "fold": 1}
+{"id": "tr-096", "text": "October fourth, 1985", "locale": "US", "family": "ordinal_words", "gold": "1985-10-04", "fold": 2}
+{"id": "tr-097", "text": "The twenty sixth of September, 1980", "locale": "EU", "family": "ordinal_words", "gold": "1980-09-26", "fold": 3}
+{"id": "tr-098", "text": "the twenty third of March 1989", "locale": "US", "family": "ordinal_words", "gold": "1989-03-23", "fold": 4}
+{"id": "tr-099", "text": "the twenty seventh of May 2001", "locale": "EU", "family": "ordinal_words", "gold": "2001-05-27", "fold": 0}
+{"id": "tr-100", "text": "The twenty third of July, 2033", "locale": "US", "family": "ordinal_words", "gold": "2033-07-23", "fold": 1}
+{"id": "tr-101", "text": "April thirteenth, 2005", "locale": "US", "family": "ordinal_words", "gold": "2005-04-13", "fold": 2}
+{"id": "tr-102", "text": "June eleventh, 2019", "locale": "EU", "family": "ordinal_words", "gold": "2019-06-11", "fold": 3}
+{"id": "tr-103", "text": "December twenty seventh 2016", "locale": "EU", "family": "ordinal_words", "gold": "2016-12-27", "fold": 4}
+{"id": "tr-104", "text": "The twenty-seventh of March, 1979", "locale": "US", "family": "ordinal_words", "gold": "1979-03-27", "fold": 0}
+{"id": "tr-105", "text": "Three weeks ago", "locale": "EU", "family": "relative", "gold": "2024-05-25", "fold": 0}
+{"id": "tr-106", "text": "five months ago", "locale": "US", "family": "relative", "gold": "2024-01-15", "fold": 1}
+{"id": "tr-107", "text": "In eighteen days", "locale": "US", "family": "relative", "gold": "2024-07-03", "fold": 2}
+{"id": "tr-108", "text": "in 2 weeks", "locale": "US", "family": "relative", "gold": "2024-06-29", "fold": 3}
+{"id": "tr-109", "text": "this Wednesday", "locale": "US", "family": "relative", "gold": "2024-06-12", "fold": 4}
+{"id": "tr-110", "text": "seventeen days from now", "locale": "EU", "family": "relative", "gold": "2024-07-02", "fold": 0}
+{"id": "tr-111", "text": "8 days from now", "locale": "EU", "family": "relative", "gold": "2024-06-23", "fold": 1}
+{"id": "tr-112", "text": "next Saturday", "locale": "EU", "family": "relative", "gold": "2024-06-22", "fold": 2}
+{"id": "tr-113", "text": "one months ago", "locale": "US", "family": "relative", "gold": "2024-05-15", "fold": 3}
+{"id": "tr-114", "text": "7 days ago", "locale": "US", "family": "relative", "gold": "2024-06-08", "fold": 4}
+{"id": "tr-115", "text": "twelve months ago", "locale": "EU", "family": "relative", "gold": "2023-06-15", "fold": 0}
+{"id": "tr-116", "text": "8 weeks ago", "locale": "US", "family": "relative", "gold": "2024-04-20", "fold": 1}
+{"id": "tr-117", "text": "eighteen days ago", "locale": "EU", "family": "relative", "gold": "2024-05-28", "fold": 2}
+{"id": "tr-118", "text": "11 days ago", "locale": "EU", "family": "relative", "gold": "2024-06-04", "fold": 3}
+{"id": "tr-119", "text": "3 days ago", "locale": "US", "family": "relative", "gold": "2024-06-12", "fold": 4}
+{"id": "tr-120", "text": "last Monday", "locale": "EU", "family": "relative", "gold": "2024-06-10", "fold": 0}
+{"id": "tr-121", "text": "13 days from now", "locale": "US", "family": "relative", "gold": "2024-06-28", "fold": 1}
+{"id": "tr-122", "text": "in six days", "locale": "US", "family": "relative", "gold": "2024-06-21", "fold": 2}
+{"id": "tr-123", "text": "13 days ago", "locale": "EU", "family": "relative", "gold": "2024-06-02", "fold": 3}
+{"id": "tr-124", "text": "eight months ago", "locale": "US", "family": "relative", "gold": "2023-10-15", "fold": 4}
+{"id": "tr-125", "text": "8 weeks from today", "locale": "US", "family": "relative", "gold": "2024-08-10", "fold": 0}
+{"id": "tr-126", "text": "Room 147: inspection on 9-9-2017 (9 people)", "locale": "US", "family": "embedded", "gold": "2017-09-09", "fold": 0}
+{"id": "tr-127", "text": "v8.1.11 released 1996-06-22", "locale": "EU", "family": "embedded", "gold": "1996-06-22", "fold": 1}
+{"id": "tr-128", "text": "Meeting moved to 9.20.2009 at 11:15", "locale": "US", "family": "embedded", "gold": "2009-09-20", "fold": 2}
+{"id": "tr-129", "text": "Room 330: inspection on 16-05-2028 (5 people)", "locale": "EU", "family": "embedded", "gold": "2028-05-16", "fold": 3}
+{"id": "tr-130", "text": "Paid 2807.23 EUR on 05-22-2010, ref 96200", "locale": "US", "family": "embedded", "gold": "2010-05-22", "fold": 4}
+{"id": "tr-131", "text": "Invoice #90519 issued on 1990-04-07 for $3466.36", "locale": "US", "family": "embedded", "gold": "1990-04-07", "fold": 0}
+{"id": "tr-132", "text": "v8.4.7 released 11/07/2017", "locale": "EU", "family": "embedded", "gold": "2017-07-11", "fold": 1}
+{"id": "tr-133", "text": "Room 233: inspection on 2000-03-16 (2 people)", "locale": "US", "family": "embedded", "gold": "2000-03-16", "fold": 2}
+{"id": "tr-134", "text": "Flight LH558 departs 1990-02-28, gate 6", "locale": "EU", "family": "embedded", "gold": "1990-02-28", "fold": 3}
+{"id": "tr-135", "text": "Meeting moved to 20.7.2024 at 10:45", "locale": "EU", "family": "embedded", "gold": "2024-07-20", "fold": 4}
+{"id": "tr-136", "text": "v5.1.1 released 05.13.2011", "locale": "US", "family": "embedded", "gold": "2011-05-13", "fold": 0}
+{"id": "tr-137", "text": "Room 113: inspection on Jun 3rd 2007 (8 people)", "locale": "US", "family": "embedded", "gold": "2007-06-03", "fold": 1}
+{"id": "tr-138", "text": "Paid 8338.43 EUR on 2017-09-26, ref 11114", "locale": "EU", "family": "embedded", "gold": "2017-09-26", "fold": 2}
+{"id": "tr-139", "text": "Call 555-6391 before 1995-01-01.", "locale": "EU", "family": "embedded", "gold": "1995-01-01", "fold": 3}
+{"id": "tr-140", "text": "Call 555-2370 before 9.14.2030.", "locale": "US", "family": "embedded", "gold": "2030-09-14", "fold": 4}
+{"id": "tr-141", "text": "Room 381: inspection on 2003-01-23 (5 people)", "locale": "EU", "family": "embedded", "gold": "2003-01-23", "fold": 0}
+{"id": "tr-142", "text": "Flight LH495 departs 2000-05-11, gate 40", "locale": "US", "family": "embedded", "gold": "2000-05-11", "fold": 1}
+{"id": "tr-143", "text": "Flight LH734 departs 6th of September, 1996, gate 47", "locale": "EU", "family": "embedded", "gold": "1996-09-06", "fold": 2}
+{"id": "tr-144", "text": "Room 302: inspection on 2013-11-16 (6 people)", "locale": "EU", "family": "embedded", "gold": "2013-11-16", "fold": 3}
+{"id": "tr-145", "text": "Call 555-4149 before 2nd of October, 2017.", "locale": "US", "family": "embedded", "gold": "2017-10-02", "fold": 4}
+{"id": "tr-146", "text": "Call 555-2778 before August 6, 2017.", "locale": "EU", "family": "embedded", "gold": "2017-08-06", "fold": 0}
+{"id": "tr-147", "text": "call 555-6390", "locale": "EU", "family": "invalid", "gold": null, "fold": 0}
+{"id": "tr-148", "text": "version 1.5.6", "locale": "US", "family": "invalid", "gold": null, "fold": 1}
+{"id": "tr-149", "text": "31.06.1991", "locale": "EU", "family": "invalid", "gold": null, "fold": 2}
+{"id": "tr-150", "text": "call 555-6830", "locale": "EU", "family": "invalid", "gold": null, "fold": 3}
+{"id": "tr-151", "text": "1990-02-30", "locale": "US", "family": "invalid", "gold": null, "fold": 4}
+{"id": "tr-152", "text": "call 555-3330", "locale": "EU", "family": "invalid", "gold": null, "fold": 0}
+{"id": "tr-153", "text": "44/8/2003", "locale": "EU", "family": "invalid", "gold": null, "fold": 1}
+{"id": "tr-154", "text": "38/4/1999", "locale": "EU", "family": "invalid", "gold": null, "fold": 2}
+{"id": "tr-155", "text": "30 février 1990", "locale": "EU", "family": "invalid", "gold": null, "fold": 3}
+{"id": "tr-156", "text": "13/11/2022", "locale": "US", "family": "invalid", "gold": null, "fold": 4}
+{"id": "tr-157", "text": "1990-13-22", "locale": "EU", "family": "invalid", "gold": null, "fold": 0}
+{"id": "tr-158", "text": "31.06.2029", "locale": "EU", "family": "invalid", "gold": null, "fold": 1}
+{"id": "tr-159", "text": "1998-13-07", "locale": "EU", "family": "invalid", "gold": null, "fold": 2}
+{"id": "tr-160", "text": "2019-02-30", "locale": "US", "family": "invalid", "gold": null, "fold": 3}
+{"id": "tr-161", "text": "version 2.1.7", "locale": "US", "family": "invalid", "gold": null, "fold": 4}
+{"id": "tr-162", "text": "31/04/1996", "locale": "EU", "family": "invalid", "gold": null, "fold": 0}
+{"id": "tr-163", "text": "see you at 12:30", "locale": "EU", "family": "invalid", "gold": null, "fold": 1}
+{"id": "tr-164", "text": "72/10/2008", "locale": "EU", "family": "invalid", "gold": null, "fold": 2}
+{"id": "tr-165", "text": "04/31/1996", "locale": "US", "family": "invalid", "gold": null, "fold": 3}
+{"id": "tr-166", "text": "Feb 30th 2024", "locale": "US", "family": "invalid", "gold": null, "fold": 4}
+{"id": "tr-167", "text": "version 6.5.7", "locale": "US", "family": "invalid", "gold": null, "fold": 0}
