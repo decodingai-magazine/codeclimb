@@ -54,6 +54,87 @@ In local mode this returns `"mode": "dev"` and `"function_count": 1`.
 
 The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listing functions, sending events and checking runs from a coding agent.
 
+## CodeClimb loop
+
+CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
+
+- It runs only on the **local Inngest dev server** with **Docker sandboxes**.
+- The coders are **GitHub Copilot Haiku models driven by Pi**.
+- It uses a small built-in scenario, `datenorm`, which normalizes messy date strings to ISO dates.
+
+### Run a night
+
+Prerequisites:
+
+- Docker is running.
+- Pi is logged in to Copilot (`pi`, then `/login github-copilot`), which writes `~/.pi/agent/auth.json`. Alternatively, set `COPILOT_GITHUB_TOKEN`.
+- The Inngest dev server is running (`npm run dev:inngest`).
+
+```bash
+npm run build:baseline                 # docker image autocode-base (python 3.14 + git + spec bundle)
+npm run worker                         # terminal 2: connect() worker (orchestrator + Pi)
+npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night and follows results.jsonl
+npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
+npm run validate-results -- runs/datenorm-smoke/results.jsonl
+npm test                               # unit tests (keep rule, overfit test, stops, schema)
+```
+
+A night runs these steps:
+
+1. **Rounds.** Each round starts one `run-experiment` child per model in `models`, all in parallel, via `step.invoke`.
+2. **Experiment.** Each child gives Pi a fresh sandbox built from the baseline plus the kept commit. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit, and `score_cmd` scores it on the host.
+3. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`.
+4. **Noise floor.** On the first night, the first kept commit is evaluated 5 times to measure σ.
+5. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch for the next round.
+6. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
+7. **Test.** After any stop, the final kept commit is scored on test once.
+
+All output lands under `dirname(results_path)`:
+
+| Path | Content |
+|---|---|
+| `results.jsonl` | One row per experiment and per extra eval. `npm run validate-results -- --schema` prints the schema. |
+| `experiments.git` | Bare repo with one commit per experiment, pinned by `refs/exp/<exp_id>`. |
+| `nights/<id>/night.json` | Resolved config, start time and deadline, and metric-script hashes. |
+| `nights/<id>/done.json` | Stop reason, kept commit and test metrics. |
+| `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
+| `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs and `metrics.json`. |
+
+### Layout
+
+| Path | Purpose |
+|---|---|
+| `inngest/codeclimb/functions.ts` | `run-night` (thin parent), `run-experiment` and `run-eval` (invoked children), and the cleanup handlers |
+| `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
+| `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
+| `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
+| `codeclimb/sandbox/` | `SandboxBackend` interface, Docker backend, and git-bundle transfer |
+| `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
+| `scenarios/datenorm/` | Spec bundle (`spec/`, the only thing the agent sees), hidden `dataset/`, `metrics/run.py` + `score.py`, and the `Dockerfile` |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 3 branches) and `datenorm.yaml` (a full night) |
+
+### Deviations from the spec in this iteration
+
+- **Models:** GitHub Copilot through Pi's `github-copilot` provider, not OpenCode Go.
+  - Coders are `claude-haiku-5.5` ×3 and the reviewer is `claude-haiku-4.5`, so the reviewer is not one of the coders.
+  - `coder_usd` is Pi's `message_end` cost at list prices. Copilot bills by subscription, so this is a comparable dollar figure, not an actual charge.
+- **Local only:**
+  - The Inngest dev server, `connect()` worker and Docker backend are used.
+  - `sandbox: inngest` (Inngest Sandboxes, Cloud Pro+) throws "not implemented".
+  - `step.score` and extended traces are wired up but only show in the dev server.
+- **No metering proxy:** `datenorm` is standard-library Python with no model calls.
+  - Sandboxes run with `--network none`, which is stricter than the spec's egress allowlist.
+  - `program_usd` is 0 and `allowed_models` is unused.
+  - On a deterministic program, the noise floor measures σ ≈ 0.
+- **Extra config keys:**
+  - `run_files`: host files copied to `/eval/` in the eval sandbox.
+  - `hidden_fields`: dataset fields never sent to a sandbox, in addition to `gold` and `fold`.
+  - `baseline`: the image name.
+- **Extra row fields:** `kind` (experiment | rescore | noise | validation | test), `eval_id` (a unique row key) and `night_id`.
+  - Extra eval rows use `decision: keep` when the eval succeeded and `error` when it failed.
+  - Validation rows use `keep` for no overfit and `revert` for overfit.
+- **Pi's base prompt** includes a `<docs>` block pointing at Pi's own docs on the host. Nothing from AGENTS.md, skills, extensions or `~/.pi` is loaded.
+
 ## Project layout
 
 | Path | Purpose |

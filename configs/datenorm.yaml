@@ -21,7 +21,7 @@ reviewer_model: github-copilot/claude-haiku-4.5
 allowed_models: []
 primary_metric: accuracy
 thresholds:
-  accuracy: 0.97
+  accuracy: 0.99
 gates:
   schema_violations: 0
   p95_ms: 50

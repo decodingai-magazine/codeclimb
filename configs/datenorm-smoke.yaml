@@ -21,7 +21,7 @@ reviewer_model: github-copilot/claude-haiku-4.5
 allowed_models: []
 primary_metric: accuracy
 thresholds:
-  accuracy: 0.97
+  accuracy: 1.0   # unreachable on purpose: the smoke night ends on max_rounds
 gates:
   schema_violations: 0
   p95_ms: 50

@@ -67,7 +67,8 @@ const secs = (ms: number) => Math.round(ms / 10) / 100;
 export function readSpecText(specDir: string): string {
   return readdirSync(specDir)
     .filter((f) => f.endsWith(".md"))
-    .sort()
+    // The implementation spec first, then the rest (metric definitions, ...).
+    .sort((a, b) => Number(b === "SPEC.md") - Number(a === "SPEC.md") || a.localeCompare(b))
     .map((f) => readFileSync(join(specDir, f), "utf8").trim())
     .join("\n\n---\n\n");
 }
@@ -178,10 +179,14 @@ export async function runCoder(
   };
   const remainingMs = cfg.timeouts.experiment_min * 60_000 - (Date.now() - state.startedAt);
   const timer = setTimeout(() => abortWith("timeout"), Math.max(remainingMs, 0));
+  // t_code survives a killed attempt: persisted with every message, not only at the end.
+  const tCodeBefore = state.tCode;
+  const t0 = performance.now();
   const unsubscribe = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant") {
       state!.coderUsd += e.message.usage.cost.total;
       state!.tokens += e.message.usage.totalTokens;
+      state!.tCode = tCodeBefore + secs(performance.now() - t0);
       save();
       if (state!.coderUsd >= cfg.budget_usd.experiment) abortWith("budget");
     }
@@ -193,7 +198,6 @@ export async function runCoder(
   });
   const unregister = registerLive(ctx.runId, input.nightId, async () => abortWith("cancelled"));
 
-  const t0 = performance.now();
   try {
     if (remainingMs > 0) {
       const minutes = Math.max(1, Math.round(remainingMs / 60_000));
@@ -210,7 +214,7 @@ export async function runCoder(
     unsubscribe();
     untrace();
     unregister();
-    state.tCode += secs(performance.now() - t0);
+    state.tCode = tCodeBefore + secs(performance.now() - t0);
     save();
   }
   stop ??= agentError ? "agent_error" : "done";

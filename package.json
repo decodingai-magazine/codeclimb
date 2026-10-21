@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "worker": "INNGEST_DEV=1 tsx scripts/worker.ts",
+    "worker": "INNGEST_DEV=1 tsx --import @inngest/otel/node scripts/worker.ts",
     "run-night": "INNGEST_DEV=1 tsx scripts/run-night.ts",
     "validate-results": "tsx scripts/validate-results.ts",
     "build:baseline": "docker build -t autocode-base scenarios/datenorm",
