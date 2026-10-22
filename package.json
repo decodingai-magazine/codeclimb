@@ -14,6 +14,8 @@
     "validate-results": "tsx scripts/validate-results.ts",
     "build:baseline": "docker build -t autocode-base scenarios/datenorm",
     "build:dataset": "python3 scenarios/datenorm/tools/build_dataset.py --out scenarios/datenorm/dataset",
+    "build:baseline:hard": "docker build -t autocode-base-hard scenarios/datenorm-hard",
+    "build:dataset:hard": "python3 scenarios/datenorm-hard/tools/build_dataset.py --out scenarios/datenorm-hard/dataset",
     "test": "tsx --test codeclimb/*.test.ts"
   },
   "dependencies": {

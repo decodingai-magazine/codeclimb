@@ -21,3 +21,4 @@ npm-debug.log*
 
 # codeclimb night runs (experiment repo, sessions, results)
 runs/
+__pycache__/

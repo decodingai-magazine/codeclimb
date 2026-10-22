@@ -100,6 +100,20 @@ All output lands under `dirname(results_path)`:
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
 | `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs and `metrics.json`. |
 
+### Harder scenario: `datenorm-hard`
+
+`datenorm` is fully specified, so one round solves it. `datenorm-hard` is built to need several rounds:
+
+- **Breadth.** It adds 6 families: `holiday`, `nth_weekday`, `yearless`, `multi_date`, `fuzzy` and `week_date`. They make up about half the items.
+- **Interference.** `invalid` gets traps aimed at loose fixes, such as `Augustine 23, 1990`, `part no. W37-5` and `Easter plans`.
+- **A vague spec.** `SPEC.md` says *which kinds* of input appear but not the conventions behind the gold answers. Examples are which year `Nov 30` means, which of two dates counts, and how loose month matching may be. `METRICS.md` explains each family name, so a per-family accuracy number tells the loop where to look. The coder and reviewer prompts tell the agents to treat open choices as hypotheses to A/B across branches. `HIDDEN_RULES.md` lists the gold conventions.
+
+```bash
+npm run build:baseline:hard      # image autocode-base-hard (its own /spec)
+npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch × 1 round: see how far round 1 gets
+npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.95, up to 10 rounds
+```
+
 ### Layout
 
 | Path | Purpose |
@@ -111,7 +125,8 @@ All output lands under `dirname(results_path)`:
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker backend, and git-bundle transfer |
 | `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
 | `scenarios/datenorm/` | Spec bundle (`spec/`, the only thing the agent sees), hidden `dataset/`, `metrics/run.py` + `score.py`, and the `Dockerfile` |
-| `configs/` | `datenorm-smoke.yaml` (2 rounds × 3 branches) and `datenorm.yaml` (a full night) |
+| `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators, runner and scorer. `HIDDEN_RULES.md` is the answer key and is never put in the image |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 3 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 3 branches) and `datenorm-hard-calibrate.yaml` (1 branch × 1 round) |
 
 ### Deviations from the spec in this iteration
 
@@ -138,7 +153,21 @@ All output lands under `dirname(results_path)`:
 ### Known behaviour worth knowing
 
 - **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
-- **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on the optimization folds. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round and one validation. A longer climb needs harder input families or a stricter threshold.
+- **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on the optimization folds. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round and one validation. For a longer climb, use `datenorm-hard`.
+- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, about 48 min, $0.50) kept a commit in 5 of 6 rounds:
+
+  | Round | Kept accuracy | What moved |
+  |---|---|---|
+  | 1 | 0.800 | |
+  | 2 | none kept | all branches at 0.804, below `min_gain` |
+  | 3 | 0.836 | `holiday` 0.37 → 0.67 |
+  | 4 | 0.848 | `relative` 0.54 → 0.77 |
+  | 5 | 0.872 | `week_date` 0.59 → 0.86 |
+  | 6 | 0.896 | `yearless` 0.64 → 0.91 |
+
+  - The yearless convention was found by A/B across branches. "Nearest past" lost in round 4, "current year" brought no gain in round 5, and "next occurrence" won in round 6.
+  - The night ended on `max_rounds` below the 0.95 threshold, so the config now allows 10 rounds.
+  - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
 - **A killed worker resumes after about 2 minutes,** once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
 
 ### Verified locally (dev server + Docker)

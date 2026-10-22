@@ -84,6 +84,7 @@ export function coderPrompt(spec: string, feedback: string, hypothesis: string |
     [
       "How to work:",
       "- Edit the code in /repo and test it yourself by running it on cases you write. You never get the evaluation data.",
+      "- Where the spec leaves an interpretation open, choose one deliberately and say which in APPROACH: the per-family metrics of later rounds tell which reading the evaluation uses.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",

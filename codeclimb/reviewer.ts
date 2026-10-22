@@ -52,6 +52,8 @@ You receive the program's specification, aggregate metrics per branch (never per
 1. feedback: concise guidance for the next round (what worked, what regressed, which metric families are weakest). Base it on the metrics; do not invent failures you cannot see.
 2. hypotheses: exactly N distinct, concrete, testable hypotheses, one per branch. Each is one or two sentences naming the change to make. Make them different from each other and from hypotheses that already failed.
 
+The specification may leave interpretation choices open on purpose (which year a date without one means, which of two dates counts, how loose matching may be). A family stuck at partial accuracy often means the evaluation uses a different reading: propose the alternative readings as hypotheses on separate branches, so one round's metrics tell which one is right.
+
 Reply with only a JSON object: {"feedback": "...", "hypotheses": ["...", ...]}`;
 
 function fmtMetrics(m: Metrics | null): string {
