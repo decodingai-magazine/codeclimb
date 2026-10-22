@@ -13,6 +13,9 @@ export function nightPaths(cfg: NightConfig, nightId: string) {
     doneJson: join(nightDir, "done.json"),
     expDir: (expId: string) => join(nightDir, "exps", expId),
     evalDir: (evalId: string) => join(nightDir, "evals", evalId),
+    /** The reviewer's feedback and next-round hypotheses, kept for the report. */
+    reviewJson: (round: number) => join(nightDir, "reviews", `r${round}.json`),
+    report: join(root, "report.html"),
   };
 }
 

@@ -97,6 +97,8 @@ All output lands under `dirname(results_path)`:
 | `experiments.git` | Bare repo with one commit per experiment, pinned by `refs/exp/<exp_id>`. |
 | `nights/<id>/night.json` | Resolved config, start time and deadline, and metric-script hashes. |
 | `nights/<id>/done.json` | Stop reason, kept commit and test metrics. |
+| `nights/<id>/reviews/r<N>.json` | The reviewer's feedback and hypotheses for round N. |
+| `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
 | `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs and `metrics.json`. |
 
@@ -114,6 +116,35 @@ npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch 
 npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.90, up to 10 rounds
 ```
 
+### Report and export
+
+Each night rewrites `report.html` next to `results.jsonl` after every round. It is one self-contained file in the Decoding AI design system and opens offline. It covers every night in the results file:
+
+- **All Nights:** stop reason, rounds, kept accuracy, validation, test, spend and wall time per night.
+- **How the Night Converged:** every branch's score per round, the kept step line, the threshold, and the final validation and test scores. Click a point to select that experiment.
+- **Metric Families:** a heatmap of the share of items wrong per family, along the kept lineage or across all experiments, with ▲/▼ where a kept commit moved a family.
+- **Experiments:** every experiment grouped by round, with its hypothesis, score, change from its parent, keep or revert, and cost. The extra evaluations and the reviewer's feedback each round follow.
+- **Detail and export:** the selected experiment's metrics and diff against its parent, and an export panel. The night's best kept commit is selected by default.
+
+```bash
+npm run report -- --config configs/datenorm-hard.yaml           # rebuild runs/datenorm-hard/report.html
+npm run report -- --config configs/datenorm-hard.yaml --serve   # http://127.0.0.1:7420 with a working Export button
+```
+
+Opened from disk, the export panel's button copies the matching CLI command instead. The same export from the terminal:
+
+```bash
+npm run export -- --config configs/datenorm-hard.yaml --exp best --to-dir ../datenorm-solution                  # plain files
+npm run export -- --config configs/datenorm-hard.yaml --exp hard2-r6-b2 --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
+npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
+```
+
+- `--exp best` is the kept commit of the most recently finished night.
+- A folder export refuses a non-empty folder unless `--force` is passed. `--with-history` needs an empty or new folder.
+- A remote export pushes the experiment's lineage (starter → each kept parent → the experiment) to `codeclimb/<exp_id>`, or to `--branch`. It never force-pushes, so git rejects a push onto a branch that has diverged.
+- Remotes are limited to `https`, `ssh`, `git` and local paths. Option-like arguments and `ext::`/`fd::` transports are refused, and git never prompts for credentials.
+- `--serve` binds to 127.0.0.1 only. It answers only requests addressed to that host and port. Exports need a per-run token that is embedded in the served page.
+
 ### Layout
 
 | Path | Purpose |
@@ -123,6 +154,9 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker backend, and git-bundle transfer |
+| `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |
+| `codeclimb/export.ts` | Export an experiment to a folder or a git remote, with the argument checks |
+| `scripts/report.ts`, `scripts/export.ts` | `report` (write or `--serve`) and `export` CLIs |
 | `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
 | `scenarios/datenorm/` | Spec bundle (`spec/`, the only thing the agent sees), hidden `dataset/`, `metrics/run.py` + `score.py`, and the `Dockerfile` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators, runner and scorer. `HIDDEN_RULES.md` is the answer key and is never put in the image |
@@ -154,7 +188,7 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
 
 - **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
 - **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on the optimization folds. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round and one validation. For a longer climb, use `datenorm-hard`.
-- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 48 min, $0.26) kept a commit in 5 of 6 rounds:
+- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 8 min, $0.26) kept a commit in 5 of 6 rounds:
 
   | Round | Kept accuracy | What moved |
   |---|---|---|
@@ -166,9 +200,9 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
   | 6 | 0.896 | `yearless` 0.64 → 0.91 |
 
   - The yearless convention was found by A/B across branches. "Nearest past" lost in round 4, "current year" brought no gain in round 5, and "next occurrence" won in round 6.
+  - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
   - The night ended on `max_rounds` below its 0.95 threshold, so the config now uses 0.90 and allows up to 10 rounds.
   - With 0.90, night `hard2` (about 10 min, $0.31) stopped on `thresholds` after 6 rounds. It went 0.804 → 0.872 (r2, `holiday` and `multi_date`) → 0.884 (r4, `relative`) → 0.936 (r6, `week_date` and `yearless`). Rounds 3 and 5 kept nothing. Validation on the held-out fold scored 0.930, so the overfit gap was 0.006 and the commit was kept. Test scored 0.896.
-  - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
 - **A killed worker resumes after about 2 minutes,** once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
 
 ### Verified locally (dev server + Docker)

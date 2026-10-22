@@ -3,7 +3,7 @@
 // from memoized step outputs on replay.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult } from "./coder";
 import { readSpecText } from "./coder";
@@ -11,6 +11,7 @@ import { type NightConfig, resolveDeadline } from "./config";
 import { type EvalResult, readPerItem, trainFolds } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
+import { writeReport } from "./report/html";
 import { appendRows, readRows, type ResultRow } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, runReview, type ReviewOutput } from "./reviewer";
 import { beatsParent, type Metrics, mean, overfitTest, passesGates, stddev } from "./stats";
@@ -240,7 +241,7 @@ export async function reviewRound(args: {
     const diff = await repo.diff(args.parentExpId, s.expId).catch(() => "(no commit)");
     results.push({ ...s, diff });
   }
-  return runReview({
+  const review = await runReview({
     model: args.cfg.reviewer_model,
     spec: readSpecText(args.cfg.spec_dir),
     round: args.round,
@@ -254,6 +255,10 @@ export async function reviewRound(args: {
     log: args.log,
     validationGap: args.validationGap,
   });
+  const file = nightPaths(args.cfg, args.nightId).reviewJson(args.round);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ round: args.round, model: args.cfg.reviewer_model, ...review }, null, 2));
+  return review;
 }
 
 export function recordRows(cfg: NightConfig, rows: ResultRow[]): number {
@@ -316,5 +321,6 @@ export async function finishNight(b: RowBase & {
     finished_at: new Date().toISOString(),
   };
   writeFileSync(nightPaths(b.cfg, b.nightId).doneJson, JSON.stringify(summary, null, 2));
+  await writeReport(b.cfg);
   return summary;
 }

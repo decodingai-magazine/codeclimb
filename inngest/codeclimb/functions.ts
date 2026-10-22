@@ -22,6 +22,7 @@ import {
   reviewRound,
   validateKept,
 } from "../../codeclimb/orchestrator";
+import { writeReport } from "../../codeclimb/report/html";
 import type { HypothesisLogEntry } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
 import { ccInngest, nightStart, nightStop } from "./client";
@@ -160,7 +161,11 @@ export const runNight = ccInngest.createFunction(
         }
       }
       const rows = decision.rows.map((r) => ({ ...r, reviewer_usd: review.reviewer_usd, t_review: review.t_review }));
-      await step.run(`r${round}-record`, () => recordRows(cfg, rows));
+      await step.run(`r${round}-record`, async () => {
+        const n = recordRows(cfg, rows);
+        await writeReport(cfg); // live report after every round; never throws
+        return n;
+      });
 
       const roundSpend = decision.spend + review.reviewer_usd;
       roundSpends.push(roundSpend);
