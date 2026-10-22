@@ -111,7 +111,7 @@ All output lands under `dirname(results_path)`:
 ```bash
 npm run build:baseline:hard      # image autocode-base-hard (its own /spec)
 npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch × 1 round: see how far round 1 gets
-npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.95, up to 10 rounds
+npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.90, up to 10 rounds
 ```
 
 ### Layout
@@ -166,7 +166,7 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
   | 6 | 0.896 | `yearless` 0.64 → 0.91 |
 
   - The yearless convention was found by A/B across branches. "Nearest past" lost in round 4, "current year" brought no gain in round 5, and "next occurrence" won in round 6.
-  - The night ended on `max_rounds` below the 0.95 threshold, so the config now allows 10 rounds.
+  - The night ended on `max_rounds` below the 0.95 threshold it then used. The config now has threshold 0.90 (which `hard1` would cross about round 6–7, so validation and test run) and allows up to 10 rounds.
   - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
 - **A killed worker resumes after about 2 minutes,** once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
 
