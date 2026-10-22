@@ -1,0 +1,34 @@
+# Calibration for datenorm-hard: one branch, one round. Read acc_<family> in results.jsonl to
+# check round 1 lands well below the datenorm-hard.yaml threshold.
+# Docker sandboxes, Inngest dev server. Coders: GitHub Copilot Haiku via Pi; reviewer: a different Haiku.
+# Build the image first: npm run build:baseline:hard
+spec_dir: scenarios/datenorm-hard/spec
+dataset_dir: scenarios/datenorm-hard/dataset
+run_cmd: python3 /eval/run.py
+run_files: [scenarios/datenorm/metrics/run.py]
+score_cmd: python3 scenarios/datenorm/metrics/score.py
+hidden_fields: [family]
+sandbox: docker
+baseline: autocode-base-hard
+max_rounds: 1
+deadline: 1h
+timeouts:
+  experiment_min: 15
+  eval_min: 3
+models:
+  - github-copilot/claude-haiku-5.5
+reviewer_model: github-copilot/claude-haiku-4.5
+allowed_models: []
+primary_metric: accuracy
+thresholds:
+  accuracy: 1.0   # unreachable on purpose: calibration ends on max_rounds
+gates:
+  schema_violations: 0
+  p95_ms: 50
+min_gain: 0.01
+overfit_gap: 0.05
+max_validations: 5
+budget_usd:
+  experiment: 1.0
+  night: 2.0
+results_path: runs/datenorm-hard-calibrate/results.jsonl

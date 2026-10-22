@@ -54,6 +54,170 @@ In local mode this returns `"mode": "dev"` and `"function_count": 1`.
 
 The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listing functions, sending events and checking runs from a coding agent.
 
+## CodeClimb loop
+
+CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
+
+- It runs only on the **local Inngest dev server** with **Docker sandboxes**.
+- The coders are **GitHub Copilot Haiku models driven by Pi**.
+- It uses a small built-in scenario, `datenorm`, which normalizes messy date strings to ISO dates.
+
+### Run a night
+
+Prerequisites:
+
+- Docker is running.
+- Pi is logged in to Copilot (`pi`, then `/login github-copilot`), which writes `~/.pi/agent/auth.json`. Alternatively, set `COPILOT_GITHUB_TOKEN`.
+- The Inngest dev server is running (`npm run dev:inngest`).
+
+```bash
+npm run build:baseline                 # docker image autocode-base (python 3.14 + git + spec bundle)
+npm run worker                         # terminal 2: connect() worker (orchestrator + Pi)
+npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night and follows results.jsonl
+npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
+npm run validate-results -- runs/datenorm-smoke/results.jsonl
+npm test                               # unit tests (keep rule, overfit test, stops, schema)
+```
+
+A night runs these steps:
+
+1. **Rounds.** Each round starts one `run-experiment` child per model in `models`, all in parallel, via `step.invoke`.
+2. **Experiment.** Each child gives Pi a fresh sandbox built from the baseline plus the kept commit. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit, and `score_cmd` scores it on the host.
+3. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`.
+4. **Noise floor.** On the first night, the first kept commit is evaluated 5 times to measure σ.
+5. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch for the next round.
+6. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
+7. **Test.** After any stop, the final kept commit is scored on test once.
+
+All output lands under `dirname(results_path)`:
+
+| Path | Content |
+|---|---|
+| `results.jsonl` | One row per experiment and per extra eval. `npm run validate-results -- --schema` prints the schema. `reviewer_usd` is the round's review cost, repeated on every row of that round as the spec says, so don't sum it across rows. `done.json` has the night's real spend. |
+| `experiments.git` | Bare repo with one commit per experiment, pinned by `refs/exp/<exp_id>`. |
+| `nights/<id>/night.json` | Resolved config, start time and deadline, and metric-script hashes. |
+| `nights/<id>/done.json` | Stop reason, kept commit and test metrics. |
+| `nights/<id>/reviews/r<N>.json` | The reviewer's feedback and hypotheses for round N. |
+| `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
+| `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
+| `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs and `metrics.json`. |
+
+### Harder scenario: `datenorm-hard`
+
+`datenorm` is fully specified, so one round solves it. `datenorm-hard` is built to need several rounds:
+
+- **Breadth.** It adds 6 families: `holiday`, `nth_weekday`, `yearless`, `multi_date`, `fuzzy` and `week_date`. They make up about half the items.
+- **Interference.** `invalid` gets traps aimed at loose fixes, such as `Augustine 23, 1990`, `part no. W37-5` and `Easter plans`.
+- **A vague spec.** `SPEC.md` says *which kinds* of input appear but not the conventions behind the gold answers. Examples are which year `Nov 30` means, which of two dates counts, and how loose month matching may be. `METRICS.md` explains each family name, so a per-family accuracy number tells the loop where to look. The coder and reviewer prompts tell the agents to treat open choices as hypotheses to A/B across branches. `HIDDEN_RULES.md` lists the gold conventions.
+
+```bash
+npm run build:baseline:hard      # image autocode-base-hard (its own /spec)
+npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch × 1 round: see how far round 1 gets
+npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.90, up to 10 rounds
+```
+
+### Report and export
+
+Each night rewrites `report.html` next to `results.jsonl` after every round. It is one self-contained file in the Decoding AI design system and opens offline. It covers every night in the results file:
+
+- **All Nights:** stop reason, rounds, kept accuracy, validation, test, spend and wall time per night.
+- **How the Night Converged:** every branch's score per round, the kept step line, the threshold, and the final validation and test scores. Click a point to select that experiment.
+- **Metric Families:** a heatmap of the share of items wrong per family, along the kept lineage or across all experiments, with ▲/▼ where a kept commit moved a family.
+- **Experiments:** every experiment grouped by round, with its hypothesis, score, change from its parent, keep or revert, and cost. The extra evaluations and the reviewer's feedback each round follow.
+- **Detail and export:** the selected experiment's metrics and diff against its parent, and an export panel. The night's best kept commit is selected by default.
+
+```bash
+npm run report -- --config configs/datenorm-hard.yaml           # rebuild runs/datenorm-hard/report.html
+npm run report -- --config configs/datenorm-hard.yaml --serve   # http://127.0.0.1:7420 with a working Export button
+```
+
+Opened from disk, the export panel's button copies the matching CLI command instead. The same export from the terminal:
+
+```bash
+npm run export -- --config configs/datenorm-hard.yaml --exp best --to-dir ../datenorm-solution                  # plain files
+npm run export -- --config configs/datenorm-hard.yaml --exp hard2-r6-b2 --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
+npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
+```
+
+- `--exp best` is the kept commit of the most recently finished night.
+- A folder export refuses a non-empty folder unless `--force` is passed. `--with-history` needs an empty or new folder.
+- A remote export pushes the experiment's lineage (starter → each kept parent → the experiment) to `codeclimb/<exp_id>`, or to `--branch`. It never force-pushes, so git rejects a push onto a branch that has diverged.
+- Remotes are limited to `https`, `ssh`, `git` and local paths. Option-like arguments and `ext::`/`fd::` transports are refused, and git never prompts for credentials.
+- `--serve` binds to 127.0.0.1 only. It answers only requests addressed to that host and port. Exports need a per-run token that is embedded in the served page.
+
+### Layout
+
+| Path | Purpose |
+|---|---|
+| `inngest/codeclimb/functions.ts` | `run-night` (thin parent), `run-experiment` and `run-eval` (invoked children), and the cleanup handlers |
+| `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
+| `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
+| `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
+| `codeclimb/sandbox/` | `SandboxBackend` interface, Docker backend, and git-bundle transfer |
+| `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |
+| `codeclimb/export.ts` | Export an experiment to a folder or a git remote, with the argument checks |
+| `scripts/report.ts`, `scripts/export.ts` | `report` (write or `--serve`) and `export` CLIs |
+| `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
+| `scenarios/datenorm/` | Spec bundle (`spec/`, the only thing the agent sees), hidden `dataset/`, `metrics/run.py` + `score.py`, and the `Dockerfile` |
+| `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators, runner and scorer. `HIDDEN_RULES.md` is the answer key and is never put in the image |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 3 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 3 branches) and `datenorm-hard-calibrate.yaml` (1 branch × 1 round) |
+
+### Deviations from the spec in this iteration
+
+- **Models:** GitHub Copilot through Pi's `github-copilot` provider, not OpenCode Go.
+  - Coders are `claude-haiku-5.5` ×3 and the reviewer is `claude-haiku-4.5`, so the reviewer is not one of the coders.
+  - `coder_usd` is Pi's `message_end` cost at list prices. Copilot bills by subscription, so this is a comparable dollar figure, not an actual charge.
+- **Local only:**
+  - The Inngest dev server, `connect()` worker and Docker backend are used.
+  - `sandbox: inngest` (Inngest Sandboxes, Cloud Pro+) throws "not implemented".
+  - `step.score` and extended traces are wired up but only show in the dev server.
+- **No metering proxy:** `datenorm` is standard-library Python with no model calls.
+  - Sandboxes run with `--network none`, which is stricter than the spec's egress allowlist.
+  - `program_usd` is 0 and `allowed_models` is unused.
+  - On a deterministic program, the noise floor measures σ ≈ 0.
+- **Extra config keys:**
+  - `run_files`: host files copied to `/eval/` in the eval sandbox.
+  - `hidden_fields`: dataset fields never sent to a sandbox, in addition to `gold` and `fold`.
+  - `baseline`: the image name.
+- **Extra row fields:** `kind` (experiment | rescore | noise | validation | test), `eval_id` (a unique row key) and `night_id`.
+  - Extra eval rows use `decision: keep` when the eval succeeded and `error` when it failed.
+  - Validation rows use `keep` for no overfit and `revert` for overfit.
+- **Pi's base prompt** includes a `<docs>` block pointing at Pi's own docs on the host. Nothing from AGENTS.md, skills, extensions or `~/.pi` is loaded.
+
+### Known behaviour worth knowing
+
+- **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
+- **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on the optimization folds. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round and one validation. For a longer climb, use `datenorm-hard`.
+- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 8 min, $0.26) kept a commit in 5 of 6 rounds:
+
+  | Round | Kept accuracy | What moved |
+  |---|---|---|
+  | 1 | 0.800 | |
+  | 2 | none kept | all branches at 0.804, below `min_gain` |
+  | 3 | 0.836 | `holiday` 0.37 → 0.67 |
+  | 4 | 0.848 | `relative` 0.54 → 0.77 |
+  | 5 | 0.872 | `week_date` 0.59 → 0.86 |
+  | 6 | 0.896 | `yearless` 0.64 → 0.91 |
+
+  - The yearless convention was found by A/B across branches. "Nearest past" lost in round 4, "current year" brought no gain in round 5, and "next occurrence" won in round 6.
+  - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
+  - The night ended on `max_rounds` below its 0.95 threshold, so the config now uses 0.90 and allows up to 10 rounds.
+  - With 0.90, night `hard2` (about 10 min, $0.31) stopped on `thresholds` after 6 rounds. It went 0.804 → 0.872 (r2, `holiday` and `multi_date`) → 0.884 (r4, `relative`) → 0.936 (r6, `week_date` and `yearless`). Rounds 3 and 5 kept nothing. Validation on the held-out fold scored 0.930, so the overfit gap was 0.006 and the commit was kept. Test scored 0.896.
+- **A killed worker resumes after about 2 minutes,** once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
+
+### Verified locally (dev server + Docker)
+
+| Check | Config change | Result |
+|---|---|---|
+| Thresholds + validation stop | `datenorm-smoke` with threshold 0.97 | Round 1 → noise ×5 → validation (gap 0.017 < 2 SE) → test, `stop_reason: thresholds` |
+| `max_rounds` + worker crash | `datenorm-smoke`, worker `kill -9` in round 2 | Steps resumed the Pi sessions on the same sandboxes; round 2 → test, `stop_reason: max_rounds` |
+| `$` cap | `budget_usd {experiment: 0.003, night: 0.02}` | Pi aborted per experiment; `stop_reason: budget` after round 1 |
+| Deadline | `deadline: 30s`, threshold 1.01 | `stop_reason: deadline` after round 1 |
+| Overfit rotation | `overfit_gap: -1`, `max_validations: 2` | Fold 0 → fold 1, re-score on the new optimization folds, `stop_reason: max_validations` |
+| Night stop | `run-night stop` mid round 1 | Parent and children `CANCELLED`, Pi aborted, sandboxes destroyed |
+
+Across all of these, `results.jsonl` validated against the schema and no `cc-*` containers were left behind.
+
 ## Project layout
 
 | Path | Purpose |
