@@ -36,7 +36,7 @@ async function follow(cfg: NightConfig, nightId: string): Promise<void> {
       console.log(
         `  r${r.round} ${r.kind.padEnd(10)} ${r.split.padEnd(5)} ${r.exp_id.replace(`${nightId}-`, "").padEnd(14)} ` +
           `${cfg.primary_metric}=${primary?.toFixed(4) ?? "-"} ${r.decision.padEnd(6)} ` +
-          `$${(r.coder_usd + r.reviewer_usd + r.program_usd).toFixed(4)} ${r.hypothesis ? `· ${r.hypothesis.slice(0, 90)}` : ""}`,
+          `$${(r.coder_usd + r.program_usd).toFixed(4)} ${r.hypothesis ? `· ${r.hypothesis.slice(0, 90)}` : ""}`,
       );
     }
     printed = rows.length;

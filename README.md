@@ -93,7 +93,7 @@ All output lands under `dirname(results_path)`:
 
 | Path | Content |
 |---|---|
-| `results.jsonl` | One row per experiment and per extra eval. `npm run validate-results -- --schema` prints the schema. |
+| `results.jsonl` | One row per experiment and per extra eval. `npm run validate-results -- --schema` prints the schema. `reviewer_usd` is the round's review cost, repeated on every row of that round as the spec says, so don't sum it across rows. `done.json` has the night's real spend. |
 | `experiments.git` | Bare repo with one commit per experiment, pinned by `refs/exp/<exp_id>`. |
 | `nights/<id>/night.json` | Resolved config, start time and deadline, and metric-script hashes. |
 | `nights/<id>/done.json` | Stop reason, kept commit and test metrics. |
@@ -154,7 +154,7 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
 
 - **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
 - **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on the optimization folds. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round and one validation. For a longer climb, use `datenorm-hard`.
-- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, about 48 min, $0.50) kept a commit in 5 of 6 rounds:
+- **`datenorm-hard` climbs over many rounds.** Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 48 min, $0.26) kept a commit in 5 of 6 rounds:
 
   | Round | Kept accuracy | What moved |
   |---|---|---|
@@ -166,7 +166,8 @@ npm run run-night -- --config configs/datenorm-hard.yaml             # threshold
   | 6 | 0.896 | `yearless` 0.64 → 0.91 |
 
   - The yearless convention was found by A/B across branches. "Nearest past" lost in round 4, "current year" brought no gain in round 5, and "next occurrence" won in round 6.
-  - The night ended on `max_rounds` below the 0.95 threshold it then used. The config now has threshold 0.90 (which `hard1` would cross about round 6–7, so validation and test run) and allows up to 10 rounds.
+  - The night ended on `max_rounds` below its 0.95 threshold, so the config now uses 0.90 and allows up to 10 rounds.
+  - With 0.90, night `hard2` (about 10 min, $0.31) stopped on `thresholds` after 6 rounds. It went 0.804 → 0.872 (r2, `holiday` and `multi_date`) → 0.884 (r4, `relative`) → 0.936 (r6, `week_date` and `yearless`). Rounds 3 and 5 kept nothing. Validation on the held-out fold scored 0.930, so the overfit gap was 0.006 and the commit was kept. Test scored 0.896.
   - Test scored 0.83. It has only 7 items per old family, and no validation ran because the thresholds were never met.
 - **A killed worker resumes after about 2 minutes,** once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
 
