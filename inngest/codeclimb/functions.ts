@@ -318,7 +318,7 @@ export const onNightStop = ccInngest.createFunction(
   { id: "night-stop-cleanup", triggers: [nightStop] },
   async ({ event, step }) => {
     const aborted = await step.run("abort-pi", () => abortNight(event.data.night_id));
-    const swept = await step.run("sweep", () => sweepNight({ sandbox: event.data.sandbox ?? "docker" }, event.data.night_id));
+    const swept = await step.run("sweep", () => sweepNight(event.data.night_id));
     return { aborted, swept };
   },
 );
@@ -329,7 +329,7 @@ export const onRunCancelled = ccInngest.createFunction(
   async ({ event, step }) => {
     const runId = event.data.run_id;
     const aborted = await step.run("abort-pi", () => abortRun(runId));
-    const swept = await step.run("sweep", () => sweepRun({ sandbox: "docker" }, runId));
+    const swept = await step.run("sweep", () => sweepRun(runId));
     return { aborted, swept };
   },
 );

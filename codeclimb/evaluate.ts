@@ -12,7 +12,7 @@ import type { NightConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { sandboxBackend } from "./sandbox";
-import { ensureMeterPath, isMetered, METER_NETWORK, meter, meterEnv } from "./meter";
+import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
 import type { MeterCall } from "./meter/proxy";
 import { cloneInto } from "./sandbox/repo";
 import type { Sandbox } from "./sandbox/types";
@@ -99,11 +99,11 @@ export function readPerItem(metricsPath: string): number[] {
 export async function openEvaluator(cfg: NightConfig, nightId: string, evaluatorId: string, runId?: string): Promise<Sandbox> {
   const backend = sandboxBackend(cfg.sandbox);
   const name = sandboxName(evaluatorId);
-  if (isMetered(cfg)) await ensureMeterPath(cfg.baseline, (await meter()).port);
+  if (isMetered(cfg)) await meterBaseUrl(cfg);
   return (
     (await backend.find(name)) ??
     backend.create({
-      name, baseline: cfg.baseline, network: isMetered(cfg) ? METER_NETWORK : "none",
+      name, baseline: cfg.baseline, specDir: cfg.spec_dir, network: isMetered(cfg) ? METER_NETWORK : "none",
       labels: { "cc.night": nightId, ...(runId ? { "cc.run": runId } : {}) },
     })
   );
@@ -113,10 +113,11 @@ export async function closeEvaluator(cfg: NightConfig, evaluatorId: string): Pro
   await (await sandboxBackend(cfg.sandbox).find(sandboxName(evaluatorId)))?.destroy();
 }
 
-// Kills every process but PID 1 and this script's own chain (its setsid parent and
-// its children), waits until they are gone, then wipes everything a candidate
-// writes to. Zombies are skipped: PID 1 (`sleep`) never reaps them, and they hold nothing.
-const RESET_SCRIPT = `
+// Kills every process but PID 1, the Inngest guest agent (`init` processes) and this
+// script's own chain (its parent and its children), waits until they are gone, then
+// wipes everything a candidate writes to. Zombies are skipped: PID 1 (`sleep` under
+// Docker) never reaps them, and they hold nothing.
+export const RESET_SCRIPT = `
 others() {
   n=0
   for p in /proc/[0-9]*; do
@@ -127,6 +128,7 @@ others() {
     set -- $st
     [ "$2" = "$$" ] && continue
     [ "$1" = Z ] && continue
+    read -r comm < "$p/comm" 2>/dev/null && [ "$comm" = init ] && continue
     kill -KILL "$q" 2>/dev/null
     n=$((n + 1))
   done
@@ -186,7 +188,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
     t0 = performance.now();
     const run = await sandbox.exec(
       `${cfg.run_cmd} --queries /work/queries.jsonl --repo /repo --out /work/out > /work/run.log 2>&1`,
-      { cwd: "/work", timeoutMs: cfg.timeouts.eval_min * 60_000, ...(token ? { env: meterEnv(token) } : {}) },
+      { cwd: "/work", timeoutMs: cfg.timeouts.eval_min * 60_000, ...(token ? { env: meterEnv(token, await meterBaseUrl(cfg)) } : {}) },
     );
     calls = token ? proxy!.close(token) : [];
     result.t_eval = secs(t0);

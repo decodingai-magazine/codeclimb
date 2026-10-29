@@ -139,7 +139,7 @@ All output lands under `dirname(results_path)`:
 
 ### Run on Inngest Cloud
 
-The same worker and CLI can use Inngest Cloud instead of the dev server. Sandboxes stay in Docker on your machine, and results land in the same `runs/` folders.
+The same worker and CLI can use Inngest Cloud instead of the dev server, with Docker sandboxes on your machine or Inngest Sandboxes (`--sandbox inngest`). Results land in the same `runs/` folders.
 
 1. Put the production keys in `.env.cloud.local` (gitignored):
    - `INNGEST_EVENT_KEY`: create one under **Manage → Event Keys** in the Inngest dashboard.
@@ -150,11 +150,29 @@ The same worker and CLI can use Inngest Cloud instead of the dev server. Sandbox
 npm run worker:cloud                                                          # terminal 1: connect() worker on Inngest Cloud
 npm run run-night:cloud -- --config configs/datenorm-smoke.yaml               # terminal 2: start and follow a night
 npm run run-night:cloud -- stop --night <night_id>
+npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox inngest   # Inngest Sandboxes instead of Docker
 ```
 
 - Cloud mode refuses to start if a key is missing or if `INNGEST_DEV` is set, because the SDK would quietly use the dev server instead.
 - Runs, traces and scores appear in the Inngest dashboard under the `codeclimb-worker` app.
 - The local and cloud workers can run at the same time, since each one only sees its own Inngest.
+
+#### Inngest Sandboxes
+
+`--sandbox inngest` (or `sandbox: inngest` in a config) runs every coder and evaluator in an Inngest sandbox (`codeclimb/sandbox/inngest.ts`): a microVM with 2 vCPUs and 2 GB, on Inngest's base image (Python 3.14, git). It needs the cloud worker; the dev-mode worker refuses it.
+
+- **Setup.** Each sandbox gets `/spec` uploaded from `spec_dir` and the git defaults the Docker baseline bakes in, so `baseline` is ignored.
+- **Network.** Egress is open (the beta has no allowlist). Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
+- **Metering.** Sandboxes reach the proxy at a public URL, `CODECLIMB_METER_URL` (ending in `/v1`), instead of the Docker relay. From the laptop, pin the port and tunnel it for the night:
+
+  ```bash
+  ngrok http 8787                                                                  # terminal 1
+  CODECLIMB_PROXY_PORT=8787 CODECLIMB_METER_URL=https://<id>.ngrok-free.app/v1 npm run worker:cloud
+  npm run run-night:cloud -- --config configs/capitals-smoke.yaml --sandbox inngest
+  ```
+
+- **Cleanup.** Stops, cancelled runs and the end of a night sweep every backend the worker reaches, so a stop never strands a billed sandbox. Inngest has no labels: a run's sandboxes are tracked in the worker's memory, and the night's prefix sweep covers a restarted worker.
+- **Checks.** `CODECLIMB_ENV=cloud npx tsx scripts/smoke-inngest-sandbox.ts` exercises every backend method on one sandbox. `CODECLIMB_ENV=cloud npx tsx scripts/sandboxes.ts` lists the newest sandboxes and their status.
 
 ### Standard metrics: latency and cost
 
@@ -248,7 +266,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
-| `codeclimb/sandbox/` | `SandboxBackend` interface, Docker backend, and git-bundle transfer |
+| `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
 | `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |
 | `codeclimb/export.ts` | Export an experiment to a folder or a git remote, with the argument checks |
 | `scripts/report.ts`, `scripts/export.ts` | `report` (write or `--serve`) and `export` CLIs |
@@ -262,18 +280,15 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 - **Models:** GitHub Copilot through Pi's `github-copilot` provider, not OpenCode Go.
   - Coders are `claude-haiku-5.5` ×3 and the reviewer is `claude-haiku-4.5`, so the reviewer is not one of the coders.
   - `coder_usd` is Pi's `message_end` cost at list prices. Copilot bills by subscription, so this is a comparable dollar figure, not an actual charge.
-- **Local only:**
-  - The Inngest dev server, `connect()` worker and Docker backend are used.
-  - `sandbox: inngest` (Inngest Sandboxes, Cloud Pro+) throws "not implemented".
-  - `step.score` and extended traces are wired up but only show in the dev server.
+- **Local or Cloud:** the dev server or Inngest Cloud, a `connect()` worker on the laptop, and Docker or Inngest sandboxes (see [Run on Inngest Cloud](#run-on-inngest-cloud)).
 - **No metering proxy:** `datenorm` is standard-library Python with no model calls.
-  - Sandboxes run with `--network none`, which is stricter than the spec's egress allowlist.
+  - Docker sandboxes run with `--network none`, which is stricter than the spec's egress allowlist. Inngest sandboxes have open egress, which is looser.
   - `program_usd` is 0 and `allowed_models` is unused.
   - On a deterministic program, the noise floor measures σ ≈ 0.
 - **Extra config keys:**
   - `run_files`: host files copied to `/eval/` in the eval sandbox.
   - `hidden_fields`: dataset fields never sent to a sandbox, in addition to `gold` and `fold`.
-  - `baseline`: the image name.
+  - `baseline`: the Docker image name (ignored on Inngest sandboxes).
 - **Extra row fields:** `kind` (experiment | rescore | noise | validation | test), `eval_id` (a unique row key) and `night_id`.
   - Extra eval rows use `decision: keep` when the eval succeeded and `error` when it failed.
   - Validation rows use `keep` for no overfit and `revert` for overfit.

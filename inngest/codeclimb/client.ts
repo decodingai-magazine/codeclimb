@@ -14,5 +14,5 @@ export const nightStart = eventType("codeclimb/night.start", {
 });
 
 export const nightStop = eventType("codeclimb/night.stop", {
-  schema: staticSchema<{ night_id: string; reason?: string; sandbox?: "docker" | "inngest" }>(),
+  schema: staticSchema<{ night_id: string; reason?: string }>(),
 });

@@ -1,5 +1,5 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
-//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait]
+//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--sandbox docker|inngest] [--no-wait]
 //   npm run run-night -- stop --night ID
 import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
@@ -18,6 +18,7 @@ const { values, positionals } = parseArgs({
     config: { type: "string" },
     "night-id": { type: "string" },
     night: { type: "string" },
+    sandbox: { type: "string" },
     "no-wait": { type: "boolean", default: false },
   },
 });
@@ -58,6 +59,10 @@ if (positionals[0] === "stop") {
 } else {
   if (!values.config) throw new Error("usage: run-night --config <yaml>");
   const cfg = loadConfig(resolve(values.config));
+  if (values.sandbox) {
+    if (values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
+    cfg.sandbox = values.sandbox;
+  }
   await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();
   const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: cfg } });

@@ -1,6 +1,6 @@
 # Plan: CodeClimb on local Inngest and on Inngest Cloud
 
-Status: final draft, 2026-10-29. Done so far: the app login (`proxy.ts`). Nothing else is built yet.
+Status: 2026-10-29. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud) and Phase 1 (Inngest Sandboxes backend).
 
 This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md` and adds a Vercel app. One codebase runs in two modes, and both stay supported for good:
 
@@ -40,9 +40,9 @@ Every switch already exists or is one environment variable. There's no mode flag
 
 A useful in-between mode: the laptop worker connected to Cloud, with Docker or Inngest sandboxes. Phases 0 and 1 use it, and it remains a handy way to debug Cloud runs.
 
-### Inngest Sandboxes in local mode (to verify)
+### Inngest Sandboxes in local mode (verified)
 
-In dev mode the SDK sends `inngest.sandboxes` calls to the dev server without a key, and the dev server's MCP lists sandbox tools. So the dev server may support sandboxes, either by running them locally or by forwarding them to Cloud. If it does, the Inngest backend can be tested fully locally. If not, `sandbox: inngest` requires Cloud, and the worker rejects it at night start with a clear message.
+In dev mode the SDK sends `inngest.sandboxes` calls to the dev server, which runs nothing locally: it forwards them to Cloud only after an interactive `inngest login --force`. So `sandbox: inngest` needs the cloud worker (`npm run worker:cloud`), and `sandboxBackend("inngest")` throws a clear message when `INNGEST_DEV` is set.
 
 ## 2. What already fits
 
@@ -57,14 +57,17 @@ In dev mode the SDK sends `inngest.sandboxes` calls to the dev server without a 
 
 1. **No custom image is needed.** The scenario images are `python:3.14-slim` + git + `/spec`. The fixed Inngest image already has Python 3.14 and git, so the backend uploads a `/spec` tarball when it creates a sandbox. `image.custom()` (SDK 4.25, MCP `create_build`) and snapshots are fallbacks. The beta docs say there are no custom images yet.
 2. **Egress is open on Inngest Sandboxes.** Docker's `--network none` doesn't carry over, and the beta has no allowlist. The spec accepts this gap. Gold still never enters a sandbox, and provider keys stay on the worker. The coder prompt's "no other network access" line must change for `inngest`.
-3. **Limits the backend must handle:**
-   - `commands.run` stops watching after 5 minutes, so long commands use `processes.start` + `wait` loops.
+3. **Limits the backend handles** (measured 2026-10-29 with `scripts/smoke-inngest-sandbox.ts`):
+   - `commands.run` stops watching after 5 minutes and can't be killed, so only short helpers use it (about 0.3 s a call). Pi's commands, timeouts and aborts use `processes.start` + `streamOutput` + `wait` in 60 s slices + `signal(9)`. A killed shell's orphaned children die about a second later.
    - A process keeps about 512 KiB of output.
-   - Files transfer through the direct client (up to 100 MiB), not `step.sandbox`.
+   - Files transfer through the direct client (up to 100 MiB) at about 100 KB/s: 3 MiB takes about 35 s. Bundles and outputs are small, so this is fine. `files.upload` doesn't create parent directories.
+   - The SDK's base64 check overflows the stack on multi-MiB command output, so `readFile` inlines files up to 64 KiB and downloads bigger ones.
    - One hour of active runtime per sandbox, then an automatic pause.
-4. **The evaluator reset kills every process but PID 1.** That's fine in Docker. In an Inngest VM it could kill the guest agent.
+   - A sandbox normally starts in 1.5 s. Once, three starts hung in STARTING with "sandbox launch result is unknown", so `create` replaces a sandbox that isn't running after 45 s.
+   - `list()` returns terminated sandboxes too, so sweeps page through the whole history.
+4. **The evaluator reset spares the guest agent.** The VM's agent runs as PIDs 1, 8, 9 and 10, all named `init`, and the reset skips processes named `init`.
 5. **Copilot's login file is a laptop setup.** Cloud configs use API-key models.
-6. **The Cloud account is empty.** Sandbox access on Pro is unconfirmed.
+6. **Sandboxes work on Pro.** The base image has Python 3.14.6 and git 2.55; three parallel creates take 1.3 s.
 
 ## 4. Phases
 
@@ -99,18 +102,20 @@ Use the direct `ccInngest.sandboxes` client inside the existing `step.run`s, bec
 | `create` | `docker run`, 2 CPUs, 2 GB, a network | `sandboxes.create({ name, vcpu: 2, memoryMb: 2048, environment: { PYTHONDONTWRITEBYTECODE: "1" } })`, then upload the `/spec` tarball, then `cloneInto` |
 | `find` | `docker inspect` | `list()` and match the name. Skip TERMINATED, and `resume()` if PAUSED. |
 | `exec` | `docker exec` + `setsid` | `processes.start` with `["/bin/bash", "-c", cmd]`, then `wait` in a loop up to `timeoutMs`, then `getOutput`. Timeout or abort: `signal(9, includeChildren)`. `onData`: `streamOutput`. Stdin: a temp file plus a redirect. |
-| `readFile` / `writeFile` | `cat` through `docker exec` | `files.download` / `files.upload` |
+| `readFile` / `writeFile` | `cat` through `docker exec` | Up to 64 KiB: `base64` through `commands.run`; bigger: `files.download`. `files.upload`, with `mkdir -p` and a retry on 404. |
 | `isAlive` / `instanceId` / `destroy` | inspect, container id, `rm -f` | status, sandbox `id`, `destroy()` |
 | `sweep` by prefix | label + name filter | `list()` with paging, filtered by name prefix |
-| `sweep` by run | `cc.run` label | No labels exist. Record each run's sandbox names in the night folder and destroy those. |
+| `sweep` by run | `cc.run` label | No labels exist, and `inngest/function.cancelled` carries only the run id. The worker keeps each run's sandbox names in memory; the night's prefix sweep covers a restarted worker. |
 
-Other work in Phase 1:
+Other work in Phase 1 (done):
 
-- **Spec tarball.** Build it once per night in `initNight`.
-- **Evaluator reset.** List the processes in a real sandbox first. Then skip the guest agent's processes, or kill only processes the backend started. If neither is safe, use a fresh sandbox per eval on `inngest`. Latency is then only compared within one candidate.
-- **One-hour limit.** Split evaluator requests to stay under about 45 minutes, or add the attempt number to the sandbox name.
-- **Proxy.** Read `CODECLIMB_METER_URL` in `codeclimb/meter/index.ts`. When it's set, skip `ensureMeterPath` and the relay. While the worker is still on the laptop, expose the proxy through a tunnel (`cloudflared` or `ngrok`).
+- **Spec tarball.** `create` tars `spec_dir` on the worker and unpacks it at `/spec` (`specDir` in `CreateSandboxOptions`), plus the git defaults the Docker image sets.
+- **Evaluator reset.** Skips the guest agent's `init` processes; verified on a real sandbox.
+- **Proxy.** `meterBaseUrl(cfg)`: `CODECLIMB_METER_URL` on `inngest`, the relay on Docker. Verified through an ngrok tunnel.
 - **Prompt.** The coder prompt's network line depends on the backend.
+- **Cleanup.** `night-stop-cleanup`, `run-cancelled-cleanup` and the end of a night sweep every backend the worker reaches; `night.stop` no longer carries `sandbox`.
+- **CLI.** `run-night --sandbox docker|inngest` overrides the config.
+- **Not done: the one-hour limit.** A smoke round's evaluator lives a few minutes; a full night's could pass an hour and auto-pause. Split evaluator requests to stay under about 45 minutes, or add the attempt number to the sandbox name, before long nights on `inngest`.
 
 ### Phase 2: always-on worker
 
@@ -212,18 +217,19 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 
 ## 8. Questions for Inngest
 
-1. Is the workspace on Pro with Sandboxes beta access? Can we run 5 concurrent sandboxes?
+1. ~~Is the workspace on Pro with Sandboxes beta access?~~ Yes. How many concurrent sandboxes can we run? (3 tested.)
 2. Is the active runtime 1 hour (docs) or 24 hours (pricing)? What happens to a running process at auto-pause?
 3. Can egress be restricted to an allowlist?
 4. Is image-build access (`create_build` → `image.custom()`) available?
-5. Which processes in the sandbox VM belong to the guest agent?
-6. Does the dev server run `inngest.sandboxes` calls locally, or forward them to Cloud?
+5. ~~Which processes in the sandbox VM belong to the guest agent?~~ PIDs 1, 8, 9, 10, named `init`.
+6. ~~Does the dev server run `inngest.sandboxes` calls locally?~~ No: it forwards them to Cloud after `inngest login`.
+7. A create once hung in STARTING with "sandbox launch result is unknown". Is that a known beta issue?
 
 ## 9. Checklist
 
 - [x] App login (`proxy.ts`, `.env.local`)
 - [x] Pro account confirmed
-- [ ] Confirm Sandboxes access: create one test sandbox, list its processes (this answers question 5), destroy it
+- [x] Confirm Sandboxes access: create one test sandbox, list its processes (this answers question 5), destroy it
 - [ ] Send the questions to Inngest
 - [x] Phase 0: `.env.cloud.local`, `CODECLIMB_ENV`, `:cloud` scripts, cloud smoke and stop test, local smoke. Verified 2026-10-29:
   - `cloud-smoke1` stopped on thresholds, with test accuracy 0.986 and $0.08 spent.
@@ -231,6 +237,12 @@ Night status combines `done.json` with the Inngest run status, read from the dev
   - `step.score` writes reach Cloud.
   - `local-smoke1` passed on the dev server: 2 rounds, stopped on `max_rounds`, test accuracy 0.972.
   - Unit tests: 22 passed.
-- [ ] Phase 1: `codeclimb/sandbox/inngest.ts`, safe reset, `CODECLIMB_METER_URL`, both smoke configs on `inngest`, local smoke on Docker
+- [x] Phase 1: `codeclimb/sandbox/inngest.ts`, safe reset, `CODECLIMB_METER_URL`, both smoke configs on `inngest`, local smoke on Docker. Verified 2026-10-29:
+  - `scripts/smoke-inngest-sandbox.ts`: every backend method on a real sandbox.
+  - `inngest-smoke1`: three coder sandboxes hung in STARTING ("launch result is unknown"); `run-night stop` destroyed all of them. That led to the replace-after-45-s fix.
+  - `inngest-smoke2` (`datenorm-smoke --sandbox inngest`): stopped on thresholds after round 1, test accuracy 0.9861, $0.0685, no leftovers.
+  - `inngest-capitals1` (`capitals-smoke --sandbox inngest`, proxy through ngrok): thresholds, test accuracy 1.0, 4 metered program calls in the test eval, 22 chat calls through the tunnel in total, $0.004. One coder sandbox hung at launch and was replaced.
+  - `local-smoke2` (dev server + Docker): `max_rounds`, test accuracy 1.0.
+  - Results validate (60 and 19 rows); 22 unit tests pass; typecheck OK.
 - [ ] Phase 2: host + volume, worker image, relative config paths, API-key models, public proxy and worker API
 - [ ] Phase 3: worker API, New run / Live night / Nights pages, Stop, export, Vercel deploy and environment variables, a run in both modes

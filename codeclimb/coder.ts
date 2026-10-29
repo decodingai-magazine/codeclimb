@@ -17,7 +17,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
 import { efficiencyMetrics, type NightConfig } from "./config";
 import { ExperimentRepo, expRef } from "./git";
-import { ensureMeterPath, isMetered, METER_NETWORK, meter, meterEnv } from "./meter";
+import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
 import { sandboxTools } from "./pi/tools";
@@ -91,7 +91,7 @@ export function coderPrompt(
   hypothesis: string | null,
   minutes: number,
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
-  dev?: { models: string[]; budgetUsd: number },
+  dev?: { models: string[]; budgetUsd: number; openNetwork?: boolean },
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec.",
@@ -115,7 +115,7 @@ export function coderPrompt(
             "- The program can call a model while you develop, as it will during the evaluation: your shell has OPENAI_BASE_URL and " +
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
-              "Try the model on a few cases you write; there is no other network access.",
+              `Try the model on a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
           ]
         : []),
       "- Do not commit: the harness commits everything in /repo when you finish.",
@@ -191,7 +191,7 @@ export async function runCoder(
   // Every attempt makes sure of the relay (the worker's proxy port may have changed) and opens its own token.
   const metered = isMetered(cfg);
   const proxy = metered ? await meter() : null;
-  if (proxy) await ensureMeterPath(cfg.baseline, proxy.port);
+  const meterUrl = proxy ? await meterBaseUrl(cfg) : "";
 
   if (!sandbox) {
     const t0 = performance.now();
@@ -199,6 +199,7 @@ export async function runCoder(
       name,
       baseline: cfg.baseline,
       commit: await repo.bundle(input.parentExpId),
+      specDir: cfg.spec_dir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
       network: metered ? METER_NETWORK : "none",
     });
@@ -221,7 +222,7 @@ export async function runCoder(
 
   const session: AgentSession = await createIsolatedSession({
     model: input.model,
-    tools: sandboxTools(sandbox, token ? { env: meterEnv(token) } : {}),
+    tools: sandboxTools(sandbox, token ? { env: meterEnv(token, meterUrl) } : {}),
     sessionManager: sessionManagerFor(sessionDir, resumed ? sessionFile : undefined),
   });
 
@@ -262,7 +263,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(cfg.spec_dir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev } : undefined),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, openNetwork: cfg.sandbox === "inngest" } : undefined),
       );
     } else {
       stop = "timeout";

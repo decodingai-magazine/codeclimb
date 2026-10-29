@@ -395,7 +395,7 @@ export async function finishNight(b: RowBase & {
   validations: number;
 }) {
   appendRows(b.cfg.results_path, [evalRow(b, b.kept, b.test, { split: "test", kind: "test" })]);
-  const swept = await sweepNight(b.cfg, b.nightId);
+  const swept = await sweepNight(b.nightId);
   const summary = {
     night_id: b.nightId,
     stop_reason: b.stopReason,

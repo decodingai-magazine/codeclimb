@@ -10,17 +10,30 @@ import { MeterProxy } from "./proxy";
 
 export const METER_NETWORK = "cc-meter";
 const RELAY = "cc-meter-relay";
-/** The proxy as a metered evaluator sees it. */
-export const METER_BASE_URL = `http://${RELAY}:8080/v1`;
+/** The proxy as a metered Docker sandbox sees it. */
+const RELAY_URL = `http://${RELAY}:8080/v1`;
 
 /** A program may call models only when the night lists some. */
 export const isMetered = (cfg: Pick<NightConfig, "allowed_models">) => cfg.allowed_models.length > 0;
 
 /** What a metered program sees: the proxy as an OpenAI-compatible endpoint, keyed by one ledger's token. */
-export function meterEnv(token: string): Record<string, string> {
-  return {
-    OPENAI_BASE_URL: METER_BASE_URL, OPENAI_API_KEY: token, CODECLIMB_LLM_BASE_URL: METER_BASE_URL, CODECLIMB_LLM_API_KEY: token,
-  };
+export function meterEnv(token: string, baseUrl: string): Record<string, string> {
+  return { OPENAI_BASE_URL: baseUrl, OPENAI_API_KEY: token, CODECLIMB_LLM_BASE_URL: baseUrl, CODECLIMB_LLM_API_KEY: token };
+}
+
+/**
+ * The proxy's URL as a metered sandbox sees it. Docker: the relay on the metering network, made
+ * sure of first. Inngest: sandboxes sit on the internet, so the proxy must be published at a public
+ * URL (CODECLIMB_METER_URL, ending in /v1); the per-ledger tokens are what guard it.
+ */
+export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "baseline">): Promise<string> {
+  if (cfg.sandbox === "inngest") {
+    const url = process.env.CODECLIMB_METER_URL;
+    if (!url) throw new Error("a metered night on Inngest sandboxes needs CODECLIMB_METER_URL: a public URL to this worker's metering proxy (…/v1)");
+    return url.replace(/\/$/, "");
+  }
+  await ensureMeterPath(cfg.baseline, (await meter()).port);
+  return RELAY_URL;
 }
 
 let proxy: Promise<MeterProxy> | undefined;

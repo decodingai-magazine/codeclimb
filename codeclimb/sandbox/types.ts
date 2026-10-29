@@ -46,6 +46,8 @@ export interface CreateSandboxOptions {
   /** Commit cloned into `/repo`; omitted for the evaluator, which clones each candidate itself. */
   commit?: RepoCommit;
   labels?: Record<string, string>;
+  /** Host spec directory for /spec, on backends whose baseline does not bake it in (Inngest). */
+  specDir?: string;
   /** "none" (the default), "bridge", or a named network such as the metering network. */
   network?: string;
 }
