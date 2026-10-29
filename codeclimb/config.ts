@@ -1,7 +1,8 @@
-// `run-night --config <yaml>`: parse, validate and resolve paths once, on the
-// CLI side. The resolved config travels in the night.start event.
+// `run-night --config <yaml>`: parse and validate once, on the CLI side. The config
+// travels in the night.start event with paths relative to the checkout root, and the
+// worker resolves them against its own checkout (`rootConfig`), so a remote worker works.
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { parse } from "yaml";
 
 /** Codeclimb's standard metrics as objectives. Off: still measured and reported, but not optimized. */
@@ -127,6 +128,28 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
 
 export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {
   return parseConfig(readFileSync(path, "utf8"), baseDir ?? dirname(resolve(path)));
+}
+
+/** Maps every path field of a config (`score_cmd` runs in `base_dir`, so it needs none). */
+function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {
+  return {
+    ...cfg, spec_dir: f(cfg.spec_dir), dataset_dir: f(cfg.dataset_dir), run_files: cfg.run_files.map(f),
+    results_path: f(cfg.results_path), base_dir: f(cfg.base_dir),
+  };
+}
+
+/** The config as the CLI sends it: paths under `base_dir` relative to it, `base_dir` itself ".". */
+export function relativeConfig(cfg: NightConfig): NightConfig {
+  const base = cfg.base_dir;
+  return mapPaths(cfg, (p) => {
+    const rel = relative(base, p);
+    return rel === "" ? "." : rel.startsWith("..") || isAbsolute(rel) ? p : rel;
+  });
+}
+
+/** The config as the worker uses it: relative paths resolved against its checkout (CODECLIMB_ROOT, else cwd). */
+export function rootConfig(cfg: NightConfig, root = process.env.CODECLIMB_ROOT ?? process.cwd()): NightConfig {
+  return mapPaths(cfg, (p) => (isAbsolute(p) ? p : resolve(root, p)));
 }
 
 /** Deadline as epoch ms. Durations ("90m", "8h", "30s") count from `startedAt`. */

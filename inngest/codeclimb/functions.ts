@@ -8,7 +8,7 @@ import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
-import { efficiencyMetrics, type NightConfig } from "../../codeclimb/config";
+import { efficiencyMetrics, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
   type BranchOutcome,
@@ -96,7 +96,9 @@ export const runNight = ccInngest.createFunction(
     timeouts: { finish: "24h" },
   },
   async ({ event, step }) => {
-    const { night_id: nightId, config: cfg } = event.data;
+    const nightId = event.data.night_id;
+    // Paths arrive relative to the checkout; the children get them resolved against this worker's.
+    const cfg = rootConfig(event.data.config);
     // The worker's own credentials, which may differ from the CLI's: fail once, not per experiment.
     await step.run("check-models", () =>
       checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]).catch((e: Error) => {

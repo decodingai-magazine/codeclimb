@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { coderPrompt, parseApproach } from "./coder";
-import { efficiencyMetrics, parseConfig, resolveDeadline } from "./config";
+import { efficiencyMetrics, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
@@ -209,4 +209,17 @@ test("coder prompt names the dev endpoint only when the program may call models"
   assert.match(dev, /openrouter\/x\/y/);
   assert.match(dev, /\$0\.05/);
   assert.doesNotMatch(coderPrompt("spec", "", null, 10), /OPENAI_BASE_URL/);
+});
+
+test("config paths travel relative and resolve against the worker's checkout", () => {
+  const sent = relativeConfig({ ...cfg, run_files: ["/base/m/run.py", "/elsewhere/x.py"] });
+  assert.equal(sent.base_dir, ".");
+  assert.deepEqual(sent.run_files, ["m/run.py", "/elsewhere/x.py"]);
+  assert.ok(!sent.results_path.startsWith("/"));
+  const used = rootConfig(sent, "/srv/codeclimb");
+  assert.equal(used.base_dir, "/srv/codeclimb");
+  assert.equal(used.results_path, cfg.results_path.replace("/base", "/srv/codeclimb"));
+  assert.deepEqual(used.run_files, ["/srv/codeclimb/m/run.py", "/elsewhere/x.py"]);
+  // Configs from older CLIs carry absolute paths, which stay as they are.
+  assert.deepEqual(rootConfig(cfg, "/srv/codeclimb"), cfg);
 });

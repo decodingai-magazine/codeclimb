@@ -5,7 +5,7 @@ import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { loadConfig, type NightConfig } from "../codeclimb/config";
+import { loadConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
 import { isEmbeddingModel } from "../codeclimb/meter/backends";
 import { checkModels } from "../codeclimb/pi/session";
@@ -65,7 +65,7 @@ if (positionals[0] === "stop") {
   }
   await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();
-  const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: cfg } });
+  const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) } });
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
   if (!values["no-wait"]) await follow(cfg, nightId);
 }

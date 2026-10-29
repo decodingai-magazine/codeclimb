@@ -259,6 +259,8 @@ export class InngestBackend implements SandboxBackend {
       byRun.delete(filter.label[1]);
       if (!names?.size) return 0;
     }
+    // A finished night's runs no longer need tracking.
+    if (filter.prefix) for (const [run, set] of byRun) if ([...set].every((n) => n.startsWith(filter.prefix!))) byRun.delete(run);
     const doomed = (await listAll()).filter(
       (s) => !DEAD.has(s.status) && (!filter.prefix || s.name.startsWith(filter.prefix)) && (!names || names.has(s.name)),
     );
