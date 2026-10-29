@@ -2,7 +2,7 @@
 // experiment (`step.invoke`), one per extra eval. Children get their own
 // `cancelOn` for the night-stop event: cancelling the parent alone may not
 // cancel invoked children, and cancel never interrupts a running step.
-import { invoke, staticSchema } from "inngest";
+import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
@@ -22,6 +22,7 @@ import {
   reviewRound,
   validateKept,
 } from "../../codeclimb/orchestrator";
+import { checkModels } from "../../codeclimb/pi/session";
 import { writeReport } from "../../codeclimb/report/html";
 import type { HypothesisLogEntry } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
@@ -78,6 +79,12 @@ export const runNight = ccInngest.createFunction(
   },
   async ({ event, step }) => {
     const { night_id: nightId, config: cfg } = event.data;
+    // The worker's own credentials, which may differ from the CLI's: fail once, not per experiment.
+    await step.run("check-models", () =>
+      checkModels([...cfg.models, cfg.reviewer_model]).catch((e: Error) => {
+        throw new NonRetriableError(e.message);
+      }),
+    );
     const init = await step.run("init", () => initNight(cfg, nightId));
     const B = cfg.models.length;
     const expTimeout = `${(cfg.timeouts.experiment_min + cfg.timeouts.eval_min) * 3 + 30}m`;

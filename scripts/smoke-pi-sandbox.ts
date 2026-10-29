@@ -1,5 +1,6 @@
 // Dev check: one Pi prompt whose tools run inside a Docker sandbox.
-//   npx tsx scripts/smoke-pi-sandbox.ts [model]
+//   npx tsx scripts/smoke-pi-sandbox.ts [model]   e.g. anthropic/claude-haiku-5-5, opencode-go/kimi-k3
+import "../codeclimb/env";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";

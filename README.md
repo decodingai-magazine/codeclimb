@@ -59,15 +59,35 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
 - It runs only on the **local Inngest dev server** with **Docker sandboxes**.
-- The coders are **GitHub Copilot Haiku models driven by Pi**.
+- The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses a small built-in scenario, `datenorm`, which normalizes messy date strings to ISO dates.
+
+### Authenticate Pi
+
+Pi runs in the worker on the host, never in a sandbox, so credentials stay on the host. Each model in `models` and `reviewer_model` is `<provider>/<id>`, and its provider needs credentials:
+
+| Provider | `<provider>` | Credentials | Example model |
+|---|---|---|---|
+| GitHub Copilot | `github-copilot` | `npx pi`, then `/login github-copilot`; or `COPILOT_GITHUB_TOKEN` | `github-copilot/claude-haiku-5.5` |
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY`; or `npx pi`, then `/login anthropic` → API key | `anthropic/claude-haiku-5-5` |
+| OpenCode Zen | `opencode` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode` | `opencode/kimi-k3` |
+| OpenCode Go | `opencode-go` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode-go` | `opencode-go/kimi-k3` |
+
+- `/login` writes `~/.pi/agent/auth.json`. Set `CODECLIMB_PI_AUTH_PATH` to use another file.
+- Put env keys in `.env.local` (gitignored). `npm run worker`, `npm run run-night` and the smoke script load it, and variables already set in the shell win. Zen and Go share one `OPENCODE_API_KEY`.
+- The same model has different ids per provider: Copilot uses dots (`claude-haiku-5.5`), Anthropic and OpenCode use dashes (`claude-haiku-5-5`). `npx pi --list-models <search>` lists the ids of every provider that has credentials.
+- `reviewer_model` is compared to `models` as a string. `anthropic/claude-haiku-5-5` as the reviewer and `github-copilot/claude-haiku-5.5` as a coder pass validation, but they are the same model critiquing its own work.
+- `run-night` checks before it starts that every model exists, has credentials and is on the account's plan. The worker checks again with its own environment and fails the night's `check-models` step if a model is not ready; `run-night` then keeps following, so read the error in the dev server UI and press Ctrl-C. The check finds missing keys, not wrong ones: a bad key fails the first model call as `agent_error`.
+- `coder_usd` and the `budget_usd` caps use Pi's catalog prices for every provider. They are real spend for an Anthropic API key or Zen credits, and an estimate for the Copilot and Go subscriptions.
+
+Check one model end to end with `npx tsx scripts/smoke-pi-sandbox.ts anthropic/claude-haiku-5-5` (needs Docker and the `autocode-base` image).
 
 ### Run a night
 
 Prerequisites:
 
 - Docker is running.
-- Pi is logged in to Copilot (`pi`, then `/login github-copilot`), which writes `~/.pi/agent/auth.json`. Alternatively, set `COPILOT_GITHUB_TOKEN`.
+- Pi has credentials for every model in the config (see [Authenticate Pi](#authenticate-pi)).
 - The Inngest dev server is running (`npm run dev:inngest`).
 
 ```bash

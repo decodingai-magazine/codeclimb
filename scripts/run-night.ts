@@ -1,11 +1,13 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
 //   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait]
 //   npm run run-night -- stop --night ID
+import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { loadConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
+import { checkModels } from "../codeclimb/pi/session";
 import { readRows } from "../codeclimb/results";
 import { ccInngest } from "../inngest/codeclimb/client";
 
@@ -55,6 +57,7 @@ if (positionals[0] === "stop") {
 } else {
   if (!values.config) throw new Error("usage: run-night --config <yaml>");
   const cfg = loadConfig(resolve(values.config));
+  await checkModels([...cfg.models, cfg.reviewer_model]);
   const nightId = values["night-id"] ?? newNightId();
   const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: cfg } });
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);

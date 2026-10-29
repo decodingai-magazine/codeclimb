@@ -2,6 +2,7 @@
 // (long-running steps, no HTTP request timeouts). Locally it connects to the
 // Inngest dev server when INNGEST_DEV=1.
 //   npm run worker
+import "../codeclimb/env";
 import { connect } from "inngest/connect";
 import { ccInngest } from "../inngest/codeclimb/client";
 import { codeclimbFunctions } from "../inngest/codeclimb/functions";

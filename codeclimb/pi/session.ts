@@ -18,19 +18,54 @@ import { REPO_DIR } from "./tools";
 
 let runtime: Promise<ModelRuntime> | undefined;
 
-/** One model runtime per worker. Copilot credentials come from `~/.pi/agent/auth.json` or `COPILOT_GITHUB_TOKEN`. */
+/**
+ * One model runtime per worker. Credentials come from `auth.json` (`~/.pi/agent/auth.json`, or
+ * CODECLIMB_PI_AUTH_PATH) or the provider's env var; see AUTH_HINTS.
+ */
 export function modelRuntime(): Promise<ModelRuntime> {
   runtime ??= ModelRuntime.create({ authPath: process.env.CODECLIMB_PI_AUTH_PATH });
   return runtime;
 }
 
+/** How to give Pi credentials, per provider. */
+const AUTH_HINTS: Record<string, string> = {
+  "github-copilot": "run `npx pi`, then `/login github-copilot`; or set COPILOT_GITHUB_TOKEN",
+  anthropic: "set ANTHROPIC_API_KEY; or run `npx pi`, then `/login anthropic` and paste the key",
+  opencode: "set OPENCODE_API_KEY (OpenCode Zen); or run `npx pi`, then `/login opencode`",
+  "opencode-go": "set OPENCODE_API_KEY (OpenCode Go); or run `npx pi`, then `/login opencode-go`",
+};
+
 export async function resolveModel(ref: string) {
   const slash = ref.indexOf("/");
-  if (slash < 0) throw new Error(`model "${ref}" must be "<provider>/<id>", e.g. github-copilot/claude-haiku-5.5`);
+  if (slash < 0) throw new Error(`model "${ref}" must be "<provider>/<id>", e.g. github-copilot/claude-haiku-5.5 or anthropic/claude-haiku-5-5`);
   const rt = await modelRuntime();
   const model = rt.getModel(ref.slice(0, slash), ref.slice(slash + 1));
-  if (!model) throw new Error(`unknown model ${ref}`);
+  if (!model) throw new Error(`unknown model ${ref} (list ids with \`npx pi --list-models ${ref.slice(slash + 1)}\`)`);
   return model;
+}
+
+/**
+ * Throws, listing every problem, unless each model exists, its provider has credentials and the
+ * account may use it. Catches missing keys, not wrong ones: those fail on the first model call.
+ */
+export async function checkModels(refs: string[]): Promise<void> {
+  const rt = await modelRuntime();
+  const problems: string[] = [];
+  for (const ref of new Set(refs)) {
+    let model;
+    try {
+      model = await resolveModel(ref);
+    } catch (e) {
+      problems.push((e as Error).message);
+      continue;
+    }
+    const hint = AUTH_HINTS[model.provider] ?? `run \`npx pi\`, then \`/login ${model.provider}\``;
+    if (!(await rt.checkAuth(model.provider))) problems.push(`${ref}: no ${model.provider} credentials; ${hint}`);
+    else if (!(await rt.getAvailable(model.provider)).some((m) => m.id === model.id)) {
+      problems.push(`${ref}: not available to this ${model.provider} account`);
+    }
+  }
+  if (problems.length) throw new Error(`models not ready:\n  - ${problems.join("\n  - ")}`);
 }
 
 function isolatedLoader(systemPrompt?: string): ResourceLoader {
