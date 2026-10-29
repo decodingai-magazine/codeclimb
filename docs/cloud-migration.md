@@ -222,9 +222,15 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 ## 9. Checklist
 
 - [x] App login (`proxy.ts`, `.env.local`)
+- [x] Pro account confirmed
 - [ ] Confirm Sandboxes access: create one test sandbox, list its processes (this answers question 5), destroy it
 - [ ] Send the questions to Inngest
-- [ ] Phase 0: `.env.cloud.local`, `CODECLIMB_ENV`, `:cloud` scripts, cloud smoke and stop test, local smoke
+- [x] Phase 0: `.env.cloud.local`, `CODECLIMB_ENV`, `:cloud` scripts, cloud smoke and stop test, local smoke. Verified 2026-10-29:
+  - `cloud-smoke1` stopped on thresholds, with test accuracy 0.986 and $0.08 spent.
+  - `cloud-stop1`: the night and its 3 children were cancelled, both cleanup functions ran, and the containers were gone within 4 s.
+  - `step.score` writes reach Cloud.
+  - `local-smoke1` passed on the dev server: 2 rounds, stopped on `max_rounds`, test accuracy 0.972.
+  - Unit tests: 22 passed.
 - [ ] Phase 1: `codeclimb/sandbox/inngest.ts`, safe reset, `CODECLIMB_METER_URL`, both smoke configs on `inngest`, local smoke on Docker
 - [ ] Phase 2: host + volume, worker image, relative config paths, API-key models, public proxy and worker API
 - [ ] Phase 3: worker API, New run / Live night / Nights pages, Stop, export, Vercel deploy and environment variables, a run in both modes

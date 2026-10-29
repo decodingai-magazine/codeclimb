@@ -68,7 +68,7 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
-- It runs only on the **local Inngest dev server** with **Docker sandboxes**.
+- It runs on the **local Inngest dev server** or on **Inngest Cloud** (see [Run on Inngest Cloud](#run-on-inngest-cloud)), with the worker on your machine and **Docker sandboxes** in both cases. Inngest Sandboxes and a hosted worker are planned in [docs/cloud-migration.md](docs/cloud-migration.md).
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
 
@@ -136,6 +136,25 @@ All output lands under `dirname(results_path)`:
 | `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
 | `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs, the runner's `timings.jsonl`, `meter.jsonl` (the program's model calls) and `metrics.json`. |
+
+### Run on Inngest Cloud
+
+The same worker and CLI can use Inngest Cloud instead of the dev server. Sandboxes stay in Docker on your machine, and results land in the same `runs/` folders.
+
+1. Put the production keys in `.env.cloud.local` (gitignored):
+   - `INNGEST_EVENT_KEY`: create one under **Manage → Event Keys** in the Inngest dashboard.
+   - `INNGEST_SIGNING_KEY`: under **Manage → Signing Key**.
+2. Use the `:cloud` scripts. They set `CODECLIMB_ENV=cloud`, which loads `.env.cloud.local` before `.env.local`:
+
+```bash
+npm run worker:cloud                                                          # terminal 1: connect() worker on Inngest Cloud
+npm run run-night:cloud -- --config configs/datenorm-smoke.yaml               # terminal 2: start and follow a night
+npm run run-night:cloud -- stop --night <night_id>
+```
+
+- Cloud mode refuses to start if a key is missing or if `INNGEST_DEV` is set, because the SDK would quietly use the dev server instead.
+- Runs, traces and scores appear in the Inngest dashboard under the `codeclimb-worker` app.
+- The local and cloud workers can run at the same time, since each one only sees its own Inngest.
 
 ### Standard metrics: latency and cost
 
