@@ -26,12 +26,22 @@ INNGEST_DEV=1 npm run dev
 
 Open http://localhost:8288. **Apps** should list `codeclimb` and **Functions** should list `hello-world`.
 
+### Log in
+
+The whole app sits behind HTTP Basic Auth (`proxy.ts`), with one user. Your browser asks for the login once per session.
+
+- Credentials come from `CODECLIMB_USER` and `CODECLIMB_PASSWORD`, which live in `.env.local` locally and in the project's environment variables on Vercel.
+- With either variable unset, every request gets 401.
+- `/api/inngest` stays open, because Inngest signs its own requests.
+- To make a new password: `openssl rand -base64 48 | tr '+/' '-_' | tr -d '='`.
+- `curl` needs the login too: `curl -u "$CODECLIMB_USER:$CODECLIMB_PASSWORD" ...`.
+
 ### Trigger the hello world function
 
 From the app, via `inngest.send()`:
 
 ```bash
-curl -X POST http://localhost:3000/api/hello -d '{"name": "codeclimb"}'
+curl -u "$CODECLIMB_USER:$CODECLIMB_PASSWORD" -X POST http://localhost:3000/api/hello -d '{"name": "codeclimb"}'
 ```
 
 Or from the Dev Server UI: open **Functions**, pick `hello-world`, select **Invoke** and send:
