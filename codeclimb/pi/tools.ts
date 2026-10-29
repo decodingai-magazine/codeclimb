@@ -23,7 +23,8 @@ async function access(sandbox: Sandbox, path: string, flags: string): Promise<vo
   if (r.exitCode !== 0) throw new Error(`ENOENT: no such file or not accessible: ${path}`);
 }
 
-export function sandboxTools(sandbox: Sandbox): ToolDefinition[] {
+/** `env`: extra variables for the agent's shell commands only, such as the metering endpoint and token. */
+export function sandboxTools(sandbox: Sandbox, opts: { env?: Record<string, string> } = {}): ToolDefinition[] {
   const attrs = { "codeclimb.sandbox": sandbox.name };
   const timed = <T>(name: string, fn: () => Promise<T>): Promise<T> => sandboxSpan(name, attrs, fn);
   const readFile = (p: string) => timed("sandbox.readFile", () => sandbox.readFile(p));
@@ -53,6 +54,7 @@ export function sandboxTools(sandbox: Sandbox): ToolDefinition[] {
           timed("sandbox.exec", async () => {
             const r = await sandbox.exec(command, {
               cwd,
+              env: opts.env,
               signal,
               onData,
               timeoutMs: timeout ? timeout * 1000 : DEFAULT_BASH_TIMEOUT_MS,

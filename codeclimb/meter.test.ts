@@ -60,6 +60,7 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
   assert.equal((await chat(t, "fail")).status, 502);
   // The cap is checked before each call, so the call that crosses it still runs: $0.0121 → $0.0221.
   assert.equal((await chat(t, "again")).status, 200);
+  assert.ok(Math.abs(proxy.spent(t) - 0.0221) < 1e-9);
   const capped = await chat(t, "over");
   assert.deepEqual([capped.status, capped.body.error.type], [402, "insufficient_quota"]);
 
@@ -68,6 +69,7 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
     ["chat", "program", true], ["embeddings", "query", true], ["chat", "query", false], ["chat", "query", true],
   ]);
   assert.equal((await chat(t, "after close")).status, 401);
+  assert.equal(proxy.spent(t), 0);
 
   const m = costMetrics(calls, 4);
   assert.deepEqual(m, {

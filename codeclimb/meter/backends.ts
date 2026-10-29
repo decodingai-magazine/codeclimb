@@ -15,6 +15,12 @@ const EMBEDDINGS: Record<string, { baseUrl: string; usdPerMTok: Record<string, n
   openai: { baseUrl: "https://api.openai.com/v1", usdPerMTok: { "text-embedding-3-small": 0.02, "text-embedding-3-large": 0.13 } },
 };
 
+/** An embeddings model priced in EMBEDDINGS: not in Pi's catalog, so checkModels skips it. */
+export function isEmbeddingModel(ref: string): boolean {
+  const i = ref.indexOf("/");
+  return i > 0 && EMBEDDINGS[ref.slice(0, i)]?.usdPerMTok[ref.slice(i + 1)] !== undefined;
+}
+
 const ZERO_USAGE = {
   input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },

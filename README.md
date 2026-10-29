@@ -64,7 +64,7 @@ CodeClimb is an optimization loop. Pi coding agents write a program inside sandb
 
 ### Authenticate Pi
 
-Pi runs in the worker on the host, never in a sandbox, so credentials stay on the host. Each model in `models` and `reviewer_model` is `<provider>/<id>`, and its provider needs credentials:
+Pi runs in the worker on the host, never in a sandbox, so credentials stay on the host. Each model in `models`, `reviewer_model` and `allowed_models` is `<provider>/<id>`, and its provider needs credentials:
 
 | Provider | `<provider>` | Credentials | Example model |
 |---|---|---|---|
@@ -72,11 +72,13 @@ Pi runs in the worker on the host, never in a sandbox, so credentials stay on th
 | Anthropic | `anthropic` | `ANTHROPIC_API_KEY`; or `npx pi`, then `/login anthropic` → API key | `anthropic/claude-haiku-5-5` |
 | OpenCode Zen | `opencode` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode` | `opencode/kimi-k3` |
 | OpenCode Go | `opencode-go` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode-go` | `opencode-go/kimi-k3` |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `openrouter/anthropic/claude-haiku-4.5` |
 
 - `/login` writes `~/.pi/agent/auth.json`. Set `CODECLIMB_PI_AUTH_PATH` to use another file.
 - Put env keys in `.env.local` (gitignored). `npm run worker`, `npm run run-night` and the smoke script load it, and variables already set in the shell win. Zen and Go share one `OPENCODE_API_KEY`.
 - The same model has different ids per provider: Copilot uses dots (`claude-haiku-5.5`), Anthropic and OpenCode use dashes (`claude-haiku-5-5`). `npx pi --list-models <search>` lists the ids of every provider that has credentials.
 - `reviewer_model` is compared to `models` as a string. `anthropic/claude-haiku-5-5` as the reviewer and `github-copilot/claude-haiku-5.5` as a coder pass validation, but they are the same model critiquing its own work.
+- OpenRouter works for any model in Pi's catalog, priced at catalog prices. It suits `allowed_models`: one key, and the config lists which models the program may use.
 - `run-night` checks before it starts that every model exists, has credentials and is on the account's plan. The worker checks again with its own environment and fails the night's `check-models` step if a model is not ready; `run-night` then keeps following, so read the error in the dev server UI and press Ctrl-C. The check finds missing keys, not wrong ones: a bad key fails the first model call as `agent_error`.
 - `coder_usd` and the `budget_usd` caps use Pi's catalog prices for every provider. They are real spend for an Anthropic API key or Zen credits, and an estimate for the Copilot and Go subscriptions.
 
@@ -130,7 +132,7 @@ All output lands under `dirname(results_path)`:
 Every scenario gets the same two metrics, measured outside the code the coders write, on top of its own metrics:
 
 - **Latency** is the program's own time: the hidden runner times each operation it sends the program. It leaves out sandbox setup, clone, scoring and teardown. The runner writes `timings.jsonl` next to its outputs, one line per operation: `{"op": "query", "id": "...", "ms": 12.3, "warmup": true}`. Warm-up records count toward nothing. That gives `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` and `latency_total_s`.
-- **Cost** is only the program's model calls, metered by the proxy below: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd` and `model_calls`. They are 0 for a program that calls no model. Coder and reviewer spend stays in `coder_usd` and `reviewer_usd`, outside optimization, and counts toward `budget_usd.night` as before.
+- **Cost** is only the program's model calls, metered by the proxy below: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd` and `model_calls`. They are 0 for a program that calls no model. Coder and reviewer spend stays in `coder_usd` and `reviewer_usd`, and the program's calls while the coder develops in `dev_usd`. All three are outside optimization and count toward `budget_usd.night`.
 
 Both are always measured and appear in `results.jsonl`, the report and the Inngest trace. Each night's config chooses whether they are optimized:
 
@@ -152,17 +154,18 @@ Latency is compared only between evals that ran on the same evaluator instance. 
 
 #### Metering proxy
 
-A program may call models only when `allowed_models` lists some, and only through the metering proxy in the worker. Keys never enter a sandbox.
+A program may call models only when `allowed_models` lists some, and only through the metering proxy in the worker. Provider keys never enter a sandbox: a sandbox gets a proxy token for its own ledger, valid for the models in `allowed_models` only, and revoked when its run ends.
 
-- **Network.** Metered evaluators join `cc-meter`, an internal Docker network with no route anywhere. Its only other member is `cc-meter-relay`, a small Python TCP relay that also sits on the default bridge and forwards to the proxy on the host. Coder sandboxes stay on `--network none`. The relay runs on the scenario's baseline image, so that image needs `python3`. The worker leaves `cc-meter-relay` and `cc-meter` in place between nights and recreates the relay when its proxy port changes.
+- **Network.** Metered evaluators join `cc-meter`, an internal Docker network with no route anywhere. Its only other member is `cc-meter-relay`, a small Python TCP relay that also sits on the default bridge and forwards to the proxy on the host. With `allowed_models`, coder sandboxes join it too; without it, they stay on `--network none`. The relay runs on the scenario's baseline image, so that image needs `python3`. The worker leaves `cc-meter-relay` and `cc-meter` in place between nights and recreates the relay when its proxy port changes.
 - **Program side.** The runner's environment has `OPENAI_BASE_URL` and `OPENAI_API_KEY` (and `CODECLIMB_LLM_BASE_URL` / `CODECLIMB_LLM_API_KEY`). The key is a token valid for this eval only and revoked when its run ends. The program uses `POST $OPENAI_BASE_URL/chat/completions` with a model from `allowed_models`, such as `github-copilot/claude-haiku-4.5`, or `/embeddings`. Chat goes through Pi, with the same credentials and catalog prices as the coders. The runner calls `POST $CODECLIMB_LLM_BASE_URL/_op` with `{"op": "query"}` to attribute later calls to an operation.
-- **Limits.** `budget_usd.eval` caps one eval's model spend (default: `budget_usd.experiment`). It is checked before each call, so the call that crosses it still runs. Errors: `401` bad or revoked token, `403` model not allowed, `402` budget spent, `400` unsupported request, `502` upstream failure (what a failed call cost is still charged).
-- **Not supported yet.** Streaming, tools and non-text content in chat. Embeddings only for `openai/text-embedding-3-small` and `-large`, priced from a table in `codeclimb/meter/backends.ts`. Embeddings are unit-tested against a fake upstream only. Operation attribution assumes the runner sends operations one at a time. Coders cannot call models while they develop.
+- **Coder side.** While Pi develops, its shell commands get the same `OPENAI_BASE_URL` and `OPENAI_API_KEY`, keyed to the experiment's own ledger, so the coder can run its program against the real model. The coder prompt names the models and the budget. That spend is the row's `dev_usd`, never `cost_usd`: only the evaluation measures the program's cost. Each Pi attempt opens a new token; spend carries over across a restart. Calls are logged to `nights/<id>/exps/<exp_id>/meter-dev.jsonl`.
+- **Limits.** `budget_usd.eval` caps one eval's model spend (default: `budget_usd.experiment`). `budget_usd.dev` caps one experiment's development calls (default: `budget_usd.eval`), and `coder_usd + dev_usd` stops the coder at `budget_usd.experiment`. A cap is checked before each call, so the call that crosses it still runs. Errors: `401` bad or revoked token, `403` model not allowed, `402` budget spent, `400` unsupported request, `502` upstream failure (what a failed call cost is still charged).
+- **Not supported yet.** Streaming, tools and non-text content in chat. Embeddings only for `openai/text-embedding-3-small` and `-large`, priced from a table in `codeclimb/meter/backends.ts`. Embeddings are unit-tested against a fake upstream only. Operation attribution assumes the runner sends operations one at a time. Containers on `cc-meter` can reach one another; nothing listens in them, and within a night a round's coders and its evaluator never run at the same time. Two nights on one worker share the network.
 - **Linux.** The proxy binds `127.0.0.1`, which Docker Desktop reaches through `host.docker.internal`. On Linux, set `CODECLIMB_PROXY_HOST` to the `docker0` address, such as `172.17.0.1`. `CODECLIMB_PROXY_PORT` pins the port, which is random by default.
 
 ```bash
 npm run build:baseline && npm run build:baseline:capitals
-npm run run-night -- --config configs/capitals-smoke.yaml   # one round; the program calls github-copilot/claude-haiku-4.5
+npm run run-night -- --config configs/capitals-smoke.yaml   # one round; the program calls github-copilot/claude-haiku-4.5, while the coder develops too
 ```
 
 ### Harder scenario: `datenorm-hard`

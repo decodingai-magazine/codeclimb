@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseApproach } from "./coder";
+import { coderPrompt, parseApproach } from "./coder";
 import { efficiencyMetrics, parseConfig, resolveDeadline } from "./config";
 import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
@@ -62,6 +62,11 @@ test("config validation", () => {
   assert.equal(cfg.baseline, "autocode-base");
   assert.throws(() => parseConfig(BASE_YAML.replace("reviewer_model: p/c", "reviewer_model: p/a"), "/b"), /reviewer_model/);
   assert.throws(() => parseConfig(BASE_YAML.replace("max_validations: 3", "max_validations: 6"), "/b"), /max_validations/);
+  // eval defaults to experiment, dev to eval.
+  assert.deepEqual(cfg.budget_usd, { experiment: 1, night: 5, eval: 1, dev: 1 });
+  const capped = parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), "/b");
+  assert.deepEqual([capped.budget_usd.eval, capped.budget_usd.dev], [0.2, 0.2]);
+  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0 }"), "/b"), /budget_usd.dev/);
   assert.equal(resolveDeadline("90m", 0), 90 * 60_000);
   assert.equal(resolveDeadline("2026-10-22T06:00:00Z", 0), Date.parse("2026-10-22T06:00:00Z"));
 });
@@ -79,7 +84,7 @@ test("soft stops between rounds", () => {
 test("decideRound keeps the best gate-passing branch only past the keep rule", () => {
   const parent: Kept = { expId: "n-r0", sha: "p", score: 0.5, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
   const code = (sha: string) => ({
-    ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, tokens: 10,
+    ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, dev_usd: 0, tokens: 10,
     t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
   });
   const ev = (accuracy: number, schema_violations = 0) => ({
@@ -140,7 +145,7 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 test("efficiency: tie-break, efficiency keep and its guards", () => {
   const parent: Kept = { expId: "n-r1-b0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
   const code = (sha: string) => ({
-    ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, tokens: 10,
+    ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, dev_usd: 0, tokens: 10,
     t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
   });
   const ev = (accuracy: number, cost: number, lat: number, instance = "i1") => ({
@@ -196,4 +201,12 @@ test("parsers", () => {
   const r = parseReview('noise {"feedback": "f", "hypotheses": ["a", "b", "a", "c"]} tail', 3);
   assert.deepEqual(r, { feedback: "f", hypotheses: ["a", "b", "c"] });
   assert.equal(parseReview('{"feedback": "f", "hypotheses": ["a"]}', 3), null);
+});
+
+test("coder prompt names the dev endpoint only when the program may call models", () => {
+  const dev = coderPrompt("spec", "", null, 10, undefined, { models: ["openrouter/x/y"], budgetUsd: 0.05 });
+  assert.match(dev, /OPENAI_BASE_URL/);
+  assert.match(dev, /openrouter\/x\/y/);
+  assert.match(dev, /\$0\.05/);
+  assert.doesNotMatch(coderPrompt("spec", "", null, 10), /OPENAI_BASE_URL/);
 });

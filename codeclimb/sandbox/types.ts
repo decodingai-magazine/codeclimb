@@ -9,6 +9,8 @@ export interface ExecOptions {
   /** Streams stdout + stderr chunks as they arrive. */
   onData?: (chunk: Buffer) => void;
   stdin?: Buffer | string;
+  /** Extra environment variables for this command only. */
+  env?: Record<string, string>;
 }
 
 export interface ExecResult {

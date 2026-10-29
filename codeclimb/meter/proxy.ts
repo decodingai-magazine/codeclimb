@@ -189,6 +189,11 @@ export class MeterProxy {
     return token;
   }
 
+  /** What the token's ledger has spent so far ($); 0 for an unknown or closed token. */
+  spent(token: string): number {
+    return this.ledgers.get(token)?.costUsd ?? 0;
+  }
+
   /** Revokes the token, aborts its calls in flight and returns what the eval spent. */
   close(token: string): MeterCall[] {
     const ledger = this.ledgers.get(token);

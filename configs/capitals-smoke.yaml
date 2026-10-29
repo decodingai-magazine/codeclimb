@@ -30,4 +30,5 @@ budget_usd:
   experiment: 0.5
   night: 2.0
   eval: 0.1
+  dev: 0.05   # the coder's runs of the program while it develops
 results_path: runs/capitals-smoke/results.jsonl

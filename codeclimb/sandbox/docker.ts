@@ -54,7 +54,8 @@ class DockerSandbox implements Sandbox {
     const pidFile = `/tmp/cc-exec-${randomUUID()}.pid`;
     // setsid -w: new session (pgid = pid) and wait for it, so we can kill the group.
     const script = `echo $$ > ${pidFile}; ${command}`;
-    const args = ["exec", "-i", "-w", opts.cwd ?? "/repo", this.name, "setsid", "-w", "bash", "-c", script];
+    const env = Object.entries(opts.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+    const args = ["exec", "-i", "-w", opts.cwd ?? "/repo", ...env, this.name, "setsid", "-w", "bash", "-c", script];
     let timedOut = false;
     let aborted = false;
     const kill = () =>

@@ -2,6 +2,7 @@
 // network (no route anywhere) shared by metered evaluators and one relay
 // container that also sits on the default bridge and forwards TCP to the proxy
 // on the host. A metered evaluator can reach the proxy and nothing else.
+import type { NightConfig } from "../config";
 import { docker } from "../sandbox/docker";
 import { modelRuntime } from "../pi/session";
 import { piBackends } from "./backends";
@@ -11,6 +12,16 @@ export const METER_NETWORK = "cc-meter";
 const RELAY = "cc-meter-relay";
 /** The proxy as a metered evaluator sees it. */
 export const METER_BASE_URL = `http://${RELAY}:8080/v1`;
+
+/** A program may call models only when the night lists some. */
+export const isMetered = (cfg: Pick<NightConfig, "allowed_models">) => cfg.allowed_models.length > 0;
+
+/** What a metered program sees: the proxy as an OpenAI-compatible endpoint, keyed by one ledger's token. */
+export function meterEnv(token: string): Record<string, string> {
+  return {
+    OPENAI_BASE_URL: METER_BASE_URL, OPENAI_API_KEY: token, CODECLIMB_LLM_BASE_URL: METER_BASE_URL, CODECLIMB_LLM_API_KEY: token,
+  };
+}
 
 let proxy: Promise<MeterProxy> | undefined;
 
@@ -59,11 +70,20 @@ async function relayState(): Promise<string> {
   return r.code === 0 ? r.stdout.toString().trim() : "";
 }
 
+let ensuring: Promise<void> | undefined;
+
 /**
  * The metering network and a relay to this worker's proxy port, (re)created as needed. The relay is
- * not `cc.managed`: night sweeps leave it, since every night of this worker shares it.
+ * not `cc.managed`: night sweeps leave it, since every night of this worker shares it. A round's
+ * coders call this at once: they share one run, so none removes a relay another just started.
  */
-export async function ensureMeterPath(image: string, port: number): Promise<void> {
+export function ensureMeterPath(image: string, port: number): Promise<void> {
+  const run = (ensuring ?? Promise.resolve()).catch(() => undefined).then(() => ensureOnce(image, port));
+  ensuring = run;
+  return run;
+}
+
+async function ensureOnce(image: string, port: number): Promise<void> {
   if ((await docker(["network", "inspect", METER_NETWORK])).code !== 0) {
     const r = await docker(["network", "create", "--internal", "--label", "cc.meter=1", METER_NETWORK]);
     if (r.code !== 0 && !/already exists/.test(r.stderr.toString())) throw new Error(`cannot create ${METER_NETWORK}: ${r.stderr.toString().trim()}`);

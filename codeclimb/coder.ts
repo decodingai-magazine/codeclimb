@@ -3,15 +3,21 @@
 // `budget_usd.experiment` (→ abort()). Then the orchestrator commits /repo and
 // pulls the commit back as a bundle before destroying the sandbox.
 //
+// With `allowed_models`, the coder's runs of the program may call those models
+// as they will during evaluation: the sandbox joins the metering network and
+// the shell gets a token for this experiment's own ledger, capped at
+// `budget_usd.dev`. That spend is `dev_usd`, never the program's cost metrics.
+//
 // Crash mid-prompt: the retried step reopens the session JSONL and continues
 // on the same sandbox if it is alive; a dead sandbox gets one fresh restart
 // from the parent commit, then the experiment is an infra error.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
 import { efficiencyMetrics, type NightConfig } from "./config";
 import { ExperimentRepo, expRef } from "./git";
+import { ensureMeterPath, isMetered, METER_NETWORK, meter, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
 import { sandboxTools } from "./pi/tools";
@@ -43,6 +49,8 @@ export interface CodeResult {
   hypothesis: string;
   stop: StopReason;
   coder_usd: number;
+  /** The program's model calls during development (metered); 0 without `allowed_models`. */
+  dev_usd: number;
   tokens: number;
   t_provision: number;
   t_code: number;
@@ -57,6 +65,8 @@ interface CodeState {
   freshRestarts: number;
   infraErrors: number;
   coderUsd: number;
+  /** Absent in state files written before dev metering. */
+  devUsd?: number;
   tokens: number;
   tCode: number;
   tProvision: number;
@@ -81,6 +91,7 @@ export function coderPrompt(
   hypothesis: string | null,
   minutes: number,
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
+  dev?: { models: string[]; budgetUsd: number },
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec.",
@@ -97,6 +108,14 @@ export function coderPrompt(
         ? [
             `- The evaluation also measures the program's ${objectives.metrics.map((m) => `${OBJECTIVE_NAMES.find(([re]) => re.test(m))?.[1] ?? m} (${m})`).join(" and ")}, lower is better. ` +
               `Correctness comes first; a change that keeps ${objectives.primary} and makes the program clearly faster or cheaper also counts.`,
+          ]
+        : []),
+      ...(dev
+        ? [
+            "- The program can call a model while you develop, as it will during the evaluation: your shell has OPENAI_BASE_URL and " +
+              `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
+              `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
+              "Try the model on a few cases you write; there is no other network access.",
           ]
         : []),
       "- Do not commit: the harness commits everything in /repo when you finish.",
@@ -155,7 +174,7 @@ export async function runCoder(
         save();
         return {
           ok: false, error: "sandbox lost twice", sha: null, hypothesis: input.hypothesis || "(no summary)",
-          stop: "agent_error", coder_usd: state.coderUsd, tokens: state.tokens, t_provision: state.tProvision,
+          stop: "agent_error", coder_usd: state.coderUsd, dev_usd: state.devUsd ?? 0, tokens: state.tokens, t_provision: state.tProvision,
           t_code: state.tCode, t_teardown: 0, infra_errors: state.infraErrors, resumed: false,
         };
       }
@@ -165,8 +184,14 @@ export async function runCoder(
       sandbox = null;
     }
   }
-  state ??= { startedAt: Date.now(), sandbox: name, freshRestarts: 0, infraErrors: 0, coderUsd: 0, tokens: 0, tCode: 0, tProvision: 0 };
+  state ??= { startedAt: Date.now(), sandbox: name, freshRestarts: 0, infraErrors: 0, coderUsd: 0, devUsd: 0, tokens: 0, tCode: 0, tProvision: 0 };
+  state.devUsd ??= 0;
   save();
+
+  // Every attempt makes sure of the relay (the worker's proxy port may have changed) and opens its own token.
+  const metered = isMetered(cfg);
+  const proxy = metered ? await meter() : null;
+  if (proxy) await ensureMeterPath(cfg.baseline, proxy.port);
 
   if (!sandbox) {
     const t0 = performance.now();
@@ -175,14 +200,28 @@ export async function runCoder(
       baseline: cfg.baseline,
       commit: await repo.bundle(input.parentExpId),
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
+      network: metered ? METER_NETWORK : "none",
     });
     state.tProvision += secs(performance.now() - t0);
     save();
   }
 
+  const devBefore = state.devUsd;
+  const token = proxy?.open({
+    evalId: `${input.expId}-dev`, allowedModels: cfg.allowed_models, capUsd: Math.max(cfg.budget_usd.dev - devBefore, 0),
+    attrs: { "codeclimb.exp_id": input.expId, "codeclimb.ledger": "dev" },
+  });
+  const closeDev = () => {
+    if (!token) return;
+    const calls = proxy!.close(token);
+    state!.devUsd = devBefore + calls.reduce((a, c) => a + c.cost_usd, 0);
+    if (calls.length) appendFileSync(join(dir, "meter-dev.jsonl"), calls.map((c) => JSON.stringify(c)).join("\n") + "\n");
+    save();
+  };
+
   const session: AgentSession = await createIsolatedSession({
     model: input.model,
-    tools: sandboxTools(sandbox),
+    tools: sandboxTools(sandbox, token ? { env: meterEnv(token) } : {}),
     sessionManager: sessionManagerFor(sessionDir, resumed ? sessionFile : undefined),
   });
 
@@ -202,8 +241,9 @@ export async function runCoder(
       state!.coderUsd += e.message.usage.cost.total;
       state!.tokens += e.message.usage.totalTokens;
       state!.tCode = tCodeBefore + secs(performance.now() - t0);
+      if (token) state!.devUsd = devBefore + proxy!.spent(token);
       save();
-      if (state!.coderUsd >= cfg.budget_usd.experiment) abortWith("budget");
+      if (state!.coderUsd + state!.devUsd! >= cfg.budget_usd.experiment) abortWith("budget");
     }
   });
   const untrace = traceSession(session, {
@@ -222,7 +262,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(cfg.spec_dir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev } : undefined),
       );
     } else {
       stop = "timeout";
@@ -231,6 +271,7 @@ export async function runCoder(
     agentError = (e as Error).message;
   } finally {
     clearTimeout(timer);
+    closeDev();
     unsubscribe();
     untrace();
     unregister();
@@ -260,6 +301,7 @@ export async function runCoder(
     hypothesis,
     stop,
     coder_usd: state.coderUsd,
+    dev_usd: state.devUsd,
     tokens: state.tokens,
     t_provision: state.tProvision,
     t_code: state.tCode,

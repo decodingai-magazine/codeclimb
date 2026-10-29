@@ -13,12 +13,12 @@ Build a command-line program that answers, for each country it is given, the nam
 
 ## Model access
 
-During evaluation the program may call a language model through an OpenAI-compatible chat completions endpoint:
+The program may call a language model through an OpenAI-compatible chat completions endpoint, during evaluation and while you develop:
 
 - Base URL: the `OPENAI_BASE_URL` environment variable (requests go to `$OPENAI_BASE_URL/chat/completions`).
 - Key: the `OPENAI_API_KEY` environment variable, sent as `Authorization: Bearer <key>`.
 - Model: `github-copilot/claude-haiku-4.5`. Text messages only; no streaming, no tools.
 
-Every call costs money and time, and both are measured. Outside the evaluation (while you develop) there is no network: test the parts that do not need the model.
+Every call costs money and time. During evaluation both are measured; while you develop, calls come out of a small budget, and the endpoint answers `402` once it is spent. There is no other network access.
 
 The starter repository calls the model once per country.

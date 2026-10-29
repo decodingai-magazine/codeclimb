@@ -414,7 +414,7 @@
           h("td", { class: "num" }, h("span", { class: "delta " + (d > 0 ? "up" : "down"), text: d == null ? "–" : signed(d) })),
           h("td", null, decisionTag(e.decision, e.keep_reason)),
           objectives.map((m) => h("td", { class: "num", text: e.decision === "error" ? "–" : fnum(e.metrics[m]) })),
-          h("td", { class: "num", text: usd(e.coder_usd) }));
+          h("td", { class: "num", text: usd(e.coder_usd + (e.dev_usd || 0)) }));
         body.push(tr);
       }
     }
@@ -469,7 +469,7 @@
         h("dt", { text: "Parent" }), h("dd", { class: "mono", text: parent ? shortId(parent.exp_id, night.id) + " · " + f3(ps) : (e.parent_id || "–") }),
         h("dt", { text: "Model" }), h("dd", { text: e.model || "–" }),
         h("dt", { text: "Commit" }), h("dd", { class: "mono", text: e.commit ? e.commit.slice(0, 12) : "–" }),
-        h("dt", { text: "Cost · time" }), h("dd", { text: usd(e.coder_usd) + " · " + secs(e.t_code) + " coding · " + secs(e.wall_s) + " total" }),
+        h("dt", { text: "Cost · time" }), h("dd", { text: usd(e.coder_usd) + (e.dev_usd ? " + " + usd(e.dev_usd) + " program calls while coding" : "") + " · " + secs(e.t_code) + " coding · " + secs(e.wall_s) + " total" }),
         h("dt", { text: "Tokens" }), h("dd", { text: e.tokens ? e.tokens.toLocaleString() : "–" })),
       h("div", { class: "eyebrow", style: "color: var(--fg-3)", text: e.round === 1 ? "Coder's approach" : "Reviewer's hypothesis" }),
       h("div", { class: "quote", text: e.hypothesis || "–" }),

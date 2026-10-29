@@ -12,7 +12,7 @@ import { type EvalResult, readPerItem, trainFolds } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
-import { appendRows, readRows, type ResultRow } from "./results";
+import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, runReview, type ReviewOutput } from "./reviewer";
 import { beatsParent, cutsMetric, type Metrics, mean, overfitTest, passesGates, stddev } from "./stats";
 
@@ -178,7 +178,7 @@ export interface RoundDecision {
   spend: number;
 }
 
-function readCodeState(cfg: NightConfig, nightId: string, expId: string): { coderUsd: number; tokens: number } {
+function readCodeState(cfg: NightConfig, nightId: string, expId: string): { coderUsd: number; devUsd?: number; tokens: number } {
   const f = join(nightPaths(cfg, nightId).expDir(expId), "code-state.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : { coderUsd: 0, tokens: 0 };
 }
@@ -230,7 +230,7 @@ export function decideRound(args: RowBase & {
       branchRows.push(baseRow(args, {
         exp_id: b.expId, parent_id: parent.expId, model: b.model, eval_id: `${b.expId}-eval`,
         hypothesis: args.hypotheses[b.branch] ?? `(failed: ${b.error.slice(0, 200)})`, metrics: { [P]: 0 },
-        coder_usd: st.coderUsd, tokens: st.tokens, decision: "error", infra_errors: 1,
+        coder_usd: st.coderUsd, ...(st.devUsd ? { dev_usd: st.devUsd } : {}), tokens: st.tokens, decision: "error", infra_errors: 1,
       }));
       summaries.push({ expId: b.expId, model: b.model, hypothesis: args.hypotheses[b.branch] ?? "(unknown)", decision: "error", primary: 0, metrics: {} });
       continue;
@@ -244,6 +244,7 @@ export function decideRound(args: RowBase & {
     branchRows.push(baseRow(args, {
       exp_id: b.expId, parent_id: parent.expId, model: b.model, hypothesis: b.code.hypothesis, commit: b.code.sha ?? "",
       eval_id: `${b.expId}-eval`, metrics, coder_usd: b.code.coder_usd, program_usd: ev?.program_usd ?? 0,
+      ...(b.code.dev_usd ? { dev_usd: b.code.dev_usd } : {}),
       tokens: b.code.tokens,
       wall_s: Math.round((b.code.t_provision + b.code.t_code + b.code.t_teardown + (ev?.wall_s ?? 0)) * 100) / 100,
       decision: evalOk ? "revert" : "error",
@@ -299,7 +300,7 @@ export function decideRound(args: RowBase & {
     summaries.find((s) => s.expId === best.expId)!.decision = pick.reason === "efficiency" ? "keep (cheaper/faster)" : "keep";
   }
   rows.push(...branchRows);
-  const spend = rows.reduce((a, r) => a + r.coder_usd + r.program_usd, 0);
+  const spend = rows.reduce((a, r) => a + rowSpend(r), 0);
   return { rows, parentAfter, parentRun: parentRun?.metrics ?? null, keep, summaries, spend };
 }
 

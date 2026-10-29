@@ -43,7 +43,12 @@ export interface ResultRow {
   eval_order?: number;
   /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
   keep_reason?: "primary" | "efficiency";
+  /** Not in the contract: the program's model calls while the coder developed (metered, outside `metrics`). */
+  dev_usd?: number;
 }
+
+/** What a row spent, the reviewer aside (one review per round, repeated on each of its rows). */
+export const rowSpend = (r: Pick<ResultRow, "coder_usd" | "program_usd" | "dev_usd">) => r.coder_usd + (r.dev_usd ?? 0) + r.program_usd;
 
 const num = { type: "number" };
 const str = { type: "string" };
@@ -90,6 +95,7 @@ export const RESULT_ROW_SCHEMA = {
     evaluator_instance: str,
     eval_order: { type: "integer", minimum: 0 },
     keep_reason: { type: "string", enum: ["primary", "efficiency"] },
+    dev_usd: num,
   },
 } as const;
 

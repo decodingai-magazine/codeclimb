@@ -12,7 +12,7 @@ import type { NightConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { sandboxBackend } from "./sandbox";
-import { ensureMeterPath, METER_BASE_URL, METER_NETWORK, meter } from "./meter";
+import { ensureMeterPath, isMetered, METER_NETWORK, meter, meterEnv } from "./meter";
 import type { MeterCall } from "./meter/proxy";
 import { cloneInto } from "./sandbox/repo";
 import type { Sandbox } from "./sandbox/types";
@@ -91,9 +91,6 @@ export function readPerItem(metricsPath: string): number[] {
   const raw = JSON.parse(readFileSync(metricsPath, "utf8")) as { per_item?: Record<string, number> };
   return Object.values(raw.per_item ?? {});
 }
-
-/** A program may call models (through the metering proxy) only when the config allows some. */
-export const isMetered = (cfg: Pick<NightConfig, "allowed_models">) => cfg.allowed_models.length > 0;
 
 /**
  * The evaluator's sandbox: the live one after a crashed step (create() would replace it), else a new
@@ -182,17 +179,14 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
     evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval,
     attrs: { "codeclimb.eval_id": req.evalId, "codeclimb.exp_id": req.expId },
   });
-  const env = token
-    ? `env OPENAI_BASE_URL=${METER_BASE_URL} OPENAI_API_KEY=${token} CODECLIMB_LLM_BASE_URL=${METER_BASE_URL} CODECLIMB_LLM_API_KEY=${token} `
-    : "";
   let calls: MeterCall[] = [];
   try {
     await sandbox.writeFile("/work/queries.jsonl", queries);
     runStartMs = Date.now();
     t0 = performance.now();
     const run = await sandbox.exec(
-      `${env}${cfg.run_cmd} --queries /work/queries.jsonl --repo /repo --out /work/out > /work/run.log 2>&1`,
-      { cwd: "/work", timeoutMs: cfg.timeouts.eval_min * 60_000 },
+      `${cfg.run_cmd} --queries /work/queries.jsonl --repo /repo --out /work/out > /work/run.log 2>&1`,
+      { cwd: "/work", timeoutMs: cfg.timeouts.eval_min * 60_000, ...(token ? { env: meterEnv(token) } : {}) },
     );
     calls = token ? proxy!.close(token) : [];
     result.t_eval = secs(t0);

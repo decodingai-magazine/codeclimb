@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { efficiencyMetrics, type NightConfig } from "../config";
 import { ExperimentRepo } from "../git";
-import { readRows, type ResultRow } from "../results";
+import { readRows, type ResultRow, rowSpend } from "../results";
 
 export type ReportReview = { round: number; model?: string; feedback: string; hypotheses: string[] };
 
@@ -54,7 +54,7 @@ export function nightSpend(rows: ResultRow[]): number {
   const reviewer = new Map<number, number>();
   let total = 0;
   for (const r of rows) {
-    total += r.coder_usd + r.program_usd;
+    total += rowSpend(r);
     reviewer.set(r.round, Math.max(reviewer.get(r.round) ?? 0, r.reviewer_usd));
   }
   for (const v of reviewer.values()) total += v;

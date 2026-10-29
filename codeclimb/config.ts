@@ -41,8 +41,11 @@ export type NightConfig = {
   min_gain: number;
   overfit_gap: number;
   max_validations: number;
-  /** `eval` caps the program's model calls in one eval (default: `experiment`). */
-  budget_usd: { experiment: number; night: number; eval: number };
+  /**
+   * `eval` caps the program's model calls in one eval (default: `experiment`); `dev` caps the calls the
+   * coder's runs of the program make while it develops (default: `eval`). Both need `allowed_models`.
+   */
+  budget_usd: { experiment: number; night: number; eval: number; dev: number };
   results_path: string;
   /** Dataset fields never sent to a sandbox besides `gold` and `fold`. */
   hidden_fields: string[];
@@ -92,6 +95,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     max_validations: req(raw, "max_validations", "number"),
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
+      dev: Number(budget.dev ?? budget.eval ?? budget.experiment),
     },
     results_path: abs(req(raw, "results_path", "string")),
     hidden_fields: (raw.hidden_fields as string[] | undefined) ?? [],
@@ -106,6 +110,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (cfg.max_validations < 1 || cfg.max_validations > 5) throw new Error("config: max_validations must be 1..5");
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
   if (!(cfg.budget_usd.eval > 0)) throw new Error("config: budget_usd.eval must be a positive number");
+  if (!(cfg.budget_usd.dev > 0)) throw new Error("config: budget_usd.dev must be a positive number");
   const st = cfg.standard_metrics;
   if (typeof st.latency !== "boolean" || typeof st.cost !== "boolean") {
     throw new Error("config: standard_metrics.latency and standard_metrics.cost must be true or false");

@@ -7,8 +7,9 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { loadConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
+import { isEmbeddingModel } from "../codeclimb/meter/backends";
 import { checkModels } from "../codeclimb/pi/session";
-import { readRows } from "../codeclimb/results";
+import { readRows, rowSpend } from "../codeclimb/results";
 import { ccInngest } from "../inngest/codeclimb/client";
 
 const { values, positionals } = parseArgs({
@@ -38,7 +39,7 @@ async function follow(cfg: NightConfig, nightId: string): Promise<void> {
       console.log(
         `  r${r.round} ${r.kind.padEnd(10)} ${r.split.padEnd(5)} ${r.exp_id.replace(`${nightId}-`, "").padEnd(14)} ` +
           `${cfg.primary_metric}=${primary?.toFixed(4) ?? "-"} ${r.decision.padEnd(6)} ` +
-          `$${(r.coder_usd + r.program_usd).toFixed(4)} ${r.hypothesis ? `· ${r.hypothesis.slice(0, 90)}` : ""}`,
+          `$${rowSpend(r).toFixed(4)} ${r.hypothesis ? `· ${r.hypothesis.slice(0, 90)}` : ""}`,
       );
     }
     printed = rows.length;
@@ -57,7 +58,7 @@ if (positionals[0] === "stop") {
 } else {
   if (!values.config) throw new Error("usage: run-night --config <yaml>");
   const cfg = loadConfig(resolve(values.config));
-  await checkModels([...cfg.models, cfg.reviewer_model]);
+  await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();
   const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: cfg } });
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);

@@ -33,6 +33,7 @@ const AUTH_HINTS: Record<string, string> = {
   anthropic: "set ANTHROPIC_API_KEY; or run `npx pi`, then `/login anthropic` and paste the key",
   opencode: "set OPENCODE_API_KEY (OpenCode Zen); or run `npx pi`, then `/login opencode`",
   "opencode-go": "set OPENCODE_API_KEY (OpenCode Go); or run `npx pi`, then `/login opencode-go`",
+  openrouter: "set OPENROUTER_API_KEY",
 };
 
 export async function resolveModel(ref: string) {

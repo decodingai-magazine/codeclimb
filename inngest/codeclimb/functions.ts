@@ -25,6 +25,7 @@ import {
   rotate,
   validateKept,
 } from "../../codeclimb/orchestrator";
+import { isEmbeddingModel } from "../../codeclimb/meter/backends";
 import { checkModels } from "../../codeclimb/pi/session";
 import { writeReport } from "../../codeclimb/report/html";
 import type { HypothesisLogEntry } from "../../codeclimb/reviewer";
@@ -98,7 +99,7 @@ export const runNight = ccInngest.createFunction(
     const { night_id: nightId, config: cfg } = event.data;
     // The worker's own credentials, which may differ from the CLI's: fail once, not per experiment.
     await step.run("check-models", () =>
-      checkModels([...cfg.models, cfg.reviewer_model]).catch((e: Error) => {
+      checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]).catch((e: Error) => {
         throw new NonRetriableError(e.message);
       }),
     );
