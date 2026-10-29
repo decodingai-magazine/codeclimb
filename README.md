@@ -60,7 +60,7 @@ CodeClimb is an optimization loop. Pi coding agents write a program inside sandb
 
 - It runs only on the **local Inngest dev server** with **Docker sandboxes**.
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
-- It uses a small built-in scenario, `datenorm`, which normalizes messy date strings to ISO dates.
+- It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
 
 ### Authenticate Pi
 
@@ -102,12 +102,15 @@ npm test                               # unit tests (keep rule, overfit test, st
 A night runs these steps:
 
 1. **Rounds.** Each round starts one `run-experiment` child per model in `models`, all in parallel, via `step.invoke`.
-2. **Experiment.** Each child gives Pi a fresh sandbox built from the baseline plus the kept commit. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit, and `score_cmd` scores it on the host.
-3. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`.
-4. **Noise floor.** On the first night, the first kept commit is evaluated 5 times to measure σ.
-5. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch for the next round.
-6. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
-7. **Test.** After any stop, the final kept commit is scored on test once.
+2. **Experiment.** Each child gives Pi a fresh sandbox built from the baseline plus the kept commit. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit.
+3. **Evaluation.** Once every coder has stopped, one `run-evaluator` child evaluates the round's candidates one after another in a single sandbox: the parent and each committed branch, in an order that rotates by round. Before each candidate it kills every leftover process, wipes `/repo`, `/work`, `/tmp` and `/eval`, and clones the candidate. `run_cmd` runs the program on the questions, and `score_cmd` scores the outputs on the host. So every candidate of a round is timed on the same machine with nothing else running.
+4. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`. With latency or cost optimized, see [Standard metrics](#standard-metrics-latency-and-cost) for the tie-break and the efficiency keep.
+5. **Noise floor.** On the first night, the first kept commit is evaluated 5 times in one evaluator to measure σ of the primary metric and of each optimized standard metric.
+6. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch for the next round.
+7. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
+8. **Test.** After any stop, the final kept commit is scored on test once.
+
+Validation, test and the noise runs each get their own evaluator too. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
 
 All output lands under `dirname(results_path)`:
 
@@ -120,7 +123,47 @@ All output lands under `dirname(results_path)`:
 | `nights/<id>/reviews/r<N>.json` | The reviewer's feedback and hypotheses for round N. |
 | `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
-| `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs and `metrics.json`. |
+| `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs, the runner's `timings.jsonl`, `meter.jsonl` (the program's model calls) and `metrics.json`. |
+
+### Standard metrics: latency and cost
+
+Every scenario gets the same two metrics, measured outside the code the coders write, on top of its own metrics:
+
+- **Latency** is the program's own time: the hidden runner times each operation it sends the program. It leaves out sandbox setup, clone, scoring and teardown. The runner writes `timings.jsonl` next to its outputs, one line per operation: `{"op": "query", "id": "...", "ms": 12.3, "warmup": true}`. Warm-up records count toward nothing. That gives `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` and `latency_total_s`.
+- **Cost** is only the program's model calls, metered by the proxy below: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd` and `model_calls`. They are 0 for a program that calls no model. Coder and reviewer spend stays in `coder_usd` and `reviewer_usd`, outside optimization, and counts toward `budget_usd.night` as before.
+
+Both are always measured and appear in `results.jsonl`, the report and the Inngest trace. Each night's config chooses whether they are optimized:
+
+```yaml
+standard_metrics:
+  latency: true                      # default true
+  cost: true                         # default true
+  latency_metric: latency_total_s    # default
+  cost_metric: cost_per_item_usd     # default
+  min_efficiency_gain: 0.10          # relative cut a change needs, on top of beating 2σ
+```
+
+An optimized metric (lower is better) changes the keep rule in two places. Gates you set on any metric apply either way.
+
+- **Tie-break.** Among branches that gain on the primary metric and are within 2σ of the best one, the cheaper, then faster one is kept.
+- **Efficiency keep.** When no branch gains on the primary, a branch is kept if its primary stays within 2σ of both the parent and the night's best kept score, it cuts an optimized metric by more than `max(min_efficiency_gain × parent, 2σ)`, and it raises no other optimized metric by as much.
+
+Latency is compared only between evals that ran on the same evaluator instance. The coder and reviewer prompts name the optimized metrics, and the hypothesis log shows their change next to the primary's. A metric that is not optimized stays out of the prompts unless a gate names it.
+
+#### Metering proxy
+
+A program may call models only when `allowed_models` lists some, and only through the metering proxy in the worker. Keys never enter a sandbox.
+
+- **Network.** Metered evaluators join `cc-meter`, an internal Docker network with no route anywhere. Its only other member is `cc-meter-relay`, a small Python TCP relay that also sits on the default bridge and forwards to the proxy on the host. Coder sandboxes stay on `--network none`. The relay runs on the scenario's baseline image, so that image needs `python3`. The worker leaves `cc-meter-relay` and `cc-meter` in place between nights and recreates the relay when its proxy port changes.
+- **Program side.** The runner's environment has `OPENAI_BASE_URL` and `OPENAI_API_KEY` (and `CODECLIMB_LLM_BASE_URL` / `CODECLIMB_LLM_API_KEY`). The key is a token valid for this eval only and revoked when its run ends. The program uses `POST $OPENAI_BASE_URL/chat/completions` with a model from `allowed_models`, such as `github-copilot/claude-haiku-4.5`, or `/embeddings`. Chat goes through Pi, with the same credentials and catalog prices as the coders. The runner calls `POST $CODECLIMB_LLM_BASE_URL/_op` with `{"op": "query"}` to attribute later calls to an operation.
+- **Limits.** `budget_usd.eval` caps one eval's model spend (default: `budget_usd.experiment`). It is checked before each call, so the call that crosses it still runs. Errors: `401` bad or revoked token, `403` model not allowed, `402` budget spent, `400` unsupported request, `502` upstream failure (what a failed call cost is still charged).
+- **Not supported yet.** Streaming, tools and non-text content in chat. Embeddings only for `openai/text-embedding-3-small` and `-large`, priced from a table in `codeclimb/meter/backends.ts`. Embeddings are unit-tested against a fake upstream only. Operation attribution assumes the runner sends operations one at a time. Coders cannot call models while they develop.
+- **Linux.** The proxy binds `127.0.0.1`, which Docker Desktop reaches through `host.docker.internal`. On Linux, set `CODECLIMB_PROXY_HOST` to the `docker0` address, such as `172.17.0.1`. `CODECLIMB_PROXY_PORT` pins the port, which is random by default.
+
+```bash
+npm run build:baseline && npm run build:baseline:capitals
+npm run run-night -- --config configs/capitals-smoke.yaml   # one round; the program calls github-copilot/claude-haiku-4.5
+```
 
 ### Harder scenario: `datenorm-hard`
 

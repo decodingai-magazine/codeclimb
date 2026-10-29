@@ -4,6 +4,7 @@
 // OpenTelemetry provider the API is a no-op.
 import { context, type Span, SpanStatusCode, trace } from "@opentelemetry/api";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { OpLatency } from "./standard-metrics";
 
 const tracer = trace.getTracer("codeclimb");
 
@@ -64,4 +65,25 @@ export function sandboxSpan<T>(name: string, attrs: Record<string, string>, fn: 
       span.end();
     }
   });
+}
+
+/**
+ * The program's own time in an eval: one span per operation under the active (eval) step, laid end to
+ * end from the run's start, since the runner reports durations, not timestamps.
+ */
+export function programSpans(attrs: Record<string, string>, runStartMs: number, ops: OpLatency[]): void {
+  let t = runStartMs;
+  for (const o of ops) {
+    const end = t + o.total_s * 1000;
+    tracer
+      .startSpan(`program.${o.op}`, {
+        startTime: t,
+        attributes: {
+          ...attrs, "codeclimb.op": o.op, "codeclimb.latency.n": o.n, "codeclimb.latency.p50_ms": o.p50_ms,
+          "codeclimb.latency.p95_ms": o.p95_ms, "codeclimb.latency.total_s": o.total_s,
+        },
+      })
+      .end(end);
+    t = end;
+  }
 }

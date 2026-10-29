@@ -4,7 +4,7 @@
 // (kept lineage, convergence, heatmaps) are computed in the page itself.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import type { NightConfig } from "../config";
+import { efficiencyMetrics, type NightConfig } from "../config";
 import { ExperimentRepo } from "../git";
 import { readRows, type ResultRow } from "../results";
 
@@ -14,7 +14,10 @@ export type ReportNight = {
   id: string;
   startedAt: number | null;
   finishedAt: string | null;
-  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd" | "overfit_gap"> | null;
+  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd" | "overfit_gap"> & {
+    /** Optimized standard metrics (lower is better); empty for nights before they existed. */
+    objectives: string[];
+  } | null;
   done: {
     stop_reason: string;
     rounds: number;
@@ -85,6 +88,8 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
             primary_metric: c.primary_metric, thresholds: c.thresholds, gates: c.gates, min_gain: c.min_gain,
             max_rounds: c.max_rounds, models: c.models, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
             overfit_gap: c.overfit_gap,
+            // Nights before standard metrics have no `standard_metrics`: nothing was optimized besides the primary.
+            objectives: c.standard_metrics ? efficiencyMetrics(c) : [],
           }
         : null,
       done: done

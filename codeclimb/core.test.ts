@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseApproach } from "./coder";
-import { parseConfig, resolveDeadline } from "./config";
-import { checkStop, decideRound, type Kept } from "./orchestrator";
+import { efficiencyMetrics, parseConfig, resolveDeadline } from "./config";
+import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
 import { beatsParent, bootstrapGapSE, overfitTest, passesGates, passesThresholds, stddev } from "./stats";
@@ -84,7 +84,7 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   });
   const ev = (accuracy: number, schema_violations = 0) => ({
     ok: true, metrics: { accuracy, schema_violations }, metricsPath: "/m.json", program_usd: 0,
-    t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0,
+    t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: "i1", eval_order: 0,
   });
   const d = decideRound({
     cfg, nightId: "n", round: 1, valFold: 0, parent, sigma: 0, rescore: null, hypotheses: [null, null, null],
@@ -103,6 +103,84 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
     hypotheses: [null], branches: [{ ok: true, expId: "x", branch: 0, model: "p/a", code: code("c"), eval: ev(0.6) }],
   });
   assert.equal(none.keep, null);
+
+  // An already re-scored parent's run in the evaluator is a baseline row: recorded, its score unchanged.
+  const withBaseline = decideRound({
+    cfg, nightId: "n", round: 2, valFold: 0, parent, sigma: 0, rescore: null, hypotheses: [null],
+    baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.3) },
+    branches: [{ ok: true, expId: "n-r2-b0", branch: 0, model: "p/a", code: code("d"), eval: ev(0.4) }],
+  });
+  assert.equal(withBaseline.parentAfter.score, 0.5);
+  assert.deepEqual(withBaseline.rows.map((r) => [r.kind, r.evaluator_instance]), [["baseline", "i1"], ["experiment", "i1"]]);
+  assert.equal(withBaseline.keep, null);
+  for (const r of withBaseline.rows) assert.deepEqual(validateRow(r), []);
+});
+
+test("evaluation order rotates by round and keeps every candidate", () => {
+  assert.deepEqual(rotate(["p", "a", "b", "c"], 1), ["a", "b", "c", "p"]);
+  assert.deepEqual(rotate(["p", "a", "b", "c"], 4), ["p", "a", "b", "c"]);
+  assert.deepEqual(rotate(["p", "a"], 3), ["a", "p"]);
+  assert.deepEqual(rotate([], 2), []);
+});
+
+test("standard metrics: on by default, cost before latency, validated", () => {
+  assert.deepEqual(cfg.standard_metrics, {
+    latency: true, cost: true, latency_metric: "latency_total_s", cost_metric: "cost_per_item_usd", min_efficiency_gain: 0.1,
+  });
+  assert.deepEqual(efficiencyMetrics(cfg), ["cost_per_item_usd", "latency_total_s"]);
+  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", "/b");
+  assert.deepEqual(efficiencyMetrics(off), []);
+  const lat = parseConfig(BASE_YAML + "standard_metrics: { cost: false, latency_metric: latency_query_p95_ms }\n", "/b");
+  assert.deepEqual(efficiencyMetrics(lat), ["latency_query_p95_ms"]);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { latency_metric: p95_ms }\n", "/b"), /latency_metric/);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { min_efficiency_gain: 0 }\n", "/b"), /min_efficiency_gain/);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { cost: yes please }\n", "/b"), /true or false/);
+});
+
+test("efficiency: tie-break, efficiency keep and its guards", () => {
+  const parent: Kept = { expId: "n-r1-b0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
+  const code = (sha: string) => ({
+    ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, tokens: 10,
+    t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
+  });
+  const ev = (accuracy: number, cost: number, lat: number, instance = "i1") => ({
+    ok: true, metrics: { accuracy, schema_violations: 0, cost_per_item_usd: cost, latency_total_s: lat }, metricsPath: "/m.json",
+    program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: instance, eval_order: 0,
+  });
+  const branch = (b: number, e: ReturnType<typeof ev>) => ({ ok: true as const, expId: `n-r2-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: e });
+  const round = (branches: ReturnType<typeof branch>[], over: Partial<Parameters<typeof decideRound>[0]> = {}) =>
+    decideRound({
+      cfg, nightId: "n", round: 2, valFold: 0, parent, sigma: 0, effSigma: {}, bestPrimary: 0.9, rescore: null,
+      baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.9, 0.01, 2.0) }, hypotheses: [null, null, null], branches, ...over,
+    });
+
+  // Tied on a primary gain: the clearly cheaper branch wins over the higher branch index order.
+  const tie = round([branch(0, ev(0.95, 0.01, 2.0)), branch(1, ev(0.95, 0.005, 2.0))]);
+  assert.deepEqual([tie.keep?.expId, tie.keep?.reason], ["n-r2-b1", "primary"]);
+  // Within 10%: not meaningfully cheaper, so the first branch keeps it.
+  assert.equal(round([branch(0, ev(0.95, 0.01, 2.0)), branch(1, ev(0.95, 0.0095, 2.0))]).keep?.expId, "n-r2-b0");
+
+  // No primary gain: a branch at the same primary that is >10% faster is an efficiency keep.
+  const eff = round([branch(0, ev(0.9, 0.01, 2.0)), branch(1, ev(0.9, 0.01, 1.5))]);
+  assert.deepEqual([eff.keep?.expId, eff.keep?.reason], ["n-r2-b1", "efficiency"]);
+  assert.equal(eff.rows.find((r) => r.exp_id === "n-r2-b1")?.keep_reason, "efficiency");
+  assert.equal(eff.summaries.find((x) => x.expId === "n-r2-b1")?.decision, "keep (cheaper/faster)");
+  assert.deepEqual(eff.parentRun?.latency_total_s, 2.0);
+  // ...but not when the cut is within 2σ of latency noise.
+  assert.equal(round([branch(1, ev(0.9, 0.01, 1.5))], { effSigma: { latency_total_s: 0.3 } }).keep, null);
+  // ...not when it raises the other objective by as much,
+  assert.equal(round([branch(1, ev(0.9, 0.02, 1.5))]).keep, null);
+  // ...not below the night's best kept primary (drift guard),
+  assert.equal(round([branch(1, ev(0.9, 0.01, 1.5))], { bestPrimary: 0.95 }).keep, null);
+  // ...not on latency measured by another evaluator instance (cost still compares across instances),
+  assert.equal(round([branch(1, ev(0.9, 0.01, 1.5, "i2"))]).keep, null);
+  assert.equal(round([branch(1, ev(0.9, 0.005, 2.0, "i2"))]).keep?.reason, "efficiency");
+  // ...and not when the standard metrics are not optimized.
+  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", "/b");
+  assert.equal(round([branch(1, ev(0.9, 0.005, 1.0))], { cfg: off }).keep, null);
+  // A primary drop is never an efficiency keep, however fast.
+  assert.equal(round([branch(1, ev(0.89, 0.001, 0.1))]).keep, null);
+  for (const r of eff.rows) assert.deepEqual(validateRow(r), []);
 });
 
 test("results schema rejects bad rows", () => {

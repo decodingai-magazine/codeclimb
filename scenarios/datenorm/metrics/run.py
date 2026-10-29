@@ -3,9 +3,11 @@
     python3 run.py --queries <jsonl> --repo <path> --out <dir>
 
 Starts `python3 -m datenorm` once in --repo, sends one query per line, waits for
-its answer and times it. Writes <out>/outputs.jsonl ({id, raw, latency_ms}) and
-<out>/run.json. A query that times out or kills the program is recorded with
-raw=null and the program is restarted for the next query.
+its answer and times it. Writes <out>/outputs.jsonl ({id, raw}),
+<out>/timings.jsonl (codeclimb's standard timings: {op: "query", id, ms}, the
+first answer marked as a warm-up) and <out>/run.json. A query that times out or
+kills the program is recorded with raw=null and the program is restarted for
+the next query.
 """
 
 import argparse
@@ -68,8 +70,8 @@ def main() -> None:
     started = time.monotonic()
     restarts = 0
     prog = Program(args.repo)
-    with open(os.path.join(args.out, "outputs.jsonl"), "w") as f:
-        for q in queries:
+    with open(os.path.join(args.out, "outputs.jsonl"), "w") as f, open(os.path.join(args.out, "timings.jsonl"), "w") as tf:
+        for i, q in enumerate(queries):
             t0 = time.perf_counter()
             try:
                 raw = prog.ask(json.dumps({"id": q["id"], "text": q["text"], "locale": q["locale"]}, ensure_ascii=False))
@@ -80,7 +82,9 @@ def main() -> None:
                 prog.close()
                 prog = Program(args.repo)
                 restarts += 1
-            f.write(json.dumps({"id": q["id"], "raw": raw, "latency_ms": round(latency_ms, 3)}) + "\n")
+            f.write(json.dumps({"id": q["id"], "raw": raw}) + "\n")
+            timing = {"op": "query", "id": q["id"], "ms": round(latency_ms, 3)}
+            tf.write(json.dumps({**timing, "warmup": True} if i == 0 else timing) + "\n")
     prog.close()
     with open(os.path.join(args.out, "run.json"), "w") as f:
         json.dump({"n": len(queries), "restarts": restarts, "wall_s": round(time.monotonic() - started, 3)}, f)

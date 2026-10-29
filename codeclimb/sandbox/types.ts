@@ -31,6 +31,8 @@ export interface Sandbox {
   readFile(path: string): Promise<Buffer>;
   writeFile(path: string, data: Buffer | string): Promise<void>;
   isAlive(): Promise<boolean>;
+  /** Identifies this incarnation: a sandbox recreated under the same name gets a new id. */
+  instanceId(): Promise<string>;
   destroy(): Promise<void>;
 }
 
@@ -39,10 +41,11 @@ export interface CreateSandboxOptions {
   name: string;
   /** Baseline environment (Docker image / Inngest custom image). */
   baseline: string;
-  /** Commit cloned into `/repo`. */
-  commit: RepoCommit;
+  /** Commit cloned into `/repo`; omitted for the evaluator, which clones each candidate itself. */
+  commit?: RepoCommit;
   labels?: Record<string, string>;
-  network?: "none" | "bridge";
+  /** "none" (the default), "bridge", or a named network such as the metering network. */
+  network?: string;
 }
 
 export interface SandboxBackend {

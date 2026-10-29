@@ -25,7 +25,7 @@ thresholds:
   accuracy: 0.90
 gates:
   schema_violations: 0
-  p95_ms: 50
+  latency_query_p95_ms: 50
 min_gain: 0.01
 overfit_gap: 0.05
 max_validations: 5

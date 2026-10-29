@@ -15,6 +15,11 @@ export function beatsParent(primary: number, parentScore: number, minGain: numbe
   return primary - parentScore >= Math.max(minGain, 2 * sigma) - 1e-12;
 }
 
+/** A lower-is-better metric dropped from `ref` to `cand` by more than `minRel` × `ref` and more than 2σ. */
+export function cutsMetric(cand: number, ref: number, minRel: number, sigma: number): boolean {
+  return ref - cand > Math.max(minRel * ref, 2 * sigma) + 1e-12;
+}
+
 export function mean(xs: number[]): number {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 }

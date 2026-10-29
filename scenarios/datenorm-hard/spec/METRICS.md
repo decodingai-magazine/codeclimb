@@ -30,11 +30,12 @@ A hidden runner starts `python3 -m datenorm` once in a fresh copy of your reposi
 Also reported:
 
 - `null_precision`: of the items you answered `null`, the share whose gold is `null`.
-- `p50_ms`, `p95_ms`: per-answer latency in milliseconds. The first answer is a warm-up and is not counted.
+- `latency_query_p50_ms`, `latency_query_p95_ms`: per-answer latency in milliseconds, from sending a query to receiving its answer. The first answer is a warm-up and is not counted.
+- `latency_total_s`: the summed answer time over all queries, in seconds.
 
 ## Hard gates
 
 A version that fails a gate is never kept, whatever its accuracy.
 
 - `schema_violations` must be 0. It counts answer lines that are not valid JSON, have the wrong `id`, have a `date` that is neither `null` nor a `YYYY-MM-DD` string, or are missing. A per-answer timeout of 5 seconds or a crash counts as missing.
-- `p95_ms` must stay under a cap.
+- `latency_query_p95_ms` must stay under a cap.

@@ -4,6 +4,18 @@ import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parse } from "yaml";
 
+/** Codeclimb's standard metrics as objectives. Off: still measured and reported, but not optimized. */
+export type StandardMetricsConfig = {
+  latency: boolean;
+  cost: boolean;
+  /** The latency metric optimized when `latency` is on (lower is better). */
+  latency_metric: string;
+  /** The cost metric optimized when `cost` is on (lower is better). */
+  cost_metric: string;
+  /** Relative cut (0.1 = 10%) a cost or latency change needs, on top of beating 2σ, to count. */
+  min_efficiency_gain: number;
+};
+
 export type NightConfig = {
   spec_dir: string;
   dataset_dir: string;
@@ -23,12 +35,14 @@ export type NightConfig = {
   /** Models the built program may call through the metering proxy (unused by stdlib-only scenarios). */
   allowed_models: string[];
   primary_metric: string;
+  standard_metrics: StandardMetricsConfig;
   thresholds: Record<string, number>;
   gates: Record<string, number>;
   min_gain: number;
   overfit_gap: number;
   max_validations: number;
-  budget_usd: { experiment: number; night: number };
+  /** `eval` caps the program's model calls in one eval (default: `experiment`). */
+  budget_usd: { experiment: number; night: number; eval: number };
   results_path: string;
   /** Dataset fields never sent to a sandbox besides `gold` and `fold`. */
   hidden_fields: string[];
@@ -47,6 +61,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const raw = parse(text) as Record<string, unknown>;
   const abs = (p: string) => (isAbsolute(p) ? p : resolve(baseDir, p));
   const timeouts = req<NightConfig["timeouts"]>(raw, "timeouts", "object");
+  const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
   const cfg: NightConfig = {
     spec_dir: abs(req(raw, "spec_dir", "string")),
@@ -63,12 +78,21 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     reviewer_model: req(raw, "reviewer_model", "string"),
     allowed_models: (raw.allowed_models as string[] | undefined) ?? [],
     primary_metric: req(raw, "primary_metric", "string"),
+    standard_metrics: {
+      latency: sm.latency ?? true,
+      cost: sm.cost ?? true,
+      latency_metric: sm.latency_metric ?? "latency_total_s",
+      cost_metric: sm.cost_metric ?? "cost_per_item_usd",
+      min_efficiency_gain: sm.min_efficiency_gain ?? 0.1,
+    },
     thresholds: req(raw, "thresholds", "object"),
     gates: (raw.gates as Record<string, number> | undefined) ?? {},
     min_gain: req(raw, "min_gain", "number"),
     overfit_gap: req(raw, "overfit_gap", "number"),
     max_validations: req(raw, "max_validations", "number"),
-    budget_usd: { experiment: Number(budget.experiment), night: Number(budget.night) },
+    budget_usd: {
+      experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
+    },
     results_path: abs(req(raw, "results_path", "string")),
     hidden_fields: (raw.hidden_fields as string[] | undefined) ?? [],
     base_dir: baseDir,
@@ -81,6 +105,14 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   if (cfg.max_validations < 1 || cfg.max_validations > 5) throw new Error("config: max_validations must be 1..5");
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
+  if (!(cfg.budget_usd.eval > 0)) throw new Error("config: budget_usd.eval must be a positive number");
+  const st = cfg.standard_metrics;
+  if (typeof st.latency !== "boolean" || typeof st.cost !== "boolean") {
+    throw new Error("config: standard_metrics.latency and standard_metrics.cost must be true or false");
+  }
+  if (!st.latency_metric.startsWith("latency_")) throw new Error("config: standard_metrics.latency_metric must be a latency_* metric");
+  if (!st.cost_metric.startsWith("cost_")) throw new Error("config: standard_metrics.cost_metric must be a cost_* metric");
+  if (!(st.min_efficiency_gain > 0 && st.min_efficiency_gain < 1)) throw new Error("config: standard_metrics.min_efficiency_gain must be in (0, 1)");
   if (!Number.isFinite(cfg.timeouts.experiment_min) || !Number.isFinite(cfg.timeouts.eval_min)) {
     throw new Error("config: timeouts.experiment_min and timeouts.eval_min are required numbers");
   }
@@ -99,4 +131,10 @@ export function resolveDeadline(deadline: string, startedAt: number): number {
   const t = Date.parse(deadline);
   if (Number.isNaN(t)) throw new Error(`config: deadline "${deadline}" is neither an ISO time nor a duration like 90m`);
   return t;
+}
+
+/** The optimized standard metrics, lower is better, in tie-break order: cost first, then latency. */
+export function efficiencyMetrics(cfg: Pick<NightConfig, "standard_metrics">): string[] {
+  const st = cfg.standard_metrics;
+  return [...(st.cost ? [st.cost_metric] : []), ...(st.latency ? [st.latency_metric] : [])];
 }

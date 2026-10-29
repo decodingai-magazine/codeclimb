@@ -18,6 +18,7 @@
     "export": "tsx scripts/export.ts",
     "build:baseline:hard": "docker build -t autocode-base-hard scenarios/datenorm-hard",
     "build:dataset:hard": "python3 scenarios/datenorm-hard/tools/build_dataset.py --out scenarios/datenorm-hard/dataset",
+    "build:baseline:capitals": "docker build -t autocode-base-capitals scenarios/capitals",
     "test": "tsx --test codeclimb/*.test.ts"
   },
   "dependencies": {

@@ -19,6 +19,8 @@ export interface HypothesisLogEntry {
   round: number;
   hypothesis: string;
   deltaPrimary: number;
+  /** Change of each optimized standard metric vs the parent's run in the same evaluator. */
+  deltas?: Metrics;
   decision: string;
 }
 
@@ -32,6 +34,9 @@ export interface ReviewInput {
   gates: Record<string, number>;
   parentScore: number;
   parentMetrics: Metrics | null;
+  /** Optimized standard metrics (lower is better); the other standard metrics stay out of the prompt. */
+  objectives: string[];
+  minEfficiencyGain: number;
   results: BranchSummary[];
   log: HypothesisLogEntry[];
   /** Set after an overfit validation: only the gap value, never per-item results. */
@@ -56,19 +61,42 @@ The specification may leave interpretation choices open on purpose (which year a
 
 Reply with only a JSON object: {"feedback": "...", "hypotheses": ["...", ...]}`;
 
-function fmtMetrics(m: Metrics | null): string {
+const fmtNum = (v: number) => (Number.isInteger(v) ? String(v) : Math.abs(v) < 0.01 ? v.toPrecision(3) : v.toFixed(4));
+
+/** Standard metrics a disabled objective covers are hidden unless a gate names them. */
+function shownMetric(k: string, input: Pick<ReviewInput, "objectives" | "gates">): boolean {
+  if (k in input.gates) return true;
+  if (/^latency_/.test(k)) return input.objectives.some((o) => o.startsWith("latency_"));
+  if (/^(cost_|model_calls$)/.test(k)) return input.objectives.some((o) => o.startsWith("cost_"));
+  return true;
+}
+
+function fmtMetrics(m: Metrics | null, input: Pick<ReviewInput, "objectives" | "gates">): string {
   if (!m) return "(none)";
   return Object.entries(m)
-    .map(([k, v]) => `${k}=${Number.isInteger(v) ? v : v.toFixed(4)}`)
+    .filter(([k]) => shownMetric(k, input))
+    .map(([k, v]) => `${k}=${fmtNum(v)}`)
     .join(", ");
+}
+
+function fmtDeltas(d: Metrics | undefined): string {
+  const parts = Object.entries(d ?? {}).map(([k, v]) => `Δ${k}=${v > 0 ? "+" : ""}${fmtNum(v)}`);
+  return parts.length ? `, ${parts.join(", ")}` : "";
 }
 
 export function reviewerPrompt(input: ReviewInput): string {
   const lines = [
     `<spec>\n${input.spec}\n</spec>`,
     `Round ${input.round} finished. Primary metric: ${input.primaryMetric}. Thresholds: ${JSON.stringify(input.thresholds)}. Gates (caps): ${JSON.stringify(input.gates)}.`,
-    `Kept commit (parent of the next round): ${input.primaryMetric}=${input.parentScore.toFixed(4)}; metrics: ${fmtMetrics(input.parentMetrics)}`,
   ];
+  if (input.objectives.length) {
+    lines.push(
+      `Also optimized, lower is better: ${input.objectives.join(", ")}. Of branches tied on ${input.primaryMetric}, the cheaper, then faster one is kept; ` +
+        `when no branch raises ${input.primaryMetric}, a branch that keeps it and cuts one of these by more than ${Math.round(input.minEfficiencyGain * 100)}% (beyond noise) is kept. ` +
+        `Correctness comes first: propose efficiency hypotheses when ${input.primaryMetric} has stalled or alongside accuracy ones.`,
+    );
+  }
+  lines.push(`Kept commit (parent of the next round): ${input.primaryMetric}=${input.parentScore.toFixed(4)}; metrics: ${fmtMetrics(input.parentMetrics, input)}`);
   if (input.validationGap !== undefined) {
     lines.push(
       `Validation on a held-out fold found overfitting: optimization − validation ${input.primaryMetric} gap = ${input.validationGap.toFixed(4)}. Steer toward changes that generalize.`,
@@ -76,13 +104,13 @@ export function reviewerPrompt(input: ReviewInput): string {
   }
   for (const b of input.results) {
     lines.push(
-      `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${input.primaryMetric}=${b.primary.toFixed(4)}; metrics: ${fmtMetrics(b.metrics)}\nDiff vs parent:\n\`\`\`diff\n${b.diff}\n\`\`\``,
+      `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${input.primaryMetric}=${b.primary.toFixed(4)}; metrics: ${fmtMetrics(b.metrics, input)}\nDiff vs parent:\n\`\`\`diff\n${b.diff}\n\`\`\``,
     );
   }
   if (input.log.length) {
     lines.push(
       "## Hypothesis log (all rounds)\n" +
-        input.log.map((l) => `- r${l.round}: ${l.hypothesis} → Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)} (${l.decision})`).join("\n"),
+        input.log.map((l) => `- r${l.round}: ${l.hypothesis} → Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}${fmtDeltas(l.deltas)} (${l.decision})`).join("\n"),
     );
   }
   lines.push(`Return JSON with feedback and exactly ${input.branches} hypotheses.`);

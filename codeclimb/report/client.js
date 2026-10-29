@@ -52,6 +52,8 @@
     return svg;
   }
   const f3 = (v) => (v == null || Number.isNaN(v) ? "–" : Number(v).toFixed(3));
+  // Small values (a fast program's seconds, a cost per item) keep three significant digits.
+  const fnum = (v) => (v == null || Number.isNaN(v) ? "–" : Number.isInteger(v) ? String(v) : Math.abs(v) < 0.01 && v !== 0 ? Number(v).toPrecision(3) : f3(v));
   const signed = (v) => (v == null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3));
   const usd = (v) => (v == null ? "–" : "$" + Number(v).toFixed(v < 1 ? 3 : 2));
   const secs = (v) => {
@@ -159,9 +161,9 @@
     const svg = s("svg", { viewBox: "0 0 16 16" }, marker(kind, 8, 8, 5));
     return h("span", null, svg, label);
   }
-  function decisionTag(d) {
+  function decisionTag(d, reason) {
     const svg = s("svg", { viewBox: "0 0 12 12" }, marker(d, 6, 6, 5));
-    return h("span", { class: "dec " + d }, svg, d);
+    return h("span", { class: "dec " + d }, svg, d === "keep" && reason === "efficiency" ? "keep · cheaper/faster" : d);
   }
 
   function niceTicks(lo, hi, n) {
@@ -389,12 +391,13 @@
   // ---------- experiments table ----------
   function experimentsTable(night, v) {
     const reviewFor = new Map(night.reviews.map((r) => [r.round, r]));
+    const objectives = (night.config && night.config.objectives) || [];
     const body = [];
     for (let r = 1; r <= v.rounds; r++) {
       const inRound = v.exps.filter((e) => e.round === r);
       const parent = inRound[0] ? v.byId.get(inRound[0].parent_id) : null;
       const kept = inRound.find((e) => e.decision === "keep");
-      body.push(h("tr", { class: "round-row" }, h("td", { colspan: 7 },
+      body.push(h("tr", { class: "round-row" }, h("td", { colspan: 7 + objectives.length },
         h("b", { text: "Round " + r }), "  ·  parent ",
         h("span", { class: "mono", text: parent ? shortId(parent.exp_id, night.id) : "starter" }),
         parent ? " (" + f3(v.score(parent)) + ")" : "",
@@ -409,20 +412,21 @@
           h("td", { class: "hyp" }, h("div", { class: "clip", text: e.hypothesis || "" })),
           h("td", { class: "num", text: e.decision === "error" ? "–" : f3(v.score(e)) }),
           h("td", { class: "num" }, h("span", { class: "delta " + (d > 0 ? "up" : "down"), text: d == null ? "–" : signed(d) })),
-          h("td", null, decisionTag(e.decision)),
+          h("td", null, decisionTag(e.decision, e.keep_reason)),
+          objectives.map((m) => h("td", { class: "num", text: e.decision === "error" ? "–" : fnum(e.metrics[m]) })),
           h("td", { class: "num", text: usd(e.coder_usd) }));
         body.push(tr);
       }
     }
     return h("div", { class: "table-wrap" }, h("table", null,
-      h("thead", null, h("tr", null, h("th", null, h("span", { class: "sr", text: "Select" })), h("th", { text: "Experiment" }), h("th", { text: "Hypothesis / approach" }), h("th", { class: "num", text: P }), h("th", { class: "num", text: "Δ parent" }), h("th", { text: "Decision" }), h("th", { class: "num", text: "Coder $" }))),
+      h("thead", null, h("tr", null, h("th", null, h("span", { class: "sr", text: "Select" })), h("th", { text: "Experiment" }), h("th", { text: "Hypothesis / approach" }), h("th", { class: "num", text: P }), h("th", { class: "num", text: "Δ parent" }), h("th", { text: "Decision" }), objectives.map((m) => h("th", { class: "num", text: m })), h("th", { class: "num", text: "Coder $" }))),
       h("tbody", null, body)));
   }
 
   function evalsTable(night, v) {
     const extra = v.rows.filter((r) => r.kind !== "experiment");
     if (!extra.length) return null;
-    const label = { rescore: "re-score", noise: "noise", validation: "validation", test: "test" };
+    const label = { rescore: "re-score", baseline: "parent baseline", noise: "noise", validation: "validation", test: "test" };
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, h("th", { class: "num", text: "Round" }), h("th", { text: "Eval" }), h("th", { text: "Commit" }), h("th", { text: "Split" }), h("th", { class: "num", text: P }), h("th", { text: "Result" }), h("th", { class: "num", text: "Wall" }))),
       h("tbody", null, extra.map((r) => h("tr", null,
@@ -459,7 +463,7 @@
     return h("section", { class: "card detail", "aria-live": "polite" },
       h("div", { class: "eyebrow", text: isBest ? "Selected · best of the night" : "Selected experiment" }),
       h("h3", { class: "mono", text: e.exp_id }),
-      decisionTag(e.decision),
+      decisionTag(e.decision, e.keep_reason),
       h("dl", { class: "kv" },
         h("dt", { text: P }), h("dd", { text: e.decision === "error" ? "–" : f3(v.score(e)) + (ps == null ? "" : "  (" + signed(v.score(e) - ps) + " vs parent)") }),
         h("dt", { text: "Parent" }), h("dd", { class: "mono", text: parent ? shortId(parent.exp_id, night.id) + " · " + f3(ps) : (e.parent_id || "–") }),
@@ -470,7 +474,7 @@
       h("div", { class: "eyebrow", style: "color: var(--fg-3)", text: e.round === 1 ? "Coder's approach" : "Reviewer's hypothesis" }),
       h("div", { class: "quote", text: e.hypothesis || "–" }),
       h("div", { class: "eyebrow", style: "color: var(--fg-3); margin-top: 12px", text: "Metrics" }),
-      h("div", { class: "metrics" }, metricKeys.map((k) => h("div", null, h("span", { text: k }), h("span", { text: Number.isInteger(e.metrics[k]) ? String(e.metrics[k]) : f3(e.metrics[k]) })))),
+      h("div", { class: "metrics" }, metricKeys.map((k) => h("div", null, h("span", { text: k }), h("span", { text: fnum(e.metrics[k]) })))),
       diff ? h("details", null, h("summary", { text: "Diff vs parent" }), diffPre) : h("div", { class: "muted", text: "No diff available." }));
   }
 

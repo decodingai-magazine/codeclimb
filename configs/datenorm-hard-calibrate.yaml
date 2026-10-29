@@ -24,7 +24,7 @@ thresholds:
   accuracy: 1.0   # unreachable on purpose: calibration ends on max_rounds
 gates:
   schema_violations: 0
-  p95_ms: 50
+  latency_query_p95_ms: 50
 min_gain: 0.01
 overfit_gap: 0.05
 max_validations: 5

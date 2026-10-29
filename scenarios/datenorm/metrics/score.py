@@ -2,26 +2,17 @@
 
     python3 score.py --items <jsonl> --outputs <dir> --out metrics.json
 
-Writes every metric plus `per_item` ({id: 0|1} primary scores).
+Writes every metric plus `per_item` ({id: 0|1} primary scores). Latency is
+codeclimb's standard metric, computed from the runner's timings.jsonl.
 """
 
 import argparse
 import json
-import math
 import os
 import re
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 FAMILIES = ["iso", "numeric", "textual_en", "textual_intl", "ordinal_words", "relative", "embedded", "invalid"]
-
-
-def percentile(values: list[float], p: float) -> float:
-    if not values:
-        return 0.0
-    s = sorted(values)
-    k = (len(s) - 1) * p
-    lo, hi = math.floor(k), math.ceil(k)
-    return s[lo] + (s[hi] - s[lo]) * (k - lo)
 
 
 def main() -> None:
@@ -40,10 +31,10 @@ def main() -> None:
                 o = json.loads(line)
                 outputs[o["id"]] = o
 
-    per_item, violations, latencies = {}, 0, []
+    per_item, violations = {}, 0
     by_family: dict[str, list[int]] = {f: [] for f in FAMILIES}
     answered_null = null_correct = 0
-    for i, item in enumerate(items):
+    for item in items:
         o = outputs.get(item["id"])
         answer, valid = None, False
         if o is not None and o.get("raw") is not None:
@@ -57,8 +48,6 @@ def main() -> None:
                 )
             except json.JSONDecodeError:
                 valid = False
-            if i > 0:  # first answer is a warm-up
-                latencies.append(o["latency_ms"])
         if not valid:
             violations += 1
         score = int(valid and answer == item["gold"])
@@ -74,8 +63,6 @@ def main() -> None:
         **{f"acc_{f}": round(sum(v) / len(v), 4) for f, v in by_family.items() if v},
         "null_precision": round(null_correct / answered_null, 4) if answered_null else 1.0,
         "schema_violations": violations,
-        "p50_ms": round(percentile(latencies, 0.5), 3),
-        "p95_ms": round(percentile(latencies, 0.95), 3),
         "n_items": n,
         "per_item": per_item,
     }

@@ -21,7 +21,7 @@ interface RunResult {
   stderr: Buffer;
 }
 
-function docker(args: string[], opts: { stdin?: Buffer | string; onData?: (b: Buffer) => void } = {}): Promise<RunResult> {
+export function docker(args: string[], opts: { stdin?: Buffer | string; onData?: (b: Buffer) => void } = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
     const out: Buffer[] = [];
@@ -45,6 +45,7 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+// Helper execs run in "/": the image's WORKDIR (/repo) is gone while the evaluator resets.
 class DockerSandbox implements Sandbox {
   constructor(readonly name: string) {}
 
@@ -57,7 +58,7 @@ class DockerSandbox implements Sandbox {
     let timedOut = false;
     let aborted = false;
     const kill = () =>
-      docker(["exec", this.name, "bash", "-c", `kill -KILL -- -$(cat ${pidFile}) 2>/dev/null; true`]).catch(() => undefined);
+      docker(["exec", "-w", "/", this.name, "bash", "-c", `kill -KILL -- -$(cat ${pidFile}) 2>/dev/null; true`]).catch(() => undefined);
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           timedOut = true;
@@ -75,12 +76,12 @@ class DockerSandbox implements Sandbox {
     } finally {
       if (timer) clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
-      void docker(["exec", this.name, "rm", "-f", pidFile]).catch(() => undefined);
+      void docker(["exec", "-w", "/", this.name, "rm", "-f", pidFile]).catch(() => undefined);
     }
   }
 
   async readFile(path: string): Promise<Buffer> {
-    const r = await docker(["exec", this.name, "cat", "--", path]);
+    const r = await docker(["exec", "-w", "/", this.name, "cat", "--", path]);
     if (r.code !== 0) throw new Error(`ENOENT: cannot read ${path}: ${r.stderr.toString().trim()}`);
     return r.stdout;
   }
@@ -88,7 +89,7 @@ class DockerSandbox implements Sandbox {
   async writeFile(path: string, data: Buffer | string): Promise<void> {
     const dir = path.slice(0, path.lastIndexOf("/")) || "/";
     const r = await docker(
-      ["exec", "-i", this.name, "bash", "-c", `mkdir -p ${shellQuote(dir)} && cat > ${shellQuote(path)}`],
+      ["exec", "-i", "-w", "/", this.name, "bash", "-c", `mkdir -p ${shellQuote(dir)} && cat > ${shellQuote(path)}`],
       { stdin: data },
     );
     if (r.code !== 0) throw new Error(`cannot write ${path}: ${r.stderr.toString().trim()}`);
@@ -97,6 +98,12 @@ class DockerSandbox implements Sandbox {
   async isAlive(): Promise<boolean> {
     const r = await docker(["inspect", "-f", "{{.State.Running}}", this.name]);
     return r.code === 0 && r.stdout.toString().trim() === "true";
+  }
+
+  async instanceId(): Promise<string> {
+    const r = await docker(["inspect", "-f", "{{.Id}}", this.name]);
+    if (r.code !== 0) throw new Error(`cannot inspect ${this.name}: ${r.stderr.toString().trim()}`);
+    return r.stdout.toString().trim().slice(0, 12);
   }
 
   async destroy(): Promise<void> {
@@ -117,7 +124,7 @@ export class DockerBackend implements SandboxBackend {
     if (r.code !== 0) throw new Error(`docker run failed: ${r.stderr.toString().trim()}`);
     const sandbox = new DockerSandbox(opts.name);
     try {
-      await cloneInto(sandbox, opts.commit);
+      if (opts.commit) await cloneInto(sandbox, opts.commit);
     } catch (e) {
       await sandbox.destroy();
       throw e;

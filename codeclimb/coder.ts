@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
-import type { NightConfig } from "./config";
+import { efficiencyMetrics, type NightConfig } from "./config";
 import { ExperimentRepo, expRef } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
@@ -73,7 +73,15 @@ export function readSpecText(specDir: string): string {
     .join("\n\n---\n\n");
 }
 
-export function coderPrompt(spec: string, feedback: string, hypothesis: string | null, minutes: number): string {
+const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
+
+export function coderPrompt(
+  spec: string,
+  feedback: string,
+  hypothesis: string | null,
+  minutes: number,
+  objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
+): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec.",
     `<spec>\n${spec}\n</spec>`,
@@ -85,6 +93,12 @@ export function coderPrompt(spec: string, feedback: string, hypothesis: string |
       "How to work:",
       "- Edit the code in /repo and test it yourself by running it on cases you write. You never get the evaluation data.",
       "- Where the spec leaves an interpretation open, choose one deliberately and say which in APPROACH: the per-family metrics of later rounds tell which reading the evaluation uses.",
+      ...(objectives.metrics.length
+        ? [
+            `- The evaluation also measures the program's ${objectives.metrics.map((m) => `${OBJECTIVE_NAMES.find(([re]) => re.test(m))?.[1] ?? m} (${m})`).join(" and ")}, lower is better. ` +
+              `Correctness comes first; a change that keeps ${objectives.primary} and makes the program clearly faster or cheaper also counts.`,
+          ]
+        : []),
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
@@ -203,7 +217,12 @@ export async function runCoder(
     if (remainingMs > 0) {
       const minutes = Math.max(1, Math.round(remainingMs / 60_000));
       await session.prompt(
-        resumed ? RESUME_PROMPT : coderPrompt(readSpecText(cfg.spec_dir), input.feedback, input.hypothesis, minutes),
+        resumed
+          ? RESUME_PROMPT
+          : coderPrompt(readSpecText(cfg.spec_dir), input.feedback, input.hypothesis, minutes, {
+              primary: cfg.primary_metric,
+              metrics: efficiencyMetrics(cfg),
+            }),
       );
     } else {
       stop = "timeout";
