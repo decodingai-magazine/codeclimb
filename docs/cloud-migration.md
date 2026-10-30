@@ -1,6 +1,6 @@
 # Plan: CodeClimb on local Inngest and on Inngest Cloud
 
-Status: 2026-10-30. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Left: a Cloud night end to end from the app.
+Status: 2026-10-30. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Verified: Cloud nights end to end from the app, with and without metering.
 
 This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md`. One codebase runs in two modes, and both stay supported for good. Both run CodeClimb on your machine:
 
@@ -263,4 +263,7 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 - [x] Phase 2: relative config paths; hosting decided against, worker image removed
 - [x] Phase 3 code: worker API, New run / Live night / Nights pages, Stop, export; a local night end to end from the browser
 - [x] Phase 4 code: `npm run tunnel` and tunnel discovery, proxy pinned to 7422 in Cloud mode, `caffeinate` on macOS
-- [ ] A Cloud night from the app (`worker:cloud`, `sandbox: inngest`), and a metered one through the tunnel
+- [x] Cloud nights from the app, verified 2026-10-30 with `npm run worker:cloud`, `npm run tunnel` and `npm run dev`, each started through the app's `POST /api/worker/nights` with `sandbox: inngest`:
+  - `cloud-app1` (`datenorm-smoke`): thresholds after round 1, test accuracy 0.9861, $0.074, no leftover sandboxes. Live branches read through the app while coding; the kept experiment exported as `.tar.gz` through the app.
+  - `cloud-metered1` (`capitals-smoke`): thresholds after round 1, test accuracy 1.0, 4 metered program calls in the test eval, $0.0025. The worker found the ngrok tunnel by itself; 21 chat and 5 op calls went through it, all 200. Without a token the tunnel answers 401, and the API's paths 404.
+  - `caffeinate -i -w <worker pid>` ran for the worker's lifetime.
