@@ -1,0 +1,34 @@
+# Full night: up to 24 rounds × 3 branches on the datenorm scenario, Docker sandboxes,
+# Inngest dev server. Coders: GitHub Copilot Haiku via Pi; reviewer: a different Haiku.
+spec_dir: scenarios/datenorm/spec
+dataset_dir: scenarios/datenorm/dataset
+run_cmd: python3 /eval/run.py
+run_files: [scenarios/datenorm/metrics/run.py]
+score_cmd: python3 scenarios/datenorm/metrics/score.py
+hidden_fields: [family]
+sandbox: docker
+baseline: autocode-base
+max_rounds: 24
+deadline: 8h
+timeouts:
+  experiment_min: 15
+  eval_min: 3
+models:
+  - github-copilot/claude-haiku-5.5
+  - github-copilot/claude-haiku-5.5
+  - github-copilot/claude-haiku-5.5
+reviewer_model: github-copilot/claude-haiku-4.5
+allowed_models: []
+primary_metric: accuracy
+thresholds:
+  accuracy: 0.99
+gates:
+  schema_violations: 0
+  latency_query_p95_ms: 50
+min_gain: 0.02
+overfit_gap: 0.05
+max_validations: 5
+budget_usd:
+  experiment: 1.0
+  night: 40.0
+results_path: runs/datenorm/results.jsonl

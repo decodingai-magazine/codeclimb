@@ -1,0 +1,135 @@
+{"id": "te-000", "text": "2017-08-11", "locale": "US", "family": "iso", "gold": "2017-08-11"}
+{"id": "te-001", "text": "2003-05-17 19:35", "locale": "EU", "family": "iso", "gold": "2003-05-17"}
+{"id": "te-002", "text": "1981.06.23", "locale": "US", "family": "iso", "gold": "1981-06-23"}
+{"id": "te-003", "text": "19761017", "locale": "US", "family": "iso", "gold": "1976-10-17"}
+{"id": "te-004", "text": "20210301", "locale": "EU", "family": "iso", "gold": "2021-03-01"}
+{"id": "te-005", "text": "1992/05/09", "locale": "EU", "family": "iso", "gold": "1992-05-09"}
+{"id": "te-006", "text": "2018-01-07 02:47", "locale": "US", "family": "iso", "gold": "2018-01-07"}
+{"id": "te-007", "text": "5-3-2021", "locale": "US", "family": "numeric", "gold": "2021-05-03"}
+{"id": "te-008", "text": "5-8-1996", "locale": "EU", "family": "numeric", "gold": "1996-08-05"}
+{"id": "te-009", "text": "7/11/2017", "locale": "EU", "family": "numeric", "gold": "2017-11-07"}
+{"id": "te-010", "text": "10/10/1985", "locale": "EU", "family": "numeric", "gold": "1985-10-10"}
+{"id": "te-011", "text": "03-07-2030", "locale": "US", "family": "numeric", "gold": "2030-03-07"}
+{"id": "te-012", "text": "6-10-27", "locale": "EU", "family": "numeric", "gold": "2027-10-06"}
+{"id": "te-013", "text": "2-26-2024", "locale": "US", "family": "numeric", "gold": "2024-02-26"}
+{"id": "te-014", "text": "7th of December, 2008", "locale": "EU", "family": "textual_en", "gold": "2008-12-07"}
+{"id": "te-015", "text": "Monday, October 17, 1988", "locale": "US", "family": "textual_en", "gold": "1988-10-17"}
+{"id": "te-016", "text": "12th of August, 2023", "locale": "US", "family": "textual_en", "gold": "2023-08-12"}
+{"id": "te-017", "text": "Thursday, July 29, 2027", "locale": "EU", "family": "textual_en", "gold": "2027-07-29"}
+{"id": "te-018", "text": "28 February 1989", "locale": "EU", "family": "textual_en", "gold": "1989-02-28"}
+{"id": "te-019", "text": "2016 Jul 09", "locale": "US", "family": "textual_en", "gold": "2016-07-09"}
+{"id": "te-020", "text": "Jul 30th 2003", "locale": "US", "family": "textual_en", "gold": "2003-07-30"}
+{"id": "te-021", "text": "18 dic. 1978", "locale": "EU", "family": "textual_intl", "gold": "1978-12-18"}
+{"id": "te-022", "text": "22 de abr. de 1986", "locale": "EU", "family": "textual_intl", "gold": "1986-04-22"}
+{"id": "te-023", "text": "22 de dic. de 2009", "locale": "EU", "family": "textual_intl", "gold": "2009-12-22"}
+{"id": "te-024", "text": "11 mag. 2005", "locale": "EU", "family": "textual_intl", "gold": "2005-05-11"}
+{"id": "te-025", "text": "15 set. 2034", "locale": "EU", "family": "textual_intl", "gold": "2034-09-15"}
+{"id": "te-026", "text": "2 de diciembre de 2026", "locale": "EU", "family": "textual_intl", "gold": "2026-12-02"}
+{"id": "te-027", "text": "5 DE FEBRERO DE 1994", "locale": "EU", "family": "textual_intl", "gold": "1994-02-05"}
+{"id": "te-028", "text": "the thirty first of October 2027", "locale": "US", "family": "ordinal_words", "gold": "2027-10-31"}
+{"id": "te-029", "text": "March nineteenth, 1988", "locale": "EU", "family": "ordinal_words", "gold": "1988-03-19"}
+{"id": "te-030", "text": "September twenty-sixth 2032", "locale": "US", "family": "ordinal_words", "gold": "2032-09-26"}
+{"id": "te-031", "text": "the twenty eighth of September 1998", "locale": "US", "family": "ordinal_words", "gold": "1998-09-28"}
+{"id": "te-032", "text": "the second of July 1994", "locale": "US", "family": "ordinal_words", "gold": "1994-07-02"}
+{"id": "te-033", "text": "October fifth 2015", "locale": "US", "family": "ordinal_words", "gold": "2015-10-05"}
+{"id": "te-034", "text": "May twenty-fifth 1978", "locale": "EU", "family": "ordinal_words", "gold": "1978-05-25"}
+{"id": "te-035", "text": "in 4 days", "locale": "US", "family": "relative", "gold": "2024-06-19"}
+{"id": "te-036", "text": "In 17 days", "locale": "EU", "family": "relative", "gold": "2024-07-02"}
+{"id": "te-037", "text": "in 4 months", "locale": "US", "family": "relative", "gold": "2024-10-15"}
+{"id": "te-038", "text": "a couple of weeks from now", "locale": "US", "family": "relative", "gold": "2024-06-29"}
+{"id": "te-039", "text": "seven weeks ago", "locale": "EU", "family": "relative", "gold": "2024-04-27"}
+{"id": "te-040", "text": "in 15 days", "locale": "US", "family": "relative", "gold": "2024-06-30"}
+{"id": "te-041", "text": "a couple of weeks ago", "locale": "US", "family": "relative", "gold": "2024-06-01"}
+{"id": "te-042", "text": "Meeting moved to 2028-02-24 at 12:45", "locale": "US", "family": "embedded", "gold": "2028-02-24"}
+{"id": "te-043", "text": "v6.13.14 released 10th of November, 2004", "locale": "US", "family": "embedded", "gold": "2004-11-10"}
+{"id": "te-044", "text": "Invoice #69334 issued on 15.1.1996 for $6799.07", "locale": "EU", "family": "embedded", "gold": "1996-01-15"}
+{"id": "te-045", "text": "Paid 7716.05 EUR on 2018-07-20, ref 91239", "locale": "US", "family": "embedded", "gold": "2018-07-20"}
+{"id": "te-046", "text": "v6.19.19 released 2017-07-07", "locale": "EU", "family": "embedded", "gold": "2017-07-07"}
+{"id": "te-047", "text": "Call 555-8641 before 1/10/1997.", "locale": "EU", "family": "embedded", "gold": "1997-10-01"}
+{"id": "te-048", "text": "Meeting moved to 02/29/1992 at 6:15", "locale": "US", "family": "embedded", "gold": "1992-02-29"}
+{"id": "te-049", "text": "59/2/1992", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-050", "text": "04/31/2001", "locale": "US", "family": "invalid", "gold": null}
+{"id": "te-051", "text": "the fifth Friday of February 2006", "locale": "US", "family": "invalid", "gold": null}
+{"id": "te-052", "text": "30 février 2012", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-053", "text": "part no. W46-2", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-054", "text": "February 2006 newsletter, issue 28", "locale": "US", "family": "invalid", "gold": null}
+{"id": "te-055", "text": "63/12/1997", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-056", "text": "Q3 1994 results", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-057", "text": "Augustine 23, 1990", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-058", "text": "Q3 1990 results", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-059", "text": "29. Februar 1997", "locale": "EU", "family": "invalid", "gold": null}
+{"id": "te-060", "text": "August 2009 newsletter, issue 11", "locale": "US", "family": "invalid", "gold": null}
+{"id": "te-061", "text": "fête du travail, 2033", "locale": "US", "family": "holiday", "gold": "2033-05-01"}
+{"id": "te-062", "text": "on labor day 2015", "locale": "US", "family": "holiday", "gold": "2015-09-07"}
+{"id": "te-063", "text": "Independence Day, 1994", "locale": "US", "family": "holiday", "gold": "1994-07-04"}
+{"id": "te-064", "text": "Fête du Travail 2013", "locale": "US", "family": "holiday", "gold": "2013-05-01"}
+{"id": "te-065", "text": "saint patrick's day, 2030", "locale": "EU", "family": "holiday", "gold": "2030-03-17"}
+{"id": "te-066", "text": "Tag der Deutschen Einheit of 2005", "locale": "US", "family": "holiday", "gold": "2005-10-03"}
+{"id": "te-067", "text": "veterans day 2017", "locale": "EU", "family": "holiday", "gold": "2017-11-11"}
+{"id": "te-068", "text": "Independence Day 2031", "locale": "US", "family": "holiday", "gold": "2031-07-04"}
+{"id": "te-069", "text": "Boxing Day in 2004", "locale": "EU", "family": "holiday", "gold": "2004-12-26"}
+{"id": "te-070", "text": "Ostern in 1991", "locale": "EU", "family": "holiday", "gold": "1991-03-31"}
+{"id": "te-071", "text": "new year's eve of 2032", "locale": "US", "family": "holiday", "gold": "2032-12-31"}
+{"id": "te-072", "text": "Fête du Travail, 2029", "locale": "US", "family": "holiday", "gold": "2029-05-01"}
+{"id": "te-073", "text": "shrove tuesday 2009", "locale": "EU", "family": "holiday", "gold": "2009-02-24"}
+{"id": "te-074", "text": "on Silvester 2004", "locale": "EU", "family": "holiday", "gold": "2004-12-31"}
+{"id": "te-075", "text": "the 2nd Wed of May 2009", "locale": "EU", "family": "nth_weekday", "gold": "2009-05-13"}
+{"id": "te-076", "text": "the last Sunday of March 1991", "locale": "US", "family": "nth_weekday", "gold": "1991-03-31"}
+{"id": "te-077", "text": "the last Wednesday of May 2033", "locale": "EU", "family": "nth_weekday", "gold": "2033-05-25"}
+{"id": "te-078", "text": "fourth Wednesday in May 2018", "locale": "EU", "family": "nth_weekday", "gold": "2018-05-23"}
+{"id": "te-079", "text": "Last Saturday of Jul 1993", "locale": "US", "family": "nth_weekday", "gold": "1993-07-31"}
+{"id": "te-080", "text": "the last Monday in Aug, 2035", "locale": "US", "family": "nth_weekday", "gold": "2035-08-27"}
+{"id": "te-081", "text": "Last Saturday of October 2022", "locale": "US", "family": "nth_weekday", "gold": "2022-10-29"}
+{"id": "te-082", "text": "the last Friday in Jul, 2033", "locale": "US", "family": "nth_weekday", "gold": "2033-07-29"}
+{"id": "te-083", "text": "the 3rd Thursday of Jan 2032", "locale": "EU", "family": "nth_weekday", "gold": "2032-01-15"}
+{"id": "te-084", "text": "second Friday in Apr 2025", "locale": "EU", "family": "nth_weekday", "gold": "2025-04-11"}
+{"id": "te-085", "text": "the last Monday of February 2029", "locale": "US", "family": "nth_weekday", "gold": "2029-02-26"}
+{"id": "te-086", "text": "Last Saturday of August 2016", "locale": "US", "family": "nth_weekday", "gold": "2016-08-27"}
+{"id": "te-087", "text": "next June 8", "locale": "US", "family": "yearless", "gold": "2025-06-08"}
+{"id": "te-088", "text": "the 10th of November", "locale": "EU", "family": "yearless", "gold": "2024-11-10"}
+{"id": "te-089", "text": "on October 5", "locale": "EU", "family": "yearless", "gold": "2024-10-05"}
+{"id": "te-090", "text": "last Mar. 11", "locale": "US", "family": "yearless", "gold": "2024-03-11"}
+{"id": "te-091", "text": "by November 5", "locale": "EU", "family": "yearless", "gold": "2024-11-05"}
+{"id": "te-092", "text": "next 21 June", "locale": "US", "family": "yearless", "gold": "2024-06-21"}
+{"id": "te-093", "text": "since last 28 November", "locale": "US", "family": "yearless", "gold": "2023-11-28"}
+{"id": "te-094", "text": "30 April", "locale": "EU", "family": "yearless", "gold": "2025-04-30"}
+{"id": "te-095", "text": "next the 10th of March", "locale": "EU", "family": "yearless", "gold": "2025-03-10"}
+{"id": "te-096", "text": "since last Oct. 11", "locale": "EU", "family": "yearless", "gold": "2023-10-11"}
+{"id": "te-097", "text": "on the 19th of April", "locale": "US", "family": "yearless", "gold": "2025-04-19"}
+{"id": "te-098", "text": "on July 31", "locale": "EU", "family": "yearless", "gold": "2024-07-31"}
+{"id": "te-099", "text": "Order placed 6.8.2024; deliver by 2025-07-02", "locale": "EU", "family": "multi_date", "gold": "2025-07-02"}
+{"id": "te-100", "text": "Invoice dated 2002-10-15, payment due 02/10/2002", "locale": "US", "family": "multi_date", "gold": "2002-02-10"}
+{"id": "te-101", "text": "Contract signed Jan. 23, 2024, expires 02.09.2024", "locale": "EU", "family": "multi_date", "gold": "2024-09-02"}
+{"id": "te-102", "text": "Submitted on 3/9/2019. Deadline: Thursday, February 8, 2018.", "locale": "US", "family": "multi_date", "gold": "2018-02-08"}
+{"id": "te-103", "text": "Created Thursday, August 2, 2001, valid until 01.25.2002", "locale": "US", "family": "multi_date", "gold": "2002-01-25"}
+{"id": "te-104", "text": "Due 2020-02-29 (issued December 7, 2020)", "locale": "US", "family": "multi_date", "gold": "2020-02-29"}
+{"id": "te-105", "text": "Created 2024-10-27, valid until 2023-10-21", "locale": "EU", "family": "multi_date", "gold": "2023-10-21"}
+{"id": "te-106", "text": "Order placed june 4 2017; deliver by Dec 1st 2016", "locale": "US", "family": "multi_date", "gold": "2016-12-01"}
+{"id": "te-107", "text": "Contract signed 2009-02-17, expires july 4 2008", "locale": "US", "family": "multi_date", "gold": "2008-07-04"}
+{"id": "te-108", "text": "Submitted on 1995-11-19. Deadline: 16.1.1996.", "locale": "EU", "family": "multi_date", "gold": "1996-01-16"}
+{"id": "te-109", "text": "Postponed to 27-9-2008 (was 20.12.2007)", "locale": "EU", "family": "multi_date", "gold": "2008-09-27"}
+{"id": "te-110", "text": "Order placed 2003-10-04; deliver by 2004-08-11", "locale": "EU", "family": "multi_date", "gold": "2004-08-11"}
+{"id": "te-111", "text": "octiber 7, 2035", "locale": "US", "family": "fuzzy", "gold": "2035-10-07"}
+{"id": "te-112", "text": "11 Aiguust 2033", "locale": "US", "family": "fuzzy", "gold": "2033-08-11"}
+{"id": "te-113", "text": "20 augaast 2028", "locale": "US", "family": "fuzzy", "gold": "2028-08-20"}
+{"id": "te-114", "text": "Deceber 21, 2015", "locale": "EU", "family": "fuzzy", "gold": "2015-12-21"}
+{"id": "te-115", "text": "7 Agist 2022", "locale": "EU", "family": "fuzzy", "gold": "2022-08-07"}
+{"id": "te-116", "text": "auguts 28, 2019", "locale": "US", "family": "fuzzy", "gold": "2019-08-28"}
+{"id": "te-117", "text": "12 Januayr 1978", "locale": "EU", "family": "fuzzy", "gold": "1978-01-12"}
+{"id": "te-118", "text": "16 auust 1989", "locale": "US", "family": "fuzzy", "gold": "1989-08-16"}
+{"id": "te-119", "text": "Decebmer 30, 1980", "locale": "US", "family": "fuzzy", "gold": "1980-12-30"}
+{"id": "te-120", "text": "21 Augast 2004", "locale": "EU", "family": "fuzzy", "gold": "2004-08-21"}
+{"id": "te-121", "text": "Auguust 28, 2006", "locale": "EU", "family": "fuzzy", "gold": "2006-08-28"}
+{"id": "te-122", "text": "28 Januiary 2023", "locale": "EU", "family": "fuzzy", "gold": "2023-01-28"}
+{"id": "te-123", "text": "2031-W33-3T18:00", "locale": "EU", "family": "week_date", "gold": "2031-08-13"}
+{"id": "te-124", "text": "2016-W37-1", "locale": "EU", "family": "week_date", "gold": "2016-09-12"}
+{"id": "te-125", "text": "1999-W21-7T07:00", "locale": "US", "family": "week_date", "gold": "1999-05-30"}
+{"id": "te-126", "text": "day 19 of 1996", "locale": "US", "family": "week_date", "gold": "1996-01-19"}
+{"id": "te-127", "text": "2035-W07-1T03:00", "locale": "EU", "family": "week_date", "gold": "2035-02-12"}
+{"id": "te-128", "text": "2027W182", "locale": "EU", "family": "week_date", "gold": "2027-05-04"}
+{"id": "te-129", "text": "2013-W34-6T04:00", "locale": "US", "family": "week_date", "gold": "2013-08-24"}
+{"id": "te-130", "text": "2002-W01-8", "locale": "EU", "family": "week_date", "gold": null}
+{"id": "te-131", "text": "day 158 of 2016", "locale": "US", "family": "week_date", "gold": "2016-06-06"}
+{"id": "te-132", "text": "2024-W53-2", "locale": "EU", "family": "week_date", "gold": null}
+{"id": "te-133", "text": "2009W313", "locale": "US", "family": "week_date", "gold": "2009-07-29"}
+{"id": "te-134", "text": "1994W487", "locale": "EU", "family": "week_date", "gold": "1994-12-04"}

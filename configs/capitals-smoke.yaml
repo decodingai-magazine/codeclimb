@@ -1,0 +1,34 @@
+# Metering smoke night: a tiny scenario whose program calls a model through the
+# metering proxy, so cost metrics are real. Docker sandboxes, Inngest dev server.
+# Build the image first: npm run build:baseline && npm run build:baseline:capitals
+spec_dir: scenarios/capitals/spec
+dataset_dir: scenarios/capitals/dataset
+run_cmd: python3 /eval/run.py
+run_files: [scenarios/capitals/metrics/run.py]
+score_cmd: python3 scenarios/capitals/metrics/score.py
+sandbox: docker
+baseline: autocode-base-capitals
+max_rounds: 1
+deadline: 1h
+timeouts:
+  experiment_min: 5
+  eval_min: 5
+models:
+  - github-copilot/claude-haiku-5.5
+reviewer_model: github-copilot/claude-sonnet-5
+# The models the built program may call (through the metering proxy).
+allowed_models: [github-copilot/claude-haiku-4.5]
+primary_metric: accuracy
+thresholds:
+  accuracy: 1.0
+gates:
+  schema_violations: 0
+min_gain: 0.01
+overfit_gap: 0.25
+max_validations: 1
+budget_usd:
+  experiment: 0.5
+  night: 2.0
+  eval: 0.1
+  dev: 0.05   # the coder's runs of the program while it develops
+results_path: runs/capitals-smoke/results.jsonl
