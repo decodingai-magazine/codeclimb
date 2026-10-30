@@ -203,7 +203,8 @@ export class MeterProxy {
     return ledger.calls;
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  /** The request handler, also mounted at /v1 on the worker API's port. */
+  async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const path = (req.url ?? "").split("?")[0].replace(/\/+$/, "");
       const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/_op": "op" }[path];

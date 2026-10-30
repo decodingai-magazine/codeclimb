@@ -6,7 +6,7 @@
 // running step.
 import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
-import { sweepNight, sweepRun } from "../../codeclimb/cleanup";
+import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
 import { efficiencyMetrics, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
@@ -321,6 +321,7 @@ export const onNightStop = ccInngest.createFunction(
   async ({ event, step }) => {
     const aborted = await step.run("abort-pi", () => abortNight(event.data.night_id));
     const swept = await step.run("sweep", () => sweepNight(event.data.night_id));
+    await step.run("mark-stopped", () => markStopped(event.data.night_id, event.data.reason ?? "stop"));
     return { aborted, swept };
   },
 );

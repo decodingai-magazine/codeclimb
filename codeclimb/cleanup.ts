@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { sandboxPrefix } from "./paths";
 import { reachableBackends } from "./sandbox";
 import type { SandboxBackend } from "./sandbox/types";
@@ -18,4 +20,16 @@ export function sweepNight(nightId: string): Promise<number> {
 /** Destroy the sandboxes a (cancelled) Inngest run created. */
 export function sweepRun(runId: string): Promise<number> {
   return sweepAll({ label: ["cc.run", runId] });
+}
+
+/** Record a stop in the night's folder (`stop.json`), for the app's status. A finished night is left alone. */
+export function markStopped(nightId: string, reason: string): void {
+  const runs = join(process.env.CODECLIMB_ROOT ?? process.cwd(), "runs");
+  if (!existsSync(runs)) return;
+  for (const scenario of readdirSync(runs)) {
+    const dir = join(runs, scenario, "nights", nightId);
+    if (existsSync(join(dir, "night.json")) && !existsSync(join(dir, "done.json"))) {
+      writeFileSync(join(dir, "stop.json"), JSON.stringify({ at: new Date().toISOString(), reason }));
+    }
+  }
 }

@@ -70,6 +70,9 @@ interface CodeState {
   tokens: number;
   tCode: number;
   tProvision: number;
+  /** Set when Pi stops (the app's live view: coding vs waiting for the evaluator). */
+  finishedAt?: number;
+  stop?: StopReason;
 }
 
 const secs = (ms: number) => Math.round(ms / 10) / 100;
@@ -280,6 +283,9 @@ export async function runCoder(
     save();
   }
   stop ??= agentError ? "agent_error" : "done";
+  state.finishedAt = Date.now();
+  state.stop = stop;
+  save();
 
   const hypothesis = input.hypothesis || parseApproach(session.getLastAssistantText() ?? "");
   session.dispose();
