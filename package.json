@@ -13,6 +13,7 @@
     "run-night": "INNGEST_DEV=1 tsx scripts/run-night.ts",
     "worker:cloud": "CODECLIMB_ENV=cloud tsx --import @inngest/otel/node scripts/worker.ts",
     "run-night:cloud": "CODECLIMB_ENV=cloud tsx scripts/run-night.ts",
+    "tunnel": "ngrok http 127.0.0.1:${CODECLIMB_PROXY_PORT:-7422}",
     "validate-results": "tsx scripts/validate-results.ts",
     "build:baseline": "docker build -t autocode-base scenarios/datenorm",
     "build:dataset": "python3 scenarios/datenorm/tools/build_dataset.py --out scenarios/datenorm/dataset",

@@ -4,10 +4,14 @@
 // metering proxy at /v1) on CODECLIMB_API_PORT, default 7421.
 //   npm run worker
 import "../codeclimb/env";
+import { spawn } from "node:child_process";
 import { connect } from "inngest/connect";
 import { serveApi } from "../codeclimb/api";
 import { ccInngest } from "../inngest/codeclimb/client";
 import { codeclimbFunctions } from "../inngest/codeclimb/functions";
+
+// A night runs on this machine, so on macOS it must not idle-sleep while the worker is up.
+if (process.platform === "darwin") spawn("caffeinate", ["-i", "-w", String(process.pid)], { stdio: "ignore" }).unref();
 
 const connection = await connect({
   apps: [{ client: ccInngest, functions: codeclimbFunctions }],

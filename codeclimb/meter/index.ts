@@ -24,16 +24,31 @@ export function meterEnv(token: string, baseUrl: string): Record<string, string>
 /**
  * The proxy's URL as a metered sandbox sees it. Docker: the relay on the metering network, made
  * sure of first. Inngest: sandboxes sit on the internet, so the proxy must be published at a public
- * URL (CODECLIMB_METER_URL, ending in /v1); the per-ledger tokens are what guard it.
+ * URL: CODECLIMB_METER_URL (ending in /v1), else the ngrok tunnel `npm run tunnel` opens to the
+ * proxy's port. The per-ledger tokens are what guard it.
  */
 export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "baseline">): Promise<string> {
   if (cfg.sandbox === "inngest") {
-    const url = process.env.CODECLIMB_METER_URL;
-    if (!url) throw new Error("a metered night on Inngest sandboxes needs CODECLIMB_METER_URL: a public URL to this worker's metering proxy (…/v1)");
+    const tunnel = process.env.CODECLIMB_METER_URL ? undefined : await ngrokUrl((await meter()).port);
+    const url = process.env.CODECLIMB_METER_URL ?? (tunnel && `${tunnel}/v1`);
+    if (!url) {
+      throw new Error("a metered night on Inngest sandboxes needs the metering proxy at a public URL: run `npm run tunnel`, or set CODECLIMB_METER_URL (…/v1)");
+    }
     return url.replace(/\/$/, "");
   }
   await ensureMeterPath(cfg.baseline, (await meter()).port);
   return RELAY_URL;
+}
+
+/** The https URL of an ngrok tunnel to `port`, from ngrok's local API (`npm run tunnel`), if one is up. */
+async function ngrokUrl(port: number): Promise<string | undefined> {
+  try {
+    const res = await fetch("http://127.0.0.1:4040/api/tunnels", { signal: AbortSignal.timeout(2000) });
+    const { tunnels } = (await res.json()) as { tunnels: { public_url: string; config: { addr: string } }[] };
+    return tunnels.find((t) => t.public_url.startsWith("https://") && /:(\d+)$/.exec(t.config.addr)?.[1] === String(port))?.public_url;
+  } catch {
+    return undefined;
+  }
 }
 
 let proxy: Promise<MeterProxy> | undefined;
