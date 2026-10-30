@@ -62,7 +62,7 @@ In dev mode the SDK sends `inngest.sandboxes` calls to the dev server, which run
    - A process keeps about 512 KiB of output.
    - Files transfer through the direct client (up to 100 MiB) at about 100 KB/s: 3 MiB takes about 35 s. Bundles and outputs are small, so this is fine. `files.upload` doesn't create parent directories.
    - The SDK's base64 check overflows the stack on multi-MiB command output, so `readFile` inlines files up to 64 KiB and downloads bigger ones.
-   - One hour of active runtime per sandbox, then an automatic pause. The docs (2026-10) say it can't be raised, paused time doesn't count, and resume restores memory, processes and the *remaining* runtime, so resuming doesn't reset the clock.
+   - One hour of active runtime per sandbox, then an automatic pause. The docs (2026-10) say it can't be raised, paused time doesn't count, and resume restores memory, processes and the *remaining* runtime, so resuming doesn't reset the clock. Measured 2026-10-30: a 1 vCPU sandbox running a loop stayed RUNNING for 78 minutes and never paused, so the limit wasn't enforced then. The docs also say the pause's timing isn't guaranteed. The guards below stay, since the limit is documented.
    - A snapshot takes about 16 s for a 2 GiB sandbox (30 MB stored, kept 24 h), and the source keeps running. A sandbox created from it starts in 1 to 3 s with files, environment and running processes intact, under any free name, including its source's after that one is destroyed.
    - A sandbox normally starts in 1.5 s. Once, three starts hung in STARTING with "sandbox launch result is unknown", so `create` replaces a sandbox that isn't running after 45 s.
    - `list()` returns terminated sandboxes too, so sweeps page through the whole history.
@@ -240,7 +240,7 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 ## 8. Questions for Inngest
 
 1. ~~Is the workspace on Pro with Sandboxes beta access?~~ Yes. How many concurrent sandboxes can we run? (3 tested.)
-2. ~~Is the active runtime 1 hour (docs) or 24 hours (pricing)?~~ One hour, per the docs; it can't be raised. Does a sandbox created from a snapshot start a fresh hour?
+2. ~~Is the active runtime 1 hour (docs) or 24 hours (pricing)?~~ One hour, per the docs; it can't be raised. But a sandbox ran 78 minutes without pausing (2026-10-30, 09:03–10:21 UTC). Is the limit enforced yet, and when will it be? Does a sandbox created from a snapshot start a fresh hour? (That test was inconclusive, since its source never paused.)
 3. Can egress be restricted to an allowlist?
 4. Is image-build access (`create_build` → `image.custom()`) available?
 5. ~~Which processes in the sandbox VM belong to the guest agent?~~ PIDs 1, 8, 9, 10, named `init`.
