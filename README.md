@@ -30,7 +30,7 @@ Open http://localhost:8288. **Apps** should list `codeclimb` and **Functions** s
 
 The whole app sits behind HTTP Basic Auth (`proxy.ts`), with one user. Your browser asks for the login once per session.
 
-- Credentials come from `CODECLIMB_USER` and `CODECLIMB_PASSWORD`, which live in `.env.local` locally and in the project's environment variables on Vercel.
+- Credentials come from `CODECLIMB_USER` and `CODECLIMB_PASSWORD`, which live in `.env.local`.
 - With either variable unset, every request gets 401.
 - `/api/inngest` stays open, because Inngest signs its own requests.
 - To make a new password: `openssl rand -base64 48 | tr '+/' '-_' | tr -d '='`.
@@ -68,7 +68,8 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
-- It runs on the **local Inngest dev server** or on **Inngest Cloud** (see [Run on Inngest Cloud](#run-on-inngest-cloud)), with **Docker sandboxes** or **Inngest Sandboxes**. The worker runs on your machine or on a host (see [Host the worker and the app](#host-the-worker-and-the-app)); [docs/cloud-migration.md](docs/cloud-migration.md) tracks the migration.
+- It runs on your machine in two modes: the **local Inngest dev server** with **Docker sandboxes**, or **Inngest Cloud** with **Inngest Sandboxes** (see [Run on Inngest Cloud](#run-on-inngest-cloud)). Inngest Cloud keeps a night durable, and the sandboxes run the coders' commands and the evaluations. [docs/cloud-migration.md](docs/cloud-migration.md) tracks the migration.
+- It's headless: the worker's API is the interface, and the Next.js app is one client of it (see [The app](#the-app-prepare-watch-stop-export)).
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
 
@@ -156,6 +157,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 - Cloud mode refuses to start if a key is missing or if `INNGEST_DEV` is set, because the SDK would quietly use the dev server instead.
 - Runs, traces and scores appear in the Inngest dashboard under the `codeclimb-worker` app.
 - The local and cloud workers can run at the same time, since each one only sees its own Inngest.
+- The worker runs the night, so the machine must stay on and online until it ends. On macOS the worker holds `caffeinate -i`, so the Mac doesn't idle-sleep (closing the lid still sleeps it). If the worker drops off, Inngest Cloud keeps the run and retries the step once it reconnects, and a coder resumes its Pi session. Its sandbox keeps running meanwhile, which counts against its hour.
 
 #### Inngest Sandboxes
 
@@ -164,11 +166,11 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 - **Setup.** Each sandbox gets `/spec` uploaded from `spec_dir` and the git defaults the Docker baseline bakes in, so `baseline` is ignored.
 - **One hour per sandbox.** Inngest pauses a sandbox after one hour of active runtime, and the limit can't be raised. Coders get a new sandbox per experiment, and `timeouts.experiment_min` and `timeouts.eval_min` may be at most 50 on `inngest`. A round's evaluator is replaced by a new one before a candidate that might not finish in its hour, and latency is compared only between candidates on the same evaluator.
 - **Network.** Egress is open (the beta has no allowlist). Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
-- **Metering.** Sandboxes reach the proxy at a public URL, `CODECLIMB_METER_URL` (ending in `/v1`), instead of the Docker relay. From the laptop, pin the port and tunnel it for the night:
+- **Metering.** Sandboxes can't reach `localhost`, so with `allowed_models` the proxy needs a public URL. Cloud mode pins it to port 7422 (`CODECLIMB_PROXY_PORT`), `npm run tunnel` publishes it with ngrok, and the worker finds the tunnel through ngrok's local API. `CODECLIMB_METER_URL` (ending in `/v1`) overrides that with any other tunnel. Only `/v1` is published, and each call needs its evaluation's token, which carries a budget cap.
 
   ```bash
-  ngrok http 8787                                                                  # terminal 1
-  CODECLIMB_PROXY_PORT=8787 CODECLIMB_METER_URL=https://<id>.ngrok-free.app/v1 npm run worker:cloud
+  npm run tunnel                                                                   # terminal 1: needs a free ngrok account
+  npm run worker:cloud                                                             # terminal 2
   npm run run-night:cloud -- --config configs/capitals-smoke.yaml --sandbox inngest
   ```
 
@@ -195,24 +197,7 @@ The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) nex
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
 | `GET /api/nights/:id/export/:exp?format=tar.gz\|bundle` | Download an experiment |
 
-Locally the API needs no token and binds to loopback. Anywhere else, set `CODECLIMB_WORKER_TOKEN` on the worker and the app (`CODECLIMB_WORKER_URL` points the app at it).
-
-### Host the worker and the app
-
-The worker must be a long-running process, so it goes on an always-on host, and the app on Vercel. `Dockerfile.worker` builds the worker: Node 24, git, python3 and the scenarios, serving the API and proxy on `$PORT`, with Inngest Sandboxes and no Docker inside.
-
-1. **Worker host** (Fly.io, Railway, Render): one instance, built from `Dockerfile.worker`, with a volume at `/app/runs` and a public HTTPS URL. Environment:
-   - `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`
-   - `CODECLIMB_WORKER_TOKEN`: a long random string, also set on Vercel
-   - `CODECLIMB_METER_URL`: `https://<worker host>/v1`, for scenarios with `allowed_models`
-   - Model credentials: `COPILOT_GITHUB_TOKEN` for the `github-copilot` models the configs use, or API keys (`ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY`) with matching models set in New run
-   - `CODECLIMB_WORKER_ID`: optional instance name
-2. **Vercel**: import the repo and set `CODECLIMB_USER`, `CODECLIMB_PASSWORD`, `CODECLIMB_WORKER_URL` (the worker's URL) and `CODECLIMB_WORKER_TOKEN`.
-3. Start nights from the app with sandbox `inngest`. Redeploy the worker only between nights: a worker on newer code can't replay a night started by older code.
-
-```bash
-docker build -f Dockerfile.worker -t codeclimb-worker .   # what the host builds
-```
+The API needs no token on loopback, which is how the app and the CLI use it. To reach it from another machine or integrate CodeClimb into something else, set `CODECLIMB_API_HOST` and `CODECLIMB_WORKER_TOKEN` on the worker, and `CODECLIMB_WORKER_URL` and `CODECLIMB_WORKER_TOKEN` on the app. Every request but `/v1` then needs the token as a bearer.
 
 ### Standard metrics: latency and cost
 
@@ -307,7 +292,6 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
 | `codeclimb/api.ts` | The worker API (and `/v1` metering proxy mount) the app reads |
 | `app/` | The Next.js app: Nights, New run, Live night, and the `/api/worker` proxy |
-| `Dockerfile.worker` | The hosted worker's image |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
 | `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |

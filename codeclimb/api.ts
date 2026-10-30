@@ -1,7 +1,7 @@
 // The worker's HTTP API, the app's only backend: scenarios to start from, the
 // nights on this worker's disk (summaries, live branches, the report page),
-// start, stop and export. It also mounts the metering proxy at /v1, so a hosted
-// worker needs one public port. Every request but /v1 needs the bearer token
+// start, stop and export: CodeClimb's headless interface. It also mounts the
+// metering proxy at /v1. Every request but /v1 needs the bearer token
 // (CODECLIMB_WORKER_TOKEN); without one the API only binds to loopback.
 import { spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";

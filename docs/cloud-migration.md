@@ -1,28 +1,30 @@
 # Plan: CodeClimb on local Inngest and on Inngest Cloud
 
-Status: 2026-10-30. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), and the code for Phases 2 and 3 (worker image, worker API, the app), verified locally. Left: creating the worker host and the Vercel project, then a night end to end in Cloud mode.
+Status: 2026-10-30. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Left: a Cloud night end to end from the app.
 
-This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md` and adds a Vercel app. One codebase runs in two modes, and both stay supported for good:
+This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md`. One codebase runs in two modes, and both stay supported for good. Both run CodeClimb on your machine:
 
-- **Local:** the Inngest dev server, a worker on your laptop, Docker sandboxes, and the app on `localhost`. This is how it runs today.
-- **Cloud:** Inngest Cloud, a worker on an always-on host, Inngest Sandboxes, and the app on Vercel.
+- **Local:** the Inngest dev server, the worker, Docker sandboxes, and the app on `localhost`.
+- **Cloud:** Inngest Cloud for durability, the same worker on your machine, Inngest Sandboxes, and the same app on `localhost`.
+
+CodeClimb is headless: the worker's API is the interface, and the app is one client of it. Something else can integrate later through that API or by sending `codeclimb/night.start` and `codeclimb/night.stop`.
 
 ## 1. The two modes
 
 | Piece | Local | Cloud |
 |---|---|---|
 | Orchestration | Inngest dev server (`npm run dev:inngest`, port 8288) | Inngest Cloud (Pro), `production` environment |
-| Function code | Worker on the laptop: `connect()` to the dev server | Worker on an always-on host (Fly.io, Railway or Render, with a volume): `connect()` to Cloud |
+| Function code | Worker on your machine: `connect()` to the dev server | Worker on your machine: `connect()` to Cloud (`npm run worker:cloud`), holding `caffeinate` on macOS |
 | Sandboxes | Docker (`sandbox: docker`) | Inngest Sandboxes (`sandbox: inngest`) |
-| Metering proxy | Worker on `127.0.0.1`, reached through the `cc-meter` Docker network and relay | Worker on a public HTTPS URL (`CODECLIMB_METER_URL`) |
-| App | `next dev` on `localhost:3000` | Vercel |
-| App → worker API | `http://127.0.0.1:7421` | The worker's public HTTPS URL |
-| State (`runs/`) | Laptop disk | The worker host's volume |
-| Models | Any Pi provider, including Copilot through `~/.pi/agent/auth.json` | API-key providers: `opencode-go` / `opencode` (the spec's choice), `anthropic`, `openrouter` |
-| Login | Basic Auth (`proxy.ts`), credentials from `.env.local` | Basic Auth, credentials from Vercel environment variables |
+| Metering proxy | Worker on `127.0.0.1`, reached through the `cc-meter` Docker network and relay | Worker on port 7422, published by `npm run tunnel` (ngrok) or `CODECLIMB_METER_URL` |
+| App | `next dev` on `localhost:3000` | Same |
+| App → worker API | `http://127.0.0.1:7421` | Same |
+| State (`runs/`) | Your disk | Same |
+| Models | Any Pi provider, including Copilot through `~/.pi/agent/auth.json` | Same |
+| Login | Basic Auth (`proxy.ts`), credentials from `.env.local` | Same |
 | Agent tooling | `inngest-dev` MCP (`.mcp.json`) | Inngest Cloud MCP plugin |
 
-The worker runs Pi, `score_cmd` and the proxy in both modes. Inngest, whether the dev server or Cloud, never runs CodeClimb's code: it calls the worker. A coder step holds a Pi session for `timeouts.experiment_min` (15 minutes), so the worker has to be a long-running process. Vercel can't host that, and Vercel can't run `connect()`.
+The worker runs Pi, `score_cmd` and the proxy in both modes. Inngest, whether the dev server or Cloud, never runs CodeClimb's code: it calls the worker. A coder step holds a Pi session for `timeouts.experiment_min`, so the worker is a long-running process, and your machine must stay on and online until a night ends. If the worker drops off, Inngest Cloud keeps the run and retries the step when it reconnects.
 
 ### How each piece picks its mode
 
@@ -35,7 +37,6 @@ Every switch already exists or is one environment variable. There's no mode flag
 - **Env files.**
   - Local values stay in `.env.local`.
   - Cloud values for running from the laptop go in `.env.cloud.local`, which git also ignores (`.env*.local`). `codeclimb/env.ts` loads it when `CODECLIMB_ENV=cloud`.
-  - On the hosted worker and on Vercel, the values are the platform's own secrets.
 - **npm scripts.** `worker`, `run-night` and `dev` stay local. New `worker:cloud` and `run-night:cloud` use `CODECLIMB_ENV=cloud` and drop `INNGEST_DEV=1`.
 
 A useful in-between mode: the laptop worker connected to Cloud, with Docker or Inngest sandboxes. Phases 0 and 1 use it, and it remains a handy way to debug Cloud runs.
@@ -67,7 +68,7 @@ In dev mode the SDK sends `inngest.sandboxes` calls to the dev server, which run
    - A sandbox normally starts in 1.5 s. Once, three starts hung in STARTING with "sandbox launch result is unknown", so `create` replaces a sandbox that isn't running after 45 s.
    - `list()` returns terminated sandboxes too, so sweeps page through the whole history.
 4. **The evaluator reset spares the guest agent.** The VM's agent runs as PIDs 1, 8, 9 and 10, all named `init`, and the reset skips processes named `init`.
-5. **Copilot's login file is a laptop setup.** Cloud configs use API-key models.
+5. **Copilot's login file is a laptop setup,** which is fine now that the worker stays on the laptop in both modes.
 6. **Sandboxes work on Pro.** The base image has Python 3.14.6 and git 2.55; three parallel creates take 1.3 s.
 
 ## 4. Phases
@@ -78,8 +79,9 @@ Each phase must pass its own check, and also a local smoke night (`npm run run-n
 |---|---|---|
 | 0 | Laptop worker on Inngest Cloud, Docker sandboxes | `datenorm-smoke` finishes on Cloud, and a stop cancels the children. Local smoke still passes. |
 | 1 | Inngest Sandboxes backend | `datenorm-smoke` and `capitals-smoke` pass with `--sandbox inngest`. Local smoke on Docker still passes. |
-| 2 | Worker on an always-on host | A Cloud night runs with the laptop closed |
+| 2 | ~~Worker on an always-on host~~ Decided against: the worker stays on your machine | — |
 | 3 | The app: prepare, start, live metrics, stop, export | A night runs end to end from the browser in **both** modes, and its solution downloads |
+| 4 | Metering through a tunnel, keep-awake | A metered night on Inngest Sandboxes reaches the proxy through `npm run tunnel` |
 
 Phase 3 depends only on Phase 0, so it can be built locally in parallel with Phases 1 and 2.
 
@@ -121,33 +123,25 @@ Other work in Phase 1 (done):
   - A round's evaluator still runs its candidates in turn on one sandbox, so their latencies stay comparable. Before each candidate, `openEvaluator` replaces it with a new sandbox if `eval_min` plus 5 minutes no longer fits in the hour (the backend's `maxActiveMs`, against `ageMs`, the wall time since start). Candidates after the swap run on another instance, so `decideRound` doesn't compare their latency with the earlier ones'. Verified on real sandboxes: with `eval_min` 3 the evaluator was reused; with 56 it was replaced.
   - Snapshots aren't used. With 20–36 KB specs, a base snapshot saves nothing: a fresh sandbox plus setup takes about 2.5 s, and one from a snapshot about 2 s after a 16 s snapshot. Nothing runs past its time limit, so no sandbox needs moving to a new one. They stay available as a fallback: snapshot plus create-from-snapshot under the same name moves a live sandbox in about 3 s.
 
-### Phase 2: always-on worker
+### Phase 2: no hosting (decided 2026-10-30)
 
-Code done and verified locally (2026-10-30); the host itself is not created yet.
+The worker stays on your machine in both modes; Inngest Cloud provides the durability and Inngest Sandboxes the isolated compute. The always-on host and the Vercel app were dropped as extra moving parts:
 
-- **Done:** config paths travel relative and resolve against `CODECLIMB_ROOT` on the worker (`relativeConfig` / `rootConfig`); `Dockerfile.worker` (Node 24, git, python3, scenarios and configs, `CODECLIMB_ENV=cloud`), booted locally against the dev server; the worker API and the proxy share one port (`$PORT`, proxy at `/v1`); the sandbox list offers Docker only when a daemon answers.
-- **Models:** no API-key configs are needed. Pi reads `COPILOT_GITHUB_TOKEN`, so the Copilot models work on a host; API-key models can be chosen per night in the app.
-- **Left:** create the host (one instance, a volume at `/app/runs`, a public HTTPS URL) and set its secrets (README, "Host the worker and the app").
+- **A worker host** (Fly.io, Railway, Render) means another platform, a volume, a public API and a deploy rule (only between nights). `Dockerfile.worker` and the hosting docs were removed.
+- **Vercel instead of a worker** would need every piece of worker state moved off the disk (a store for `runs/`, git bundles instead of `experiments.git`, scoring and diffs in sandboxes), the proxy as a route, and coder steps cut under Vercel's function limit (300 s on Hobby, 800 s on Pro), or Pi moved into the sandboxes. Vercel Blob on Hobby allows 2,000 uploads and list calls a month and then locks for 30 days, so it would need Upstash or similar.
 
-The original plan:
-
-- **Host.** One machine with a volume mounted at `runs/`. Use a single instance, because crash recovery reads local files.
-- **Image.** Node 24, `git`, `python3`, and `scenarios/` + `configs/` copied in.
-- **Paths.** Resolve config paths on the worker, relative to `CODECLIMB_ROOT`, instead of the CLI sending absolute laptop paths. `parseConfig` gains a mode that validates without resolving paths. This also lets the app start nights.
-- **Public endpoints.** The worker serves the proxy (`CODECLIMB_METER_URL`) and the worker API, both over HTTPS.
-- **Secrets.** The model keys (`OPENCODE_API_KEY`, ...), the Inngest keys, and `CODECLIMB_WORKER_TOKEN`.
-- **Deploys.** Only redeploy between nights. A restarted worker can't replay a night started by older code.
+Kept from the Phase 2 code: config paths travel relative and resolve against `CODECLIMB_ROOT` (`relativeConfig` / `rootConfig`), the worker API and the proxy share a port, and the sandbox list offers Docker only when a daemon answers. A later move, if the machine must be free: run Pi inside the sandboxes, so the worker only orchestrates.
 
 ### Phase 3: the app
 
-Build it with `next dev` and a local worker, then deploy it to Vercel. Set `CODECLIMB_USER`, `CODECLIMB_PASSWORD`, `CODECLIMB_WORKER_URL` and `CODECLIMB_WORKER_TOKEN` in Vercel. The design is in section 5.
+Built and run with `next dev` against the worker on the same machine, in both modes. The design is in section 5.
 
 Code done and verified locally (2026-10-30): night `app-smoke1` was prepared and started from `/new` in the browser, watched live (three branches coding, spend per Pi turn), finished on thresholds (test accuracy 1.0, $0.05) and exported as `.tar.gz` and git bundle; night `app-stop1` was started through the app's API and stopped mid-round (containers gone within 1 s, status `stopped`).
 
 Changes from the design below:
 
-- **The worker starts and stops nights,** not Vercel: `POST /api/nights` and `/api/nights/:id/stop` send the events with the worker's keys. Vercel then needs only the worker URL and token, and no Inngest keys. The Inngest Vercel integration is only needed if the app's own `hello-world` function should run on Cloud.
-- **One proxy route** (`app/api/worker/[...path]`) instead of one Vercel route per endpoint.
+- **The worker starts and stops nights,** not the app: `POST /api/nights` and `/api/nights/:id/stop` send the events with the worker's keys, so the app needs no Inngest keys.
+- **One proxy route** (`app/api/worker/[...path]`) instead of one route per endpoint.
 - **The live page embeds the worker's report** (`GET /api/nights/:id/report`) in an iframe reloaded when a result row lands, instead of a `refresh(data)` hook in `client.js`.
 - **Status** comes from `done.json`, `stop.json` (written by the stop handler) and file activity (no write for an hour without `done.json` means `stale`), not from Inngest's run status.
 - **Not built:** `POST /models/check` (start checks the models), diffs per experiment (they are in the report), push-to-remote export, and `phase` for the evaluator.
@@ -160,7 +154,7 @@ The app does four jobs: prepare a run, watch it live, stop it, export the result
 
 The worker is the only source of truth. Its `runs/` folder holds `results.jsonl`, `night.json` / `done.json`, reviews, `experiments.git` and each running experiment's `code-state.json`. The last one is rewritten after every Pi message with spend, tokens and elapsed time.
 
-Vercel's server calls a small worker API with `CODECLIMB_WORKER_TOKEN`. The browser only ever calls Vercel. There's no database and nothing is stored twice. If the worker is down, history can't be shown, but no night can run either.
+The app's server calls the worker API (with `CODECLIMB_WORKER_TOKEN` when it's off loopback). The browser only ever calls the app. There's no database and nothing is stored twice. If the worker is down, history can't be shown, but no night can run either.
 
 "Live" means polling every 5 seconds: rows arrive per round, coder spend per Pi turn. Inngest Realtime is a later upgrade. A Postgres mirror is the fallback if several workers ever share one app.
 
@@ -214,8 +208,8 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 - `parseConfig` without path resolution, and `night.start` carries relative paths (shared with Phase 2).
 - `phase` in `code-state.json`, an `eval-state.json` for the evaluator, and the current round in `night.json`.
 - The worker API next to `connect()`.
-- `refresh(data)` in `client.js`, and the export panel calls Vercel routes.
-- Vercel routes, each a thin proxy to the worker or an `inngest.send`:
+- `refresh(data)` in `client.js`, and the export panel calls the app's routes.
+- App routes, each a thin proxy to the worker or an `inngest.send`:
   - `POST /api/nights` and `POST /api/nights/:id/stop`
   - `GET /api/nights`, `GET /api/nights/:id`, `GET /api/nights/:id/live`
   - `GET /api/scenarios` and `POST /api/models/check`
@@ -223,9 +217,9 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 
 ## 6. Access
 
-- **App: done.** HTTP Basic Auth in `proxy.ts`, with one user (`CODECLIMB_USER`) and a 64-character random password (`CODECLIMB_PASSWORD`). It compares in constant time, fails closed when either is unset, and leaves `/api/inngest` open for Inngest's signed calls. Locally the credentials are in `.env.local`. On Vercel, set them as environment variables before the first deploy.
-- **Worker API.** Requires `CODECLIMB_WORKER_TOKEN` on every request. In local mode it binds to loopback.
-- **Proxy.** Per-eval tokens, revoked when the eval ends, as today.
+- **App: done.** HTTP Basic Auth in `proxy.ts`, with one user (`CODECLIMB_USER`) and a 64-character random password (`CODECLIMB_PASSWORD`). It compares in constant time, fails closed when either is unset, and leaves `/api/inngest` open for Inngest's signed calls. The credentials are in `.env.local`.
+- **Worker API.** Binds to loopback with no token. Off loopback (`CODECLIMB_API_HOST`), it requires `CODECLIMB_WORKER_TOKEN` on every request.
+- **Proxy.** Per-eval tokens with a budget cap, revoked when the eval ends. In Cloud mode only the proxy's port is tunnelled, never the API's.
 
 ## 7. Config changes
 
@@ -233,9 +227,9 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 |---|---|---|
 | `sandbox` | `docker` (in the YAML) | `inngest` (CLI flag or form override) |
 | `baseline` | Docker image name | Ignored; the spec comes from `spec_dir`. Later, a custom image. |
-| Paths (`spec_dir`, `dataset_dir`, `run_files`, `score_cmd`, `results_path`) | Relative, resolved by the worker against its checkout | Same, against `CODECLIMB_ROOT` on the host |
-| `models`, `reviewer_model` | Any Pi provider | API-key providers (overridden in the form, or a cloud config per scenario) |
-| Proxy | Relay to `127.0.0.1`, random port | `CODECLIMB_METER_URL`, fixed port |
+| Paths (`spec_dir`, `dataset_dir`, `run_files`, `score_cmd`, `results_path`) | Relative, resolved by the worker against its checkout | Same |
+| `models`, `reviewer_model` | Any Pi provider | Same |
+| Proxy | Relay to `127.0.0.1`, random port | Port 7422 through the tunnel |
 
 ## 8. Questions for Inngest
 
@@ -266,7 +260,7 @@ Night status combines `done.json` with the Inngest run status, read from the dev
   - `inngest-capitals1` (`capitals-smoke --sandbox inngest`, proxy through ngrok): thresholds, test accuracy 1.0, 4 metered program calls in the test eval, 22 chat calls through the tunnel in total, $0.004. One coder sandbox hung at launch and was replaced.
   - `local-smoke2` (dev server + Docker): `max_rounds`, test accuracy 1.0.
   - Results validate (60 and 19 rows); 22 unit tests pass; typecheck OK.
-- [x] Phase 2 code: worker image, relative config paths, public proxy and worker API on one port
-- [ ] Phase 2 host: create it with a volume, set its secrets, start a Cloud night with the laptop closed
+- [x] Phase 2: relative config paths; hosting decided against, worker image removed
 - [x] Phase 3 code: worker API, New run / Live night / Nights pages, Stop, export; a local night end to end from the browser
-- [ ] Phase 3 deploy: Vercel project and environment variables, a night from the browser in Cloud mode
+- [x] Phase 4 code: `npm run tunnel` and tunnel discovery, proxy pinned to 7422 in Cloud mode, `caffeinate` on macOS
+- [ ] A Cloud night from the app (`worker:cloud`, `sandbox: inngest`), and a metered one through the tunnel
