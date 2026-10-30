@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { coderPrompt, parseApproach } from "./coder";
-import { efficiencyMetrics, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
+import { checkSandboxLimits, efficiencyMetrics, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
@@ -67,6 +67,11 @@ test("config validation", () => {
   const capped = parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), "/b");
   assert.deepEqual([capped.budget_usd.eval, capped.budget_usd.dev], [0.2, 0.2]);
   assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0 }"), "/b"), /budget_usd.dev/);
+  // Inngest sandboxes run an hour at most: a long coder or eval must fit, with room to spare.
+  const long = { ...cfg, timeouts: { experiment_min: 90, eval_min: 3 } };
+  assert.doesNotThrow(() => checkSandboxLimits({ ...long, sandbox: "docker" }));
+  assert.throws(() => checkSandboxLimits({ ...long, sandbox: "inngest" }), /experiment_min must be <= 50/);
+  assert.throws(() => checkSandboxLimits({ ...cfg, sandbox: "inngest", timeouts: { experiment_min: 10, eval_min: 55 } }), /eval_min/);
   assert.equal(resolveDeadline("90m", 0), 90 * 60_000);
   assert.equal(resolveDeadline("2026-10-22T06:00:00Z", 0), Date.parse("2026-10-22T06:00:00Z"));
 });

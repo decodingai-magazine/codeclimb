@@ -5,7 +5,7 @@ import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { loadConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
+import { checkSandboxLimits, loadConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
 import { isEmbeddingModel } from "../codeclimb/meter/backends";
 import { checkModels } from "../codeclimb/pi/session";
@@ -62,6 +62,7 @@ if (positionals[0] === "stop") {
   if (values.sandbox) {
     if (values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
     cfg.sandbox = values.sandbox;
+    checkSandboxLimits(cfg);
   }
   await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();

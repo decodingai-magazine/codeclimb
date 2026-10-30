@@ -35,6 +35,8 @@ export interface Sandbox {
   isAlive(): Promise<boolean>;
   /** Identifies this incarnation: a sandbox recreated under the same name gets a new id. */
   instanceId(): Promise<string>;
+  /** Ms since it started running, on backends that cap a sandbox's life (`maxActiveMs`). */
+  ageMs?(): Promise<number>;
   destroy(): Promise<void>;
 }
 
@@ -54,6 +56,8 @@ export interface CreateSandboxOptions {
 
 export interface SandboxBackend {
   readonly kind: "docker" | "inngest";
+  /** The most active runtime one sandbox gets, on backends that cap it (Inngest: one hour, then a pause). */
+  readonly maxActiveMs?: number;
   create(opts: CreateSandboxOptions): Promise<Sandbox>;
   /** A live sandbox by name, or null. Used to resume a crashed Pi step. */
   find(name: string): Promise<Sandbox | null>;

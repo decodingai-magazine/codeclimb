@@ -122,8 +122,22 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (!Number.isFinite(cfg.timeouts.experiment_min) || !Number.isFinite(cfg.timeouts.eval_min)) {
     throw new Error("config: timeouts.experiment_min and timeouts.eval_min are required numbers");
   }
+  checkSandboxLimits(cfg);
   resolveDeadline(cfg.deadline, Date.now()); // throws if malformed
   return cfg;
+}
+
+/** Inngest pauses a sandbox after one hour of active runtime; this leaves room for setup and export. */
+const INNGEST_MAX_MIN = 50;
+
+/** The backend's limits on the timeouts. Run it again after changing `sandbox` on a parsed config. */
+export function checkSandboxLimits(cfg: NightConfig): void {
+  if (cfg.sandbox !== "inngest") return;
+  for (const k of ["experiment_min", "eval_min"] as const) {
+    if (cfg.timeouts[k] > INNGEST_MAX_MIN) {
+      throw new Error(`config: timeouts.${k} must be <= ${INNGEST_MAX_MIN} on inngest (a sandbox runs one hour at most)`);
+    }
+  }
 }
 
 export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {

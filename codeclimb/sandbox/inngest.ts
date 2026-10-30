@@ -27,6 +27,8 @@ const INLINE_READ_MAX = 64 * 1024;
 /** Not base64: marks a file too big to inline. */
 const BIG = "@big@";
 const DEAD = new Set(["TERMINATING", "TERMINATED", "FAILED"]);
+/** A sandbox gets one hour of active runtime, then pauses; resuming does not reset the clock. */
+const MAX_ACTIVE_MS = 60 * 60_000;
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -164,6 +166,11 @@ class InngestSandbox implements Sandbox {
     return this.sb.id;
   }
 
+  /** Wall time since it started: an upper bound on active runtime, since CodeClimb never pauses one. */
+  async ageMs(): Promise<number> {
+    return Date.now() - Date.parse(this.sb.startedAt ?? this.sb.createdAt);
+  }
+
   async destroy(): Promise<void> {
     await this.sb.destroy().catch((e) => {
       if (!isCode(e, "sandbox_not_found")) throw e;
@@ -222,6 +229,7 @@ async function setUp(sandbox: InngestSandbox, specDir: string | undefined): Prom
 
 export class InngestBackend implements SandboxBackend {
   readonly kind = "inngest" as const;
+  readonly maxActiveMs = MAX_ACTIVE_MS;
 
   async create(opts: CreateSandboxOptions): Promise<Sandbox> {
     // A stale sandbox from a crashed attempt: destroy it, as Docker's `rm -f` does.

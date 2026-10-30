@@ -68,7 +68,7 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
-- It runs on the **local Inngest dev server** or on **Inngest Cloud** (see [Run on Inngest Cloud](#run-on-inngest-cloud)), with the worker on your machine and **Docker sandboxes** in both cases. Inngest Sandboxes and a hosted worker are planned in [docs/cloud-migration.md](docs/cloud-migration.md).
+- It runs on the **local Inngest dev server** or on **Inngest Cloud** (see [Run on Inngest Cloud](#run-on-inngest-cloud)), with **Docker sandboxes** or **Inngest Sandboxes**. The worker runs on your machine or on a host (see [Host the worker and the app](#host-the-worker-and-the-app)); [docs/cloud-migration.md](docs/cloud-migration.md) tracks the migration.
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
 
@@ -162,6 +162,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 `--sandbox inngest` (or `sandbox: inngest` in a config) runs every coder and evaluator in an Inngest sandbox (`codeclimb/sandbox/inngest.ts`): a microVM with 2 vCPUs and 2 GB, on Inngest's base image (Python 3.14, git). It needs the cloud worker; the dev-mode worker refuses it.
 
 - **Setup.** Each sandbox gets `/spec` uploaded from `spec_dir` and the git defaults the Docker baseline bakes in, so `baseline` is ignored.
+- **One hour per sandbox.** Inngest pauses a sandbox after one hour of active runtime, and the limit can't be raised. Coders get a new sandbox per experiment, and `timeouts.experiment_min` and `timeouts.eval_min` may be at most 50 on `inngest`. A round's evaluator is replaced by a new one before a candidate that might not finish in its hour, and latency is compared only between candidates on the same evaluator.
 - **Network.** Egress is open (the beta has no allowlist). Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
 - **Metering.** Sandboxes reach the proxy at a public URL, `CODECLIMB_METER_URL` (ending in `/v1`), instead of the Docker relay. From the laptop, pin the port and tunnel it for the night:
 

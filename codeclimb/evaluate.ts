@@ -1,5 +1,6 @@
 // Eval: one evaluator sandbox runs a list of candidates in turn, so every
-// candidate of a round runs on the same machine with nothing else running.
+// candidate of a round runs on the same machine with nothing else running
+// (on Inngest, a new one takes over before the old one reaches its hour).
 // Before each candidate it is reset and the candidate's commit cloned; then
 // `run_cmd` runs on one split's questions (no gold) and `score_cmd` scores the
 // outputs against gold on the worker host. Gold never enters a sandbox; the
@@ -21,6 +22,8 @@ import type { Metrics } from "./stats";
 import { programSpans } from "./tracing";
 
 const pexec = promisify(execFile);
+/** A candidate's time on the evaluator beyond `run_cmd`: reset, clone, uploads, the outputs' download. */
+const EVAL_OVERHEAD_MS = 5 * 60_000;
 
 export type EvalSplit = "opt" | "val" | "test";
 
@@ -93,20 +96,24 @@ export function readPerItem(metricsPath: string): number[] {
 }
 
 /**
- * The evaluator's sandbox: the live one after a crashed step (create() would replace it), else a new
- * empty one. A metered evaluator joins the metering network, whose relay is made sure of first.
+ * The evaluator's sandbox for the next candidate: the live one, else a new empty one. A metered
+ * evaluator joins the metering network, whose relay is made sure of first.
+ *
+ * On a backend that caps a sandbox's life, a new sandbox takes over (create() replaces the old one)
+ * when the next candidate might not finish in the time left. The candidates after it run on another
+ * instance, so their latency is not compared with the earlier ones'.
  */
 export async function openEvaluator(cfg: NightConfig, nightId: string, evaluatorId: string, runId?: string): Promise<Sandbox> {
   const backend = sandboxBackend(cfg.sandbox);
   const name = sandboxName(evaluatorId);
   if (isMetered(cfg)) await meterBaseUrl(cfg);
-  return (
-    (await backend.find(name)) ??
-    backend.create({
-      name, baseline: cfg.baseline, specDir: cfg.spec_dir, network: isMetered(cfg) ? METER_NETWORK : "none",
-      labels: { "cc.night": nightId, ...(runId ? { "cc.run": runId } : {}) },
-    })
-  );
+  const live = await backend.find(name);
+  const needMs = cfg.timeouts.eval_min * 60_000 + EVAL_OVERHEAD_MS;
+  if (live && !(backend.maxActiveMs && ((await live.ageMs?.()) ?? 0) + needMs > backend.maxActiveMs)) return live;
+  return backend.create({
+    name, baseline: cfg.baseline, specDir: cfg.spec_dir, network: isMetered(cfg) ? METER_NETWORK : "none",
+    labels: { "cc.night": nightId, ...(runId ? { "cc.run": runId } : {}) },
+  });
 }
 
 export async function closeEvaluator(cfg: NightConfig, evaluatorId: string): Promise<void> {
