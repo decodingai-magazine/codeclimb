@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { DockerBackend } from "./docker";
 import { InngestBackend } from "./inngest";
 import type { SandboxBackend } from "./types";
@@ -9,7 +10,15 @@ export function sandboxBackend(kind: "docker" | "inngest"): SandboxBackend {
   return new InngestBackend();
 }
 
-/** The backends this worker can reach, for sweeps that must not miss a sandbox: Docker always, Inngest in cloud mode. */
+let docker: boolean | undefined;
+/** Whether a Docker daemon answers (checked once; a hosted worker has none). */
+function hasDocker(): boolean {
+  docker ??= spawnSync("docker", ["info", "--format", "{{.ID}}"], { stdio: "ignore", timeout: 5000 }).status === 0;
+  return docker;
+}
+
+/** The backends this worker can reach: Docker when a daemon answers, Inngest in cloud mode. Sweeps try each. */
 export function reachableBackends(): SandboxBackend[] {
-  return process.env.INNGEST_DEV || !process.env.INNGEST_SIGNING_KEY ? [new DockerBackend()] : [new DockerBackend(), new InngestBackend()];
+  const cloud = !process.env.INNGEST_DEV && !!process.env.INNGEST_SIGNING_KEY;
+  return [...(hasDocker() ? [new DockerBackend()] : []), ...(cloud ? [new InngestBackend()] : [])];
 }

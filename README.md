@@ -174,6 +174,45 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 - **Cleanup.** Stops, cancelled runs and the end of a night sweep every backend the worker reaches, so a stop never strands a billed sandbox. Inngest has no labels: a run's sandboxes are tracked in the worker's memory, and the night's prefix sweep covers a restarted worker.
 - **Checks.** `CODECLIMB_ENV=cloud npx tsx scripts/smoke-inngest-sandbox.ts` exercises every backend method on one sandbox. `CODECLIMB_ENV=cloud npx tsx scripts/sandboxes.ts` lists the newest sandboxes and their status.
 
+### The app: prepare, watch, stop, export
+
+The Next.js app (`npm run dev`, behind the [login](#log-in)) is the browser front end for a worker. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
+
+- **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
+- **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
+- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), **Export** of any committed experiment as a `.tar.gz` or a git bundle with its lineage, and the full report (convergence, families, latency, cost, experiments), reloaded when a result lands.
+
+The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/scenarios` | Configs in `configs/` with spec, dataset stats, and the sandbox backends this worker can use |
+| `GET /api/nights`, `GET /api/nights/:id` | Night summaries from `runs/*/nights/*` |
+| `GET /api/nights/:id/live` | Summary plus the current round's branches and the exportable experiments |
+| `GET /api/nights/:id/report` | The report page for that night |
+| `POST /api/nights` | `{scenario, night_id?, overrides}`: start a night (sends `codeclimb/night.start`) |
+| `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
+| `GET /api/nights/:id/export/:exp?format=tar.gz\|bundle` | Download an experiment |
+
+Locally the API needs no token and binds to loopback. Anywhere else, set `CODECLIMB_WORKER_TOKEN` on the worker and the app (`CODECLIMB_WORKER_URL` points the app at it).
+
+### Host the worker and the app
+
+The worker must be a long-running process, so it goes on an always-on host, and the app on Vercel. `Dockerfile.worker` builds the worker: Node 24, git, python3 and the scenarios, serving the API and proxy on `$PORT`, with Inngest Sandboxes and no Docker inside.
+
+1. **Worker host** (Fly.io, Railway, Render): one instance, built from `Dockerfile.worker`, with a volume at `/app/runs` and a public HTTPS URL. Environment:
+   - `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`
+   - `CODECLIMB_WORKER_TOKEN`: a long random string, also set on Vercel
+   - `CODECLIMB_METER_URL`: `https://<worker host>/v1`, for scenarios with `allowed_models`
+   - Model credentials: `COPILOT_GITHUB_TOKEN` for the `github-copilot` models the configs use, or API keys (`ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY`) with matching models set in New run
+   - `CODECLIMB_WORKER_ID`: optional instance name
+2. **Vercel**: import the repo and set `CODECLIMB_USER`, `CODECLIMB_PASSWORD`, `CODECLIMB_WORKER_URL` (the worker's URL) and `CODECLIMB_WORKER_TOKEN`.
+3. Start nights from the app with sandbox `inngest`. Redeploy the worker only between nights: a worker on newer code can't replay a night started by older code.
+
+```bash
+docker build -f Dockerfile.worker -t codeclimb-worker .   # what the host builds
+```
+
 ### Standard metrics: latency and cost
 
 Every scenario gets the same two metrics, measured outside the code the coders write, on top of its own metrics:
@@ -265,6 +304,9 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `inngest/codeclimb/functions.ts` | `run-night` (thin parent), `run-experiment` and `run-eval` (invoked children), and the cleanup handlers |
 | `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
+| `codeclimb/api.ts` | The worker API (and `/v1` metering proxy mount) the app reads |
+| `app/` | The Next.js app: Nights, New run, Live night, and the `/api/worker` proxy |
+| `Dockerfile.worker` | The hosted worker's image |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
 | `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |
