@@ -42,6 +42,16 @@ export interface Scenario {
   eval_sandboxes: "shared" | "per_candidate";
   /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
   protocol: string[];
+  /** Host: checks a branch's files in `{repo}` before it is evaluated and writes `RepoCheck` as JSON to `{report}`. */
+  check?: string;
+}
+
+/** A `check` command's report. */
+export interface RepoCheck {
+  /** Why the branch can't be evaluated. */
+  errors: string[];
+  /** What the reviewer should know; the branch still runs. */
+  notes: string[];
 }
 
 const STAGE_NAME = /^[a-z][a-z0-9_-]*$/;
@@ -81,6 +91,7 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
   return {
     name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
     headline: headline as Scenario["headline"], eval_sandboxes: evalSandboxes, protocol: protocol as string[],
+    ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
   };
 }
 

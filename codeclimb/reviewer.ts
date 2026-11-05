@@ -15,6 +15,8 @@ export interface BranchSummary {
   metrics: Metrics;
   /** Why it can't be kept: headline regressions, a stage gone empty. */
   guardrails: string[];
+  /** The scenario's check of the branch: not failures, but what to weigh. */
+  notes: string[];
   diff: string;
   /** The stage reports' per-item errors on dev, when the scenario gives them. */
   details: string;
@@ -119,6 +121,7 @@ export function reviewerPrompt(input: ReviewInput): string {
     lines.push(
       `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${input.primaryMetric}=${b.primary.toFixed(4)}; metrics: ${fmtMetrics(b.metrics, input)}` +
         (b.guardrails.length ? `\nFailed guardrails, can't be kept: ${b.guardrails.join("; ")}` : "") +
+        (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
         (b.details ? `\nPer-item errors on dev (may be cut off):\n${b.details}` : "") +
         `\nDiff vs parent:\n\`\`\`diff\n${b.diff}\n\`\`\``,
     );

@@ -27,7 +27,7 @@ const pexec = promisify(execFile);
 /** A candidate's time on the evaluator beyond the stages' `run`: reset, clone, uploads, the outputs' download. */
 const EVAL_OVERHEAD_MS = 5 * 60_000;
 
-/** Dev scores every round's candidates (and the noise runs); test scores the final kept commit once. */
+/** Dev scores every round's candidates; test scores the final kept commit once. */
 export type EvalSplit = "dev" | "test";
 
 export type EvalRequest = {

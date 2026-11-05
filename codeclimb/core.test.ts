@@ -49,6 +49,8 @@ test("guardrails: headline margins, ci95, vanished metrics, a stage gone empty",
 
 test("scenario: headline, sandboxes, protocol, flattened reports", () => {
   const base = "name: s\nimage: i\nbundle: b\nstages:\n  - { name: a, inputs: i, run: r, score: s, details: d }\n";
+  assert.equal(parseScenario(`${base}check: c --repo {repo}\n`).check, "c --repo {repo}");
+  assert.equal(parseScenario(base).check, undefined);
   const s = parseScenario(`${base}headline: { a.mean: ci95, b: 0.1 }\neval_sandboxes: per_candidate\nprotocol: [x.md]\n`);
   assert.deepEqual([s.headline, s.eval_sandboxes, s.protocol, s.stages[0].details], [{ "a.mean": "ci95", b: 0.1 }, "per_candidate", ["x.md"], "d"]);
   assert.deepEqual([parseScenario(base).headline, parseScenario(base).eval_sandboxes], [{}, "shared"]);
@@ -179,6 +181,15 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   assert.deepEqual(withBaseline.rows.map((r) => [r.kind, r.evaluator_instance]), [["baseline", "i1"], ["experiment", "i1"]]);
   assert.equal(withBaseline.keep, null);
   for (const r of withBaseline.rows) assert.deepEqual(validateRow(r), []);
+
+  // A failed repository check: no eval, an error row but no infra error, and the reviewer reads why.
+  const failed = decideRound({
+    cfg, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null],
+    branches: [{ ok: true, expId: "x", branch: 0, model: "p/a", code: { ...code("e"), check: { errors: ["leak"], notes: ["name"] } }, eval: null }],
+  });
+  assert.deepEqual(failed.rows.map((r) => [r.decision, r.infra_errors]), [["error", 0]]);
+  assert.deepEqual(failed.summaries.map((s) => [s.guardrails, s.notes]), [[["leak"], ["name"]]]);
+  assert.deepEqual(failed.candidates, []);
 });
 
 test("evaluation order rotates by round and keeps every candidate", () => {

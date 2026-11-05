@@ -13,6 +13,7 @@ import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "
 import {
   applyReview,
   type BranchOutcome,
+  checkRepo,
   checkStop,
   decideRound,
   type EvalOutcome,
@@ -47,7 +48,9 @@ export const runExperiment = ccInngest.createFunction(
   },
   async ({ event, step, attempt, runId }) => {
     const code = await step.run("code", () => runCoder(event.data, { attempt, runId }));
-    return { code, runId };
+    if (!code.sha || !event.data.config.scenario.check) return { code, runId };
+    const check = await step.run("check", () => checkRepo(event.data.config, event.data.nightId, event.data.expId));
+    return { code: { ...code, check }, runId };
   },
 );
 
@@ -183,7 +186,7 @@ export const runNight = ccInngest.createFunction(
       };
       const specs: EvalSpec[] = [parentSpec];
       for (const c of coded) {
-        if (c.ok && c.code.sha) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "dev", scoreRunId: c.runId });
+        if (c.ok && c.code.sha && !c.code.check?.errors.length) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "dev", scoreRunId: c.runId });
       }
       const order = rotate(specs, round);
       const outcomes =

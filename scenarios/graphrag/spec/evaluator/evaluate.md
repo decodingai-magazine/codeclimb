@@ -92,8 +92,8 @@ Each is a pass or a fail with the evidence (a path, a command, a transcript line
   retrieval stage: in extraction or graph-building code, prompts or few-shot material it is a leak
   (it holds the gold extraction and resolution of every document, test included).
 - **Few-shot material is train only.** Every example in the agent's prompts and configs traces back
-  to the bundle's `train/examples/`, and the system records the train ids it uses. A row copied
-  from a dev report into a prompt is a fail.
+  to the bundle's `train/examples/`, and `fewshot.json` records the train ids it uses. `check_repo.py`
+  enforces the ids before evaluation; a row copied from a dev report into a prompt is still a fail.
 - **No hard-coded answers.** No gold entity names, query ids, or per-query rules in the code. Dev
   names copied from a dev report into a prompt fit dev: report them, and expect them in the `gap`.
 - **Reproducible.** One command per stage rebuilds the predictions from the inputs.

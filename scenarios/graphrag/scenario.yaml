@@ -5,6 +5,7 @@ image: codeclimb-graphrag          # npm run build:image:graphrag
 bundle: uv run python scripts/export_agent.py --out {out}
 eval_sandboxes: per_candidate      # model calls are slow, and no headline reads latency
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
+check: uv run python scripts/check_repo.py --repo {repo} --out {report}
 # A branch that drops one of these below its parent's run by more than the margin can't be kept.
 # `ci95`: the half-width of the parent's bootstrap interval. Graph precision has none: a wrong merge
 # is worse than a wrong split.

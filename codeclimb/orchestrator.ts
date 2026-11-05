@@ -2,7 +2,8 @@
 // small JSON (SHAs, metrics, file paths), so the parent's state can be rebuilt
 // from memoized step outputs on replay.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult } from "./coder";
@@ -14,7 +15,7 @@ import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
 import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, runReview, type ReviewOutput } from "./reviewer";
-import { hostCommand, readProtocol } from "./scenario";
+import { hostCommand, readProtocol, type RepoCheck } from "./scenario";
 import { beatsParent, cutsMetric, guardrailFailures, type Metrics, passesGates } from "./stats";
 
 /** What the parent tracks about the commit the next round starts from. */
@@ -115,6 +116,20 @@ export function rotate<T>(xs: T[], k: number): T[] {
   if (!xs.length) return xs;
   const i = ((k % xs.length) + xs.length) % xs.length;
   return [...xs.slice(i), ...xs.slice(0, i)];
+}
+
+/** Runs the scenario's `check` on an experiment's commit, on the host. A rule broken shows in `errors`; a crash throws. */
+export async function checkRepo(cfg: NightConfig, nightId: string, expId: string): Promise<RepoCheck> {
+  const paths = nightPaths(cfg, nightId);
+  const repoDir = mkdtempSync(join(tmpdir(), "cc-check-"));
+  const report = join(paths.expDir(expId), "check.json");
+  try {
+    await new ExperimentRepo(paths.gitDir).checkout(expId, repoDir);
+    await hostCommand(cfg.scenario_dir, cfg.scenario.check!, { repo: repoDir, report });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+  return JSON.parse(readFileSync(report, "utf8")) as RepoCheck;
 }
 
 export type BranchOutcome =
@@ -227,14 +242,15 @@ export function decideRound(args: RowBase & {
         hypothesis: args.hypotheses[b.branch] ?? `(failed: ${b.error.slice(0, 200)})`, metrics: { [P]: 0 },
         coder_usd: st.coderUsd, ...(st.devUsd ? { dev_usd: st.devUsd } : {}), tokens: st.tokens, decision: "error", infra_errors: 1,
       }));
-      summaries.push({ expId: b.expId, model: b.model, hypothesis: args.hypotheses[b.branch] ?? "(unknown)", decision: "error", primary: 0, metrics: {}, guardrails: [], metricsPath: null });
+      summaries.push({ expId: b.expId, model: b.model, hypothesis: args.hypotheses[b.branch] ?? "(unknown)", decision: "error", primary: 0, metrics: {}, guardrails: [], notes: [], metricsPath: null });
       continue;
     }
     const ev = b.eval;
     const evalOk = !!(b.code.sha && ev?.ok);
     const metrics = evalOk ? ev!.metrics : { [P]: 0 };
     const primary = metrics[P] ?? 0;
-    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : [];
+    const failedCheck = b.code.check?.errors ?? [];
+    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : failedCheck;
     const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
     if (evalOk) scored.push({ expId: b.expId, branch: b.branch, primary, metrics, sha: b.code.sha!, eligible, instance: ev!.evaluator_instance });
     branchRows.push(baseRow(args, {
@@ -246,10 +262,10 @@ export function decideRound(args: RowBase & {
       decision: evalOk ? "revert" : "error",
       t_provision: b.code.t_provision + (ev?.t_provision ?? 0), t_code: b.code.t_code, t_eval: ev?.t_eval ?? 0,
       t_teardown: b.code.t_teardown + (ev?.t_teardown ?? 0),
-      infra_errors: b.code.infra_errors + (ev?.infra_errors ?? 0) + (b.code.sha && !ev ? 1 : 0),
+      infra_errors: b.code.infra_errors + (ev?.infra_errors ?? 0) + (b.code.sha && !ev && !failedCheck.length ? 1 : 0),
       ...(ev ? { evaluator_instance: ev.evaluator_instance, eval_order: ev.eval_order } : {}),
     }));
-    summaries.push({ expId: b.expId, model: b.model, hypothesis: b.code.hypothesis, decision: evalOk ? "revert" : "error", primary, metrics, guardrails, metricsPath: ev?.metricsPath ?? null });
+    summaries.push({ expId: b.expId, model: b.model, hypothesis: b.code.hypothesis, decision: evalOk ? "revert" : "error", primary, metrics, guardrails, notes: b.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null });
   }
 
   const objectives = efficiencyMetrics(cfg);

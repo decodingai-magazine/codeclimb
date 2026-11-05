@@ -42,8 +42,9 @@ named the entity, so a later document's rows would reveal earlier documents' ans
 first, so its gold reveals nothing about dev or test.
 
 Which train items a run uses is a setting of the system, not a constant in the code. Record the ids
-it uses (`doc_uri`s, query `id`s) with the system, so the evaluator can check that every example is
-from train.
+it uses in `fewshot.json` at the repository root, even if there are none:
+`{"doc_uris": [...], "query_ids": [...]}`. A branch with a missing or wrong manifest, or with any dev
+or test `doc_uri` or query id anywhere in the repository, is not evaluated.
 
 ## What you submit
 

@@ -25,6 +25,7 @@ import { sandboxBackend } from "./sandbox";
 import { commitAndExport } from "./sandbox/repo";
 import type { Sandbox } from "./sandbox/types";
 import { traceSession } from "./tracing";
+import type { RepoCheck } from "./scenario";
 
 export type ExperimentInput = {
   nightId: string;
@@ -57,6 +58,8 @@ export interface CodeResult {
   t_teardown: number;
   infra_errors: number;
   resumed: boolean;
+  /** The scenario's `check` of the commit; with errors the branch is not evaluated. */
+  check?: RepoCheck;
 }
 
 interface CodeState {

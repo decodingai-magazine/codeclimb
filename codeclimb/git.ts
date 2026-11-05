@@ -39,6 +39,18 @@ export class ExperimentRepo {
     }
   }
 
+  /** Writes the experiment's commit into the new directory `dir`. */
+  async checkout(expId: string, dir: string): Promise<void> {
+    const tmp = await mkdtemp(join(tmpdir(), "cc-index-"));
+    try {
+      const env = { GIT_INDEX_FILE: join(tmp, "index") };
+      await this.git(["read-tree", expRef(expId)], env);
+      await this.git(["--work-tree", dir, "checkout-index", "--all", "--force"], env);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  }
+
   /** Commit a directory (the scenario's starter repo, possibly missing) as the round-0 commit. */
   async importDir(dir: string | null, expId: string): Promise<string> {
     const tmp = await mkdtemp(join(tmpdir(), "cc-index-"));

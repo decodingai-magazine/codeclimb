@@ -40,6 +40,10 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 - `typesafe/jev-1.14`: $0.042/M in, $0/M out, 262k context. A decisions model: chat refuses it, and it takes `{state, questions}` on OpenRouter's alpha `/api/alpha/decisions` endpoint, whose shape may change. The proxy serves it at `POST /v1/decisions`. Absent from `/api/v1/models`; only `/api/v1/models/typesafe/jev-1.14/endpoints` lists it, so the model check uses the endpoints API. Cost comes from each response's `usage.cost`.
 - OpenRouter lists no rerank models; ranking uses embeddings plus an optional LLM rerank.
 
+## Repository check
+
+`check` in `scenario.yaml` is an optional host command. After a branch commits, `{repo}` holds its files and the command writes `{"errors": [], "notes": []}` to `{report}`. Errors keep the branch from being evaluated (its row is `error`, and the reviewer sees why); notes go to the reviewer. graphrag's `scripts/check_repo.py` implements Q9/Q22. It finds copied ids, not paraphrases or encoded ones: the reviewer still reads the diff.
+
 ## Open
 
 - **Inngest sandboxes ignore `image`**, so graphrag's requirements are missing there. Step 7 needs an install at sandbox creation, or a custom image.
