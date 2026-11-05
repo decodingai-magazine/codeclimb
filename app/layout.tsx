@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Open_Sans } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import Image from "next/image";
 import logoOnDark from "../codeclimb/report/assets/logo-horizontal-light.png";
 import logoOnLight from "../codeclimb/report/assets/logo-horizontal-dark.png";
 import "./globals.css";
 import { Nav, ThemeToggle } from "./ui";
 
-const openSans = Open_Sans({ subsets: ["latin"], variable: "--font-open-sans", display: "swap" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" });
 
 export const metadata: Metadata = {
@@ -19,7 +18,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("cc-theme");if(t==="light"|
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${openSans.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
@@ -29,10 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a className="brand" href="/">
               <Image className="logo logo-light" src={logoOnLight} alt="Decoding AI" priority />
               <Image className="logo logo-dark" src={logoOnDark} alt="Decoding AI" priority />
-              <span className="top-title">
-                <span className="eyebrow">CodeClimb</span>
-                <strong>Optimization nights</strong>
-              </span>
+              <span className="top-title">CodeClimb</span>
             </a>
             <span className="spacer" />
             <Nav />

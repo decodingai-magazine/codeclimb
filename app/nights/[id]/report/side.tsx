@@ -93,7 +93,7 @@ export function ExportCard({ night, v, selected, onSelect }: {
           </p>
           {best && (
             <div className="actions">
-              <button className="btn btn-primary" type="button" onClick={() => onSelect(best)}><Icon name="flag" />Select the best</button>
+              <button className="btn btn-primary" type="button" onClick={() => onSelect(best)}>Select the best</button>
             </div>
           )}
         </div>

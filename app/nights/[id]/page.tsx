@@ -121,7 +121,7 @@ export default function NightPage() {
         {error && <p className="notice">{error}</p>}
 
         <div className="kpis">
-          <Kpi lead label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
+          <Kpi label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
             note={`${kept ? kept.exp_id.replace(`${id}-`, "") : "nothing kept yet"} · threshold ${f3(live.threshold)}`} />
           <Kpi label="Validation" value={f3(v?.score(v.lastVal))}
             note={v?.lastVal ? `${v.lastVal.decision === "keep" ? "no overfit" : "overfit"} · gap ${f3(v.lastVal.metrics.gap)}` : "runs once the threshold is met"} />

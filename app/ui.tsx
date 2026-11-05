@@ -12,21 +12,6 @@ const ICONS = {
   ),
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
   download: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
-  copy: (
-    <>
-      <rect width="14" height="14" x="8" y="8" rx="2" />
-      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-    </>
-  ),
-  flag: <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7" />,
-  branch: (
-    <>
-      <path d="M6 3v12M18 9a9 9 0 0 1-9 9" />
-      <circle cx="18" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-    </>
-  ),
-  plus: <path d="M12 5v14M5 12h14" />,
   stop: <rect width="14" height="14" x="5" y="5" rx="2" />,
   play: <path d="m7 4 12 8-12 8z" />,
 } as const;
@@ -83,15 +68,14 @@ export function Nav() {
   );
 }
 
-export function Kpi({ label, value, note, lead, children }: {
+export function Kpi({ label, value, note, children }: {
   label: string;
   value: React.ReactNode;
   note?: React.ReactNode;
-  lead?: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    <div className={`kpi${lead ? " lead" : ""}`}>
+    <div className="kpi">
       <div className="label">{label}</div>
       <div className="value">{value}</div>
       {children}
@@ -112,9 +96,9 @@ export function Meter({ value, max, label }: { value: number; max: number; label
 
 const STATUS_LABEL: Record<string, string> = { running: "running", finished: "finished", stopped: "stopped", stale: "stale" };
 
-/** A night's status: live while running, warm when it met its thresholds, plain otherwise. */
+/** A night's status: live while running, accented when it met its thresholds, plain otherwise. */
 export function StatusBadge({ status, stopReason }: { status: string; stopReason: string | null }) {
   if (status === "running") return <span className="badge live">running</span>;
   const text = status === "finished" && stopReason ? `finished · ${stopReason}` : STATUS_LABEL[status] ?? status;
-  return <span className={`badge${stopReason === "thresholds" ? " hot" : ""}`}><Icon name="flag" />{text}</span>;
+  return <span className={`badge${stopReason === "thresholds" ? " hot" : ""}`}>{text}</span>;
 }
