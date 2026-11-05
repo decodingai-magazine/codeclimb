@@ -19,6 +19,11 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
+  - github-copilot/claude-haiku-5.5
+parallel:              # branches per round: all models in round 1, decaying linearly to min by max_rounds
+  decay: linear         # linear | none (every model, every round)
+  min: 1
+  widen_after: 1        # after 1 round with nothing kept, run every model again (0 = never)
 reviewer_model: github-copilot/claude-haiku-4.5
 allowed_models: []
 primary_metric: accuracy

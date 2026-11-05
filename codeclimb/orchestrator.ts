@@ -326,6 +326,8 @@ export async function reviewRound(args: {
   summaries: RoundDecision["summaries"];
   log: HypothesisLogEntry[];
   validationGap?: number;
+  /** Branches the next round runs: one hypothesis each. */
+  branches: number;
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
   const results: BranchSummary[] = [];
@@ -337,7 +339,7 @@ export async function reviewRound(args: {
     model: args.cfg.reviewer_model,
     spec: readSpecText(args.cfg.spec_dir),
     round: args.round,
-    branches: args.cfg.models.length,
+    branches: args.branches,
     primaryMetric: args.cfg.primary_metric,
     thresholds: args.cfg.thresholds,
     gates: args.cfg.gates,

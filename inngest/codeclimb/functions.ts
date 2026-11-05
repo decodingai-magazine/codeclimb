@@ -8,7 +8,7 @@ import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
-import { efficiencyMetrics, rootConfig, type NightConfig } from "../../codeclimb/config";
+import { efficiencyMetrics, parallelWidth, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
   type BranchOutcome,
@@ -172,13 +172,15 @@ export const runNight = ccInngest.createFunction(
       const rowBase = { cfg, nightId, round, valFold };
 
       // The coders work in parallel from the kept commit.
+      // Width schedule: the first `width` models code this round (see `parallelWidth`).
       const parent = kept;
+      const width = parallelWidth(cfg, round, roundsWithoutKeep);
       const coded = await Promise.all(
-        cfg.models.map((model, b) => {
+        cfg.models.slice(0, width).map((model, b) => {
           const expId = `${nightId}-r${round}-b${b}`;
           const data: ExperimentEvent = {
             nightId, expId, parentExpId: parent.expId, round, branch: b, model,
-            feedback, hypothesis: hypotheses[b], config: cfg,
+            feedback, hypothesis: hypotheses[b] ?? null, config: cfg,
           };
           return step.invoke(`r${round}-b${b}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, expId, branch: b, model, code: out.code, runId: out.runId }),
@@ -213,7 +215,7 @@ export const runNight = ccInngest.createFunction(
       kept = { ...kept, ...decision.parentAfter };
       noteKept();
 
-      // Review: feedback + one hypothesis per branch for the next round (skipped after the last round).
+      // Review: feedback + one hypothesis per branch of the next round (skipped after the last round).
       let review = { feedback, hypotheses: hypotheses.map((h) => h ?? ""), reviewer_usd: 0, t_review: 0, tokens: 0 };
       if (round < cfg.max_rounds) {
         try {
@@ -221,6 +223,7 @@ export const runNight = ccInngest.createFunction(
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: kept.score, parentMetrics: kept.metrics,
               summaries: decision.summaries, log: [...log], validationGap,
+              branches: parallelWidth(cfg, round + 1, decision.keep ? 0 : roundsWithoutKeep + 1),
             }),
           );
         } catch {

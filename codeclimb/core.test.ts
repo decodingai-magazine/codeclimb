@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { coderPrompt, parseApproach } from "./coder";
-import { checkSandboxLimits, efficiencyMetrics, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
+import { checkSandboxLimits, efficiencyMetrics, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
@@ -103,6 +103,24 @@ test("token cap and plateau stops", () => {
   assert.equal(parsed.plateau_rounds, 5);
   assert.throws(() => parseConfig(`${BASE_YAML}max_tokens: 0\n`, "/base"), /max_tokens/);
   assert.throws(() => parseConfig(`${BASE_YAML}plateau_rounds: -1\n`, "/base"), /plateau_rounds/);
+});
+
+test("parallel width decays from every model to min, and widens again after a stall", () => {
+  assert.deepEqual(cfg.parallel, { decay: "linear", min: 1, widen_after: 1 });
+  const c = { ...cfg, models: ["p/a", "p/a", "p/a", "p/b"], max_rounds: 10 };
+  const widths = Array.from({ length: 10 }, (_, i) => parallelWidth(c, i + 1, 0));
+  assert.deepEqual(widths, [4, 4, 3, 3, 3, 2, 2, 2, 1, 1]);
+  assert.equal(parallelWidth(c, 9, 1), 4); // nothing kept last round: explore again
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, widen_after: 2 } }, 9, 1), 1);
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, widen_after: 0 } }, 9, 5), 1);
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, min: 2 } }, 10, 0), 2);
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, decay: "none" } }, 10, 0), 4);
+  assert.equal(parallelWidth({ ...c, max_rounds: 1 }, 1, 0), 4);
+  const parsed = parseConfig(`${BASE_YAML}parallel: { decay: none, min: 2, widen_after: 0 }\n`, "/base");
+  assert.deepEqual(parsed.parallel, { decay: "none", min: 2, widen_after: 0 });
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { min: 4 }\n`, "/base"), /parallel.min/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { decay: cosine }\n`, "/base"), /parallel.decay/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { widen_after: -1 }\n`, "/base"), /widen_after/);
 });
 
 test("decideRound keeps the best gate-passing branch only past the keep rule", () => {

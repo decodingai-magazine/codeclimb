@@ -11,7 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ccInngest } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
-import type { NightConfig } from "./config";
+import { type NightConfig, parallelWidth } from "./config";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
 import { nightPaths } from "./paths";
@@ -102,7 +102,11 @@ function live(n: ReturnType<typeof findNight>) {
   const cfg = n.night.config;
   const s = summary(n);
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === n.night.night_id);
-  const coding = cfg.models.map((model, b) => {
+  const running = s.round > 0 && s.status === "running";
+  // The round's width, from the finished rounds before it (same rule as the night loop).
+  let stalled = 0;
+  for (let r = s.round - 1; r >= 1 && !rows.some((x) => x.kind === "experiment" && x.round === r && x.decision === "keep"); r--) stalled++;
+  const branches = (running ? cfg.models.slice(0, parallelWidth(cfg, s.round, stalled)) : []).map((model, b) => {
     const expId = `${n.night.night_id}-r${s.round}-b${b}`;
     const state = readJson<CodeState>(join(n.dir, "exps", expId, "code-state.json"));
     const row = rows.find((r) => r.exp_id === expId && r.kind === "experiment");
@@ -119,7 +123,6 @@ function live(n: ReturnType<typeof findNight>) {
     .filter((r) => r.kind === "experiment" && r.commit)
     .map((r) => ({ exp_id: r.exp_id, round: r.round, decision: r.decision, score: r.metrics[cfg.primary_metric] ?? null, hypothesis: r.hypothesis }))
     .reverse();
-  const branches = s.round > 0 && s.status === "running" ? coding : [];
   // Spend so far: finished rows plus what the current round's coders have spent before their rows land.
   const pending = branches.filter((b) => !b.decision).reduce((a, b) => a + b.coder_usd + b.dev_usd, 0);
   return { ...s, spend_usd: Math.round((s.spend_usd + pending) * 10_000) / 10_000, branches, rows: rows.length, experiments };

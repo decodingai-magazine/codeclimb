@@ -35,7 +35,14 @@ export type NightConfig = {
   /** ISO timestamp, or a duration from night start like "90m" / "8h". */
   deadline: string;
   timeouts: { experiment_min: number; eval_min: number };
+  /** Coder models, one per branch. A round runs the first `parallelWidth(...)` of them. */
   models: string[];
+  /**
+   * How many branches run per round. `linear` starts at `models.length` and decays to `min` by the last
+   * round; `none` runs every model each round. After `widen_after` rounds in a row with nothing kept, the
+   * next round runs every model again (0 = never).
+   */
+  parallel: { decay: "none" | "linear"; min: number; widen_after: number };
   reviewer_model: string;
   /** Models the built program may call through the metering proxy (unused by stdlib-only scenarios). */
   allowed_models: string[];
@@ -71,6 +78,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const timeouts = req<NightConfig["timeouts"]>(raw, "timeouts", "object");
   const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
+  const par = (raw.parallel as Partial<Record<keyof NightConfig["parallel"], unknown>> | undefined) ?? {};
   const cfg: NightConfig = {
     spec_dir: abs(req(raw, "spec_dir", "string")),
     dataset_dir: abs(req(raw, "dataset_dir", "string")),
@@ -85,6 +93,11 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     deadline: String(req(raw, "deadline", raw.deadline instanceof Date ? "object" : "string")),
     timeouts: { experiment_min: Number(timeouts.experiment_min), eval_min: Number(timeouts.eval_min) },
     models: req(raw, "models", "array"),
+    parallel: {
+      decay: (par.decay ?? "linear") as NightConfig["parallel"]["decay"],
+      min: par.min == null ? 1 : Number(par.min),
+      widen_after: par.widen_after == null ? 1 : Number(par.widen_after),
+    },
     reviewer_model: req(raw, "reviewer_model", "string"),
     allowed_models: (raw.allowed_models as string[] | undefined) ?? [],
     primary_metric: req(raw, "primary_metric", "string"),
@@ -113,6 +126,14 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (cfg.models.length < 1) throw new Error("config: models needs at least one model (one per branch)");
   if (cfg.models.includes(cfg.reviewer_model)) {
     throw new Error("config: reviewer_model must be none of the coder models (no coder critiques its own work)");
+  }
+  const sched = cfg.parallel;
+  if (!["none", "linear"].includes(sched.decay)) throw new Error("config: parallel.decay must be none | linear");
+  if (!(Number.isInteger(sched.min) && sched.min >= 1 && sched.min <= cfg.models.length)) {
+    throw new Error(`config: parallel.min must be an integer in 1..${cfg.models.length} (the number of models)`);
+  }
+  if (!(Number.isInteger(sched.widen_after) && sched.widen_after >= 0)) {
+    throw new Error("config: parallel.widen_after must be an integer >= 0 (0 = never widen again)");
   }
   if (cfg.max_validations < 1 || cfg.max_validations > 5) throw new Error("config: max_validations must be 1..5");
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
@@ -191,4 +212,17 @@ export function resolveDeadline(deadline: string, startedAt: number): number {
 export function efficiencyMetrics(cfg: Pick<NightConfig, "standard_metrics">): string[] {
   const st = cfg.standard_metrics;
   return [...(st.cost ? [st.cost_metric] : []), ...(st.latency ? [st.latency_metric] : [])];
+}
+
+/**
+ * Branches for `round` (1-based): `models.length` in round 1, decaying linearly to `parallel.min` by
+ * `max_rounds`, like a learning-rate schedule. `roundsWithoutKeep` (finished rounds in a row that kept
+ * nothing) at `widen_after` or more resets it to every model: a stalled night explores again.
+ */
+export function parallelWidth(cfg: NightConfig, round: number, roundsWithoutKeep: number): number {
+  const max = cfg.models.length;
+  const { decay, min, widen_after } = cfg.parallel;
+  if (decay === "none" || (widen_after > 0 && roundsWithoutKeep >= widen_after) || cfg.max_rounds <= 1) return max;
+  const t = Math.min(1, Math.max(0, (round - 1) / (cfg.max_rounds - 1)));
+  return Math.max(min, Math.min(max, Math.round(max - (max - min) * t)));
 }

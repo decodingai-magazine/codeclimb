@@ -106,12 +106,15 @@ npm test                               # unit tests (keep rule, overfit test, st
 
 A night runs these steps:
 
-1. **Rounds.** Each round starts one `run-experiment` child per model in `models`, all in parallel, via `step.invoke`.
+1. **Rounds.** Each round starts one `run-experiment` child per branch, all in parallel, via `step.invoke`. Branch `b` uses `models[b]`, and `parallel` sets how many branches a round runs, like a learning-rate schedule for exploration:
+   - `decay: linear` (default) runs every model in round 1 and decays linearly to `min` (default 1) by `max_rounds`. With 4 models and 10 rounds the widths are 4, 4, 3, 3, 3, 2, 2, 2, 1, 1. `decay: none` runs every model every round.
+   - `widen_after` (default 1, `0` = off): after that many rounds in a row with nothing kept, the next round runs every model again. A stalled night explores; one that keeps improving narrows to refining.
+   - List the preferred model first: narrow rounds use the first models in `models`.
 2. **Experiment.** Each child gives Pi a fresh sandbox built from the baseline plus the kept commit. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit.
 3. **Evaluation.** Once every coder has stopped, one `run-evaluator` child evaluates the round's candidates one after another in a single sandbox: the parent and each committed branch, in an order that rotates by round. Before each candidate it kills every leftover process, wipes `/repo`, `/work`, `/tmp` and `/eval`, and clones the candidate. `run_cmd` runs the program on the questions, and `score_cmd` scores the outputs on the host. So every candidate of a round is timed on the same machine with nothing else running.
 4. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`. With latency or cost optimized, see [Standard metrics](#standard-metrics-latency-and-cost) for the tie-break and the efficiency keep.
 5. **Noise floor.** On the first night, the first kept commit is evaluated 5 times in one evaluator to measure σ of the primary metric and of each optimized standard metric.
-6. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch for the next round.
+6. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch of the next round.
 7. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
 8. **Test.** After any stop, the final kept commit is scored on test once.
 
