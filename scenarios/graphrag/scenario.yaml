@@ -2,6 +2,7 @@
 # Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
 name: graphrag
 image: codeclimb-graphrag          # npm run build:image:graphrag
+requirements: requirements.txt     # what the image adds; installed at creation on Inngest sandboxes
 bundle: uv run python scripts/export_agent.py --out {out}
 eval_sandboxes: per_candidate      # model calls are slow, and no headline reads latency
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]

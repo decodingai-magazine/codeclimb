@@ -73,7 +73,12 @@ export const runEvaluator = ccInngest.createFunction(
         outcomes.push({ ok: true, evalId: spec.evalId, result });
         // Native mirror of the metrics on the experiment's run (not used for decisions).
         if (scoreRunId && result.ok) {
-          for (const [name, value] of Object.entries(result.metrics)) {
+          // Sorted: a memoized result's keys may come back in another order, and step ids must replay the same.
+          const headline = Object.keys(cfg.scenario.headline);
+          const names = headline.length ? [cfg.primary_metric, ...headline] : Object.keys(result.metrics);
+          for (const name of [...new Set(names)].sort()) {
+            const value = result.metrics[name];
+            if (value === undefined) continue;
             await step.score(`score-${spec.evalId}-${name}`, { runId: scoreRunId, name, value }).catch(() => undefined);
           }
         }

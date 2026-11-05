@@ -1,0 +1,35 @@
+# One short round of graphrag on Inngest Cloud and Inngest Sandboxes: npm run worker:cloud, npm run tunnel, then
+# npm run run-night:cloud -- --config configs/graphrag-cloud.yaml. eval_min × 3 stages stays under the 50-minute cap.
+# All three stages are scored on dev every round; the reviewer picks the keep from the branches that pass
+# the scenario's headline guardrails. `primary_metric` only names the score in charts and logs.
+scenario: scenarios/graphrag
+sandbox: inngest
+max_rounds: 1
+deadline: 3h
+timeouts:
+  experiment_min: 25
+  eval_min: 16
+models:
+  - github-copilot/claude-haiku-5.5
+  - github-copilot/claude-haiku-5.5
+reviewer_model: github-copilot/claude-sonnet-5
+# The models the program may call, through the metering proxy.
+allowed_models:
+  - openrouter/anthropic/claude-haiku-5.5
+  - openrouter/deepseek/deepseek-v4.1-flash
+  - openrouter/typesafe/jev-1.14
+  - openrouter/mongodb/voyage-4-lite
+primary_metric: extraction.mentions.f1
+thresholds:
+  extraction.mentions.f1: 0.8
+  extraction.relations.directed.f1: 0.6
+  graph.b_cubed.precision: 0.98
+  graph.b_cubed.recall: 0.98
+  retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
+min_gain: 0.02
+budget_usd:
+  experiment: 2.0
+  night: 20.0
+  eval: 2.0
+  dev: 0.5
+results_path: runs/graphrag-cloud/results.jsonl

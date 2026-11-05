@@ -14,7 +14,7 @@ const shortMetric = (metric: string, stage: string) =>
 
 /** `<value> ±<half-width>`, when the report gave an interval. */
 function withInterval(metrics: Row["metrics"] | undefined, metric: string): string {
-  const half = metrics?.[metric.replace(/\.mean$/, ".ci95_half")];
+  const half = metric.endsWith(".mean") ? metrics?.[metric.replace(/\.mean$/, ".ci95_half")] : undefined;
   return f3(metrics?.[metric]) + (half == null ? "" : ` ±${f3(half)}`);
 }
 
@@ -75,6 +75,9 @@ export function kindAxes(metrics: Row["metrics"] | undefined) {
 
 export function KindHeatmap({ row, label }: { row: Row | undefined; label: string }) {
   const { prefix, kinds, names } = kindAxes(row?.metrics);
+  const value = (kind: string, n: string) => row?.metrics[`${prefix}.by_kind.${kind}.metrics.${n}.mean`];
+  // Only rates get color: token and item counts have no "left to fix".
+  const isRate = (n: string) => kinds.every((kind) => (value(kind, n) ?? 0) <= 1);
   if (!kinds.length) return <div className="empty">No per-kind metrics in {label}.</div>;
   return (
     <div className="table-wrap">
@@ -88,8 +91,8 @@ export function KindHeatmap({ row, label }: { row: Row | undefined; label: strin
               <td>{kind}</td>
               {names.map((n) => {
                 const key = `${prefix}.by_kind.${kind}.metrics.${n}.mean`;
-                const val = row?.metrics[key];
-                const b = bin(val);
+                const val = value(kind, n);
+                const b = isRate(n) ? bin(val) : -1;
                 return (
                   <td key={n} className="num" title={withInterval(row?.metrics, key)}
                     style={b < 0 ? undefined : { background: `var(--heat-${b})`, color: `var(--heat-ink-${b})` }}>

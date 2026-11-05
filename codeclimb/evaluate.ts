@@ -10,7 +10,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { evalMinutes, type NightConfig } from "./config";
+import { evalMinutes, type NightConfig, scenarioRequirements } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { sandboxBackend } from "./sandbox";
@@ -83,7 +83,7 @@ export async function openEvaluator(cfg: NightConfig, nightId: string, evaluator
   const needMs = evalMinutes(cfg) * 60_000 + EVAL_OVERHEAD_MS;
   if (live && !(backend.maxActiveMs && ((await live.ageMs?.()) ?? 0) + needMs > backend.maxActiveMs)) return live;
   return backend.create({
-    name, baseline: cfg.scenario.image, network: isMetered(cfg) ? METER_NETWORK : "none",
+    name, baseline: cfg.scenario.image, requirements: scenarioRequirements(cfg), network: isMetered(cfg) ? METER_NETWORK : "none",
     labels: { "cc.night": nightId, ...(runId ? { "cc.run": runId } : {}) },
   });
 }

@@ -48,7 +48,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 
 - **The night page shows Q15; `report.html` doesn't.** The static report still shows one primary metric, and no stage tables.
 
-- **Inngest sandboxes ignore `image`**, so graphrag's requirements are missing there. Step 7 needs an install at sandbox creation, or a custom image.
+- **Inngest sandboxes ignore `image`**, so `requirements` in `scenario.yaml` is pip-installed at each sandbox's creation there.
 - **`timeouts.eval_min` applies per stage**, so one graphrag candidate may take 3 × `eval_min`. `checkSandboxLimits` holds that product to Inngest's 50-minute cap, so `eval_min` is 16 at most there.
 
 ## Build order (one commit each)
