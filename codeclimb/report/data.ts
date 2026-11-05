@@ -17,6 +17,9 @@ export type ReportNight = {
   config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd"> & {
     /** Optimized standard metrics (lower is better); empty for nights before they existed. */
     objectives: string[];
+    /** The scenario's headline metrics and stage names; empty for nights before stages. */
+    headline: string[];
+    stages: string[];
   } | null;
   done: {
     stop_reason: string;
@@ -88,6 +91,8 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
             max_rounds: c.max_rounds, models: c.models, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
             // Nights before standard metrics have no `standard_metrics`: nothing was optimized besides the primary.
             objectives: c.standard_metrics ? efficiencyMetrics(c) : [],
+            headline: Object.keys(c.scenario?.headline ?? {}),
+            stages: c.scenario?.stages?.map((s) => s.name) ?? [],
           }
         : null,
       done: done

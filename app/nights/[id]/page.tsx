@@ -10,8 +10,9 @@ import type { ReportData } from "../../../codeclimb/report/data";
 import { Icon, Kpi, Meter, StatusBadge } from "../../ui";
 import { api, duration, f3, type Live, usd } from "../../worker";
 import { ConvergenceChart, ConvergenceTable, FamilyHeatmap, FamilyTable } from "./report/charts";
-import { derive } from "./report/derive";
+import { derive, families } from "./report/derive";
 import { DetailCard, ExportCard } from "./report/side";
+import { KindHeatmap, kindAxes, StageTables, stageHeadlines } from "./report/stages";
 import { EvalsTable, ExperimentsTable, Reviews } from "./report/tables";
 
 function Card({ title, sub, tools, children }: { title: string; sub?: string; tools?: React.ReactNode; children: React.ReactNode }) {
@@ -41,6 +42,8 @@ export default function NightPage() {
   const [convTable, setConvTable] = useState(false);
   const [heatTable, setHeatTable] = useState(false);
   const [heatMode, setHeatMode] = useState<"lineage" | "all">("lineage");
+  const [chartMetric, setChartMetric] = useState<string | null>(null);
+  const [kindRow, setKindRow] = useState<"selected" | "test">("selected");
   const [now, setNow] = useState(() => Date.now());
   const rowsSeen = useRef(-1);
 
@@ -76,6 +79,11 @@ export default function NightPage() {
   const primary = night?.config?.primary_metric ?? live?.primary_metric ?? "accuracy";
   const v = useMemo(() => (night ? derive(night, primary) : null), [night, primary]);
   const sel = selected && v?.byId.has(selected) ? selected : v?.bestId ?? null;
+  const headline = night?.config?.headline ?? [];
+  const stages = night?.config?.stages ?? [];
+  const multiStage = stages.length > 1 && headline.length > 0;
+  const shownMetric = chartMetric ?? primary;
+  const chart = useMemo(() => (night ? derive(night, shownMetric) : null), [night, shownMetric]);
 
   async function stop() {
     if (!confirm(`Stop night ${id}? Pi is aborted, sandboxes are destroyed, and the night gets no test score.`)) return;
@@ -123,7 +131,12 @@ export default function NightPage() {
         <div className="kpis">
           <Kpi label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
             note={`${kept ? kept.exp_id.replace(`${id}-`, "") : "nothing kept yet"} · threshold ${f3(live.threshold)}`} />
-          <Kpi label="Test" value={f3(v?.score(v.lastTest))} note={v?.lastTest ? "scored once, at the end" : "after the night stops"} />
+          {multiStage
+            ? stageHeadlines(headline, stages).map(([stage, metrics]) => (
+                <Kpi key={stage} label={`Test ${stage}`} value={f3(v?.lastTest?.metrics[metrics[0]])}
+                  note={v?.lastTest ? metrics[0]?.replace(`${stage}.`, "") : "after the night stops"} />
+              ))
+            : <Kpi label="Test" value={f3(v?.score(v.lastTest))} note={v?.lastTest ? "scored once, at the end" : "after the night stops"} />}
           <Kpi label="Round" value={`${live.round} / ${live.max_rounds}`}
             note={v ? `${v.exps.length} experiments · kept in ${v.keptRounds} rounds` : undefined} />
           <Kpi label="Spend" value={usd(live.spend_usd)} note={`of ${usd(live.budget_usd)} budget`}>
@@ -164,13 +177,40 @@ export default function NightPage() {
         ) : (
           <div className="grid-2">
             <div className="stack">
-              <Card title="How the Night Converged" sub={`Every experiment's ${primary} on dev. The red line is the kept commit.`}
-                tools={<ViewToggle table={convTable} onToggle={() => setConvTable((x) => !x)} />}>
+              {multiStage && (
+                <Card title="Stages" sub="Headline metrics per stage, ± the 95% interval, on dev; the last line is test.">
+                  <StageTables nightId={id} v={v} headline={headline} stages={stages} onSelect={setSelected} />
+                </Card>
+              )}
+              <Card title="How the Night Converged" sub={`Every experiment's ${shownMetric} on dev. The red line is the kept commit.`}
+                tools={
+                  <>
+                    {headline.length > 0 && (
+                      <select className="input" aria-label="metric" value={shownMetric} onChange={(ev) => setChartMetric(ev.target.value)}>
+                        {[...new Set([primary, ...headline])].map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    )}
+                    <ViewToggle table={convTable} onToggle={() => setConvTable((x) => !x)} />
+                  </>
+                }>
                 {convTable
-                  ? <ConvergenceTable nightId={id} v={v} primary={primary} />
-                  : <ConvergenceChart nightId={id} v={v} branches={branches} primary={primary} selected={sel} onSelect={setSelected} />}
+                  ? <ConvergenceTable nightId={id} v={chart!} primary={shownMetric} />
+                  : <ConvergenceChart nightId={id} v={chart!} branches={branches} primary={shownMetric} selected={sel} onSelect={setSelected} />}
               </Card>
-              <Card title="Metric Families" sub="Share of items wrong per input family: darker means more left to fix."
+              {kindAxes(v.rows.find((r) => r.kind === "baseline")?.metrics ?? v.exps[0]?.metrics).kinds.length > 0 && (
+                <Card title="Retrieval by Kind" sub="Each metric per query kind: darker means more left to fix."
+                  tools={
+                    <div className="seg">
+                      <button type="button" aria-pressed={kindRow === "selected"} onClick={() => setKindRow("selected")}>Selected</button>
+                      <button type="button" aria-pressed={kindRow === "test"} onClick={() => setKindRow("test")}>Test</button>
+                    </div>
+                  }>
+                  {kindRow === "test"
+                    ? <KindHeatmap row={v.lastTest ?? undefined} label="test" />
+                    : <KindHeatmap row={sel ? v.byId.get(sel) : undefined} label={sel ? sel.replace(`${id}-`, "") : "nothing selected"} />}
+                </Card>
+              )}
+              {families(v).length > 0 && <Card title="Metric Families" sub="Share of items wrong per input family: darker means more left to fix."
                 tools={
                   <>
                     <div className="seg">
@@ -183,12 +223,12 @@ export default function NightPage() {
                 {heatTable
                   ? <FamilyTable nightId={id} v={v} mode={heatMode} />
                   : <FamilyHeatmap nightId={id} v={v} mode={heatMode} selected={sel} onSelect={setSelected} />}
-              </Card>
+              </Card>}
               <Card title="Experiments" sub="Click a row to inspect it and pick it for export.">
                 <ExperimentsTable night={night} v={v} primary={primary} selected={sel} onSelect={setSelected} />
               </Card>
               {v.rows.some((r) => r.kind !== "experiment") && (
-                <Card title="Extra Evaluations" sub="Re-scores, noise floor, and the one test score.">
+                <Card title="Extra Evaluations" sub="Re-scores and the one test score.">
                   <EvalsTable nightId={id} v={v} primary={primary} />
                 </Card>
               )}

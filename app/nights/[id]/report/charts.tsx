@@ -268,7 +268,7 @@ function heatColumns(nightId: string, v: Derived, mode: "lineage" | "all"): Heat
 
 // Encode the share of items wrong (1 − accuracy): solved families recede, the remaining gaps stand out.
 const BINS = [0.05, 0.15, 0.3, 0.5];
-const bin = (acc: number | null | undefined) => (acc == null ? -1 : BINS.filter((b) => 1 - acc >= b).length);
+export const bin = (acc: number | null | undefined) => (acc == null ? -1 : BINS.filter((b) => 1 - acc >= b).length);
 
 export function FamilyHeatmap({ nightId, v, mode, selected, onSelect }: {
   nightId: string;

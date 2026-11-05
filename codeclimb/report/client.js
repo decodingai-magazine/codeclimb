@@ -645,7 +645,7 @@
       h("section", { class: "card" },
         h("div", { class: "card-head" }, h("h2", { text: "Experiments" }), h("span", { class: "sub", text: "Click a row to inspect it and pick it for export." })),
         experimentsTable(night, v)),
-      evalsTable(night, v) ? h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Extra Evaluations" }), h("span", { class: "sub", text: "Re-scores, noise floor, and the one test score." })), evalsTable(night, v)) : null,
+      evalsTable(night, v) ? h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Extra Evaluations" }), h("span", { class: "sub", text: "Re-scores and the one test score." })), evalsTable(night, v)) : null,
       h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Reviewer Feedback" }), h("span", { class: "sub", text: night.config ? night.config.reviewer_model : "" })), reviewsCard(night)));
     sideEl = h("aside", { class: "side" }, detailCard(night, v), exportCard(night, v));
     const main = h("main", null, nightsTable(), hero, kpis, h("div", { class: "grid-2" }, left, sideEl));
