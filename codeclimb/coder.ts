@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
-import { efficiencyMetrics, type NightConfig, scenarioRequirements } from "./config";
+import { efficiencyMetrics, type NightConfig } from "./config";
 import { ExperimentRepo, expRef } from "./git";
 import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
@@ -207,7 +207,7 @@ export async function runCoder(
     sandbox = await backend.create({
       name,
       baseline: cfg.scenario.image,
-      requirements: scenarioRequirements(cfg),
+      inngestImage: cfg.scenario.inngest_image,
       commit: await repo.bundle(input.parentExpId),
       specDir: paths.bundleDir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },

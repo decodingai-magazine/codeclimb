@@ -45,8 +45,8 @@ export interface CreateSandboxOptions {
   name: string;
   /** Baseline environment (Docker image / Inngest custom image). */
   baseline: string;
-  /** Pip requirements (the file's text) the baseline lacks, on a backend that can't use `baseline`. */
-  requirements?: string;
+  /** Published image on Inngest; without it the sandbox starts from Inngest's base image. */
+  inngestImage?: string;
   /** Commit cloned into `/repo`; omitted for the evaluator, which clones each candidate itself. */
   commit?: RepoCommit;
   labels?: Record<string, string>;

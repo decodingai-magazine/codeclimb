@@ -42,8 +42,8 @@ export interface Scenario {
   eval_sandboxes: "shared" | "per_candidate";
   /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
   protocol: string[];
-  /** Host path (relative to the scenario dir) of the pip requirements the image holds, for backends without images. */
-  requirements?: string;
+  /** The image published to the Inngest workspace, for scenarios that need more than its base image. */
+  inngest_image?: string;
   /** Host: checks a branch's files in `{repo}` before it is evaluated and writes `RepoCheck` as JSON to `{report}`. */
   check?: string;
 }
@@ -94,7 +94,7 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
     headline: headline as Scenario["headline"], eval_sandboxes: evalSandboxes, protocol: protocol as string[],
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
-    ...(raw.requirements === undefined ? {} : { requirements: str(raw, "requirements", where) }),
+    ...(raw.inngest_image === undefined ? {} : { inngest_image: str(raw, "inngest_image", where) }),
   };
 }
 

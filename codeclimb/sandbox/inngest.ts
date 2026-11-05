@@ -30,8 +30,6 @@ const DEAD = new Set(["TERMINATING", "TERMINATED", "FAILED"]);
 /** A sandbox gets one hour of active runtime, then pauses; resuming does not reset the clock. */
 const MAX_ACTIVE_MS = 60 * 60_000;
 
-const PIP_TIMEOUT_MS = 5 * 60_000;
-
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isCode = (e: unknown, code: string) => e instanceof SandboxError && e.code === code;
@@ -229,13 +227,6 @@ async function setUp(sandbox: InngestSandbox, specDir: string | undefined): Prom
   if (r.exitCode !== 0) throw new Error(`sandbox setup failed (${r.exitCode}): ${r.stderr.trim()}`);
 }
 
-/** Inngest runs its own base image, so `baseline`'s packages are installed here. */
-async function pipInstall(sandbox: InngestSandbox, requirements: string): Promise<void> {
-  await sandbox.writeFile("/tmp/cc/requirements.txt", requirements);
-  const r = await sandbox.exec("pip install --quiet --no-cache-dir -r /tmp/cc/requirements.txt && rm /tmp/cc/requirements.txt", { cwd: "/", timeoutMs: PIP_TIMEOUT_MS });
-  if (r.exitCode !== 0) throw new Error(`pip install failed (${r.exitCode}): ${r.stderr.trim().slice(-1000)}`);
-}
-
 export class InngestBackend implements SandboxBackend {
   readonly kind = "inngest" as const;
   readonly maxActiveMs = MAX_ACTIVE_MS;
@@ -243,13 +234,12 @@ export class InngestBackend implements SandboxBackend {
   async create(opts: CreateSandboxOptions): Promise<Sandbox> {
     // A stale sandbox from a crashed attempt: destroy it, as Docker's `rm -f` does.
     for (const old of await liveNamed(opts.name)) await old.destroy().catch(() => undefined);
-    const sb = await createFresh(opts.name);
+    const sb = await createFresh(opts.name, opts.inngestImage);
     const runId = opts.labels?.["cc.run"];
     if (runId) byRun.set(runId, (byRun.get(runId) ?? new Set()).add(opts.name));
     const sandbox = new InngestSandbox(sb);
     try {
       await setUp(sandbox, opts.specDir);
-      if (opts.requirements) await pipInstall(sandbox, opts.requirements);
       if (opts.commit) await cloneInto(sandbox, opts.commit);
     } catch (e) {
       await sandbox.destroy();
@@ -296,11 +286,12 @@ async function destroyId(id: string | undefined): Promise<void> {
  * Create, retrying while a destroyed namesake still holds the name, and replacing a sandbox that
  * never reaches RUNNING (seen in the beta: stuck in STARTING with "launch result is unknown").
  */
-async function createFresh(name: string): Promise<SdkSandbox> {
+async function createFresh(name: string, image?: string): Promise<SdkSandbox> {
   for (let attempt = 0; ; attempt++) {
     try {
       const sb = await ccInngest.sandboxes.create({
         name, vcpu: VCPU, memoryMb: MEMORY_MB, environment: { PYTHONDONTWRITEBYTECODE: "1" }, runningTimeout: START_TIMEOUT,
+        ...(image ? { image } : {}),
       });
       if (sb.status === "RUNNING") return sb;
       await sb.destroy().catch(() => undefined);

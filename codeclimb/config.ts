@@ -2,7 +2,7 @@
 // travels in the night.start event with paths relative to the checkout root, and the
 // worker resolves them against its own checkout (`rootConfig`), so a remote worker works.
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { parse } from "yaml";
 import { loadScenario, type Scenario } from "./scenario";
 
@@ -166,11 +166,6 @@ export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {
 
 /** Minutes one candidate may take: `eval_min` applies to each stage. */
 export const evalMinutes = (cfg: Pick<NightConfig, "timeouts" | "scenario">) => cfg.timeouts.eval_min * cfg.scenario.stages.length;
-
-/** The text of the scenario's `requirements` file, if it has one. */
-export function scenarioRequirements(cfg: NightConfig): string | undefined {
-  return cfg.scenario.requirements && readFileSync(join(cfg.scenario_dir, cfg.scenario.requirements), "utf8");
-}
 
 /** Maps every path field of a config (the scenario's commands run in `scenario_dir`, so they need none). */
 function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {
