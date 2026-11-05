@@ -334,14 +334,35 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
-/** A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created. */
+/** `function_id` of `run-night` on `inngest/function.cancelled` (`<app id>-<function id>`). */
+const RUN_NIGHT_FUNCTION_ID = runNight.id(ccInngest.id);
+
+/**
+ * The night of a cancelled `run-night`, from its triggering event. The runtime puts that event on
+ * `inngest/function.cancelled` as `data.event`, but SDK 4.25.0 does not type it, so read it defensively.
+ */
+function cancelledNightId(data: unknown): string | undefined {
+  const nightId = (data as { event?: { data?: { night_id?: unknown } } } | undefined)?.event?.data?.night_id;
+  return typeof nightId === "string" && nightId ? nightId : undefined;
+}
+
+/**
+ * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
+ * A cancelled `run-night` (`timeouts.finish`, or a stop) also stops its night: it creates no sandboxes
+ * itself, its children do. After a stop this sends a second `night.stop`, which reruns the cleanup
+ * (`markStopped` keeps the first reason) but cancels no further `run-night`, so it ends there.
+ */
 export const onRunCancelled = ccInngest.createFunction(
   { id: "run-cancelled-cleanup", triggers: [{ event: "inngest/function.cancelled" }] },
   async ({ event, step }) => {
     const runId = event.data.run_id;
     const aborted = await step.run("abort-pi", () => abortRun(runId));
     const swept = await step.run("sweep", () => sweepRun(runId));
-    return { aborted, swept };
+    const nightId = event.data.function_id === RUN_NIGHT_FUNCTION_ID ? cancelledNightId(event.data) : undefined;
+    if (nightId) {
+      await step.sendEvent("stop-night", { name: "codeclimb/night.stop", data: { night_id: nightId, reason: "cancelled" } });
+    }
+    return { aborted, swept, stoppedNight: nightId ?? null };
   },
 );
 
