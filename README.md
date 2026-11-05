@@ -115,6 +115,18 @@ A night runs these steps:
 7. **Validation.** Once the kept commit's re-score passes the thresholds, it is validated on a held-out fold. If it overfits, the next fold becomes the validation fold.
 8. **Test.** After any stop, the final kept commit is scored on test once.
 
+A night stops on the first of these, checked between rounds (`stop_reason` in `done.json`):
+
+| Stop | Config | When |
+|---|---|---|
+| `thresholds` | `thresholds` | The kept commit passes them and validation on the held-out fold shows no overfit |
+| `max_validations` | `max_validations` | That many validations ran without a pass |
+| `max_rounds` | `max_rounds` | The last round finished |
+| `deadline` | `deadline` | The deadline passed |
+| `budget` | `budget_usd.night` | Spend plus the costliest round so far and the test eval would cross it |
+| `tokens` | `max_tokens` (optional) | Coder and reviewer tokens plus the costliest round so far would cross it |
+| `plateau` | `plateau_rounds` (default 3, `0` = off) | That many rounds in a row kept nothing |
+
 Validation, test and the noise runs each get their own evaluator too. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
 
 All output lands under `dirname(results_path)`:
@@ -174,7 +186,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, in the Decoding AI design with light and dark themes. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
-- **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
+- **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, the plateau stop and token cap, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
 - **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff, and **Export** downloads it as a `.tar.gz` or a git bundle with its lineage, or gives the CLI command for a folder or git remote.
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:

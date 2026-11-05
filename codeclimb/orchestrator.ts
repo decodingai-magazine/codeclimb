@@ -97,11 +97,14 @@ export async function initNight(cfg: NightConfig, nightId: string): Promise<Nigh
 
 export interface StopCheck {
   stop: boolean;
-  reason?: "max_rounds" | "deadline" | "budget";
+  reason?: "max_rounds" | "deadline" | "budget" | "tokens" | "plateau";
   now: number;
 }
 
-/** Soft stop, checked between rounds. The $ cap stops once spend + one round + the test eval would cross it. */
+/**
+ * Soft stop, checked between rounds. The $ and token caps stop once the total plus the costliest round
+ * so far (and, for $, the test eval) would cross them. A plateau is `plateau_rounds` rounds in a row with nothing kept.
+ */
 export function checkStop(args: {
   round: number;
   cfg: NightConfig;
@@ -110,6 +113,10 @@ export function checkStop(args: {
   roundSpends: number[];
   /** The costliest single eval of the night so far (program model calls): the test eval's estimate. */
   maxEvalUsd?: number;
+  tokens?: number;
+  roundTokens?: number[];
+  /** Rounds in a row, up to now, that kept nothing. */
+  roundsWithoutKeep?: number;
 }): StopCheck {
   const now = Date.now();
   if (args.round > args.cfg.max_rounds) return { stop: true, reason: "max_rounds", now };
@@ -117,6 +124,11 @@ export function checkStop(args: {
   const nextRound = args.roundSpends.length ? Math.max(...args.roundSpends) : 0;
   const testEval = args.maxEvalUsd ?? 0;
   if (args.spend + nextRound + testEval > args.cfg.budget_usd.night) return { stop: true, reason: "budget", now };
+  const cap = args.cfg.max_tokens;
+  const rt = args.roundTokens ?? [];
+  if (cap !== null && (args.tokens ?? 0) + (rt.length ? Math.max(...rt) : 0) > cap) return { stop: true, reason: "tokens", now };
+  const plateau = args.cfg.plateau_rounds;
+  if (plateau > 0 && (args.roundsWithoutKeep ?? 0) >= plateau) return { stop: true, reason: "plateau", now };
   return { stop: false, now };
 }
 

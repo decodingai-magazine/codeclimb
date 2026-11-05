@@ -9,6 +9,8 @@ hidden_fields: [family]
 sandbox: docker
 baseline: autocode-base
 max_rounds: 24
+plateau_rounds: 3     # stop after 3 rounds in a row with nothing kept (0 = never)
+# max_tokens: 5000000 # cap on coder + reviewer tokens for the night (omit = no cap)
 deadline: 8h
 timeouts:
   experiment_min: 15

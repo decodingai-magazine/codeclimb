@@ -28,6 +28,10 @@ export type NightConfig = {
   /** Baseline environment: the `autocode-base` image. */
   baseline: string;
   max_rounds: number;
+  /** Cap on the night's model tokens (coders + reviewer); null = no cap. Checked between rounds, like the $ cap. */
+  max_tokens: number | null;
+  /** Stop after this many rounds in a row with nothing kept; 0 = never. */
+  plateau_rounds: number;
   /** ISO timestamp, or a duration from night start like "90m" / "8h". */
   deadline: string;
   timeouts: { experiment_min: number; eval_min: number };
@@ -76,6 +80,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     sandbox: req(raw, "sandbox", "string"),
     baseline: (raw.baseline as string | undefined) ?? "autocode-base",
     max_rounds: req(raw, "max_rounds", "number"),
+    max_tokens: raw.max_tokens == null ? null : Number(raw.max_tokens),
+    plateau_rounds: raw.plateau_rounds == null ? 3 : Number(raw.plateau_rounds),
     deadline: String(req(raw, "deadline", raw.deadline instanceof Date ? "object" : "string")),
     timeouts: { experiment_min: Number(timeouts.experiment_min), eval_min: Number(timeouts.eval_min) },
     models: req(raw, "models", "array"),
@@ -110,6 +116,12 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   if (cfg.max_validations < 1 || cfg.max_validations > 5) throw new Error("config: max_validations must be 1..5");
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
+  if (cfg.max_tokens !== null && !(Number.isInteger(cfg.max_tokens) && cfg.max_tokens > 0)) {
+    throw new Error("config: max_tokens must be a positive integer, or omitted for no cap");
+  }
+  if (!(Number.isInteger(cfg.plateau_rounds) && cfg.plateau_rounds >= 0)) {
+    throw new Error("config: plateau_rounds must be an integer >= 0 (0 = never stop on a plateau)");
+  }
   if (!(cfg.budget_usd.eval > 0)) throw new Error("config: budget_usd.eval must be a positive number");
   if (!(cfg.budget_usd.dev > 0)) throw new Error("config: budget_usd.dev must be a positive number");
   const st = cfg.standard_metrics;

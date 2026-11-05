@@ -150,6 +150,9 @@ export const runNight = ccInngest.createFunction(
     const log: HypothesisLogEntry[] = [];
     const roundSpends: number[] = [];
     let spend = 0;
+    const roundTokens: number[] = [];
+    let tokens = 0;
+    let roundsWithoutKeep = 0;
     let maxEvalUsd = 0;
     let stopReason = "";
     let round = 0;
@@ -157,7 +160,7 @@ export const runNight = ccInngest.createFunction(
     while (!stopReason) {
       round += 1;
       const check = await step.run(`r${round}-check`, () =>
-        checkStop({ round, cfg, deadlineMs: init.deadlineMs, spend, roundSpends, maxEvalUsd }),
+        checkStop({ round, cfg, deadlineMs: init.deadlineMs, spend, roundSpends, maxEvalUsd, tokens, roundTokens, roundsWithoutKeep }),
       );
       if (check.stop) {
         stopReason = check.reason!;
@@ -235,6 +238,10 @@ export const runNight = ccInngest.createFunction(
       const roundSpend = decision.spend + review.reviewer_usd;
       roundSpends.push(roundSpend);
       spend += roundSpend;
+      const roundTok = rows.reduce((a, r) => a + (r.tokens ?? 0), 0) + review.tokens;
+      roundTokens.push(roundTok);
+      tokens += roundTok;
+      roundsWithoutKeep = decision.keep ? 0 : roundsWithoutKeep + 1;
       for (const s of decision.summaries) {
         const deltas = Object.fromEntries(
           efficiencyMetrics(cfg).flatMap((m) =>

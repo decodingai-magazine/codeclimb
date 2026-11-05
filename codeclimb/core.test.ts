@@ -86,6 +86,25 @@ test("soft stops between rounds", () => {
   assert.equal(checkStop({ ...base, round: 2, spend: 2, roundSpends: [2] }).stop, false);
 });
 
+test("token cap and plateau stops", () => {
+  const base = { cfg, round: 2, deadlineMs: Date.now() + 3_600_000, spend: 0, roundSpends: [] as number[] };
+  assert.equal(cfg.max_tokens, null);
+  assert.equal(cfg.plateau_rounds, 3);
+  // No cap: any token count goes on.
+  assert.equal(checkStop({ ...base, tokens: 1e12, roundTokens: [1e9] }).stop, false);
+  const capped = { ...cfg, max_tokens: 1000 };
+  assert.equal(checkStop({ ...base, cfg: capped, tokens: 600, roundTokens: [500] }).reason, "tokens");
+  assert.equal(checkStop({ ...base, cfg: capped, tokens: 500, roundTokens: [500] }).stop, false);
+  assert.equal(checkStop({ ...base, roundsWithoutKeep: 2 }).stop, false);
+  assert.equal(checkStop({ ...base, roundsWithoutKeep: 3 }).reason, "plateau");
+  assert.equal(checkStop({ ...base, cfg: { ...cfg, plateau_rounds: 0 }, roundsWithoutKeep: 50 }).stop, false);
+  const parsed = parseConfig(`${BASE_YAML}max_tokens: 2000000\nplateau_rounds: 5\n`, "/base");
+  assert.equal(parsed.max_tokens, 2_000_000);
+  assert.equal(parsed.plateau_rounds, 5);
+  assert.throws(() => parseConfig(`${BASE_YAML}max_tokens: 0\n`, "/base"), /max_tokens/);
+  assert.throws(() => parseConfig(`${BASE_YAML}plateau_rounds: -1\n`, "/base"), /plateau_rounds/);
+});
+
 test("decideRound keeps the best gate-passing branch only past the keep rule", () => {
   const parent: Kept = { expId: "n-r0", sha: "p", score: 0.5, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
   const code = (sha: string) => ({

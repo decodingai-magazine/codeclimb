@@ -13,6 +13,8 @@ type ScenarioConfig = {
   reviewer_model: string;
   allowed_models: string[];
   max_rounds: number;
+  max_tokens: number | null;
+  plateau_rounds: number;
   deadline: string;
   timeouts: { experiment_min: number; eval_min: number };
   budget_usd: { experiment: number; night: number; eval: number; dev: number };
@@ -56,6 +58,8 @@ export default function NewRun() {
       reviewer_model: c.reviewer_model,
       allowed_models: c.allowed_models.join("\n"),
       max_rounds: String(c.max_rounds),
+      max_tokens: c.max_tokens == null ? "" : String(c.max_tokens),
+      plateau_rounds: String(c.plateau_rounds),
       deadline: c.deadline,
       experiment_min: String(c.timeouts.experiment_min),
       eval_min: String(c.timeouts.eval_min),
@@ -82,6 +86,8 @@ export default function NewRun() {
         reviewer_model: form.reviewer_model.trim(),
         allowed_models: lines(form.allowed_models),
         max_rounds: Number(form.max_rounds),
+        max_tokens: form.max_tokens.trim() ? Number(form.max_tokens) : null,
+        plateau_rounds: Number(form.plateau_rounds),
         deadline: form.deadline.trim(),
         timeouts: { experiment_min: Number(form.experiment_min), eval_min: Number(form.eval_min) },
         budget_usd: { ...c.budget_usd, experiment: Number(form.budget_experiment), night: Number(form.budget_night) },
@@ -173,6 +179,8 @@ export default function NewRun() {
             </label>
             <div className="form-grid">
               <label className="field"><span>Max rounds</span><input className="input" type="number" min={1} value={form.max_rounds ?? ""} onChange={set("max_rounds")} /></label>
+              <label className="field"><span>Stop after rounds with no gain</span><input className="input" type="number" min={0} value={form.plateau_rounds ?? ""} onChange={set("plateau_rounds")} placeholder="0 = never" /></label>
+              <label className="field"><span>Token cap</span><input className="input" type="number" min={1} step={1} value={form.max_tokens ?? ""} onChange={set("max_tokens")} placeholder="no cap" /></label>
               <label className="field"><span>Deadline</span><input className="input" value={form.deadline ?? ""} onChange={set("deadline")} placeholder="3h" /></label>
               <label className="field">
                 <span>Threshold · {scenario.config.primary_metric}</span>

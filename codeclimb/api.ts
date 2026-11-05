@@ -28,7 +28,7 @@ const STALE_MS = 60 * 60_000;
 
 /** Settings the app may override on a scenario's config; everything else comes from the YAML. */
 const OVERRIDABLE = [
-  "sandbox", "models", "reviewer_model", "allowed_models", "max_rounds", "deadline", "timeouts", "budget_usd",
+  "sandbox", "models", "reviewer_model", "allowed_models", "max_rounds", "max_tokens", "plateau_rounds", "deadline", "timeouts", "budget_usd",
   "thresholds", "gates", "min_gain", "overfit_gap", "max_validations", "standard_metrics",
 ] as const;
 
