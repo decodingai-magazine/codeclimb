@@ -217,7 +217,12 @@ async function startNight(body: { scenario?: string; night_id?: string; override
   } catch (e) {
     throw new HttpError(400, (e as Error).message);
   }
-  const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) } });
+  const { ids } = await ccInngest.send({
+    // Stable id: a retried or repeated start for the same night is deduplicated by Inngest.
+    id: `night-start-${nightId}`,
+    name: "codeclimb/night.start",
+    data: { night_id: nightId, config: relativeConfig(cfg) },
+  });
   return { night_id: nightId, event_id: ids[0] };
 }
 

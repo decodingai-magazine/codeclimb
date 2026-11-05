@@ -94,6 +94,14 @@ export const runNight = ccInngest.createFunction(
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
     // Backstop past any sane deadline + one round + the test eval; the deadline itself is a soft stop.
     timeouts: { finish: "24h" },
+    // Retries exhausted or a NonRetriableError: stop the night the way a user stop does, so
+    // its children are cancelled and `night-stop-cleanup` aborts Pi, sweeps and marks it.
+    onFailure: async ({ event, step }) => {
+      await step.sendEvent("stop-night", {
+        name: "codeclimb/night.stop",
+        data: { night_id: event.data.event.data.night_id, reason: "failed" },
+      });
+    },
   },
   async ({ event, step }) => {
     const nightId = event.data.night_id;
