@@ -4,8 +4,9 @@
 // operation, tokens and cost, and enforces `allowed_models` and the eval's $ cap.
 //
 // OpenAI-compatible, the subset a stdlib program needs:
-//   POST /v1/chat/completions  text messages only (no tools, no streaming)
+//   POST /v1/chat/completions  text messages only (no tools, no streaming); FORWARDED fields pass through
 //   POST /v1/embeddings
+//   POST /v1/decisions  OpenRouter's decisions models: {model, state, questions}, answered as {answers}
 //   POST /v1/_op {"op": "query"}  the runner names the operation later calls belong to
 // Status codes follow SDK retry policy: 401 bad token, 403 model not allowed,
 // 402 eval budget spent, 400 unsupported request; only upstream failures are 502.
@@ -24,6 +25,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** FORWARDED request fields, for backends that take them (OpenRouter); Pi ignores them. */
+  options?: Record<string, unknown>;
 }
 
 export interface CallUsage {
@@ -44,9 +47,15 @@ export interface EmbedResult {
   usage: CallUsage;
 }
 
+export interface DecisionResult {
+  answers: Record<string, unknown>;
+  usage: CallUsage;
+}
+
 export interface MeterBackends {
   chat(req: ChatRequest, signal: AbortSignal): Promise<ChatResult>;
   embed(model: string, input: string[], signal: AbortSignal): Promise<EmbedResult>;
+  decide(model: string, request: Record<string, unknown>, signal: AbortSignal): Promise<DecisionResult>;
 }
 
 /** An upstream failure. `usage` is what the failed call still cost. */
@@ -60,7 +69,7 @@ export class BackendError extends Error {
 }
 
 export interface MeterCall {
-  kind: "chat" | "embeddings";
+  kind: "chat" | "embeddings" | "decisions";
   model: string;
   op: string;
   ok: boolean;
@@ -88,6 +97,10 @@ interface Ledger {
 
 const tracer = trace.getTracer("codeclimb");
 const OP_RE = /^[a-z][a-z0-9_]*$/;
+/** Chat fields sent upstream as they are. A provider that doesn't support one ignores it. */
+const FORWARDED = ["response_format", "seed", "top_p", "stop", "reasoning"];
+/** Decisions fields sent upstream as they are. */
+const DECISION_FIELDS = ["state", "questions", "assets"];
 const MAX_BODY = 16 * 1024 * 1024;
 
 class HttpError extends Error {
@@ -141,11 +154,13 @@ function parseChat(body: Record<string, unknown>): ChatRequest {
     return { role: m.role, content: textOf(m.content) } as ChatMessage;
   });
   const maxTokens = body.max_completion_tokens ?? body.max_tokens;
+  const options = Object.fromEntries(FORWARDED.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
   return {
     model: String(body.model),
     messages,
     ...(typeof maxTokens === "number" ? { maxTokens } : {}),
     ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
+    ...(Object.keys(options).length ? { options } : {}),
   };
 }
 
@@ -207,7 +222,7 @@ export class MeterProxy {
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const path = (req.url ?? "").split("?")[0].replace(/\/+$/, "");
-      const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/_op": "op" }[path];
+      const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/decisions": "decisions", "/v1/_op": "op" }[path];
       if (!route) throw new HttpError(404, `unknown endpoint ${path}`, "not_found_error");
       if (req.method !== "POST") throw new HttpError(405, "use POST");
       const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
@@ -223,6 +238,7 @@ export class MeterProxy {
       if (!ledger.allowed.has(model)) throw new HttpError(403, `model ${model || "(none)"} is not in allowed_models`, "permission_error");
       if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `eval budget of $${ledger.capUsd} is spent`, "insufficient_quota");
       if (route === "chat") return send(res, 200, await this.chat(ledger, parseChat(body)));
+      if (route === "decisions") return send(res, 200, await this.decide(ledger, model, body));
       return send(res, 200, await this.embed(ledger, model, body.input));
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError(500, (e as Error).message, "server_error");
@@ -238,7 +254,7 @@ export class MeterProxy {
   ): Promise<T> {
     const op = ledger.op;
     const span = tracer.startSpan(
-      kind === "chat" ? "gen_ai.chat" : "gen_ai.embeddings",
+      `gen_ai.${kind}`,
       { attributes: { ...ledger.attrs, "gen_ai.operation.name": kind, "gen_ai.request.model": model, "codeclimb.op": op } },
       ledger.ctx,
     );
@@ -277,6 +293,13 @@ export class MeterProxy {
       choices: [{ index: 0, message: { role: "assistant", content: out.text }, finish_reason: out.finishReason }],
       usage: { prompt_tokens: out.usage.inputTokens, completion_tokens: out.usage.outputTokens, total_tokens: out.usage.inputTokens + out.usage.outputTokens },
     };
+  }
+
+  private async decide(ledger: Ledger, model: string, body: Record<string, unknown>) {
+    if (body.state === undefined || !body.questions || typeof body.questions !== "object") throw new HttpError(400, "decisions need state and questions");
+    const request = Object.fromEntries(DECISION_FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+    const out = await this.metered(ledger, "decisions", model, (signal) => this.backends.decide(model, request, signal));
+    return { model, answers: out.answers, usage: { input_tokens: out.usage.inputTokens, output_tokens: out.usage.outputTokens } };
   }
 
   private async embed(ledger: Ledger, model: string, input: unknown) {

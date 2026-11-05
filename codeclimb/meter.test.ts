@@ -13,6 +13,9 @@ const backends: MeterBackends = {
   async embed(_model, input) {
     return { vectors: input.map((t) => [t.length, 0]), usage: { inputTokens: input.length * 4, outputTokens: 0, costUsd: 0.0001 } };
   },
+  async decide() {
+    return { answers: {}, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
+  },
 };
 const proxy = new MeterProxy(backends);
 const port = await proxy.listen();

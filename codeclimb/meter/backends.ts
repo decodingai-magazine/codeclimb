@@ -1,9 +1,12 @@
-// The proxy's real backends. Chat goes through Pi's model runtime: the same
+// The proxy's real backends. `openrouter/` models go straight to OpenRouter
+// (openrouter.ts). Other chat goes through Pi's model runtime: the same
 // credentials and catalog prices as the coders. Pi has no embeddings, so those
 // are passed through to the provider's OpenAI-compatible endpoint with Pi's
 // resolved key and priced from EMBEDDINGS.
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { resolveModel } from "../pi/session";
+import type { NightConfig } from "../config";
+import { checkModels, resolveModel } from "../pi/session";
+import { checkOpenRouterModels, isOpenRouterModel } from "./openrouter";
 import { BackendError, type CallUsage, type MeterBackends } from "./proxy";
 
 // Pi's message types, from the runtime's own signature (pi-ai is not a direct dependency).
@@ -15,10 +18,27 @@ const EMBEDDINGS: Record<string, { baseUrl: string; usdPerMTok: Record<string, n
   openai: { baseUrl: "https://api.openai.com/v1", usdPerMTok: { "text-embedding-3-small": 0.02, "text-embedding-3-large": 0.13 } },
 };
 
-/** An embeddings model priced in EMBEDDINGS: not in Pi's catalog, so checkModels skips it. */
-export function isEmbeddingModel(ref: string): boolean {
+/** An embeddings model priced in EMBEDDINGS: not in Pi's catalog. */
+function isEmbeddingModel(ref: string): boolean {
   const i = ref.indexOf("/");
   return i > 0 && EMBEDDINGS[ref.slice(0, i)]?.usdPerMTok[ref.slice(i + 1)] !== undefined;
+}
+
+/** Fails unless every model a night names is callable: Pi's through Pi, `openrouter/` ones on OpenRouter. */
+export async function checkNightModels(cfg: Pick<NightConfig, "models" | "reviewer_model" | "allowed_models">): Promise<void> {
+  const viaPi = cfg.allowed_models.filter((m) => !isEmbeddingModel(m) && !isOpenRouterModel(m));
+  await checkModels([...cfg.models, cfg.reviewer_model, ...viaPi]);
+  await checkOpenRouterModels(cfg.allowed_models);
+}
+
+/** `openrouter/` models to one backend, everything else to the other. */
+export function routedBackends(openRouter: MeterBackends, other: MeterBackends): MeterBackends {
+  const pick = (ref: string) => (isOpenRouterModel(ref) ? openRouter : other);
+  return {
+    chat: (req, signal) => pick(req.model).chat(req, signal),
+    embed: (ref, input, signal) => pick(ref).embed(ref, input, signal),
+    decide: (ref, request, signal) => pick(ref).decide(ref, request, signal),
+  };
 }
 
 const ZERO_USAGE = {
@@ -63,6 +83,10 @@ export function piBackends(rt: ModelRuntime): MeterBackends {
       if (out.stopReason === "error" || out.stopReason === "aborted") throw new BackendError(out.errorMessage ?? out.stopReason, usage);
       const text = out.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("");
       return { text, finishReason: out.stopReason === "length" ? "length" : "stop", usage, responseModel: out.responseModel ?? out.model };
+    },
+
+    async decide(ref) {
+      throw new BackendError(`${ref}: decisions need an openrouter/ model`);
     },
 
     async embed(ref, input, signal) {

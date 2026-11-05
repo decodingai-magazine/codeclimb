@@ -5,7 +5,8 @@
 import type { NightConfig } from "../config";
 import { docker } from "../sandbox/docker";
 import { modelRuntime } from "../pi/session";
-import { piBackends } from "./backends";
+import { piBackends, routedBackends } from "./backends";
+import { openRouterBackends } from "./openrouter";
 import { MeterProxy } from "./proxy";
 
 export const METER_NETWORK = "cc-meter";
@@ -59,7 +60,7 @@ let proxy: Promise<MeterProxy> | undefined;
  */
 export function meter(): Promise<MeterProxy> {
   proxy ??= (async () => {
-    const p = new MeterProxy(piBackends(await modelRuntime()), process.env.CODECLIMB_PROXY_HOST ?? "127.0.0.1");
+    const p = new MeterProxy(routedBackends(openRouterBackends(), piBackends(await modelRuntime())), process.env.CODECLIMB_PROXY_HOST ?? "127.0.0.1");
     await p.listen(Number(process.env.CODECLIMB_PROXY_PORT ?? 0));
     return p;
   })();

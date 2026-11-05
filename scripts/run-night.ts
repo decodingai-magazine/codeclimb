@@ -7,8 +7,7 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
-import { isEmbeddingModel } from "../codeclimb/meter/backends";
-import { checkModels } from "../codeclimb/pi/session";
+import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
 import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 
@@ -68,7 +67,7 @@ if (positionals[0] === "stop") {
     cfg.sandbox = values.sandbox;
     checkSandboxLimits(cfg);
   }
-  await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
+  await checkNightModels(cfg);
   const nightId = values["night-id"] ?? newNightId();
   const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg)));
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
