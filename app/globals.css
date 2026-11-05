@@ -76,10 +76,6 @@ a:hover { text-decoration-color: currentColor; }
 :root[data-theme="dark"] .logo-dark { display: block; }
 .top-title { font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding-left: var(--space-3); border-left: 1px solid var(--border-strong); }
 .spacer { flex: 1; }
-.nav { display: flex; gap: var(--space-5); }
-.nav a { font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-3); text-decoration: none; padding: 18px 0 16px; border-bottom: 2px solid transparent; transition: color 150ms var(--ease); }
-.nav a:hover { color: var(--fg); }
-.nav a[aria-current="page"] { color: var(--fg); border-bottom-color: var(--fg); }
 .icon-btn { border: 1px solid var(--border); background: transparent; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; color: var(--fg-3); transition: color 150ms var(--ease), border-color 150ms var(--ease); }
 .icon-btn:hover { color: var(--fg); border-color: var(--border-strong); }
 .icon-btn svg { width: 15px; height: 15px; }
@@ -255,8 +251,7 @@ footer.foot { max-width: 1240px; margin: 0 auto; padding: 0 var(--space-5) var(-
   .top-inner, main, footer.foot { padding-left: 16px; padding-right: 16px; }
   .top-inner { gap: var(--space-4); }
   .top-title { display: none; }
-  .nav { gap: var(--space-4); }
-  main { padding-top: var(--space-5); }
+    main { padding-top: var(--space-5); }
   .hero h1 { font-size: var(--text-2xl); }
   .hero .actions { margin-left: 0; }
   .card { padding: var(--space-4); }

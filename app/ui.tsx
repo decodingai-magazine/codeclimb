@@ -1,6 +1,5 @@
 "use client";
-// Shared pieces of the app shell and pages: icons, the theme toggle, the nav, KPI tiles and meters.
-import { usePathname } from "next/navigation";
+// Shared pieces of the app shell and pages: icons, the theme toggle, KPI tiles and meters.
 import { useEffect, useState } from "react";
 
 const ICONS = {
@@ -54,16 +53,6 @@ export function ThemeToggle() {
     <button className="icon-btn" type="button" onClick={flip} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"} title="Theme">
       <Icon name={dark ? "sun" : "moon"} />
     </button>
-  );
-}
-
-export function Nav() {
-  const path = usePathname();
-  const nightsActive = path === "/" || path.startsWith("/nights");
-  return (
-    <nav className="nav" aria-label="Main">
-      <a href="/" aria-current={nightsActive ? "page" : undefined}>Nights</a>
-    </nav>
   );
 }
 

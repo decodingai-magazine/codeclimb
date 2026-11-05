@@ -4,7 +4,7 @@ import Image from "next/image";
 import logoOnDark from "../codeclimb/report/assets/logo-horizontal-light.png";
 import logoOnLight from "../codeclimb/report/assets/logo-horizontal-dark.png";
 import "./globals.css";
-import { Nav, ThemeToggle } from "./ui";
+import { ThemeToggle } from "./ui";
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" });
 
@@ -31,7 +31,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="top-title">CodeClimb</span>
             </a>
             <span className="spacer" />
-            <Nav />
             <ThemeToggle />
           </div>
         </header>
