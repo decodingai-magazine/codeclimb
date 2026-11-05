@@ -63,7 +63,6 @@ export function Nav() {
   return (
     <nav className="nav" aria-label="Main">
       <a href="/" aria-current={nightsActive ? "page" : undefined}>Nights</a>
-      <a href="/new" aria-current={path === "/new" ? "page" : undefined}>New run</a>
     </nav>
   );
 }

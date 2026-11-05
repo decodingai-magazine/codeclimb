@@ -1,6 +1,6 @@
-// The worker's HTTP API, the app's only backend: scenarios to start from, the
-// nights on this worker's disk (summaries, live branches, the report page),
-// start, stop and export: CodeClimb's headless interface. It also mounts the
+// The worker's HTTP API, the app's only backend: the nights on this worker's disk
+// (summaries, live branches, the report data), stop and export. Nights start from
+// the CLI (`npm run run-night`). It also mounts the
 // metering proxy at /v1. Every request but /v1 needs the bearer token
 // (CODECLIMB_WORKER_TOKEN); without one the API only binds to loopback.
 import { spawn } from "node:child_process";
@@ -8,30 +8,20 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { parse, stringify } from "yaml";
-import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
+import { join } from "node:path";
+import { ccInngest } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
-import { type NightConfig, parseConfig, relativeConfig } from "./config";
+import type { NightConfig } from "./config";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
-import { isEmbeddingModel } from "./meter/backends";
 import { nightPaths } from "./paths";
-import { checkModels } from "./pi/session";
 import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
-import { reachableBackends } from "./sandbox";
 
 const root = () => process.env.CODECLIMB_ROOT ?? process.cwd();
 const NIGHT_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,47}$/;
 /** A night with no file written for this long and no done.json is reported as stale (crashed or lost). */
 const STALE_MS = 60 * 60_000;
-
-/** Settings the app may override on a scenario's config; everything else comes from the YAML. */
-const OVERRIDABLE = [
-  "sandbox", "models", "reviewer_model", "allowed_models", "max_rounds", "max_tokens", "plateau_rounds", "deadline", "timeouts", "budget_usd",
-  "thresholds", "gates", "min_gain", "overfit_gap", "max_validations", "standard_metrics",
-] as const;
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -45,53 +35,6 @@ function readJson<T>(file: string): T | null {
   } catch {
     return null;
   }
-}
-
-// ---------- scenarios ----------
-
-function scenarioConfigs(): { name: string; text: string; cfg: NightConfig }[] {
-  const dir = join(root(), "configs");
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".yaml"))
-    .sort()
-    .flatMap((f) => {
-      const text = readFileSync(join(dir, f), "utf8");
-      try {
-        return [{ name: basename(f, ".yaml"), text, cfg: parseConfig(text, root()) }];
-      } catch {
-        return []; // an invalid config is not offered
-      }
-    });
-}
-
-/** Item counts per split and fold, plus the fields a question carries. Never gold values. */
-function datasetStats(cfg: NightConfig) {
-  const count = (file: string) => {
-    const path = join(cfg.dataset_dir, file);
-    if (!existsSync(path)) return { items: 0, folds: {} as Record<string, number>, fields: [] as string[] };
-    const items = readFileSync(path, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
-    const folds: Record<string, number> = {};
-    for (const it of items) if (it.fold !== undefined) folds[String(it.fold)] = (folds[String(it.fold)] ?? 0) + 1;
-    const hidden = new Set(["gold", "fold", ...cfg.hidden_fields]);
-    return { items: items.length, folds, fields: Object.keys(items[0] ?? {}).filter((k) => !hidden.has(k)) };
-  };
-  return { train: count("train.jsonl"), test: count("test.jsonl") };
-}
-
-function scenarios() {
-  return {
-    backends: reachableBackends().map((b) => b.kind),
-    mode: process.env.INNGEST_DEV ? "local" : "cloud",
-    scenarios: scenarioConfigs().map(({ name, text, cfg }) => ({
-      name,
-      yaml: text,
-      config: relativeConfig(cfg),
-      spec: Object.fromEntries(
-        readdirSync(cfg.spec_dir).filter((f) => f.endsWith(".md")).map((f) => [f, readFileSync(join(cfg.spec_dir, f), "utf8")]),
-      ),
-      dataset: datasetStats(cfg),
-    })),
-  };
 }
 
 // ---------- nights ----------
@@ -189,39 +132,6 @@ async function report(n: ReturnType<typeof findNight>): Promise<ReportData> {
   const ids = new Set(data.nights.flatMap((x) => x.rows.map((r) => r.exp_id)));
   data.diffs = Object.fromEntries(Object.entries(data.diffs).filter(([k]) => ids.has(k)));
   return data;
-}
-
-async function startNight(body: { scenario?: string; night_id?: string; overrides?: Record<string, unknown> }) {
-  const scenario = scenarioConfigs().find((s) => s.name === body.scenario);
-  if (!scenario) throw new HttpError(400, `unknown scenario ${body.scenario}`);
-  const raw = parse(scenario.text) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(body.overrides ?? {})) {
-    if (!(OVERRIDABLE as readonly string[]).includes(k)) throw new HttpError(400, `${k} cannot be overridden`);
-    raw[k] = v;
-  }
-  let cfg: NightConfig;
-  try {
-    cfg = parseConfig(stringify(raw), root());
-  } catch (e) {
-    throw new HttpError(400, (e as Error).message);
-  }
-  if (!reachableBackends().some((b) => b.kind === cfg.sandbox)) throw new HttpError(400, `this worker cannot use sandbox ${cfg.sandbox}`);
-  const d = new Date();
-  const p = (x: number) => String(x).padStart(2, "0");
-  const nightId = body.night_id || `n${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-  if (!NIGHT_ID.test(nightId)) throw new HttpError(400, "night id: letters, digits and dashes, at most 48");
-  if (nightFiles().some((f) => f.night.night_id === nightId) || existsSync(nightPaths(cfg, nightId).nightDir)) {
-    throw new HttpError(409, `night ${nightId} exists`);
-  }
-  try {
-    await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
-  } catch (e) {
-    throw new HttpError(400, (e as Error).message);
-  }
-  // The 409 check above misses a request racing this one (the night folder appears only at `init`);
-  // the event's stable id covers that.
-  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg)));
-  return { night_id: nightId, event_id: ids[0] };
 }
 
 async function stopNight(n: ReturnType<typeof findNight>) {
@@ -344,12 +254,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (!authorized(req)) throw new HttpError(401, "missing or wrong worker token");
     const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|export)(?:\/([^/]+))?)?$/.exec(path);
     if (req.method === "GET" && path === "/api/health") return send(res, 200, { ok: true });
-    if (req.method === "GET" && path === "/api/scenarios") return send(res, 200, scenarios());
     if (req.method === "GET" && path === "/api/nights") {
       const all = nightFiles().map(summary).sort((a, b) => b.started_at - a.started_at);
       return send(res, 200, { nights: all });
     }
-    if (req.method === "POST" && path === "/api/nights") return send(res, 201, await startNight(await readBody(req)));
     if (m) {
       const n = findNight(decodeURIComponent(m[1]));
       if (req.method === "GET" && !m[2]) return send(res, 200, summary(n));

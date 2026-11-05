@@ -61,7 +61,7 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
 - It runs on your machine in two modes: the **local Inngest dev server** with **Docker sandboxes**, or **Inngest Cloud** with **Inngest Sandboxes** (see [Run on Inngest Cloud](#run-on-inngest-cloud)). Inngest Cloud keeps a night durable, and the sandboxes run the coders' commands and the evaluations. [docs/cloud-migration.md](docs/cloud-migration.md) tracks the migration.
-- It's headless: the worker's API is the interface, and the Next.js app is one client of it (see [The app](#the-app-prepare-watch-stop-export)).
+- It's headless: the worker's API is the interface, and the Next.js app is one client of it (see [The app](#the-app-watch-stop-export)).
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
 
@@ -181,23 +181,20 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 - **Cleanup.** Stops, cancelled runs and the end of a night sweep every backend the worker reaches, so a stop never strands a billed sandbox. Inngest has no labels: a run's sandboxes are tracked in the worker's memory, and the night's prefix sweep covers a restarted worker.
 - **Checks.** `CODECLIMB_ENV=cloud npx tsx scripts/smoke-inngest-sandbox.ts` exercises every backend method on one sandbox. `CODECLIMB_ENV=cloud npx tsx scripts/sandboxes.ts` lists the newest sandboxes and their status.
 
-### The app: prepare, watch, stop, export
+### The app: watch, stop, export
 
-The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, in the Decoding AI design with light and dark themes. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
+The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, with light and dark themes. Nights start only from the CLI (`npm run run-night`); the app watches, stops and exports them. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
-- **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, the plateau stop and token cap, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
 - **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/scenarios` | Configs in `configs/` with spec, dataset stats, and the sandbox backends this worker can use |
 | `GET /api/nights`, `GET /api/nights/:id` | Night summaries from `runs/*/nights/*` |
 | `GET /api/nights/:id/live` | Summary plus the current round's branches and the exportable experiments |
 | `GET /api/nights/:id/report` | The night's report data as JSON (`ReportData`), which the app renders |
-| `POST /api/nights` | `{scenario, night_id?, overrides}`: start a night (sends `codeclimb/night.start`) |
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
 | `GET /api/nights/:id/export/:exp?format=repo\|source\|bundle` | Download an experiment: a git repo `.tar.gz` (default), the tree only, or a git bundle |
 | `POST /api/nights/:id/export/:exp` | `{kind: "dir", path}` writes the git repo into a folder on the worker's machine; `{kind: "remote", url, branch?}` pushes the lineage |
@@ -296,7 +293,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
 | `codeclimb/api.ts` | The worker API (and `/v1` metering proxy mount) the app reads |
-| `app/` | The Next.js app: Nights, New run, the night page with its report (`app/nights/[id]/report/`), and the `/api/worker` proxy |
+| `app/` | The Next.js app: Nights, the night page with its report (`app/nights/[id]/report/`), and the `/api/worker` proxy |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
 | `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |

@@ -47,7 +47,7 @@ export default function Nights() {
       )}
       {!nights && !error && <p className="muted">Loading…</p>}
       {nights && nights.length === 0 && (
-        <section className="card"><div className="empty">No nights yet. Start one from New run.</div></section>
+        <section className="card"><div className="empty">No nights yet. Start one from the CLI: <code>npm run run-night -- --config configs/datenorm-smoke.yaml</code></div></section>
       )}
       {nights && nights.length > 0 && (
         <section className="card flush">

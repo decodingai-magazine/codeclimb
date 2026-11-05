@@ -2,6 +2,8 @@
 
 Status: 2026-10-30. Done: Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Verified: Cloud nights end to end from the app, with and without metering.
 
+Update 2026-11-05: nights start only from the CLI. The app's New run page (`/new`), `POST /api/nights` and `GET /api/scenarios` were removed; the Phase 3 notes below describe the app as first built.
+
 This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md`. One codebase runs in two modes, and both stay supported for good. Both run CodeClimb on your machine:
 
 - **Local:** the Inngest dev server, the worker, Docker sandboxes, and the app on `localhost`.
@@ -31,7 +33,7 @@ The worker runs Pi, `score_cmd` and the proxy in both modes. Inngest, whether th
 Every switch already exists or is one environment variable. There's no mode flag in the code.
 
 - **Inngest endpoint.** The SDK decides: `INNGEST_DEV=1` means the dev server, while `INNGEST_SIGNING_KEY` + `INNGEST_EVENT_KEY` without `INNGEST_DEV` means Cloud. This is true for the worker, the CLI and the app.
-- **Sandbox backend.** The night config's `sandbox` field. The configs keep `sandbox: docker`. The cloud override is a CLI flag (`--sandbox inngest`) or a field in the app's New run form, so each scenario keeps one YAML file.
+- **Sandbox backend.** The night config's `sandbox` field. The configs keep `sandbox: docker`. The cloud override is a CLI flag (`--sandbox inngest`), so each scenario keeps one YAML file.
 - **Proxy path.** If `CODECLIMB_METER_URL` is set, sandboxes call that URL. If not, the Docker relay is used as today.
 - **Worker API URL.** `CODECLIMB_WORKER_URL` and `CODECLIMB_WORKER_TOKEN` on the app side. They default to `http://127.0.0.1:7421`, with no token needed on loopback.
 - **Env files.**
