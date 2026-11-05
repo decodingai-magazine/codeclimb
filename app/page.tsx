@@ -1,9 +1,12 @@
 "use client";
 // Nights: every night on the worker's disk, newest first, refreshed every 10 s.
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Icon, Kpi, StatusBadge } from "./ui";
 import { api, f3, type NightSummary, usd } from "./worker";
 
 export default function Nights() {
+  const router = useRouter();
   const [nights, setNights] = useState<NightSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,51 +23,71 @@ export default function Nights() {
     return () => clearInterval(t);
   }, []);
 
+  const running = nights?.filter((n) => n.status === "running").length ?? 0;
+  const finished = nights?.filter((n) => n.status === "finished") ?? [];
+  const spend = nights?.reduce((a, n) => a + n.spend_usd, 0) ?? 0;
+  const open = (id: string) => router.push(`/nights/${encodeURIComponent(id)}`);
+
   return (
     <main>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1>Nights</h1>
-        <a className="button primary" href="/new">New run</a>
-      </div>
-      {error && <p className="error">{error}</p>}
-      {!nights && !error && <p className="muted">Loading…</p>}
-      {nights && nights.length === 0 && <p className="muted">No nights yet.</p>}
-      {nights && nights.length > 0 && (
-        <div className="panel table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Night</th>
-                <th>Scenario</th>
-                <th>Sandbox</th>
-                <th>Status</th>
-                <th className="num">Round</th>
-                <th className="num">Best</th>
-                <th className="num">Spend</th>
-                <th>Started</th>
-              </tr>
-            </thead>
-            <tbody>
-              {nights.map((n) => (
-                <tr key={n.id}>
-                  <td><a href={`/nights/${encodeURIComponent(n.id)}`}>{n.id}</a></td>
-                  <td>{n.scenario}</td>
-                  <td>{n.sandbox}</td>
-                  <td>
-                    <span className={`badge ${n.status}`}>{n.status}</span>{" "}
-                    {n.status === "finished" && <span className="muted">{n.stop_reason}</span>}
-                  </td>
-                  <td className="num">{n.round} / {n.max_rounds}</td>
-                  <td className="num">
-                    {f3(n.best)} <span className="muted">/ {f3(n.threshold)} {n.primary_metric}</span>
-                  </td>
-                  <td className="num">{usd(n.spend_usd)} <span className="muted">/ {usd(n.budget_usd)}</span></td>
-                  <td className="muted">{new Date(n.started_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="hero">
+        <div>
+          <div className="eyebrow">CodeClimb</div>
+          <h1>Nights</h1>
+          <p>Every optimization night on this worker. Open one to watch it live or explore its results.</p>
         </div>
+        <div className="actions">
+          <a className="btn btn-primary" href="/new"><Icon name="plus" />New run</a>
+        </div>
+      </div>
+      {error && <p className="notice">{error}</p>}
+      {nights && nights.length > 0 && (
+        <div className="kpis">
+          <Kpi lead label="Nights" value={nights.length} note={`${finished.length} finished`} />
+          <Kpi label="Running" value={running} note={running ? "live now" : "none right now"} />
+          <Kpi label="Met threshold" value={finished.filter((n) => n.stop_reason === "thresholds").length} note="stopped on thresholds" />
+          <Kpi label="Total spend" value={usd(spend)} note="coders, reviewer and program calls" />
+        </div>
+      )}
+      {!nights && !error && <p className="muted">Loading…</p>}
+      {nights && nights.length === 0 && (
+        <section className="card"><div className="empty">No nights yet. Start one from New run.</div></section>
+      )}
+      {nights && nights.length > 0 && (
+        <section className="card flush">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Night</th>
+                  <th>Scenario</th>
+                  <th>Status</th>
+                  <th className="num">Round</th>
+                  <th className="num">Best</th>
+                  <th className="num">Spend</th>
+                  <th>Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nights.map((n) => (
+                  <tr key={n.id} className="link-row" onClick={() => open(n.id)}>
+                    <td className="mono">
+                      <a href={`/nights/${encodeURIComponent(n.id)}`} onClick={(e) => e.stopPropagation()}>{n.id}</a>
+                    </td>
+                    <td>{n.scenario} <span className="sub-note">· {n.sandbox}</span></td>
+                    <td><StatusBadge status={n.status} stopReason={n.stop_reason} /></td>
+                    <td className="num">{n.round} / {n.max_rounds}</td>
+                    <td className="num">
+                      <strong>{f3(n.best)}</strong> <span className="sub-note">/ {f3(n.threshold)} {n.primary_metric}</span>
+                    </td>
+                    <td className="num">{usd(n.spend_usd)} <span className="sub-note">/ {usd(n.budget_usd)}</span></td>
+                    <td className="muted">{new Date(n.started_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </main>
   );

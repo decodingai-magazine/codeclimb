@@ -3,6 +3,7 @@
 // The worker validates the result with the same parser as the CLI and checks the models.
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { Icon, Kpi } from "../ui";
 import { api } from "../worker";
 
 type Split = { items: number; folds: Record<string, number>; fields: string[] };
@@ -97,82 +98,95 @@ export default function NewRun() {
     }
   }
 
-  if (!data) return <main>{error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}</main>;
+  if (!data) return <main>{error ? <p className="notice">{error}</p> : <p className="muted">Loading…</p>}</main>;
 
+  const train = scenario?.dataset.train;
   return (
     <main>
-      <h1>New run</h1>
-      <div className="row" style={{ marginBottom: 16 }}>
-        <label>
-          Scenario
-          <select value={name} onChange={(e) => setName(e.target.value)}>
-            {data.scenarios.map((s) => (
-              <option key={s.name} value={s.name}>{s.name}</option>
-            ))}
-          </select>
-        </label>
-        <span className="muted">Worker: {data.mode} Inngest, sandboxes: {data.backends.join(", ")}</span>
+      <div className="hero">
+        <div>
+          <div className="eyebrow">New run</div>
+          <h1>Start a night</h1>
+          <p>Pick a scenario, read what the coders will see, adjust the settings, and start. The worker checks every model first.</p>
+        </div>
+        <span className="badge">{data.mode} Inngest · {data.backends.join(", ")} sandboxes</span>
       </div>
 
-      {scenario && (
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
-          <section className="panel">
-            <div className="row" style={{ marginBottom: 8 }}>
-              {Object.keys(scenario.spec).map((d) => (
-                <button key={d} className={d === doc ? "primary" : ""} onClick={() => setDoc(d)} type="button">{d}</button>
-              ))}
+      <div className="seg" role="group" aria-label="scenario">
+        {data.scenarios.map((s) => (
+          <button key={s.name} type="button" aria-pressed={s.name === name} onClick={() => setName(s.name)}>{s.name}</button>
+        ))}
+      </div>
+
+      {scenario && train && (
+        <div className="grid-2">
+          <section className="card">
+            <div className="card-head">
+              <h2>Scenario</h2>
+              <span className="sub">What the coders see in /spec.</span>
+              <div className="tools">
+                <div className="seg" role="group" aria-label="document">
+                  {Object.keys(scenario.spec).map((d) => (
+                    <button key={d} type="button" aria-pressed={d === doc} onClick={() => setDoc(d)}>{d}</button>
+                  ))}
+                </div>
+              </div>
             </div>
             <pre className="doc">{scenario.spec[doc]}</pre>
-            <h2>Dataset</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              Train {scenario.dataset.train.items} items in {Object.keys(scenario.dataset.train.folds).length} folds
-              ({Object.entries(scenario.dataset.train.folds).map(([f, n]) => `${f}: ${n}`).join(", ")}), test{" "}
-              {scenario.dataset.test.items}. A question has {scenario.dataset.train.fields.join(", ")}; gold never leaves the worker.
+            <div className="kpis" style={{ marginTop: 16 }}>
+              <Kpi label="Train items" value={train.items} note={`${Object.keys(train.folds).length} folds: ${Object.entries(train.folds).map(([f, n]) => `${f}: ${n}`).join(", ")}`} />
+              <Kpi label="Test items" value={scenario.dataset.test.items} note="scored once, after the night stops" />
+            </div>
+            <p className="muted" style={{ margin: "12px 0 0" }}>
+              A question has {train.fields.join(", ")}. Gold answers never leave the worker.
             </p>
           </section>
 
-          <form className="panel" onSubmit={start} style={{ display: "grid", gap: 12, alignContent: "start" }}>
-            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <label>
-                Night id (optional)
-                <input value={form.night_id ?? ""} onChange={set("night_id")} placeholder="auto" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,47}" />
+          <form className="card form" onSubmit={start}>
+            <div className="card-head" style={{ margin: 0 }}>
+              <h2>Settings</h2>
+              <span className="sub">From configs/{scenario.name}.yaml</span>
+            </div>
+            <div className="form-grid">
+              <label className="field">
+                <span>Night id</span>
+                <input className="input" value={form.night_id ?? ""} onChange={set("night_id")} placeholder="auto" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,47}" />
               </label>
-              <label>
-                Sandbox
-                <select value={form.sandbox ?? ""} onChange={set("sandbox")}>
+              <label className="field">
+                <span>Sandbox</span>
+                <select className="input" value={form.sandbox ?? ""} onChange={set("sandbox")}>
                   {data.backends.map((b) => <option key={b}>{b}</option>)}
                 </select>
               </label>
             </div>
-            <label>
-              Coder models, one per branch
-              <textarea rows={3} value={form.models ?? ""} onChange={set("models")} />
+            <label className="field">
+              <span>Coder models, one per branch</span>
+              <textarea className="input" rows={3} value={form.models ?? ""} onChange={set("models")} />
             </label>
-            <label>
-              Reviewer model
-              <input value={form.reviewer_model ?? ""} onChange={set("reviewer_model")} />
+            <label className="field">
+              <span>Reviewer model</span>
+              <input className="input" value={form.reviewer_model ?? ""} onChange={set("reviewer_model")} />
             </label>
-            <label>
-              Models the program may call (metered), one per line
-              <textarea rows={2} value={form.allowed_models ?? ""} onChange={set("allowed_models")} />
+            <label className="field">
+              <span>Models the program may call (metered)</span>
+              <textarea className="input" rows={2} value={form.allowed_models ?? ""} onChange={set("allowed_models")} placeholder="none" />
             </label>
-            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-              <label>Max rounds<input type="number" min={1} value={form.max_rounds ?? ""} onChange={set("max_rounds")} /></label>
-              <label>Deadline<input value={form.deadline ?? ""} onChange={set("deadline")} placeholder="3h" /></label>
-              <label>
-                Threshold ({scenario.config.primary_metric})
-                <input type="number" step="any" value={form.threshold ?? ""} onChange={set("threshold")} />
+            <div className="form-grid">
+              <label className="field"><span>Max rounds</span><input className="input" type="number" min={1} value={form.max_rounds ?? ""} onChange={set("max_rounds")} /></label>
+              <label className="field"><span>Deadline</span><input className="input" value={form.deadline ?? ""} onChange={set("deadline")} placeholder="3h" /></label>
+              <label className="field">
+                <span>Threshold · {scenario.config.primary_metric}</span>
+                <input className="input" type="number" step="any" value={form.threshold ?? ""} onChange={set("threshold")} />
               </label>
-              <label>Coder minutes<input type="number" min={1} value={form.experiment_min ?? ""} onChange={set("experiment_min")} /></label>
-              <label>Eval minutes<input type="number" min={1} value={form.eval_min ?? ""} onChange={set("eval_min")} /></label>
-              <span />
-              <label>$ per experiment<input type="number" step="any" min={0} value={form.budget_experiment ?? ""} onChange={set("budget_experiment")} /></label>
-              <label>$ per night<input type="number" step="any" min={0} value={form.budget_night ?? ""} onChange={set("budget_night")} /></label>
+              <label className="field"><span>Coder minutes</span><input className="input" type="number" min={1} value={form.experiment_min ?? ""} onChange={set("experiment_min")} /></label>
+              <label className="field"><span>Eval minutes</span><input className="input" type="number" min={1} value={form.eval_min ?? ""} onChange={set("eval_min")} /></label>
+              <label className="field"><span>$ per experiment</span><input className="input" type="number" step="any" min={0} value={form.budget_experiment ?? ""} onChange={set("budget_experiment")} /></label>
+              <label className="field"><span>$ per night</span><input className="input" type="number" step="any" min={0} value={form.budget_night ?? ""} onChange={set("budget_night")} /></label>
             </div>
-            {error && <p className="error">{error}</p>}
-            <div className="row">
-              <button className="primary" type="submit" disabled={starting}>{starting ? "Starting…" : "Start night"}</button>
-              <span className="muted">Gates and the other settings come from configs/{scenario.name}.yaml.</span>
+            {error && <p className="notice">{error}</p>}
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button className="btn btn-primary" type="submit" disabled={starting}><Icon name="play" />{starting ? "Starting…" : "Start night"}</button>
+              <span className="muted">Gates and the other settings come from the YAML.</span>
             </div>
           </form>
         </div>

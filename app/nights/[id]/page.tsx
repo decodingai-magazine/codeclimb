@@ -1,39 +1,53 @@
 "use client";
-// Live night: status, budget and deadline, Stop, the current round's branches (refreshed every
-// 5 s from code-state.json: elapsed, coder and dev spend per Pi turn), export, and the full
-// report (scenario metrics, latency, cost), reloaded whenever a new result row lands.
+// One night, live and after the fact: status and Stop, KPIs (kept score, validation, test,
+// round, spend against budget, time against deadline), the current round's branches while it
+// runs, then the report: convergence, metric families, experiments, extra evals, reviewer
+// feedback, and the selected experiment's detail and export. `/live` is polled every 5 s;
+// the report data is refetched whenever a new result row lands.
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReportData } from "../../../codeclimb/report/data";
+import { Icon, Kpi, Meter, StatusBadge } from "../../ui";
 import { api, duration, f3, type Live, usd } from "../../worker";
+import { ConvergenceChart, ConvergenceTable, FamilyHeatmap, FamilyTable } from "./report/charts";
+import { derive } from "./report/derive";
+import { DetailCard, ExportCard } from "./report/side";
+import { EvalsTable, ExperimentsTable, Reviews } from "./report/tables";
 
-function Stat({ k, v, sub }: { k: string; v: React.ReactNode; sub?: React.ReactNode }) {
+function Card({ title, sub, tools, children }: { title: string; sub?: string; tools?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="stat">
-      <span className="k">{k}</span>
-      <span className="v">{v}</span>
-      {sub}
-    </div>
+    <section className="card">
+      <div className="card-head">
+        <h2>{title}</h2>
+        {sub && <span className="sub">{sub}</span>}
+        {tools && <div className="tools">{tools}</div>}
+      </div>
+      {children}
+    </section>
   );
 }
 
-function Bar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div className={`bar ${value > max ? "over" : ""}`}>
-      <div style={{ width: `${pct}%` }} />
-    </div>
-  );
+function ViewToggle({ table, onToggle }: { table: boolean; onToggle: () => void }) {
+  return <button type="button" className="link-btn" aria-pressed={table} onClick={onToggle}>{table ? "Chart" : "Table"}</button>;
 }
 
 export default function NightPage() {
   const id = String(useParams<{ id: string }>().id);
   const [live, setLive] = useState<Live | null>(null);
+  const [report, setReport] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
-  const [exp, setExp] = useState("");
-  const [reportKey, setReportKey] = useState(0);
-  const rowsSeen = useRef(-1);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [convTable, setConvTable] = useState(false);
+  const [heatTable, setHeatTable] = useState(false);
+  const [heatMode, setHeatMode] = useState<"lineage" | "all">("lineage");
   const [now, setNow] = useState(() => Date.now());
+  const rowsSeen = useRef(-1);
+
+  const loadReport = useCallback(
+    () => api<ReportData>(`nights/${encodeURIComponent(id)}/report`).then(setReport, (e: Error) => setError(e.message)),
+    [id],
+  );
 
   useEffect(() => {
     let stopped = false;
@@ -45,8 +59,8 @@ export default function NightPage() {
           setError(null);
           setNow(Date.now());
           if (d.rows !== rowsSeen.current) {
-            if (rowsSeen.current >= 0) setReportKey((k) => k + 1);
             rowsSeen.current = d.rows;
+            void loadReport();
           }
         })
         .catch((e: Error) => setError(e.message));
@@ -56,11 +70,12 @@ export default function NightPage() {
       stopped = true;
       clearInterval(t);
     };
-  }, [id]);
+  }, [id, loadReport]);
 
-  useEffect(() => {
-    if (live && !exp) setExp(live.best_exp ?? live.experiments[0]?.exp_id ?? "");
-  }, [live, exp]);
+  const night = report?.nights.find((n) => n.id === id) ?? null;
+  const primary = night?.config?.primary_metric ?? live?.primary_metric ?? "accuracy";
+  const v = useMemo(() => (night ? derive(night, primary) : null), [night, primary]);
+  const sel = selected && v?.byId.has(selected) ? selected : v?.bestId ?? null;
 
   async function stop() {
     if (!confirm(`Stop night ${id}? Pi is aborted, sandboxes are destroyed, and the night gets no test score.`)) return;
@@ -73,91 +88,126 @@ export default function NightPage() {
     setStopping(false);
   }
 
-  if (!live) return <main>{error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}</main>;
+  if (!live) return <main>{error ? <p className="notice">{error}</p> : <p className="muted">Loading…</p>}</main>;
 
   const end = live.finished_at ? Date.parse(live.finished_at) : now;
   const elapsed = (end - live.started_at) / 1000;
   const span = (live.deadline_at - live.started_at) / 1000;
   const running = live.status === "running";
-  const exportUrl = (format: string) =>
-    `/api/worker/nights/${encodeURIComponent(id)}/export/${encodeURIComponent(exp)}?format=${format}`;
+  const kept = v?.cur ?? null;
+  const branches = night?.config?.models.length ?? Math.max(1, live.branches.length);
 
   return (
-    <main>
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
-        <div className="row">
-          <h1 style={{ margin: 0 }}>{live.id}</h1>
-          <span className={`badge ${live.status}`}>{live.status}</span>
-          {live.status === "finished" && <span className="muted">{live.stop_reason}</span>}
-          <span className="muted">{live.scenario} · {live.sandbox} sandboxes</span>
-        </div>
-        {running && (
-          <button className="danger" onClick={stop} disabled={stopping}>{stopping ? "Stopping…" : "Stop night"}</button>
-        )}
-      </div>
-      {error && <p className="error">{error}</p>}
-
-      <div className="panel grid" style={{ marginBottom: 16 }}>
-        <Stat k="Round" v={`${live.round} / ${live.max_rounds}`} />
-        <Stat
-          k={`Best ${live.primary_metric}`}
-          v={f3(live.best)}
-          sub={<span className="muted">threshold {f3(live.threshold)}</span>}
-        />
-        <Stat k="Spend" v={usd(live.spend_usd)} sub={<><Bar value={live.spend_usd} max={live.budget_usd} /><span className="muted">of {usd(live.budget_usd)}</span></>} />
-        <Stat k="Elapsed" v={duration(elapsed)} sub={<><Bar value={elapsed} max={span} /><span className="muted">deadline {new Date(live.deadline_at).toLocaleTimeString()}</span></>} />
-      </div>
-
-      {live.branches.length > 0 && (
-        <>
-          <h2>Round {live.round} branches</h2>
-          <div className="grid" style={{ marginBottom: 16 }}>
-            {live.branches.map((b) => (
-              <div className="panel" key={b.exp_id}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <strong>b{b.branch}</strong>
-                  <span className="badge running">{b.phase}</span>
-                </div>
-                <div className="mono muted" style={{ margin: "4px 0 8px" }}>{b.model}</div>
-                <div className="row" style={{ gap: 18 }}>
-                  <Stat k="Elapsed" v={duration(b.elapsed_s)} />
-                  <Stat k="Coder" v={usd(b.coder_usd)} />
-                  <Stat k="Dev calls" v={usd(b.dev_usd)} />
-                  <Stat k="Tokens" v={b.tokens.toLocaleString()} />
-                  {b.score != null && <Stat k={live.primary_metric} v={f3(b.score)} sub={<span className="muted">{b.decision}</span>} />}
-                </div>
-              </div>
-            ))}
+    <>
+      <main>
+        <div className="hero">
+          <div>
+            <div className="eyebrow">Night · {live.scenario}</div>
+            <h1 className="mono">{live.id}</h1>
+            <p>
+              Started {new Date(live.started_at).toLocaleString()} · {live.sandbox} sandboxes
+              {night?.config ? ` · ${night.config.models.length} branches × up to ${night.config.max_rounds} rounds · reviewer ${night.config.reviewer_model}` : ""}
+            </p>
           </div>
-        </>
-      )}
+          <StatusBadge status={live.status} stopReason={live.stop_reason} />
+          {running && (
+            <div className="actions">
+              <button className="btn btn-danger" type="button" onClick={stop} disabled={stopping}>
+                <Icon name="stop" />{stopping ? "Stopping…" : "Stop night"}
+              </button>
+            </div>
+          )}
+        </div>
+        {error && <p className="notice">{error}</p>}
 
-      <h2>Export</h2>
-      <div className="panel row" style={{ marginBottom: 16 }}>
-        {live.experiments.length === 0 ? (
-          <span className="muted">No committed experiment yet.</span>
-        ) : (
-          <>
-            <select value={exp} onChange={(e) => setExp(e.target.value)} style={{ maxWidth: "100%" }}>
-              {live.experiments.map((e) => (
-                <option key={e.exp_id} value={e.exp_id}>
-                  {e.exp_id.replace(`${id}-`, "")} · {e.decision} · {f3(e.score)}{e.exp_id === live.best_exp ? " · best" : ""}
-                </option>
+        <div className="kpis">
+          <Kpi lead label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
+            note={`${kept ? kept.exp_id.replace(`${id}-`, "") : "nothing kept yet"} · threshold ${f3(live.threshold)}`} />
+          <Kpi label="Validation" value={f3(v?.score(v.lastVal))}
+            note={v?.lastVal ? `${v.lastVal.decision === "keep" ? "no overfit" : "overfit"} · gap ${f3(v.lastVal.metrics.gap)}` : "runs once the threshold is met"} />
+          <Kpi label="Test" value={f3(v?.score(v.lastTest))} note={v?.lastTest ? "scored once, at the end" : "after the night stops"} />
+          <Kpi label="Round" value={`${live.round} / ${live.max_rounds}`}
+            note={v ? `${v.exps.length} experiments · kept in ${v.keptRounds} rounds` : undefined} />
+          <Kpi label="Spend" value={usd(live.spend_usd)} note={`of ${usd(live.budget_usd)} budget`}>
+            <Meter value={live.spend_usd} max={live.budget_usd} label="spend against budget" />
+          </Kpi>
+          <Kpi label="Elapsed" value={duration(elapsed)} note={running ? `deadline ${new Date(live.deadline_at).toLocaleTimeString()}` : "wall time"}>
+            <Meter value={elapsed} max={span} label="time against deadline" />
+          </Kpi>
+        </div>
+
+        {live.branches.length > 0 && (
+          <Card title={`Round ${live.round} branches`} sub="Refreshed every 5 s while the coders work.">
+            <div className="branches">
+              {live.branches.map((b) => (
+                <div className="branch" key={b.exp_id}>
+                  <div className="branch-head">
+                    <strong>b{b.branch}</strong>
+                    <span className={`badge${b.phase === "coding" ? " live" : ""}`}>{b.phase}</span>
+                  </div>
+                  <div className="model">{b.model}</div>
+                  <div className="facts">
+                    <div><span>Elapsed</span><span>{duration(b.elapsed_s)}</span></div>
+                    <div><span>Tokens</span><span>{b.tokens.toLocaleString()}</span></div>
+                    <div><span>Coder</span><span>{usd(b.coder_usd)}</span></div>
+                    <div><span>Program calls</span><span>{usd(b.dev_usd)}</span></div>
+                    {b.score != null && <div><span>{primary}</span><span>{f3(b.score)} · {b.decision}</span></div>}
+                  </div>
+                </div>
               ))}
-            </select>
-            <a className="button primary" href={exportUrl("tar.gz")}>Download .tar.gz</a>
-            <a className="button" href={exportUrl("bundle")}>Git bundle (with lineage)</a>
-          </>
+            </div>
+          </Card>
         )}
-      </div>
 
-      <h2>Metrics</h2>
-      <iframe
-        key={reportKey}
-        className="report"
-        title={`Report for ${id}`}
-        src={`/api/worker/nights/${encodeURIComponent(id)}/report`}
-      />
-    </main>
+        {!v || !night ? (
+          <Card title="Results"><div className="empty">{report ? "No results yet. The first rows land when round 1's evaluation finishes." : "Loading results…"}</div></Card>
+        ) : v.exps.length === 0 ? (
+          <Card title="Results"><div className="empty">No results yet. The first rows land when round 1's evaluation finishes.</div></Card>
+        ) : (
+          <div className="grid-2">
+            <div className="stack">
+              <Card title="How the Night Converged" sub={`Every experiment's ${primary} on the optimization folds. The red line is the kept commit.`}
+                tools={<ViewToggle table={convTable} onToggle={() => setConvTable((x) => !x)} />}>
+                {convTable
+                  ? <ConvergenceTable nightId={id} v={v} primary={primary} />
+                  : <ConvergenceChart nightId={id} v={v} branches={branches} primary={primary} selected={sel} onSelect={setSelected} />}
+              </Card>
+              <Card title="Metric Families" sub="Share of items wrong per input family: darker means more left to fix."
+                tools={
+                  <>
+                    <div className="seg">
+                      <button type="button" aria-pressed={heatMode === "lineage"} onClick={() => setHeatMode("lineage")}>Kept lineage</button>
+                      <button type="button" aria-pressed={heatMode === "all"} onClick={() => setHeatMode("all")}>All experiments</button>
+                    </div>
+                    <ViewToggle table={heatTable} onToggle={() => setHeatTable((x) => !x)} />
+                  </>
+                }>
+                {heatTable
+                  ? <FamilyTable nightId={id} v={v} mode={heatMode} />
+                  : <FamilyHeatmap nightId={id} v={v} mode={heatMode} selected={sel} onSelect={setSelected} />}
+              </Card>
+              <Card title="Experiments" sub="Click a row to inspect it and pick it for export.">
+                <ExperimentsTable night={night} v={v} primary={primary} selected={sel} onSelect={setSelected} />
+              </Card>
+              {v.rows.some((r) => r.kind !== "experiment") && (
+                <Card title="Extra Evaluations" sub="Re-scores, noise floor, validation on the held-out fold, and the one test score.">
+                  <EvalsTable nightId={id} v={v} primary={primary} />
+                </Card>
+              )}
+              <Card title="Reviewer Feedback" sub={night.config?.reviewer_model}>
+                <Reviews night={night} />
+              </Card>
+            </div>
+            <aside className="side">
+              <DetailCard night={night} v={v} primary={primary} selected={sel} diff={sel ? report!.diffs[sel] : undefined} />
+              <ExportCard night={night} selected={sel} resultsPath={report!.resultsPath} />
+            </aside>
+          </div>
+        )}
+      </main>
+      <footer className="foot">
+        {report ? `Results from ${report.resultsPath} · updated ${new Date(report.generatedAt).toLocaleTimeString()}` : ""}
+      </footer>
+    </>
   );
 }

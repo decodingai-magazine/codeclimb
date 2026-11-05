@@ -47,7 +47,11 @@ export type Live = NightSummary & {
 };
 
 export const usd = (v: number | null | undefined) => (v == null ? "–" : `$${v.toFixed(v < 1 ? 4 : 2)}`);
-export const f3 = (v: number | null | undefined) => (v == null ? "–" : v.toFixed(3));
+export const f3 = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? "–" : v.toFixed(3));
+/** Small values (a fast program's seconds, a cost per item) keep three significant digits. */
+export const fnum = (v: number | null | undefined) =>
+  v == null || Number.isNaN(v) ? "–" : Number.isInteger(v) ? String(v) : Math.abs(v) < 0.01 && v !== 0 ? v.toPrecision(3) : v.toFixed(3);
+export const signed = (v: number | null | undefined) => (v == null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3));
 export function duration(s: number): string {
   if (s < 90) return `${Math.round(s)} s`;
   if (s < 5400) return `${Math.round(s / 60)} min`;

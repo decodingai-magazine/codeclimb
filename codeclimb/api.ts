@@ -17,8 +17,7 @@ import { meter } from "./meter";
 import { isEmbeddingModel } from "./meter/backends";
 import { nightPaths } from "./paths";
 import { checkModels } from "./pi/session";
-import { buildReportData, nightSpend } from "./report/data";
-import { renderReport } from "./report/html";
+import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
 import { reachableBackends } from "./sandbox";
 
@@ -182,12 +181,13 @@ function live(n: ReturnType<typeof findNight>) {
   return { ...s, spend_usd: Math.round((s.spend_usd + pending) * 10_000) / 10_000, branches, rows: rows.length, experiments };
 }
 
-async function report(n: ReturnType<typeof findNight>): Promise<string> {
+/** The report data for one night (its rows, reviews and diffs), rendered by the app's night page. */
+async function report(n: ReturnType<typeof findNight>): Promise<ReportData> {
   const data = await buildReportData(n.night.config.results_path, { title: n.night.night_id });
   data.nights = data.nights.filter((x) => x.id === n.night.night_id);
   const ids = new Set(data.nights.flatMap((x) => x.rows.map((r) => r.exp_id)));
   data.diffs = Object.fromEntries(Object.entries(data.diffs).filter(([k]) => ids.has(k)));
-  return renderReport(data);
+  return data;
 }
 
 async function startNight(body: { scenario?: string; night_id?: string; overrides?: Record<string, unknown> }) {
@@ -305,7 +305,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const n = findNight(decodeURIComponent(m[1]));
       if (req.method === "GET" && !m[2]) return send(res, 200, summary(n));
       if (req.method === "GET" && m[2] === "live") return send(res, 200, live(n));
-      if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n), "text/html");
+      if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n));
       if (req.method === "POST" && m[2] === "stop") return send(res, 200, await stopNight(n));
       if (req.method === "GET" && m[2] === "export" && m[3]) return exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "tar.gz", res);
     }
