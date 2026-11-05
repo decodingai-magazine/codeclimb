@@ -17,7 +17,6 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
-  - github-copilot/claude-haiku-5.5
 reviewer_model: github-copilot/claude-haiku-4.5
 allowed_models: []
 primary_metric: accuracy

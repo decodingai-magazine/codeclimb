@@ -292,7 +292,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
 | `scenarios/datenorm/` | Spec bundle (`spec/`, the only thing the agent sees), hidden `dataset/`, `metrics/run.py` + `score.py`, and the `Dockerfile` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators, runner and scorer. `HIDDEN_RULES.md` is the answer key and is never put in the image |
-| `configs/` | `datenorm-smoke.yaml` (2 rounds × 3 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 3 branches) and `datenorm-hard-calibrate.yaml` (1 branch × 1 round) |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 2 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 2 branches) and `datenorm-hard-calibrate.yaml` (1 branch × 1 round) |
 
 ### Deviations from the spec in this iteration
 
