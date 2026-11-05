@@ -10,7 +10,7 @@ import { nightPaths } from "../codeclimb/paths";
 import { isEmbeddingModel } from "../codeclimb/meter/backends";
 import { checkModels } from "../codeclimb/pi/session";
 import { readRows, rowSpend } from "../codeclimb/results";
-import { ccInngest } from "../inngest/codeclimb/client";
+import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -30,7 +30,7 @@ function newNightId(): string {
 }
 
 async function follow(cfg: NightConfig, nightId: string): Promise<void> {
-  const { doneJson } = nightPaths(cfg, nightId);
+  const { doneJson, stopJson } = nightPaths(cfg, nightId);
   let printed = 0;
   console.log(`[run-night] following ${nightId} (Ctrl-C detaches; the night keeps running)`);
   for (;;) {
@@ -46,6 +46,10 @@ async function follow(cfg: NightConfig, nightId: string): Promise<void> {
     printed = rows.length;
     if (existsSync(doneJson)) {
       console.log(`[run-night] done:\n${readFileSync(doneJson, "utf8")}`);
+      return;
+    }
+    if (existsSync(stopJson)) {
+      console.log(`[run-night] stopped: ${readFileSync(stopJson, "utf8")}`);
       return;
     }
     await new Promise((r) => setTimeout(r, 5000));
@@ -66,10 +70,7 @@ if (positionals[0] === "stop") {
   }
   await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();
-  // A stable id makes Inngest drop a duplicate send, so one night id starts one run.
-  const { ids } = await ccInngest.send({
-    id: `night-start-${nightId}`, name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) },
-  });
+  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg)));
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
   if (!values["no-wait"]) await follow(cfg, nightId);
 }

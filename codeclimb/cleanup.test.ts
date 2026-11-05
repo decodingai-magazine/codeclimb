@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -19,6 +19,7 @@ function withRoot(fn: (root: string) => void): void {
   try {
     fn(root);
   } finally {
+    rmSync(root, { recursive: true, force: true });
     if (prev === undefined) delete process.env.CODECLIMB_ROOT;
     else process.env.CODECLIMB_ROOT = prev;
   }

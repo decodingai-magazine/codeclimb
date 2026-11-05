@@ -11,6 +11,8 @@ export function nightPaths(cfg: NightConfig, nightId: string) {
     nightDir,
     nightJson: join(nightDir, "night.json"),
     doneJson: join(nightDir, "done.json"),
+    /** Written by `markStopped` when a night is stopped, fails or times out (it never gets a done.json). */
+    stopJson: join(nightDir, "stop.json"),
     expDir: (expId: string) => join(nightDir, "exps", expId),
     evalDir: (evalId: string) => join(nightDir, "evals", evalId),
     /** The reviewer's feedback and next-round hypotheses, kept for the report. */

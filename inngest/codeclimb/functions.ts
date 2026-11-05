@@ -332,9 +332,6 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
-// `function_id` in `inngest/function.cancelled` is `<app id>-<function id>` (checked on the dev server).
-const RUN_NIGHT_FUNCTION_ID = `${ccInngest.id}-run-night`;
-
 /**
  * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
  * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
@@ -348,8 +345,11 @@ export const onRunCancelled = ccInngest.createFunction(
     const aborted = await step.run("abort-pi", () => abortRun(runId));
     const swept = await step.run("sweep", () => sweepRun(runId));
     // The SDK's CancelledEventPayload type omits it, but the payload carries the triggering event.
-    const nightId = (event.data as { event?: { data?: { night_id?: unknown } } }).event?.data?.night_id;
-    if (event.data.function_id === RUN_NIGHT_FUNCTION_ID && typeof nightId === "string") {
+    // Only `run-night` is triggered by `night.start` (the children by `inngest/function.invoked`), and the
+    // event name does not depend on how `function_id` is spelled (a slug on the dev server, unchecked on Cloud).
+    const trigger = (event.data as { event?: { name?: string; data?: { night_id?: unknown } } }).event;
+    const nightId = trigger?.data?.night_id;
+    if (trigger?.name === nightStart.name && typeof nightId === "string") {
       await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: nightId, reason: "cancelled" } });
     }
     return { aborted, swept };

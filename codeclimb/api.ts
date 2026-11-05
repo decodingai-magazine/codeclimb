@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { parse, stringify } from "yaml";
-import { ccInngest } from "../inngest/codeclimb/client";
+import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
 import { type NightConfig, parseConfig, relativeConfig } from "./config";
 import { validateExpId } from "./export";
@@ -217,10 +217,9 @@ async function startNight(body: { scenario?: string; night_id?: string; override
   } catch (e) {
     throw new HttpError(400, (e as Error).message);
   }
-  // A stable id makes Inngest drop a duplicate send (a retried request), so one night id starts one run.
-  const { ids } = await ccInngest.send({
-    id: `night-start-${nightId}`, name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) },
-  });
+  // The 409 check above misses a request racing this one (the night folder appears only at `init`);
+  // the event's stable id covers that.
+  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg)));
   return { night_id: nightId, event_id: ids[0] };
 }
 
