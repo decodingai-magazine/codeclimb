@@ -3,6 +3,23 @@
 name: graphrag
 image: codeclimb-graphrag          # npm run build:image:graphrag
 bundle: uv run python scripts/export_agent.py --out {out}
+eval_sandboxes: per_candidate      # model calls are slow, and no headline reads latency
+protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
+# A branch that drops one of these below its parent's run by more than the margin can't be kept.
+# `ci95`: the half-width of the parent's bootstrap interval. Graph precision has none: a wrong merge
+# is worse than a wrong split.
+headline:
+  extraction.mentions.f1: 0.02
+  extraction.relations.directed.f1: 0.02
+  graph.b_cubed.recall: 0.02
+  graph.b_cubed.precision: 0
+  retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: ci95
+  retrieval.by_kind.comparison.metrics.edge_recall_at_k.mean: ci95
+  retrieval.by_kind.multi_hop.metrics.path_complete.mean: ci95
+  retrieval.by_kind.aggregation.metrics.r_precision.mean: ci95
+  retrieval.by_kind.temporal.metrics.r_precision.mean: ci95
+  retrieval.by_kind.intersection.metrics.answer_mrr.mean: ci95
+  retrieval.by_kind.unanswerable.metrics.abstained.mean: ci95
 stages:
   - name: extraction
     inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}
@@ -10,10 +27,12 @@ stages:
       /eval/root/corpus: corpus
     run: python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
     score: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details
   - name: graph
     inputs: uv run python evaluators/graph.py inputs --split {split} --mode gold-history --out {inputs}
     run: python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
     score: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report} --details
   - name: retrieval
     inputs: uv run python evaluators/retrieval.py inputs --split {split} --out {inputs}
     files:
@@ -21,3 +40,4 @@ stages:
       /eval/graph.json: gold/graph.json   # the full gold graph (accepted risk, docs/scenario-contract.md Q23)
     run: python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
     score: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details

@@ -2,7 +2,7 @@
 // (re-score, baseline, noise, test). With git, the source of truth.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
-/** `dev` scores every round; `noise` is dev scored repeatedly for σ; `test` is scored once at the end. */
+/** `dev` scores every round; `noise` marks older nights' repeated dev scores; `test` is scored once at the end. */
 export type Split = "dev" | "test" | "noise";
 export type Decision = "keep" | "revert" | "error";
 
@@ -42,7 +42,7 @@ export interface ResultRow {
   evaluator_instance?: string;
   eval_order?: number;
   /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
-  keep_reason?: "primary" | "efficiency";
+  keep_reason?: "primary" | "efficiency" | "reviewer";
   /** Not in the contract: the program's model calls while the coder developed (metered, outside `metrics`). */
   dev_usd?: number;
 }
@@ -93,7 +93,7 @@ export const RESULT_ROW_SCHEMA = {
     night_id: str,
     evaluator_instance: str,
     eval_order: { type: "integer", minimum: 0 },
-    keep_reason: { type: "string", enum: ["primary", "efficiency"] },
+    keep_reason: { type: "string", enum: ["primary", "efficiency", "reviewer"] },
     dev_usd: num,
   },
 } as const;

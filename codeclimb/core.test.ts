@@ -4,10 +4,11 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { coderPrompt, parseApproach } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
-import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
+import { applyReview, checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
-import { beatsParent, passesGates, passesThresholds, stddev } from "./stats";
+import { flattenReport, parseScenario, readProtocol } from "./scenario";
+import { beatsParent, guardrailFailures, passesGates, passesThresholds } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,11 +29,40 @@ results_path: runs/r.jsonl
 `;
 const cfg = parseConfig(BASE_YAML, ROOT);
 
-test("keep rule: gain >= max(min_gain, 2σ)", () => {
-  assert.equal(beatsParent(0.52, 0.5, 0.02, 0), true);
-  assert.equal(beatsParent(0.519, 0.5, 0.02, 0), false);
-  assert.equal(beatsParent(0.55, 0.5, 0.02, 0.03), false); // 2σ = 0.06 dominates
-  assert.equal(beatsParent(0.56, 0.5, 0.02, 0.03), true);
+test("keep rule: gain >= min_gain", () => {
+  assert.equal(beatsParent(0.52, 0.5, 0.02), true);
+  assert.equal(beatsParent(0.519, 0.5, 0.02), false);
+});
+
+test("guardrails: headline margins, ci95, vanished metrics, a stage gone empty", () => {
+  const parent = { "e.f1": 0.8, "g.p": 1, "r.x.mean": 0.5, "r.x.ci95_half": 0.1, "r.y.mean": 0.5, "e.output_bytes": 10, "g.output_bytes": 0 };
+  const headline = { "e.f1": 0.02, "g.p": 0, "r.x.mean": "ci95", "new.metric": 0.1 } as const;
+  assert.deepEqual(guardrailFailures({ ...parent, "e.f1": 0.78, "r.x.mean": 0.4 }, parent, headline), []);
+  const failed = guardrailFailures({ ...parent, "e.f1": 0.77, "g.p": 0.999, "r.x.mean": 0.39, "e.output_bytes": 0 }, parent, headline);
+  assert.equal(failed.length, 4);
+  assert.match(failed[3], /^e wrote no output/);
+  assert.match(guardrailFailures({ "g.p": 1, "r.x.mean": 0.5 }, parent, headline)[0], /e\.f1 is gone/);
+  // A first round: the parent has no headline numbers, so nothing can regress.
+  assert.deepEqual(guardrailFailures({}, {}, headline), []);
+  assert.deepEqual(guardrailFailures({ output_bytes: 0 }, { output_bytes: 5 }, {}), ["the run wrote no output"]);
+});
+
+test("scenario: headline, sandboxes, protocol, flattened reports", () => {
+  const base = "name: s\nimage: i\nbundle: b\nstages:\n  - { name: a, inputs: i, run: r, score: s, details: d }\n";
+  const s = parseScenario(`${base}headline: { a.mean: ci95, b: 0.1 }\neval_sandboxes: per_candidate\nprotocol: [x.md]\n`);
+  assert.deepEqual([s.headline, s.eval_sandboxes, s.protocol, s.stages[0].details], [{ "a.mean": "ci95", b: 0.1 }, "per_candidate", ["x.md"], "d"]);
+  assert.deepEqual([parseScenario(base).headline, parseScenario(base).eval_sandboxes], [{}, "shared"]);
+  assert.throws(() => parseScenario(`${base}headline: { a: ci95 }\n`), /\.mean/);
+  assert.throws(() => parseScenario(`${base}headline: { a: -1 }\n`), /margin/);
+  assert.throws(() => parseScenario(`${base}eval_sandboxes: many\n`), /eval_sandboxes/);
+  assert.deepEqual(
+    flattenReport({ a: { mean: 0.5, ci95: [0.4, 0.8], n: 3 }, details: { x: 1 }, per_item: { y: 1 }, skip: null }, "st"),
+    { "st.a.mean": 0.5, "st.a.ci95_half": (0.8 - 0.4) / 2, "st.a.n": 3 },
+  );
+  const scoring = readProtocol(join(ROOT, "scenarios/graphrag"), ["README.md#Scoring"]);
+  assert.match(scoring, /^## Scoring\n/);
+  assert.doesNotMatch(scoring, /\n## /);
+  assert.throws(() => readProtocol(join(ROOT, "scenarios/graphrag"), ["README.md#Nope"]), /Nope/);
 });
 
 test("gates are caps, thresholds are floors", () => {
@@ -122,7 +152,7 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
     t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: "i1", eval_order: 0,
   });
   const d = decideRound({
-    cfg, nightId: "n", round: 1, parent, sigma: 0, rescore: null, hypotheses: [null, null, null],
+    cfg, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null, null, null],
     branches: [
       { ok: true, expId: "n-r1-b0", branch: 0, model: "p/a", code: code("a"), eval: ev(0.9, 2) }, // best but fails a gate
       { ok: true, expId: "n-r1-b1", branch: 1, model: "p/a", code: code("b"), eval: ev(0.6) },
@@ -134,14 +164,14 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   for (const r of d.rows) assert.deepEqual(validateRow(r), []);
 
   const none = decideRound({
-    cfg, nightId: "n", round: 1, parent: { ...parent, score: 0.59 }, sigma: 0, rescore: null,
+    cfg, nightId: "n", round: 1, parent: { ...parent, score: 0.59 }, rescore: null,
     hypotheses: [null], branches: [{ ok: true, expId: "x", branch: 0, model: "p/a", code: code("c"), eval: ev(0.6) }],
   });
   assert.equal(none.keep, null);
 
   // An already re-scored parent's run in the evaluator is a baseline row: recorded, its score unchanged.
   const withBaseline = decideRound({
-    cfg, nightId: "n", round: 2, parent, sigma: 0, rescore: null, hypotheses: [null],
+    cfg, nightId: "n", round: 2, parent, rescore: null, hypotheses: [null],
     baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.3) },
     branches: [{ ok: true, expId: "n-r2-b0", branch: 0, model: "p/a", code: code("d"), eval: ev(0.4) }],
   });
@@ -185,7 +215,7 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   const branch = (b: number, e: ReturnType<typeof ev>) => ({ ok: true as const, expId: `n-r2-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: e });
   const round = (branches: ReturnType<typeof branch>[], over: Partial<Parameters<typeof decideRound>[0]> = {}) =>
     decideRound({
-      cfg, nightId: "n", round: 2, parent, sigma: 0, effSigma: {}, bestPrimary: 0.9, rescore: null,
+      cfg, nightId: "n", round: 2, parent, bestPrimary: 0.9, rescore: null,
       baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.9, 0.01, 2.0) }, hypotheses: [null, null, null], branches, ...over,
     });
 
@@ -201,8 +231,6 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   assert.equal(eff.rows.find((r) => r.exp_id === "n-r2-b1")?.keep_reason, "efficiency");
   assert.equal(eff.summaries.find((x) => x.expId === "n-r2-b1")?.decision, "keep (cheaper/faster)");
   assert.deepEqual(eff.parentRun?.latency_total_s, 2.0);
-  // ...but not when the cut is within 2σ of latency noise.
-  assert.equal(round([branch(1, ev(0.9, 0.01, 1.5))], { effSigma: { latency_total_s: 0.3 } }).keep, null);
   // ...not when it raises the other objective by as much,
   assert.equal(round([branch(1, ev(0.9, 0.02, 1.5))]).keep, null);
   // ...not below the night's best kept primary (drift guard),
@@ -218,6 +246,40 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   for (const r of eff.rows) assert.deepEqual(validateRow(r), []);
 });
 
+test("the reviewer's keep replaces the mechanical one, among candidates only", () => {
+  const parent: Kept = { expId: "n-r0", sha: "p", score: 0.5, metrics: null, metricsPath: null, rescored: true };
+  const code = (sha: string) => ({
+    ok: true, sha, hypothesis: sha, stop: "done" as const, coder_usd: 0, dev_usd: 0, tokens: 0, t_provision: 1, t_code: 1, t_teardown: 1, infra_errors: 0, resumed: false,
+  });
+  const ev = (accuracy: number) => ({
+    ok: true, metrics: { accuracy, schema_violations: 0 }, metricsPath: "/m.json", program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3,
+    infra_errors: 0, evaluator_instance: "i", eval_order: 0,
+  });
+  const branch = (b: number, score: number) => ({ ok: true as const, expId: `n-r1-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: ev(score) });
+  const headlined = { ...cfg, scenario: { ...cfg.scenario, headline: { accuracy: 0.05 } } };
+  const d = decideRound({
+    cfg: headlined, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null, null, null],
+    baseline: { ok: true, evalId: "n-r1-baseline", result: ev(0.5) },
+    branches: [branch(0, 0.8), branch(1, 0.6), branch(2, 0.4)],
+  });
+  assert.equal(d.keep?.expId, "n-r1-b0");
+  assert.deepEqual(d.candidates.map((c) => c.expId), ["n-r1-b0", "n-r1-b1"]); // b2 fell more than the margin
+  assert.match(d.summaries[2].guardrails[0], /accuracy fell/);
+
+  const picked = applyReview(d, "n-r1-b1");
+  assert.deepEqual([picked.keep?.expId, picked.keep?.reason, picked.keep?.sha], ["n-r1-b1", "reviewer", "s1"]);
+  const decisions = () => picked.rows.filter((r) => r.kind === "experiment").map((r) => r.decision);
+  assert.deepEqual(decisions(), ["revert", "keep", "revert"]);
+  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-b0")?.keep_reason, undefined);
+  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-b1")?.keep_reason, "reviewer");
+  for (const r of picked.rows) assert.deepEqual(validateRow(r), []);
+  assert.equal(picked.summaries[1].decision, "keep");
+
+  const none = applyReview(d, null);
+  assert.equal(none.keep, null);
+  assert.deepEqual(none.rows.filter((r) => r.kind === "experiment").map((r) => r.decision), ["revert", "revert", "revert"]);
+});
+
 test("results schema rejects bad rows", () => {
   assert.ok(validateRow({}).some((e) => e.startsWith("missing")));
   assert.ok(validateRow({ decision: "maybe" }).some((e) => e.includes("decision")));
@@ -228,9 +290,12 @@ test("parsers", () => {
   assert.equal(parseApproach("**APPROACH:** `x`"), "x");
   assert.equal(parseApproach("**APPROACH**: y"), "y");
   assert.equal(parseApproach("My approach is fine\nlast line"), "last line");
-  const r = parseReview('noise {"feedback": "f", "hypotheses": ["a", "b", "a", "c"]} tail', 3);
-  assert.deepEqual(r, { feedback: "f", hypotheses: ["a", "b", "c"] });
-  assert.equal(parseReview('{"feedback": "f", "hypotheses": ["a"]}', 3), null);
+  const r = parseReview('noise {"keep": "x", "keep_reason": " why ", "feedback": "f", "hypotheses": ["a", "b", "a", "c"]} tail', 3, ["x"]);
+  assert.deepEqual(r, { keep: "x", keep_reason: "why", feedback: "f", hypotheses: ["a", "b", "c"] });
+  assert.equal(parseReview('{"keep": null, "feedback": "f", "hypotheses": ["a"]}', 3, []), null);
+  assert.equal(parseReview('{"keep": null, "feedback": "f", "hypotheses": []}', 0, [])?.keep, null); // the last round asks for none
+  assert.equal(parseReview('{"keep": "y", "feedback": "f", "hypotheses": ["a"]}', 1, ["x"]), null); // not a candidate
+  assert.equal(parseReview('{"feedback": "f", "hypotheses": ["a"]}', 1, ["x"]), null); // no answer on the keep
 });
 
 test("coder prompt names the dev endpoint only when the program may call models", () => {

@@ -8,9 +8,10 @@ import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
-import { efficiencyMetrics, parallelWidth, rootConfig, type NightConfig } from "../../codeclimb/config";
+import { efficiencyMetrics, evalMinutes, parallelWidth, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
+  applyReview,
   type BranchOutcome,
   checkStop,
   decideRound,
@@ -19,7 +20,6 @@ import {
   finishNight,
   initNight,
   type Kept,
-  recordNoise,
   recordRows,
   reviewRound,
   rotate,
@@ -30,7 +30,6 @@ import type { HypothesisLogEntry } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
 import { ccInngest, nightStart, nightStop } from "./client";
 
-const NOISE_RUNS = 5;
 
 type ExperimentEvent = ExperimentInput;
 type EvalSpec = Omit<EvalRequest, "nightId" | "runId" | "order"> & {
@@ -119,7 +118,7 @@ export const runNight = ccInngest.createFunction(
         .invoke(id, {
           function: runEvaluator,
           data: { config: cfg, nightId, evaluatorId: `${nightId}-${id}`, requests },
-          timeout: `${requests.length * cfg.timeouts.eval_min * 3 + 15}m`,
+          timeout: `${requests.length * evalMinutes(cfg) * 3 + 15}m`,
         })
         .then(
           (outcomes) => outcomes as EvalOutcome[],
@@ -131,9 +130,6 @@ export const runNight = ccInngest.createFunction(
       expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null, metricsPath: null,
       rescored: true, // round-1 parent = the starter repo, scored 0
     };
-    let sigma = init.sigma;
-    let effSigma = init.effSigma;
-    let sigmaMeasured = init.sigmaMeasured;
     // Highest re-scored primary kept so far: efficiency keeps may not drift below it.
     let bestPrimary = 0;
     const noteKept = () => {
@@ -189,7 +185,12 @@ export const runNight = ccInngest.createFunction(
       for (const c of coded) {
         if (c.ok && c.code.sha) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "dev", scoreRunId: c.runId });
       }
-      const evals = new Map((await invokeEvaluator(`r${round}-eval`, rotate(specs, round))).map((o) => [o.evalId, o]));
+      const order = rotate(specs, round);
+      const outcomes =
+        cfg.scenario.eval_sandboxes === "per_candidate"
+          ? await Promise.all(order.map((spec, i) => invokeOne(`r${round}-eval-${i}`, spec)))
+          : await invokeEvaluator(`r${round}-eval`, order);
+      const evals = new Map(outcomes.map((o) => [o.evalId, o]));
       const branches: BranchOutcome[] = coded.map((c) => {
         if (!c.ok) return c;
         const o = evals.get(`${c.expId}-eval`);
@@ -197,29 +198,35 @@ export const runNight = ccInngest.createFunction(
       });
       const parentEval = evals.get(parentSpec.evalId)!;
 
-      const decision = await step.run(`r${round}-decide`, () =>
+      const mechanical = await step.run(`r${round}-decide`, () =>
         decideRound({
-          ...rowBase, parent, sigma, effSigma, bestPrimary, branches, hypotheses,
+          ...rowBase, parent, bestPrimary, branches, hypotheses,
           rescore: parent.rescored ? null : parentEval,
           baseline: parent.rescored ? parentEval : null,
         }),
       );
-      kept = { ...kept, ...decision.parentAfter };
+      kept = { ...kept, ...mechanical.parentAfter };
       noteKept();
 
-      // Review: feedback + one hypothesis per branch of the next round (skipped after the last round).
+      // Review: what to keep, feedback, and one hypothesis per branch of the next round. The next round's
+      // width depends on the keep, so ask for the wider case. After the last round with no candidate there
+      // is nothing to ask.
       let review = { feedback, hypotheses: hypotheses.map((h) => h ?? ""), reviewer_usd: 0, t_review: 0, tokens: 0 };
-      if (round < cfg.max_rounds) {
+      let decision = mechanical;
+      if (round < cfg.max_rounds || mechanical.candidates.length) {
+        const nextWidth = round < cfg.max_rounds ? Math.max(parallelWidth(cfg, round + 1, 0), parallelWidth(cfg, round + 1, roundsWithoutKeep + 1)) : 0;
         try {
-          review = await step.run(`r${round}-review`, () =>
+          const reviewed = await step.run(`r${round}-review`, () =>
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: kept.score, parentMetrics: kept.metrics,
-              summaries: decision.summaries, log: [...log],
-              branches: parallelWidth(cfg, round + 1, decision.keep ? 0 : roundsWithoutKeep + 1),
+              summaries: mechanical.summaries, candidates: mechanical.candidates.map((c) => c.expId),
+              mechanicalKeep: mechanical.keep?.expId ?? null, log: [...log], branches: nextWidth,
             }),
           );
+          review = reviewed;
+          decision = applyReview(mechanical, reviewed.keep);
         } catch {
-          // A failed review keeps last round's guidance instead of killing the night.
+          // A failed review keeps last round's guidance and the mechanical keep instead of killing the night.
         }
       }
       const rows = decision.rows.map((r) => ({ ...r, reviewer_usd: review.reviewer_usd, t_review: review.t_review }));
@@ -251,23 +258,7 @@ export const runNight = ccInngest.createFunction(
       if (decision.keep) {
         const { reason: _, ...k } = decision.keep;
         kept = { ...k, metricsPath: null, rescored: false };
-        // Noise floor: on the first night, eval the first kept commit 5× in one evaluator (doubles as its re-score).
-        if (!sigmaMeasured) {
-          const outcomes = await invokeEvaluator(
-            `r${round}-noise`,
-            Array.from({ length: NOISE_RUNS }, (_, i) => ({
-              evalId: `${nightId}-r${round}-noise${i}`, expId: kept.expId, split: "dev" as const,
-            })),
-          );
-          const noise = await step.run(`r${round}-noise`, () => recordNoise({ ...rowBase, kept, outcomes }));
-          if (noise) {
-            sigma = noise.sigma;
-            effSigma = noise.effSigma;
-            sigmaMeasured = true;
-            kept = { ...kept, score: noise.mean, metrics: noise.metrics, metricsPath: noise.metricsPath, rescored: true };
-            noteKept();
-          }
-        } else if (passesThresholds(kept.metrics ?? {}, cfg.thresholds)) {
+        if (passesThresholds(kept.metrics ?? {}, cfg.thresholds)) {
           // The raw (best-of-N) score passes: re-score now, so the thresholds stop reads an unbiased score.
           const outcome = await invokeOne(`r${round}-rescore-now`, {
             evalId: `${nightId}-r${round}-rescore-now`, expId: kept.expId, split: "dev",

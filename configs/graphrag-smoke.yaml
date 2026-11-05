@@ -1,7 +1,7 @@
 # Smoke night on graphrag: all three stages scored on dev every round, Docker sandboxes, Inngest dev
 # server. Build the image first: npm run build:image:graphrag
-# Until the reviewer-decided keep lands (docs/scenario-contract.md, build step 4), the keep rule reads
-# extraction mention F1 alone; the other stages' metrics are recorded beside it.
+# All three stages are scored on dev every round; the reviewer picks the keep from the branches that pass
+# the scenario's headline guardrails. `primary_metric` only names the score in charts and logs.
 scenario: scenarios/graphrag
 sandbox: docker
 max_rounds: 2
@@ -13,7 +13,7 @@ models:
   - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
 reviewer_model: github-copilot/claude-sonnet-5
-# The models the program may call, through the metering proxy (OpenRouter; build step 3).
+# The models the program may call, through the metering proxy.
 allowed_models:
   - openrouter/anthropic/claude-haiku-5.5
   - openrouter/deepseek/deepseek-v4.1-flash
@@ -22,6 +22,10 @@ allowed_models:
 primary_metric: extraction.mentions.f1
 thresholds:
   extraction.mentions.f1: 0.8
+  extraction.relations.directed.f1: 0.6
+  graph.b_cubed.precision: 0.98
+  graph.b_cubed.recall: 0.98
+  retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
 min_gain: 0.02
 budget_usd:
   experiment: 2.0

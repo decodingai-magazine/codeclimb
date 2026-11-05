@@ -14,7 +14,7 @@ export type StandardMetricsConfig = {
   latency_metric: string;
   /** The cost metric optimized when `cost` is on (lower is better). */
   cost_metric: string;
-  /** Relative cut (0.1 = 10%) a cost or latency change needs, on top of beating 2σ, to count. */
+  /** Relative cut (0.1 = 10%) a cost or latency change needs, to count. */
   min_efficiency_gain: number;
 };
 
@@ -155,16 +155,17 @@ const INNGEST_MAX_MIN = 50;
 /** The backend's limits on the timeouts. Run it again after changing `sandbox` on a parsed config. */
 export function checkSandboxLimits(cfg: NightConfig): void {
   if (cfg.sandbox !== "inngest") return;
-  for (const k of ["experiment_min", "eval_min"] as const) {
-    if (cfg.timeouts[k] > INNGEST_MAX_MIN) {
-      throw new Error(`config: timeouts.${k} must be <= ${INNGEST_MAX_MIN} on inngest (a sandbox runs one hour at most)`);
-    }
+  for (const [k, min] of [["experiment_min", cfg.timeouts.experiment_min], ["eval_min × stages", evalMinutes(cfg)]] as const) {
+    if (min > INNGEST_MAX_MIN) throw new Error(`config: timeouts.${k} must be <= ${INNGEST_MAX_MIN} on inngest (a sandbox runs one hour at most)`);
   }
 }
 
 export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {
   return parseConfig(readFileSync(path, "utf8"), baseDir ?? dirname(resolve(path)));
 }
+
+/** Minutes one candidate may take: `eval_min` applies to each stage. */
+export const evalMinutes = (cfg: Pick<NightConfig, "timeouts" | "scenario">) => cfg.timeouts.eval_min * cfg.scenario.stages.length;
 
 /** Maps every path field of a config (the scenario's commands run in `scenario_dir`, so they need none). */
 function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {

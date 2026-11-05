@@ -22,6 +22,8 @@ export interface Stage {
   run: string;
   /** Host: scores `{out}` (the downloaded outputs) on `{split}` and writes the JSON report `{report}`. */
   score: string;
+  /** Host: `score` with per-item errors under the report's `details`, for the reviewer. Used on dev, never on test. */
+  details?: string;
 }
 
 export interface Scenario {
@@ -31,6 +33,15 @@ export interface Scenario {
   /** Host: writes the coder's bundle into `{out}`; it becomes /spec, `spec/` holding the agent's spec. */
   bundle: string;
   stages: Stage[];
+  /**
+   * Headline metric → the drop from the parent that fails a branch: a number, or `ci95` for the half-width
+   * of the parent's interval (`<metric>` ending `.mean`, with `.ci95_half` beside it). Empty: no such guardrail.
+   */
+  headline: Record<string, number | "ci95">;
+  /** `shared`: a round's candidates run in turn in one evaluator, so latency compares. `per_candidate`: one sandbox each, in parallel. */
+  eval_sandboxes: "shared" | "per_candidate";
+  /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
+  protocol: string[];
 }
 
 const STAGE_NAME = /^[a-z][a-z0-9_-]*$/;
@@ -52,10 +63,39 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     for (const [k, v] of Object.entries(files)) {
       if (!k.startsWith("/") || typeof v !== "string") throw new Error(`${at}: files maps an absolute sandbox path to a host path`);
     }
-    return { name, inputs: str(s, "inputs", at), files: files as Record<string, string>, run: str(s, "run", at), score: str(s, "score", at) };
+    return {
+      name, inputs: str(s, "inputs", at), files: files as Record<string, string>, run: str(s, "run", at), score: str(s, "score", at),
+      ...(s.details === undefined ? {} : { details: str(s, "details", at) }),
+    };
   });
   if (new Set(stages.map((s) => s.name)).size !== stages.length) throw new Error(`${where}: stage names must be unique`);
-  return { name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages };
+  const headline = (raw.headline ?? {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(headline)) {
+    if (v !== "ci95" && !(typeof v === "number" && v >= 0)) throw new Error(`${where}: headline.${k} must be a margin >= 0 or "ci95"`);
+    if (v === "ci95" && !k.endsWith(".mean")) throw new Error(`${where}: headline.${k}: "ci95" needs a metric ending .mean`);
+  }
+  const evalSandboxes = raw.eval_sandboxes ?? "shared";
+  if (evalSandboxes !== "shared" && evalSandboxes !== "per_candidate") throw new Error(`${where}: eval_sandboxes must be shared or per_candidate`);
+  const protocol = (raw.protocol ?? []) as unknown[];
+  if (!Array.isArray(protocol) || !protocol.every((p) => typeof p === "string")) throw new Error(`${where}: protocol must list files`);
+  return {
+    name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
+    headline: headline as Scenario["headline"], eval_sandboxes: evalSandboxes, protocol: protocol as string[],
+  };
+}
+
+/** The scenario's `protocol` files as one text; a `path#Heading` entry is that `## Heading` section of the file. */
+export function readProtocol(dir: string, protocol: string[]): string {
+  return protocol
+    .map((entry) => {
+      const [path, heading] = entry.split("#");
+      const text = readFileSync(join(dir, path), "utf8");
+      if (!heading) return text;
+      const body = text.split(/^(?=## )/m).find((section) => section.startsWith(`## ${heading}\n`));
+      if (!body) throw new Error(`${dir}: ${path} has no "## ${heading}" section`);
+      return body;
+    })
+    .join("\n\n");
 }
 
 export function loadScenario(dir: string): Scenario {
@@ -86,15 +126,17 @@ export async function hostCommand(dir: string, cmd: string, values: Record<strin
 
 /**
  * A stage report's numeric values, flattened: nested keys joined by ".", lists and non-numbers skipped
- * (per-item detail stays in the report file). With more than one stage each key gets `<stage>.` in front.
+ * (per-item detail stays in the report file), and a `ci95: [lo, hi]` kept as its half-width, `ci95_half`.
+ * With more than one stage each key gets `<stage>.` in front.
  */
 export function flattenReport(report: unknown, prefix = ""): Record<string, number> {
   const out: Record<string, number> = {};
   if (report === null || typeof report !== "object" || Array.isArray(report)) return out;
   for (const [k, v] of Object.entries(report)) {
-    if (k === "per_item") continue;
+    if (k === "per_item" || k === "details") continue;
     const key = prefix ? `${prefix}.${k}` : k;
     if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+    else if (k === "ci95" && Array.isArray(v) && typeof v[0] === "number" && typeof v[1] === "number") out[`${key}_half`] = (v[1] - v[0]) / 2;
     else if (v && typeof v === "object" && !Array.isArray(v)) Object.assign(out, flattenReport(v, key));
   }
   return out;

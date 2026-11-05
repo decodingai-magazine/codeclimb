@@ -40,11 +40,10 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 - `typesafe/jev-1.14`: $0.042/M in, $0/M out, 262k context. A decisions model: chat refuses it, and it takes `{state, questions}` on OpenRouter's alpha `/api/alpha/decisions` endpoint, whose shape may change. The proxy serves it at `POST /v1/decisions`. Absent from `/api/v1/models`; only `/api/v1/models/typesafe/jev-1.14/endpoints` lists it, so the model check uses the endpoints API. Cost comes from each response's `usage.cost`.
 - OpenRouter lists no rerank models; ranking uses embeddings plus an optional LLM rerank.
 
-## Open after step 2
+## Open
 
 - **Inngest sandboxes ignore `image`**, so graphrag's requirements are missing there. Step 7 needs an install at sandbox creation, or a custom image.
-- **`timeouts.eval_min` applies per stage**, so one graphrag candidate may take 3 × `eval_min`. That exceeds Inngest's 50-minute sandbox cap at `eval_min: 30`, and `checkSandboxLimits` checks `eval_min` alone.
-- **Stage reports flatten to about 300 metrics** (graphrag dev), most of them retrieval slices. The keep rule reads one primary metric until step 4.
+- **`timeouts.eval_min` applies per stage**, so one graphrag candidate may take 3 × `eval_min`. `checkSandboxLimits` holds that product to Inngest's 50-minute cap, so `eval_min` is 16 at most there.
 
 ## Build order (one commit each)
 

@@ -103,7 +103,7 @@ export function coderPrompt(
       "If /spec/train/examples.jsonl exists, it holds the train items with their answers: the only labeled data you may read, and the only source for few-shot examples.",
     `<spec>\n${spec}\n</spec>`,
   ];
-  if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts (aggregate metrics only):\n${feedback.trim()}\n</feedback>`);
+  if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
   parts.push(
     [

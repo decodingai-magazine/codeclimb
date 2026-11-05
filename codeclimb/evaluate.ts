@@ -7,10 +7,10 @@
 // and `score` scores the downloaded outputs on the host. Gold never enters a
 // sandbox; the agent never sees inputs, outputs or reports.
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { NightConfig } from "./config";
+import { evalMinutes, type NightConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { sandboxBackend } from "./sandbox";
@@ -60,6 +60,13 @@ export interface EvalResult {
 
 const secs = (t0: number) => Math.round((performance.now() - t0) / 10) / 100;
 
+/** Bytes the stage's run wrote, its timings aside: 0 means it produced nothing. */
+function outputBytes(dir: string): number {
+  return readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => f !== TIMINGS_FILE && statSync(join(dir, f)).isFile())
+    .reduce((n, f) => n + statSync(join(dir, f)).size, 0);
+}
+
 /**
  * The evaluator's sandbox for the next candidate: the live one, else a new empty one. A metered
  * evaluator joins the metering network, whose relay is made sure of first.
@@ -73,7 +80,7 @@ export async function openEvaluator(cfg: NightConfig, nightId: string, evaluator
   const name = sandboxName(evaluatorId);
   if (isMetered(cfg)) await meterBaseUrl(cfg);
   const live = await backend.find(name);
-  const needMs = cfg.timeouts.eval_min * 60_000 + EVAL_OVERHEAD_MS;
+  const needMs = evalMinutes(cfg) * 60_000 + EVAL_OVERHEAD_MS;
   if (live && !(backend.maxActiveMs && ((await live.ageMs?.()) ?? 0) + needMs > backend.maxActiveMs)) return live;
   return backend.create({
     name, baseline: cfg.scenario.image, network: isMetered(cfg) ? METER_NETWORK : "none",
@@ -216,13 +223,17 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       const report = join(sdir, "report.json");
       t0 = performance.now();
       try {
-        await hostCommand(cfg.scenario_dir, stage.score, { split: req.split, out: outputs, report });
+        const score = req.split === "dev" && stage.details ? stage.details : stage.score; // test's errors stay unread
+        await hostCommand(cfg.scenario_dir, score, { split: req.split, out: outputs, report });
       } catch (e) {
         result.error = `stage ${stage.name}: score failed: ${(e as Error).message}`;
         return result;
       }
       result.t_eval += secs(t0);
-      Object.assign(metrics, flattenReport(JSON.parse(readFileSync(report, "utf8")), stages.length > 1 ? stage.name : ""));
+      const prefix = stages.length > 1 ? stage.name : "";
+      Object.assign(metrics, flattenReport(JSON.parse(readFileSync(report, "utf8")), prefix), {
+        [prefix ? `${prefix}.output_bytes` : "output_bytes"]: outputBytes(outputs),
+      });
     }
   } finally {
     if (token) calls = proxy!.close(token); // revokes it; spent even when a stage fails

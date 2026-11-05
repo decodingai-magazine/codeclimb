@@ -112,10 +112,9 @@ A night runs these steps:
    - List the preferred model first: narrow rounds use the first models in `models`.
 2. **Experiment.** Each child gives Pi a fresh sandbox built from the scenario's image plus the kept commit, with the scenario's bundle (spec and train examples) at `/spec`. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit.
 3. **Evaluation.** Once every coder has stopped, one `run-evaluator` child evaluates the round's candidates one after another in a single sandbox: the parent and each committed branch, in an order that rotates by round. Before each candidate it kills every leftover process, wipes `/repo`, `/work`, `/tmp` and `/eval`, and clones the candidate. Per stage of `scenario.yaml`, the host writes the dev inputs (`inputs`), the sandbox runs the program on them (`run`), and the host scores the downloaded outputs (`score`). So every candidate of a round is timed on the same machine with nothing else running.
-4. **Keep rule.** The parent keeps the best branch that passes the gates if its primary metric gains at least `max(min_gain, 2σ)`. With latency or cost optimized, see [Standard metrics](#standard-metrics-latency-and-cost) for the tie-break and the efficiency keep.
-5. **Noise floor.** On the first night, the first kept commit is evaluated 5 times in one evaluator to measure σ of the primary metric and of each optimized standard metric.
-6. **Review.** A reviewer model, which is none of the coders, writes feedback and one hypothesis per branch of the next round.
-7. **Test.** After any stop, the final kept commit is scored on test once.
+4. **Guardrails.** A branch can be kept only if it passes the gates, loses no headline metric of `scenario.yaml` by more than its margin against the parent's run in this round, and leaves no stage with empty output.
+5. **Review and keep.** A reviewer model, which is none of the coders, reads the spec, the scenario's `protocol`, each branch's metrics, per-item dev errors where the stage has a `details` command, and each diff. It picks one candidate to keep, or none, and writes feedback and one hypothesis per branch of the next round. It reads no test data. If the review fails, the mechanical rule decides: the candidate whose primary metric gains at least `min_gain`. With latency or cost optimized, see [Standard metrics](#standard-metrics-latency-and-cost).
+6. **Test.** After any stop, the final kept commit is scored on test once.
 
 A night stops on the first of these, checked between rounds (`stop_reason` in `done.json`):
 
@@ -128,7 +127,7 @@ A night stops on the first of these, checked between rounds (`stop_reason` in `d
 | `tokens` | `max_tokens` (optional) | Coder and reviewer tokens plus the costliest round so far would cross it |
 | `plateau` | `plateau_rounds` (default 3, `0` = off) | That many rounds in a row kept nothing |
 
-Validation, test and the noise runs each get their own evaluator too. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
+The test eval gets its own evaluator too. A scenario with `eval_sandboxes: per_candidate` runs one evaluator per candidate, in parallel. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
 
 All output lands under `dirname(results_path)`:
 
@@ -217,13 +216,13 @@ standard_metrics:
   cost: true                         # default true
   latency_metric: latency_total_s    # default
   cost_metric: cost_per_item_usd     # default
-  min_efficiency_gain: 0.10          # relative cut a change needs, on top of beating 2σ
+  min_efficiency_gain: 0.10          # relative cut a change needs
 ```
 
-An optimized metric (lower is better) changes the keep rule in two places. Gates you set on any metric apply either way.
+An optimized metric (lower is better) changes the mechanical keep rule in two places, and the reviewer gets the same guidance. Gates you set on any metric apply either way.
 
-- **Tie-break.** Among branches that gain on the primary metric and are within 2σ of the best one, the cheaper, then faster one is kept.
-- **Efficiency keep.** When no branch gains on the primary, a branch is kept if its primary stays within 2σ of both the parent and the night's best kept score, it cuts an optimized metric by more than `max(min_efficiency_gain × parent, 2σ)`, and it raises no other optimized metric by as much.
+- **Tie-break.** Among branches tied on the primary metric that gain on it, the cheaper, then faster one is kept.
+- **Efficiency keep.** When no branch gains on the primary, a branch is kept if its primary stays at both the parent and the night's best kept score, it cuts an optimized metric by more than `min_efficiency_gain × parent`, and it raises no other optimized metric by as much.
 
 Latency is compared only between evals that ran on the same evaluator instance. The coder and reviewer prompts name the optimized metrics, and the hypothesis log shows their change next to the primary's. A metric that is not optimized stays out of the prompts unless a gate names it.
 
@@ -333,7 +332,6 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 - **No metering proxy:** `datenorm` is standard-library Python with no model calls.
   - Docker sandboxes run with `--network none`, which is stricter than the spec's egress allowlist. Inngest sandboxes have open egress, which is looser.
   - `program_usd` is 0 and `allowed_models` is unused.
-  - On a deterministic program, the noise floor measures σ ≈ 0.
 - **Scenario directory:** a config names `scenario: scenarios/<name>`; its `scenario.yaml` holds the image, the bundle command and the stage commands ([docs/scenario-contract.md](docs/scenario-contract.md)).
 - **Fixed splits:** every scenario has fixed train/dev/test in `gold/splits.json`. Dev is scored every round, test once at the end. Only train reaches a coder (the bundle's `train/examples.jsonl`).
 - **Extra row fields:** `kind` (experiment | rescore | noise | test), `eval_id` (a unique row key) and `night_id`.
@@ -365,7 +363,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 
 | Check | Config change | Result |
 |---|---|---|
-| Thresholds stop | `datenorm-smoke` with threshold 0.97 | Round 1 → noise ×5 → test, `stop_reason: thresholds` (re-verify after the scenario contract) |
+| Thresholds stop | `datenorm-smoke` with threshold 1.0 | Round 1 → re-score → test, `stop_reason: thresholds` |
 | `max_rounds` + worker crash | `datenorm-smoke`, worker `kill -9` in round 2 | Steps resumed the Pi sessions on the same sandboxes; round 2 → test, `stop_reason: max_rounds` |
 | `$` cap | `budget_usd {experiment: 0.003, night: 0.02}` | Pi aborted per experiment; `stop_reason: budget` after round 1 |
 | Deadline | `deadline: 30s`, threshold 1.01 | `stop_reason: deadline` after round 1 |
