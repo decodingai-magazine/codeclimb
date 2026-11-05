@@ -200,7 +200,7 @@ export default function NightPage() {
             </div>
             <aside className="side">
               <DetailCard night={night} v={v} primary={primary} selected={sel} diff={sel ? report!.diffs[sel] : undefined} />
-              <ExportCard night={night} selected={sel} resultsPath={report!.resultsPath} />
+              <ExportCard night={night} v={v} selected={sel} onSelect={setSelected} />
             </aside>
           </div>
         )}

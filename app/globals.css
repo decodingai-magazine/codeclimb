@@ -234,6 +234,7 @@ pre.diff .del { color: var(--fg-3); background: color-mix(in srgb, var(--fg-3) 1
 pre.diff .hunk { color: var(--primary); display: block; }
 .actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); flex-wrap: wrap; align-items: center; }
 .cli { margin-top: var(--space-4); }
+.stack-sm { display: grid; gap: var(--space-3); }
 .cli pre { margin: 6px 0 0; padding: var(--space-3); background: var(--black-3); color: #f3f3f4; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .feedback { display: grid; gap: var(--space-3); }
 .feedback .fb { border-top: 1px solid var(--border); padding-top: var(--space-3); }

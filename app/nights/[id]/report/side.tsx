@@ -1,7 +1,6 @@
 "use client";
 // The sticky side panel: the selected experiment (metrics, cost, hypothesis, diff vs parent)
-// and its export (a download from the worker, or the CLI command for a folder or git remote).
-import { useState } from "react";
+// and its export (a download of the kept commit as a git repository).
 import type { ReportNight } from "../../../../codeclimb/report/data";
 import { Icon } from "../../../ui";
 import { duration, f3, fnum, signed, usd } from "../../../worker";
@@ -71,58 +70,40 @@ export function DetailCard({ night, v, primary, selected, diff }: {
   );
 }
 
-const q = (x: string) => (/^[A-Za-z0-9_./:@=-]+$/.test(x) ? x : `'${x.replace(/'/g, "'\\''")}'`);
-
-export function ExportCard({ night, selected, resultsPath }: { night: ReportNight; selected: string | null; resultsPath: string }) {
-  const [mode, setMode] = useState<"download" | "dir" | "remote">("download");
-  const [copied, setCopied] = useState(false);
-  const exp = selected && night.rows.some((r) => r.exp_id === selected && r.kind === "experiment" && r.commit) ? selected : null;
-  const url = (format: string) => `/api/worker/nights/${encodeURIComponent(night.id)}/export/${encodeURIComponent(exp ?? "")}?format=${format}`;
-  const cli = exp
-    ? ["npm", "run", "export", "--", "--results", q(resultsPath), "--exp", q(exp),
-       ...(mode === "remote" ? ["--to-remote", "<git-url>", "--branch", `codeclimb/${exp}`] : ["--to-dir", "<folder>", "--with-history"])].join(" ")
-    : "";
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(cli);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
+/** Download a kept commit as a ready git repository: files checked out, kept lineage as history. */
+export function ExportCard({ night, v, selected, onSelect }: {
+  night: ReportNight;
+  v: Derived;
+  selected: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const keptIds = v.exps.filter((e) => e.decision === "keep" && e.commit).map((e) => e.exp_id);
+  const best = v.bestId && keptIds.includes(v.bestId) ? v.bestId : keptIds.at(-1) ?? null;
+  const exp = selected && keptIds.includes(selected) ? selected : null;
   return (
     <section className="card">
       <div className="card-head">
         <h2>Export</h2>
-        <span className="sub mono">{exp ? shortId(exp, night.id) : "no committed experiment selected"}</span>
+        <span className="sub mono">{exp ? shortId(exp, night.id) : "pick a kept commit"}</span>
       </div>
-      <div className="seg" role="group" aria-label="export destination">
-        <button type="button" aria-pressed={mode === "download"} onClick={() => setMode("download")}>Download</button>
-        <button type="button" aria-pressed={mode === "dir"} onClick={() => setMode("dir")}>Local folder</button>
-        <button type="button" aria-pressed={mode === "remote"} onClick={() => setMode("remote")}>Git remote</button>
-      </div>
-      {mode === "download" ? (
-        <div className="actions">
-          {exp ? (
-            <>
-              <a className="btn btn-primary" href={url("tar.gz")}><Icon name="download" />Source .tar.gz</a>
-              <a className="btn btn-ghost" href={url("bundle")}><Icon name="branch" />Git bundle</a>
-            </>
-          ) : (
-            <span className="muted">Select a committed experiment to download it.</span>
+      {!exp ? (
+        <div className="stack-sm">
+          <p className="muted" style={{ margin: 0 }}>
+            Only kept commits can be exported. {best ? `The night's best is ${shortId(best, night.id)}.` : "This night has kept nothing yet."}
+          </p>
+          {best && (
+            <div className="actions">
+              <button className="btn btn-primary" type="button" onClick={() => onSelect(best)}><Icon name="flag" />Select the best</button>
+            </div>
           )}
         </div>
       ) : (
-        <div className="cli">
-          <div className="muted">
-            {mode === "dir"
-              ? "Writes the experiment's files, with its kept lineage as git history, to a folder on the worker's machine:"
-              : "Pushes the experiment's lineage (starter → kept commits → this one) to a branch. Never force-pushes:"}
-          </div>
-          <pre>{cli || "Select a committed experiment."}</pre>
-          <div className="actions">
-            <button className="btn btn-primary" type="button" disabled={!exp} onClick={copy}><Icon name="copy" />{copied ? "Copied" : "Copy command"}</button>
+        <div className="stack-sm">
+          <div className="muted">A git repository with the files checked out on <span className="mono">codeclimb/{exp}</span> and the kept lineage as history.</div>
+          <div className="actions" style={{ marginTop: 0 }}>
+            <a className="btn btn-primary" href={`/api/worker/nights/${encodeURIComponent(night.id)}/export/${encodeURIComponent(exp)}?format=repo`}>
+              <Icon name="download" />Download git repo
+            </a>
           </div>
         </div>
       )}

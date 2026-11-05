@@ -5,14 +5,15 @@
 // (CODECLIMB_WORKER_TOKEN); without one the API only binds to loopback.
 import { spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { parse, stringify } from "yaml";
 import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
 import { type NightConfig, parseConfig, relativeConfig } from "./config";
-import { validateExpId } from "./export";
+import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
 import { isEmbeddingModel } from "./meter/backends";
 import { nightPaths } from "./paths";
@@ -230,16 +231,46 @@ async function stopNight(n: ReturnType<typeof findNight>) {
   return { stopped: n.night.night_id };
 }
 
-/** The experiment's code: a tar.gz of its tree, or a git bundle with its lineage. */
-function exportStream(n: ReturnType<typeof findNight>, expId: string, format: string, res: ServerResponse): void {
+function nightGitDir(n: ReturnType<typeof findNight>, expId: string): string {
   validateExpId(expId);
   if (!expId.startsWith(`${n.night.night_id}-`)) throw new HttpError(400, "experiment is not from this night");
-  const gitDir = nightPaths(n.night.config, n.night.night_id).gitDir;
+  return nightPaths(n.night.config, n.night.night_id).gitDir;
+}
+
+/**
+ * The experiment's code as a download. `repo` (default): a tar.gz of a ready git repository, the
+ * files checked out on branch `codeclimb/<exp>` with the kept lineage as history. `source`: the
+ * tree only. `bundle`: a git bundle of the lineage.
+ */
+async function exportStream(n: ReturnType<typeof findNight>, expId: string, format: string, res: ServerResponse): Promise<void> {
+  const gitDir = nightGitDir(n, expId);
   const ref = `refs/exp/${expId}`;
-  const args =
-    format === "bundle" ? ["--git-dir", gitDir, "bundle", "create", "-", ref] : ["--git-dir", gitDir, "archive", "--format=tar.gz", `--prefix=${expId}/`, ref];
-  const name = format === "bundle" ? `${expId}.bundle` : `${expId}.tar.gz`;
-  const p = spawn("git", args, { stdio: ["ignore", "pipe", "pipe"] });
+  let tmp: string | null = null;
+  let args: string[];
+  let cmd = "git";
+  let name: string;
+  if (format === "bundle") {
+    args = ["--git-dir", gitDir, "bundle", "create", "-", ref];
+    name = `${expId}.bundle`;
+  } else if (format === "source") {
+    args = ["--git-dir", gitDir, "archive", "--format=tar.gz", `--prefix=${expId}/`, ref];
+    name = `${expId}-source.tar.gz`;
+  } else if (format === "repo") {
+    tmp = mkdtempSync(join(tmpdir(), "codeclimb-export-"));
+    try {
+      await exportExperiment(gitDir, expId, { kind: "dir", path: join(tmp, expId), withHistory: true });
+    } catch (e) {
+      rmSync(tmp, { recursive: true, force: true });
+      throw new HttpError(404, (e as Error).message);
+    }
+    cmd = "tar";
+    args = ["-czf", "-", "-C", tmp, expId];
+    name = `${expId}.tar.gz`;
+  } else {
+    throw new HttpError(400, `unknown format "${format}": use repo, source or bundle`);
+  }
+  const cleanup = () => tmp && rmSync(tmp, { recursive: true, force: true });
+  const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
   let started = false;
   let err = "";
   p.stderr.on("data", (d) => (err += d));
@@ -251,9 +282,27 @@ function exportStream(n: ReturnType<typeof findNight>, expId: string, format: st
     res.write(chunk);
   });
   p.on("close", (code) => {
+    cleanup();
     if (started) return void res.end();
     send(res, code === 0 ? 500 : 404, { error: code === 0 ? "empty export" : `no experiment ${expId}: ${err.trim().split("\n").at(-1)}` });
   });
+}
+
+/** Export into a folder on the worker's machine (a git repo with the lineage) or push it as a branch to a remote. */
+async function exportTo(n: ReturnType<typeof findNight>, expId: string, body: Record<string, unknown>) {
+  const gitDir = nightGitDir(n, expId);
+  let target: ExportTarget;
+  if (body.kind === "dir" && typeof body.path === "string") {
+    target = { kind: "dir", path: body.path.trim().replace(/^~(?=$|\/)/, homedir()), withHistory: true };
+  }
+  else if (body.kind === "remote" && typeof body.url === "string") {
+    target = { kind: "remote", url: body.url, branch: typeof body.branch === "string" ? body.branch : undefined };
+  } else throw new HttpError(400, 'body must be {kind: "dir", path} or {kind: "remote", url, branch?}');
+  try {
+    return await exportExperiment(gitDir, expId, target);
+  } catch (e) {
+    throw new HttpError(400, (e as Error).message);
+  }
 }
 
 // ---------- server ----------
@@ -307,7 +356,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (req.method === "GET" && m[2] === "live") return send(res, 200, live(n));
       if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n));
       if (req.method === "POST" && m[2] === "stop") return send(res, 200, await stopNight(n));
-      if (req.method === "GET" && m[2] === "export" && m[3]) return exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "tar.gz", res);
+      if (req.method === "GET" && m[2] === "export" && m[3]) return await exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "repo", res);
+      if (req.method === "POST" && m[2] === "export" && m[3]) return send(res, 200, await exportTo(n, decodeURIComponent(m[3]), await readBody(req)));
     }
     throw new HttpError(404, `no route ${req.method} ${path}`);
   } catch (e) {

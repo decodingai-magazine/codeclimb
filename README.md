@@ -187,7 +187,7 @@ The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end fo
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
 - **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, the plateau stop and token cap, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
-- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff, and **Export** downloads it as a `.tar.gz` or a git bundle with its lineage, or gives the CLI command for a folder or git remote.
+- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
 
@@ -199,7 +199,8 @@ The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) nex
 | `GET /api/nights/:id/report` | The night's report data as JSON (`ReportData`), which the app renders |
 | `POST /api/nights` | `{scenario, night_id?, overrides}`: start a night (sends `codeclimb/night.start`) |
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
-| `GET /api/nights/:id/export/:exp?format=tar.gz\|bundle` | Download an experiment |
+| `GET /api/nights/:id/export/:exp?format=repo\|source\|bundle` | Download an experiment: a git repo `.tar.gz` (default), the tree only, or a git bundle |
+| `POST /api/nights/:id/export/:exp` | `{kind: "dir", path}` writes the git repo into a folder on the worker's machine; `{kind: "remote", url, branch?}` pushes the lineage |
 
 The API needs no token on loopback, which is how the app and the CLI use it. To reach it from another machine or integrate CodeClimb into something else, set `CODECLIMB_API_HOST` and `CODECLIMB_WORKER_TOKEN` on the worker, and `CODECLIMB_WORKER_URL` and `CODECLIMB_WORKER_TOKEN` on the app. Every request but `/v1` then needs the token as a bearer.
 
