@@ -92,8 +92,9 @@ export async function closeEvaluator(cfg: NightConfig, evaluatorId: string): Pro
   await (await sandboxBackend(cfg.sandbox).find(sandboxName(evaluatorId)))?.destroy();
 }
 
-// Kills every process but PID 1, the Inngest guest agent (`init` processes) and this
-// script's own chain (its parent and its children), waits until they are gone, then
+// Kills every process but PID 1, the Inngest guest agent (`init` processes), a published
+// image's `sleep` CMD (a child of Inngest's reaper; killing it ends the sandbox's exec) and
+// this script's own chain (its parent and its children), waits until they are gone, then
 // wipes everything a candidate writes to. Zombies are skipped: PID 1 (`sleep` under
 // Docker) never reaps them, and they hold nothing.
 export const RESET_SCRIPT = `
@@ -107,7 +108,9 @@ others() {
     set -- $st
     [ "$2" = "$$" ] && continue
     [ "$1" = Z ] && continue
-    read -r comm < "$p/comm" 2>/dev/null && [ "$comm" = init ] && continue
+    read -r comm < "$p/comm" 2>/dev/null
+    [ "$comm" = init ] && continue
+    [ "$comm" = sleep ] && [ "$2" = 1 ] && continue
     kill -KILL "$q" 2>/dev/null
     n=$((n + 1))
   done
