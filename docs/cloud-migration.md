@@ -125,10 +125,9 @@ Other work in Phase 1 (done):
 
 ### Phase 2: no hosting (decided 2026-10-30)
 
-The worker stays on your machine in both modes; Inngest Cloud provides the durability and Inngest Sandboxes the isolated compute. The always-on host and the Vercel app were dropped as extra moving parts:
+The worker stays on your machine in both modes; Inngest Cloud provides the durability and Inngest Sandboxes the isolated compute. An always-on worker host was dropped as an extra moving part:
 
 - **A worker host** (Fly.io, Railway, Render) means another platform, a volume, a public API and a deploy rule (only between nights). `Dockerfile.worker` and the hosting docs were removed.
-- **Vercel instead of a worker** would need every piece of worker state moved off the disk (a store for `runs/`, git bundles instead of `experiments.git`, scoring and diffs in sandboxes), the proxy as a route, and coder steps cut under Vercel's function limit (300 s on Hobby, 800 s on Pro), or Pi moved into the sandboxes. Vercel Blob on Hobby allows 2,000 uploads and list calls a month and then locks for 30 days, so it would need Upstash or similar.
 
 Kept from the Phase 2 code: config paths travel relative and resolve against `CODECLIMB_ROOT` (`relativeConfig` / `rootConfig`), the worker API and the proxy share a port, and the sandbox list offers Docker only when a daemon answers. A later move, if the machine must be free: run Pi inside the sandboxes, so the worker only orchestrates.
 
