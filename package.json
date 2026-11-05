@@ -16,6 +16,7 @@
     "tunnel": "ngrok http 127.0.0.1:${CODECLIMB_PROXY_PORT:-7422}",
     "validate-results": "tsx scripts/validate-results.ts",
     "build:image": "docker build -t codeclimb-python -f docker/python.Dockerfile docker",
+    "build:image:graphrag": "npm run build:image && docker build -t codeclimb-graphrag -f docker/graphrag.Dockerfile scenarios/graphrag",
     "build:dataset": "python3 scenarios/datenorm/scripts/build_dataset.py --out scenarios/datenorm/gold",
     "report": "tsx scripts/report.ts",
     "export": "tsx scripts/export.ts",

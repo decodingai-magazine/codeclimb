@@ -1,0 +1,7 @@
+# The packages the program may import, baked into the codeclimb-graphrag image (npm run build:image:graphrag).
+# Fixed for a night: the eval sandbox installs nothing.
+numpy==2.5.4
+networkx==3.7
+openai==3.46.0
+pydantic==2.14.3
+rank-bm25==0.2.2

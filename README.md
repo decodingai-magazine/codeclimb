@@ -257,6 +257,21 @@ npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch 
 npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.90, up to 10 rounds
 ```
 
+### Multi-stage scenario: `graphrag`
+
+`scenarios/graphrag` is a GraphRAG system over 56 articles, scored in three stages, each on gold input: extraction (mention and relation F1), graph building (B-cubed precision and recall) and retrieval (per query kind). Its own `README.md` documents the gold data and every metric; `docs/scenario-contract.md` records how it plugs into codeclimb.
+
+- **Local data.** `corpus/` and `gold/` are gitignored, so a fresh clone lacks them and a night fails at the bundle step. Copy them from scrabble's `datasets/graphrag` into `scenarios/graphrag/`.
+- **Host side.** The evaluators run through `uv` with the scenario's `pyproject.toml` (click, loguru, pydantic). `uv` must be on the worker's PATH.
+- **Sandbox side.** The program is `python -m graphrag <stage> --root --inputs --out [--graph]` in the `codeclimb-graphrag` image, which adds the fixed `requirements.txt` to `codeclimb-python`. The starter writes empty predictions.
+- **Bundle.** The coder gets `spec/agent/`, the 12 train articles, train's gold graph, and train examples and inputs per stage. The export fails if any file names a dev or test document.
+- **Metrics.** Each stage's report is flattened with the stage in front, such as `extraction.mentions.f1`, `graph.b_cubed.recall` and `retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean`.
+
+```bash
+npm run build:image:graphrag     # codeclimb-python, then codeclimb-graphrag
+npm run run-night -- --config configs/graphrag-smoke.yaml
+```
+
 ### Report and export
 
 Each night rewrites `report.html` next to `results.jsonl` after every round. It is one self-contained file in the Decoding AI design system and opens offline. It covers every night in the results file:
@@ -303,8 +318,10 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
 | `scenarios/<name>/` | One scenario ([contract](docs/scenario-contract.md)): `scenario.yaml`, `starter/` (the round-0 repo), `spec/agent/` (the coder's spec), `gold/` (`items.jsonl`, `splits.json`), `evaluators/` (host CLI, runner, scorer) and `scripts/` (dataset builder, bundle export) |
 | `docker/python.Dockerfile` | The `codeclimb-python` image every scenario uses on Docker |
+| `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
+| `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `datenorm-smoke.yaml` (2 rounds × 2 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 2 branches) and `datenorm-hard-calibrate.yaml` (1 branch × 1 round) |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 2 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 2 branches) `datenorm-hard-calibrate.yaml` (1 branch × 1 round) and `graphrag-smoke.yaml` (2 rounds × 2 branches) |
 
 ### Deviations from the spec in this iteration
 

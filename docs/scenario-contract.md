@@ -1,6 +1,6 @@
 # Scenario contract and the graphrag scenario
 
-Agreed design, 2026-11-05. `scenarios/graphrag` is a copy of scrabble's `datasets/graphrag` (commit `61cf63e1`); from here on it belongs to codeclimb and is not synced back.
+Agreed design, 2026-11-05. `scenarios/graphrag` is a copy of scrabble's `datasets/graphrag` (commit `61cf63e1`); from here on it belongs to codeclimb and is not synced back. Its `corpus/` and `gold/` stay out of git, because this repository is public: they exist only on machines that hold a local copy.
 
 ## Why the contract changes
 
@@ -39,6 +39,12 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 
 - `typesafe/jev-1.14`: $0.042/M in, $0/M out, 262k context, no `seed`, `temperature` or structured outputs. Absent from `/api/v1/models`; only `/api/v1/models/typesafe/jev-1.14/endpoints` lists it, so the model check and pricing use the endpoints API.
 - OpenRouter lists no rerank models; ranking uses embeddings plus an optional LLM rerank.
+
+## Open after step 2
+
+- **Inngest sandboxes ignore `image`**, so graphrag's requirements are missing there. Step 7 needs an install at sandbox creation, or a custom image.
+- **`timeouts.eval_min` applies per stage**, so one graphrag candidate may take 3 × `eval_min`. That exceeds Inngest's 50-minute sandbox cap at `eval_min: 30`, and `checkSandboxLimits` checks `eval_min` alone.
+- **Stage reports flatten to about 300 metrics** (graphrag dev), most of them retrieval slices. The keep rule reads one primary metric until step 4.
 
 ## Build order (one commit each)
 

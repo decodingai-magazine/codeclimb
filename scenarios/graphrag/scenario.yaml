@@ -1,0 +1,23 @@
+# graphrag: extraction, graph building and retrieval, each scored on gold input (README.md, Scoring).
+# Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
+name: graphrag
+image: codeclimb-graphrag          # npm run build:image:graphrag
+bundle: uv run python scripts/export_agent.py --out {out}
+stages:
+  - name: extraction
+    inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+    run: python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+  - name: graph
+    inputs: uv run python evaluators/graph.py inputs --split {split} --mode gold-history --out {inputs}
+    run: python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report}
+  - name: retrieval
+    inputs: uv run python evaluators/retrieval.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+      /eval/graph.json: gold/graph.json   # the full gold graph (accepted risk, docs/scenario-contract.md Q23)
+    run: python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
+    score: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
