@@ -40,3 +40,12 @@ export function markStopped(nightId: string, reason: string): void {
     }
   }
 }
+
+/**
+ * The night of a cancelled `run-night`, from the `data` of `inngest/function.cancelled`. The runtime
+ * attaches the triggering event there as `event`, but SDK 4.25.0 does not type it, so read it defensively.
+ */
+export function cancelledNightId(data: unknown): string | undefined {
+  const nightId = (data as { event?: { data?: { night_id?: unknown } } } | null | undefined)?.event?.data?.night_id;
+  return typeof nightId === "string" && nightId ? nightId : undefined;
+}
