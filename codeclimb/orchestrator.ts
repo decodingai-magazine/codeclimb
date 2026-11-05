@@ -250,7 +250,7 @@ export function decideRound(args: RowBase & {
     const metrics = evalOk ? ev!.metrics : { [P]: 0 };
     const primary = metrics[P] ?? 0;
     const failedCheck = b.code.check?.errors ?? [];
-    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : failedCheck;
+    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : [...failedCheck, ...(ev?.error ? [ev.error.slice(0, 500)] : [])];
     const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
     if (evalOk) scored.push({ expId: b.expId, branch: b.branch, primary, metrics, sha: b.code.sha!, eligible, instance: ev!.evaluator_instance });
     branchRows.push(baseRow(args, {
