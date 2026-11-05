@@ -217,7 +217,10 @@ async function startNight(body: { scenario?: string; night_id?: string; override
   } catch (e) {
     throw new HttpError(400, (e as Error).message);
   }
-  const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) } });
+  // A stable id makes Inngest drop a duplicate send (a retried request), so one night id starts one run.
+  const { ids } = await ccInngest.send({
+    id: `night-start-${nightId}`, name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) },
+  });
   return { night_id: nightId, event_id: ids[0] };
 }
 

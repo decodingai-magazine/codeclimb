@@ -66,7 +66,10 @@ if (positionals[0] === "stop") {
   }
   await checkModels([...cfg.models, cfg.reviewer_model, ...cfg.allowed_models.filter((m) => !isEmbeddingModel(m))]);
   const nightId = values["night-id"] ?? newNightId();
-  const { ids } = await ccInngest.send({ name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) } });
+  // A stable id makes Inngest drop a duplicate send, so one night id starts one run.
+  const { ids } = await ccInngest.send({
+    id: `night-start-${nightId}`, name: "codeclimb/night.start", data: { night_id: nightId, config: relativeConfig(cfg) },
+  });
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
   if (!values["no-wait"]) await follow(cfg, nightId);
 }

@@ -22,14 +22,18 @@ export function sweepRun(runId: string): Promise<number> {
   return sweepAll({ label: ["cc.run", runId] });
 }
 
-/** Record a stop in the night's folder (`stop.json`), for the app's status. A finished night is left alone. */
+/**
+ * Record a stop in the night's folder (`stop.json`), for the app's status. A finished night is left alone.
+ * The first stop wins: a user stop cancels `run-night`, which sends a follow-up `cancelled` stop.
+ */
 export function markStopped(nightId: string, reason: string): void {
   const runs = join(process.env.CODECLIMB_ROOT ?? process.cwd(), "runs");
   if (!existsSync(runs)) return;
   for (const scenario of readdirSync(runs)) {
     const dir = join(runs, scenario, "nights", nightId);
-    if (existsSync(join(dir, "night.json")) && !existsSync(join(dir, "done.json"))) {
-      writeFileSync(join(dir, "stop.json"), JSON.stringify({ at: new Date().toISOString(), reason }));
+    const stopJson = join(dir, "stop.json");
+    if (existsSync(join(dir, "night.json")) && !existsSync(join(dir, "done.json")) && !existsSync(stopJson)) {
+      writeFileSync(stopJson, JSON.stringify({ at: new Date().toISOString(), reason }));
     }
   }
 }

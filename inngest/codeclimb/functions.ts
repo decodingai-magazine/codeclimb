@@ -93,7 +93,13 @@ export const runNight = ccInngest.createFunction(
     retries: 2,
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
     // Backstop past any sane deadline + one round + the test eval; the deadline itself is a soft stop.
+    // A timeout cancels this run; `onRunCancelled` turns that into a night stop.
     timeouts: { finish: "24h" },
+    // Out of retries: stop the night through the one cleanup path (`cancelOn` + `night-stop-cleanup`).
+    onFailure: async ({ event, step }) => {
+      const nightId = String(event.data.event.data.night_id);
+      await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: nightId, reason: "failed" } });
+    },
   },
   async ({ event, step }) => {
     const nightId = event.data.night_id;
@@ -326,13 +332,26 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
-/** A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created. */
+// `function_id` in `inngest/function.cancelled` is `<app id>-<function id>` (checked on the dev server).
+const RUN_NIGHT_FUNCTION_ID = `${ccInngest.id}-run-night`;
+
+/**
+ * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
+ * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
+ * no sandboxes itself, so sweeping its run id alone would leave the children running. After a stop this
+ * sends a second `night.stop`; its cleanup reruns and ends there, because `run-night` is already cancelled.
+ */
 export const onRunCancelled = ccInngest.createFunction(
   { id: "run-cancelled-cleanup", triggers: [{ event: "inngest/function.cancelled" }] },
   async ({ event, step }) => {
     const runId = event.data.run_id;
     const aborted = await step.run("abort-pi", () => abortRun(runId));
     const swept = await step.run("sweep", () => sweepRun(runId));
+    // The SDK's CancelledEventPayload type omits it, but the payload carries the triggering event.
+    const nightId = (event.data as { event?: { data?: { night_id?: unknown } } }).event?.data?.night_id;
+    if (event.data.function_id === RUN_NIGHT_FUNCTION_ID && typeof nightId === "string") {
+      await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: nightId, reason: "cancelled" } });
+    }
     return { aborted, swept };
   },
 );

@@ -4,7 +4,7 @@
 
 - Inngest Ecosystem;  Full docs: https://www.inngest.com/llms.txt
     - Cloud: Durability
-    - Sandboxes: Sandboxes: isolated code execution inside a run; function code runs on the Connect worker on your machine
+    - Sandboxes: isolated code execution inside a run; function code runs on the Connect worker on your machine
 - Pi agent; Full docs: https://github.com/earendil-works/pi
 
 ## Inngest debugging
