@@ -33,7 +33,7 @@ export type ExperimentInput = {
   round: number;
   branch: number;
   model: string;
-  /** Reviewer feedback (and validation gap) from earlier rounds; empty in round 1. */
+  /** Reviewer feedback from earlier rounds; empty in round 1. */
   feedback: string;
   /** Reviewer's hypothesis for this branch; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
@@ -77,12 +77,14 @@ interface CodeState {
 
 const secs = (ms: number) => Math.round(ms / 10) / 100;
 
-export function readSpecText(specDir: string): string {
-  return readdirSync(specDir)
+/** The agent's spec: every markdown file in the bundle's `spec/`, the task (SPEC.md or task.md) first. */
+export function readSpecText(bundleDir: string): string {
+  const dir = join(bundleDir, "spec");
+  const first = (f: string) => Number(f === "SPEC.md" || f === "task.md");
+  return readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
-    // The implementation spec first, then the rest (metric definitions, ...).
-    .sort((a, b) => Number(b === "SPEC.md") - Number(a === "SPEC.md") || a.localeCompare(b))
-    .map((f) => readFileSync(join(specDir, f), "utf8").trim())
+    .sort((a, b) => first(b) - first(a) || a.localeCompare(b))
+    .map((f) => readFileSync(join(dir, f), "utf8").trim())
     .join("\n\n---\n\n");
 }
 
@@ -97,7 +99,8 @@ export function coderPrompt(
   dev?: { models: string[]; budgetUsd: number; openNetwork?: boolean },
 ): string {
   const parts = [
-    "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec.",
+    "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
+      "If /spec/train/examples.jsonl exists, it holds the train items with their answers: the only labeled data you may read, and the only source for few-shot examples.",
     `<spec>\n${spec}\n</spec>`,
   ];
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts (aggregate metrics only):\n${feedback.trim()}\n</feedback>`);
@@ -200,9 +203,9 @@ export async function runCoder(
     const t0 = performance.now();
     sandbox = await backend.create({
       name,
-      baseline: cfg.baseline,
+      baseline: cfg.scenario.image,
       commit: await repo.bundle(input.parentExpId),
-      specDir: cfg.spec_dir,
+      specDir: paths.bundleDir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
       network: metered ? METER_NETWORK : "none",
     });
@@ -263,7 +266,7 @@ export async function runCoder(
       await session.prompt(
         resumed
           ? RESUME_PROMPT
-          : coderPrompt(readSpecText(cfg.spec_dir), input.feedback, input.hypothesis, minutes, {
+          : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
             }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, openNetwork: cfg.sandbox === "inngest" } : undefined),

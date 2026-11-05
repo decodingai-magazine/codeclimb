@@ -20,7 +20,7 @@
   /* Chart parameters (validated with the dataviz palette checker). */
   --chart-kept: #d5342a;            /* the one highlighted series: kept commits */
   --chart-muted: #8a8c90;           /* reverted experiments, hollow */
-  --chart-ink: #131314;             /* validation / test markers, labelled */
+  --chart-ink: #131314;             /* test marker, labelled */
   --chart-grid: #eef0f2; --chart-axis: #cdcfd3;
   --heat-0: #e1a988; --heat-1: #d58551; --heat-2: #c3610d; --heat-3: #a94200; --heat-4: #882900;
   --heat-ink-0: #131314; --heat-ink-1: #131314; --heat-ink-2: #ffffff; --heat-ink-3: #ffffff; --heat-ink-4: #ffffff;

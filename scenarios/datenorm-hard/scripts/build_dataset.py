@@ -1,11 +1,11 @@
-"""Build the hidden datenorm-hard dataset (train with 5 stratified folds + test).
+"""Build the hidden datenorm-hard dataset (train/dev from 5 stratified folds, plus test).
 
 Reuses the datenorm generators for the original families and adds holidays,
 nth weekdays, year-less dates, multi-date sentences, misspelled months and ISO
 week/ordinal dates. The conventions behind each gold answer are listed in
 ../HIDDEN_RULES.md; SPEC.md deliberately leaves most of them open.
 
-    python3 scenarios/datenorm-hard/tools/build_dataset.py --out scenarios/datenorm-hard/dataset
+    python3 scenarios/datenorm-hard/scripts/build_dataset.py --out scenarios/datenorm-hard/gold
 """
 
 import argparse
@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 _spec = importlib.util.spec_from_file_location(
-    "datenorm_base", Path(__file__).resolve().parents[2] / "datenorm" / "tools" / "build_dataset.py"
+    "datenorm_base", Path(__file__).resolve().parents[2] / "datenorm" / "scripts" / "build_dataset.py"
 )
 base = importlib.util.module_from_spec(_spec)
 sys.dont_write_bytecode = True
@@ -31,6 +31,7 @@ PER_FAMILY = {"invalid": 40, "holiday": 48, "nth_weekday": 40, "yearless": 40, "
 PER_FAMILY_DEFAULT = 24
 TEST_SHARE = 0.3
 N_FOLDS = 5
+TRAIN_FOLDS = set()
 
 IT_MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
 NL_MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
@@ -367,13 +368,17 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     keys = ["id", "text", "locale", "family", "gold"]
-    with open(out / "train.jsonl", "w") as f:
-        for item in train:
-            f.write(json.dumps({k: item[k] for k in keys + ["fold"]}, ensure_ascii=False) + "\n")
-    with open(out / "test.jsonl", "w") as f:
-        for item in test:
+    with open(out / "items.jsonl", "w") as f:
+        for item in train + test:
             f.write(json.dumps({k: item[k] for k in keys}, ensure_ascii=False) + "\n")
-    print(f"train={len(train)} test={len(test)} -> {out}")
+    # The fixed split: train is empty: the hidden rules are found from dev's per-family metrics, never from examples.
+    splits = {
+        "train": [it["id"] for it in train if it["fold"] in TRAIN_FOLDS],
+        "dev": [it["id"] for it in train if it["fold"] not in TRAIN_FOLDS],
+        "test": [it["id"] for it in test],
+    }
+    (out / "splits.json").write_text(json.dumps(splits, indent=1) + "\n")
+    print(" ".join(f"{k}={len(v)}" for k, v in splits.items()), f"-> {out}")
 
 
 if __name__ == "__main__":

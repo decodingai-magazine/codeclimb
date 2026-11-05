@@ -1,5 +1,5 @@
 "use client";
-// One night, live and after the fact: status and Stop, KPIs (kept score, validation, test,
+// One night, live and after the fact: status and Stop, KPIs (kept score, test,
 // round, spend against budget, time against deadline), the current round's branches while it
 // runs, then the report: convergence, metric families, experiments, extra evals, reviewer
 // feedback, and the selected experiment's detail and export. `/live` is polled every 5 s;
@@ -123,8 +123,6 @@ export default function NightPage() {
         <div className="kpis">
           <Kpi label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
             note={`${kept ? kept.exp_id.replace(`${id}-`, "") : "nothing kept yet"} · threshold ${f3(live.threshold)}`} />
-          <Kpi label="Validation" value={f3(v?.score(v.lastVal))}
-            note={v?.lastVal ? `${v.lastVal.decision === "keep" ? "no overfit" : "overfit"} · gap ${f3(v.lastVal.metrics.gap)}` : "runs once the threshold is met"} />
           <Kpi label="Test" value={f3(v?.score(v.lastTest))} note={v?.lastTest ? "scored once, at the end" : "after the night stops"} />
           <Kpi label="Round" value={`${live.round} / ${live.max_rounds}`}
             note={v ? `${v.exps.length} experiments · kept in ${v.keptRounds} rounds` : undefined} />
@@ -166,7 +164,7 @@ export default function NightPage() {
         ) : (
           <div className="grid-2">
             <div className="stack">
-              <Card title="How the Night Converged" sub={`Every experiment's ${primary} on the optimization folds. The red line is the kept commit.`}
+              <Card title="How the Night Converged" sub={`Every experiment's ${primary} on dev. The red line is the kept commit.`}
                 tools={<ViewToggle table={convTable} onToggle={() => setConvTable((x) => !x)} />}>
                 {convTable
                   ? <ConvergenceTable nightId={id} v={v} primary={primary} />
@@ -190,7 +188,7 @@ export default function NightPage() {
                 <ExperimentsTable night={night} v={v} primary={primary} selected={sel} onSelect={setSelected} />
               </Card>
               {v.rows.some((r) => r.kind !== "experiment") && (
-                <Card title="Extra Evaluations" sub="Re-scores, noise floor, validation on the held-out fold, and the one test score.">
+                <Card title="Extra Evaluations" sub="Re-scores, noise floor, and the one test score.">
                   <EvalsTable nightId={id} v={v} primary={primary} />
                 </Card>
               )}

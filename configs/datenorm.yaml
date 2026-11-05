@@ -1,13 +1,7 @@
 # Full night: up to 24 rounds × 2 branches on the datenorm scenario, Docker sandboxes,
 # Inngest dev server. Coders: GitHub Copilot Haiku via Pi; reviewer: a different Haiku.
-spec_dir: scenarios/datenorm/spec
-dataset_dir: scenarios/datenorm/dataset
-run_cmd: python3 /eval/run.py
-run_files: [scenarios/datenorm/metrics/run.py]
-score_cmd: python3 scenarios/datenorm/metrics/score.py
-hidden_fields: [family]
+scenario: scenarios/datenorm
 sandbox: docker
-baseline: autocode-base
 max_rounds: 24
 plateau_rounds: 3     # stop after 3 rounds in a row with nothing kept (0 = never)
 # max_tokens: 5000000 # cap on coder + reviewer tokens for the night (omit = no cap)
@@ -32,8 +26,6 @@ gates:
   schema_violations: 0
   latency_query_p95_ms: 50
 min_gain: 0.02
-overfit_gap: 0.05
-max_validations: 5
 budget_usd:
   experiment: 1.0
   night: 40.0

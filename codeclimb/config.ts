@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { parse } from "yaml";
+import { loadScenario, type Scenario } from "./scenario";
 
 /** Codeclimb's standard metrics as objectives. Off: still measured and reported, but not optimized. */
 export type StandardMetricsConfig = {
@@ -18,15 +19,11 @@ export type StandardMetricsConfig = {
 };
 
 export type NightConfig = {
-  spec_dir: string;
-  dataset_dir: string;
-  run_cmd: string;
-  /** Host files copied into the eval sandbox's /eval/ before `run_cmd` runs. */
-  run_files: string[];
-  score_cmd: string;
+  /** The scenario directory (docs/scenario-contract.md). */
+  scenario_dir: string;
+  /** Its `scenario.yaml`, parsed on the CLI side; holds no paths outside the scenario dir. */
+  scenario: Scenario;
   sandbox: "docker" | "inngest";
-  /** Baseline environment: the `autocode-base` image. */
-  baseline: string;
   max_rounds: number;
   /** Cap on the night's model tokens (coders + reviewer); null = no cap. Checked between rounds, like the $ cap. */
   max_tokens: number | null;
@@ -51,17 +48,13 @@ export type NightConfig = {
   thresholds: Record<string, number>;
   gates: Record<string, number>;
   min_gain: number;
-  overfit_gap: number;
-  max_validations: number;
   /**
    * `eval` caps the program's model calls in one eval (default: `experiment`); `dev` caps the calls the
    * coder's runs of the program make while it develops (default: `eval`). Both need `allowed_models`.
    */
   budget_usd: { experiment: number; night: number; eval: number; dev: number };
   results_path: string;
-  /** Dataset fields never sent to a sandbox besides `gold` and `fold`. */
-  hidden_fields: string[];
-  /** Directory relative paths and `score_cmd` resolve against. */
+  /** Directory relative paths resolve against. */
   base_dir: string;
 };
 
@@ -79,14 +72,11 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
   const par = (raw.parallel as Partial<Record<keyof NightConfig["parallel"], unknown>> | undefined) ?? {};
+  const scenarioDir = abs(req(raw, "scenario", "string"));
   const cfg: NightConfig = {
-    spec_dir: abs(req(raw, "spec_dir", "string")),
-    dataset_dir: abs(req(raw, "dataset_dir", "string")),
-    run_cmd: req(raw, "run_cmd", "string"),
-    run_files: ((raw.run_files as string[] | undefined) ?? []).map(abs),
-    score_cmd: req(raw, "score_cmd", "string"),
+    scenario_dir: scenarioDir,
+    scenario: loadScenario(scenarioDir),
     sandbox: req(raw, "sandbox", "string"),
-    baseline: (raw.baseline as string | undefined) ?? "autocode-base",
     max_rounds: req(raw, "max_rounds", "number"),
     max_tokens: raw.max_tokens == null ? null : Number(raw.max_tokens),
     plateau_rounds: raw.plateau_rounds == null ? 3 : Number(raw.plateau_rounds),
@@ -111,14 +101,11 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     thresholds: req(raw, "thresholds", "object"),
     gates: (raw.gates as Record<string, number> | undefined) ?? {},
     min_gain: req(raw, "min_gain", "number"),
-    overfit_gap: req(raw, "overfit_gap", "number"),
-    max_validations: req(raw, "max_validations", "number"),
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
       dev: Number(budget.dev ?? budget.eval ?? budget.experiment),
     },
     results_path: abs(req(raw, "results_path", "string")),
-    hidden_fields: (raw.hidden_fields as string[] | undefined) ?? [],
     base_dir: baseDir,
   };
   if (raw.deadline instanceof Date) cfg.deadline = raw.deadline.toISOString();
@@ -135,7 +122,9 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (!(Number.isInteger(sched.widen_after) && sched.widen_after >= 0)) {
     throw new Error("config: parallel.widen_after must be an integer >= 0 (0 = never widen again)");
   }
-  if (cfg.max_validations < 1 || cfg.max_validations > 5) throw new Error("config: max_validations must be 1..5");
+  for (const k of ["spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
+    if (k in raw) throw new Error(`config: "${k}" is gone; the scenario's scenario.yaml and fixed splits replace it (docs/scenario-contract.md)`);
+  }
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
   if (cfg.max_tokens !== null && !(Number.isInteger(cfg.max_tokens) && cfg.max_tokens > 0)) {
     throw new Error("config: max_tokens must be a positive integer, or omitted for no cap");
@@ -177,12 +166,9 @@ export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {
   return parseConfig(readFileSync(path, "utf8"), baseDir ?? dirname(resolve(path)));
 }
 
-/** Maps every path field of a config (`score_cmd` runs in `base_dir`, so it needs none). */
+/** Maps every path field of a config (the scenario's commands run in `scenario_dir`, so they need none). */
 function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {
-  return {
-    ...cfg, spec_dir: f(cfg.spec_dir), dataset_dir: f(cfg.dataset_dir), run_files: cfg.run_files.map(f),
-    results_path: f(cfg.results_path), base_dir: f(cfg.base_dir),
-  };
+  return { ...cfg, scenario_dir: f(cfg.scenario_dir), results_path: f(cfg.results_path), base_dir: f(cfg.base_dir) };
 }
 
 /** The config as the CLI sends it: paths under `base_dir` relative to it, `base_dir` itself ".". */

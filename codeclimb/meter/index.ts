@@ -27,7 +27,7 @@ export function meterEnv(token: string, baseUrl: string): Record<string, string>
  * URL: CODECLIMB_METER_URL (ending in /v1), else the ngrok tunnel `npm run tunnel` opens to the
  * proxy's port. The per-ledger tokens are what guard it.
  */
-export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "baseline">): Promise<string> {
+export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "scenario">): Promise<string> {
   if (cfg.sandbox === "inngest") {
     const tunnel = process.env.CODECLIMB_METER_URL ? undefined : await ngrokUrl((await meter()).port);
     const url = process.env.CODECLIMB_METER_URL ?? (tunnel && `${tunnel}/v1`);
@@ -36,7 +36,7 @@ export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "baseline"
     }
     return url.replace(/\/$/, "");
   }
-  await ensureMeterPath(cfg.baseline, (await meter()).port);
+  await ensureMeterPath(cfg.scenario.image, (await meter()).port);
   return RELAY_URL;
 }
 

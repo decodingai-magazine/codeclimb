@@ -1,5 +1,6 @@
-# autocode-base for the datenorm scenario: the scenario's runtime + spec bundle only.
-# Never the dataset, metric scripts or provider keys.
+# codeclimb-python: the sandbox runtime for stdlib-only Python scenarios (datenorm, datenorm-hard, capitals),
+# and the base of scenario images that add requirements. Runtime only: the coder's bundle is uploaded to
+# /spec when a sandbox is created; gold, evaluators and provider keys never enter an image.
 FROM python:3.14-slim
 
 RUN apt-get update \
@@ -10,7 +11,6 @@ RUN apt-get update \
   && git config --system init.defaultBranch main \
   && git config --system --add safe.directory '*'
 
-COPY spec/ /spec/
 WORKDIR /repo
 ENV PYTHONDONTWRITEBYTECODE=1
 CMD ["sleep", "infinity"]

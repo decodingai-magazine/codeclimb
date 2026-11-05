@@ -1,11 +1,13 @@
-"""capitals runner (run_cmd). Runs inside the eval sandbox; never sees gold.
+"""datenorm runner (scenario.yaml `run`). Runs inside the eval sandbox; never sees gold.
 
     python3 run.py --queries <jsonl> --repo <path> --out <dir>
 
-Starts `python3 -m capitals` once in --repo, tells the metering proxy that the
-"query" operation starts, then sends one query per line and times each answer.
-Writes <out>/outputs.jsonl ({id, raw}), <out>/timings.jsonl (codeclimb's
-standard timings, the first answer marked as a warm-up) and <out>/run.json.
+Starts `python3 -m datenorm` once in --repo, sends one query per line, waits for
+its answer and times it. Writes <out>/outputs.jsonl ({id, raw}),
+<out>/timings.jsonl (codeclimb's standard timings: {op: "query", id, ms}, the
+first answer marked as a warm-up) and <out>/run.json. A query that times out or
+kills the program is recorded with raw=null and the program is restarted for
+the next query.
 """
 
 import argparse
@@ -15,28 +17,14 @@ import selectors
 import subprocess
 import sys
 import time
-import urllib.request
 
-ANSWER_TIMEOUT_S = 60.0
-
-
-def set_op(op: str) -> None:
-    """Name the operation the program's next model calls belong to (no-op when not metered)."""
-    base, key = os.environ.get("CODECLIMB_LLM_BASE_URL"), os.environ.get("CODECLIMB_LLM_API_KEY")
-    if not base or not key:
-        return
-    req = urllib.request.Request(
-        base.rstrip("/") + "/_op",
-        data=json.dumps({"op": op}).encode(),
-        headers={"content-type": "application/json", "authorization": "Bearer " + key},
-    )
-    urllib.request.urlopen(req, timeout=10).read()
+ANSWER_TIMEOUT_S = 5.0
 
 
 class Program:
     def __init__(self, repo: str):
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "capitals"],
+            [sys.executable, "-m", "datenorm"],
             cwd=repo,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -56,7 +44,7 @@ class Program:
             if left <= 0 or not self.sel.select(timeout=left):
                 return None
             chunk = os.read(self.proc.stdout.fileno(), 65536)
-            if not chunk:
+            if not chunk:  # program exited
                 return None
             self.buf += chunk
         out, self.buf = self.buf.split(b"\n", 1)
@@ -82,21 +70,20 @@ def main() -> None:
     started = time.monotonic()
     restarts = 0
     prog = Program(args.repo)
-    set_op("query")
     with open(os.path.join(args.out, "outputs.jsonl"), "w") as f, open(os.path.join(args.out, "timings.jsonl"), "w") as tf:
         for i, q in enumerate(queries):
             t0 = time.perf_counter()
             try:
-                raw = prog.ask(json.dumps({"id": q["id"], "country": q["country"]}, ensure_ascii=False))
+                raw = prog.ask(json.dumps({"id": q["id"], "text": q["text"], "locale": q["locale"]}, ensure_ascii=False))
             except (BrokenPipeError, OSError):
                 raw = None
-            ms = (time.perf_counter() - t0) * 1000
+            latency_ms = (time.perf_counter() - t0) * 1000
             if raw is None:
                 prog.close()
                 prog = Program(args.repo)
                 restarts += 1
             f.write(json.dumps({"id": q["id"], "raw": raw}) + "\n")
-            timing = {"op": "query", "id": q["id"], "ms": round(ms, 3)}
+            timing = {"op": "query", "id": q["id"], "ms": round(latency_ms, 3)}
             tf.write(json.dumps({**timing, "warmup": True} if i == 0 else timing) + "\n")
     prog.close()
     with open(os.path.join(args.out, "run.json"), "w") as f:

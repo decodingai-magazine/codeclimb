@@ -1,4 +1,4 @@
-"""capitals scorer (score_cmd). Runs on the worker host; reads gold from --items.
+"""capitals scorer, called by evaluators/evaluate.py score. Runs on the worker host; reads gold from --items.
 
     python3 score.py --items <jsonl> --outputs <dir> --out metrics.json
 

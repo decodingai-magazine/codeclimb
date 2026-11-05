@@ -26,7 +26,7 @@ CodeClimb is headless: the worker's API is the interface, and the app is one cli
 | Login | None: the app listens on `127.0.0.1` only | Same |
 | Agent tooling | `inngest-dev` MCP (`.mcp.json`) | Inngest Cloud MCP plugin |
 
-The worker runs Pi, `score_cmd` and the proxy in both modes. Inngest, whether the dev server or Cloud, never runs CodeClimb's code: it calls the worker. A coder step holds a Pi session for `timeouts.experiment_min`, so the worker is a long-running process, and your machine must stay on and online until a night ends. If the worker drops off, Inngest Cloud keeps the run and retries the step when it reconnects.
+The worker runs Pi, the scenario's host commands (`inputs`, `score`, `bundle`) and the proxy in both modes. Inngest, whether the dev server or Cloud, never runs CodeClimb's code: it calls the worker. A coder step holds a Pi session for `timeouts.experiment_min`, so the worker is a long-running process, and your machine must stay on and online until a night ends. If the worker drops off, Inngest Cloud keeps the run and retries the step when it reconnects.
 
 ### How each piece picks its mode
 
@@ -113,7 +113,7 @@ Use the direct `ccInngest.sandboxes` client inside the existing `step.run`s, bec
 
 Other work in Phase 1 (done):
 
-- **Spec tarball.** `create` tars `spec_dir` on the worker and unpacks it at `/spec` (`specDir` in `CreateSandboxOptions`), plus the git defaults the Docker image sets.
+- **Spec tarball.** `create` tars the night's bundle on the worker and unpacks it at `/spec` (`specDir` in `CreateSandboxOptions`), plus the git defaults the Docker image sets.
 - **Evaluator reset.** Skips the guest agent's `init` processes; verified on a real sandbox.
 - **Proxy.** `meterBaseUrl(cfg)`: `CODECLIMB_METER_URL` on `inngest`, the relay on Docker. Verified through an ngrok tunnel.
 - **Prompt.** The coder prompt's network line depends on the backend.
@@ -186,7 +186,7 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 - **`/nights/[id]` Live night.**
   - Header: status, round, elapsed time against the deadline, spend against the budget, and **Stop**.
   - Per-branch live cards.
-  - Scenario metrics: the convergence chart with threshold, validation and test, the family heatmap, and gates.
+  - Scenario metrics: the convergence chart with threshold and test, the family heatmap, and gates.
   - Latency: `latency_total_s`, plus p50 and p95 per operation.
   - Cost: `cost_per_item_usd`, `model_calls`, and spend split into coder, dev, program and reviewer.
   - The experiments table with feedback and diffs.
@@ -227,8 +227,8 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 | Field | Local | Cloud |
 |---|---|---|
 | `sandbox` | `docker` (in the YAML) | `inngest` (CLI flag or form override) |
-| `baseline` | Docker image name | Ignored; the spec comes from `spec_dir`. Later, a custom image. |
-| Paths (`spec_dir`, `dataset_dir`, `run_files`, `score_cmd`, `results_path`) | Relative, resolved by the worker against its checkout | Same |
+| `scenario.yaml` `image` | Docker image name | Ignored; `/spec` comes from the bundle. Later, a custom image. |
+| Paths (`scenario`, `results_path`) | Relative, resolved by the worker against its checkout | Same |
 | `models`, `reviewer_model` | Any Pi provider | Same |
 | Proxy | Relay to `127.0.0.1`, random port | Port 7422 through the tunnel |
 

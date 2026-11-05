@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { coderPrompt, parseApproach } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview } from "./reviewer";
-import { beatsParent, bootstrapGapSE, overfitTest, passesGates, passesThresholds, stddev } from "./stats";
+import { beatsParent, passesGates, passesThresholds, stddev } from "./stats";
 
+// Config paths resolve against the repo root, where the real capitals scenario lives.
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASE_YAML = `
-spec_dir: s
-dataset_dir: d
-run_cmd: python3 /eval/run.py
-score_cmd: python3 score.py
+scenario: scenarios/capitals
 sandbox: docker
 max_rounds: 2
 deadline: 90m
@@ -22,12 +23,10 @@ primary_metric: accuracy
 thresholds: { accuracy: 0.9 }
 gates: { schema_violations: 0 }
 min_gain: 0.02
-overfit_gap: 0.05
-max_validations: 3
 budget_usd: { experiment: 1, night: 5 }
 results_path: runs/r.jsonl
 `;
-const cfg = parseConfig(BASE_YAML, "/base");
+const cfg = parseConfig(BASE_YAML, ROOT);
 
 test("keep rule: gain >= max(min_gain, 2σ)", () => {
   assert.equal(beatsParent(0.52, 0.5, 0.02, 0), true);
@@ -44,29 +43,18 @@ test("gates are caps, thresholds are floors", () => {
   assert.equal(passesThresholds({ accuracy: 0.96 }, { accuracy: 0.97 }), false);
 });
 
-test("overfit needs gap > overfit_gap and >= 2 bootstrap SE", () => {
-  const ones = Array(30).fill(1);
-  const mixed = [...Array(15).fill(1), ...Array(15).fill(0)];
-  const big = overfitTest(1, 0.5, ones, mixed, 0.05);
-  assert.ok(big.se > 0 && big.overfit);
-  const none = overfitTest(1, 1, ones, ones, 0.05);
-  assert.deepEqual([none.gap, none.se, none.overfit], [0, 0, false]);
-  // overfit_gap < 0 forces a rotation even on a zero gap
-  assert.equal(overfitTest(1, 1, ones, ones, -0.01).overfit, true);
-  assert.equal(bootstrapGapSE(mixed, mixed), bootstrapGapSE(mixed, mixed)); // deterministic
-  assert.ok(Math.abs(stddev([1, 2, 3, 4]) - 1.2909944) < 1e-6);
-});
-
 test("config validation", () => {
-  assert.equal(cfg.spec_dir, "/base/s");
-  assert.equal(cfg.baseline, "autocode-base");
-  assert.throws(() => parseConfig(BASE_YAML.replace("reviewer_model: p/c", "reviewer_model: p/a"), "/b"), /reviewer_model/);
-  assert.throws(() => parseConfig(BASE_YAML.replace("max_validations: 3", "max_validations: 6"), "/b"), /max_validations/);
+  assert.equal(cfg.scenario_dir, join(ROOT, "scenarios/capitals"));
+  assert.equal(cfg.scenario.image, "codeclimb-python");
+  assert.deepEqual(cfg.scenario.stages.map((s) => s.name), ["answer"]);
+  assert.throws(() => parseConfig(BASE_YAML.replace("reviewer_model: p/c", "reviewer_model: p/a"), ROOT), /reviewer_model/);
+  assert.throws(() => parseConfig(`${BASE_YAML}overfit_gap: 0.05\n`, ROOT), /is gone/);
+  assert.throws(() => parseConfig(BASE_YAML.replace("scenarios/capitals", "scenarios/missing"), ROOT), /scenario\.yaml/);
   // eval defaults to experiment, dev to eval.
   assert.deepEqual(cfg.budget_usd, { experiment: 1, night: 5, eval: 1, dev: 1 });
-  const capped = parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), "/b");
+  const capped = parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), ROOT);
   assert.deepEqual([capped.budget_usd.eval, capped.budget_usd.dev], [0.2, 0.2]);
-  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0 }"), "/b"), /budget_usd.dev/);
+  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0 }"), ROOT), /budget_usd.dev/);
   // Inngest sandboxes run an hour at most: a long coder or eval must fit, with room to spare.
   const long = { ...cfg, timeouts: { experiment_min: 90, eval_min: 3 } };
   assert.doesNotThrow(() => checkSandboxLimits({ ...long, sandbox: "docker" }));
@@ -98,11 +86,11 @@ test("token cap and plateau stops", () => {
   assert.equal(checkStop({ ...base, roundsWithoutKeep: 2 }).stop, false);
   assert.equal(checkStop({ ...base, roundsWithoutKeep: 3 }).reason, "plateau");
   assert.equal(checkStop({ ...base, cfg: { ...cfg, plateau_rounds: 0 }, roundsWithoutKeep: 50 }).stop, false);
-  const parsed = parseConfig(`${BASE_YAML}max_tokens: 2000000\nplateau_rounds: 5\n`, "/base");
+  const parsed = parseConfig(`${BASE_YAML}max_tokens: 2000000\nplateau_rounds: 5\n`, ROOT);
   assert.equal(parsed.max_tokens, 2_000_000);
   assert.equal(parsed.plateau_rounds, 5);
-  assert.throws(() => parseConfig(`${BASE_YAML}max_tokens: 0\n`, "/base"), /max_tokens/);
-  assert.throws(() => parseConfig(`${BASE_YAML}plateau_rounds: -1\n`, "/base"), /plateau_rounds/);
+  assert.throws(() => parseConfig(`${BASE_YAML}max_tokens: 0\n`, ROOT), /max_tokens/);
+  assert.throws(() => parseConfig(`${BASE_YAML}plateau_rounds: -1\n`, ROOT), /plateau_rounds/);
 });
 
 test("parallel width decays from every model to min, and widens again after a stall", () => {
@@ -116,15 +104,15 @@ test("parallel width decays from every model to min, and widens again after a st
   assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, min: 2 } }, 10, 0), 2);
   assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, decay: "none" } }, 10, 0), 4);
   assert.equal(parallelWidth({ ...c, max_rounds: 1 }, 1, 0), 4);
-  const parsed = parseConfig(`${BASE_YAML}parallel: { decay: none, min: 2, widen_after: 0 }\n`, "/base");
+  const parsed = parseConfig(`${BASE_YAML}parallel: { decay: none, min: 2, widen_after: 0 }\n`, ROOT);
   assert.deepEqual(parsed.parallel, { decay: "none", min: 2, widen_after: 0 });
-  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { min: 4 }\n`, "/base"), /parallel.min/);
-  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { decay: cosine }\n`, "/base"), /parallel.decay/);
-  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { widen_after: -1 }\n`, "/base"), /widen_after/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { min: 4 }\n`, ROOT), /parallel.min/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { decay: cosine }\n`, ROOT), /parallel.decay/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { widen_after: -1 }\n`, ROOT), /widen_after/);
 });
 
 test("decideRound keeps the best gate-passing branch only past the keep rule", () => {
-  const parent: Kept = { expId: "n-r0", sha: "p", score: 0.5, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
+  const parent: Kept = { expId: "n-r0", sha: "p", score: 0.5, metrics: null, metricsPath: null, rescored: true };
   const code = (sha: string) => ({
     ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, dev_usd: 0, tokens: 10,
     t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
@@ -134,7 +122,7 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
     t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: "i1", eval_order: 0,
   });
   const d = decideRound({
-    cfg, nightId: "n", round: 1, valFold: 0, parent, sigma: 0, rescore: null, hypotheses: [null, null, null],
+    cfg, nightId: "n", round: 1, parent, sigma: 0, rescore: null, hypotheses: [null, null, null],
     branches: [
       { ok: true, expId: "n-r1-b0", branch: 0, model: "p/a", code: code("a"), eval: ev(0.9, 2) }, // best but fails a gate
       { ok: true, expId: "n-r1-b1", branch: 1, model: "p/a", code: code("b"), eval: ev(0.6) },
@@ -146,14 +134,14 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   for (const r of d.rows) assert.deepEqual(validateRow(r), []);
 
   const none = decideRound({
-    cfg, nightId: "n", round: 1, valFold: 0, parent: { ...parent, score: 0.59 }, sigma: 0, rescore: null,
+    cfg, nightId: "n", round: 1, parent: { ...parent, score: 0.59 }, sigma: 0, rescore: null,
     hypotheses: [null], branches: [{ ok: true, expId: "x", branch: 0, model: "p/a", code: code("c"), eval: ev(0.6) }],
   });
   assert.equal(none.keep, null);
 
   // An already re-scored parent's run in the evaluator is a baseline row: recorded, its score unchanged.
   const withBaseline = decideRound({
-    cfg, nightId: "n", round: 2, valFold: 0, parent, sigma: 0, rescore: null, hypotheses: [null],
+    cfg, nightId: "n", round: 2, parent, sigma: 0, rescore: null, hypotheses: [null],
     baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.3) },
     branches: [{ ok: true, expId: "n-r2-b0", branch: 0, model: "p/a", code: code("d"), eval: ev(0.4) }],
   });
@@ -175,17 +163,17 @@ test("standard metrics: on by default, cost before latency, validated", () => {
     latency: true, cost: true, latency_metric: "latency_total_s", cost_metric: "cost_per_item_usd", min_efficiency_gain: 0.1,
   });
   assert.deepEqual(efficiencyMetrics(cfg), ["cost_per_item_usd", "latency_total_s"]);
-  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", "/b");
+  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", ROOT);
   assert.deepEqual(efficiencyMetrics(off), []);
-  const lat = parseConfig(BASE_YAML + "standard_metrics: { cost: false, latency_metric: latency_query_p95_ms }\n", "/b");
+  const lat = parseConfig(BASE_YAML + "standard_metrics: { cost: false, latency_metric: latency_query_p95_ms }\n", ROOT);
   assert.deepEqual(efficiencyMetrics(lat), ["latency_query_p95_ms"]);
-  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { latency_metric: p95_ms }\n", "/b"), /latency_metric/);
-  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { min_efficiency_gain: 0 }\n", "/b"), /min_efficiency_gain/);
-  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { cost: yes please }\n", "/b"), /true or false/);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { latency_metric: p95_ms }\n", ROOT), /latency_metric/);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { min_efficiency_gain: 0 }\n", ROOT), /min_efficiency_gain/);
+  assert.throws(() => parseConfig(BASE_YAML + "standard_metrics: { cost: yes please }\n", ROOT), /true or false/);
 });
 
 test("efficiency: tie-break, efficiency keep and its guards", () => {
-  const parent: Kept = { expId: "n-r1-b0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true, validatedFolds: [] };
+  const parent: Kept = { expId: "n-r1-b0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true };
   const code = (sha: string) => ({
     ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, dev_usd: 0, tokens: 10,
     t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
@@ -197,7 +185,7 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   const branch = (b: number, e: ReturnType<typeof ev>) => ({ ok: true as const, expId: `n-r2-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: e });
   const round = (branches: ReturnType<typeof branch>[], over: Partial<Parameters<typeof decideRound>[0]> = {}) =>
     decideRound({
-      cfg, nightId: "n", round: 2, valFold: 0, parent, sigma: 0, effSigma: {}, bestPrimary: 0.9, rescore: null,
+      cfg, nightId: "n", round: 2, parent, sigma: 0, effSigma: {}, bestPrimary: 0.9, rescore: null,
       baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.9, 0.01, 2.0) }, hypotheses: [null, null, null], branches, ...over,
     });
 
@@ -223,7 +211,7 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   assert.equal(round([branch(1, ev(0.9, 0.01, 1.5, "i2"))]).keep, null);
   assert.equal(round([branch(1, ev(0.9, 0.005, 2.0, "i2"))]).keep?.reason, "efficiency");
   // ...and not when the standard metrics are not optimized.
-  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", "/b");
+  const off = parseConfig(BASE_YAML + "standard_metrics: { latency: false, cost: false }\n", ROOT);
   assert.equal(round([branch(1, ev(0.9, 0.005, 1.0))], { cfg: off }).keep, null);
   // A primary drop is never an efficiency keep, however fast.
   assert.equal(round([branch(1, ev(0.89, 0.001, 0.1))]).keep, null);
@@ -254,14 +242,14 @@ test("coder prompt names the dev endpoint only when the program may call models"
 });
 
 test("config paths travel relative and resolve against the worker's checkout", () => {
-  const sent = relativeConfig({ ...cfg, run_files: ["/base/m/run.py", "/elsewhere/x.py"] });
+  const sent = relativeConfig(cfg);
   assert.equal(sent.base_dir, ".");
-  assert.deepEqual(sent.run_files, ["m/run.py", "/elsewhere/x.py"]);
+  assert.equal(sent.scenario_dir, "scenarios/capitals");
   assert.ok(!sent.results_path.startsWith("/"));
   const used = rootConfig(sent, "/srv/codeclimb");
   assert.equal(used.base_dir, "/srv/codeclimb");
-  assert.equal(used.results_path, cfg.results_path.replace("/base", "/srv/codeclimb"));
-  assert.deepEqual(used.run_files, ["/srv/codeclimb/m/run.py", "/elsewhere/x.py"]);
+  assert.equal(used.results_path, cfg.results_path.replace(ROOT, "/srv/codeclimb"));
+  assert.equal(used.scenario_dir, "/srv/codeclimb/scenarios/capitals");
   // Configs from older CLIs carry absolute paths, which stay as they are.
   assert.deepEqual(rootConfig(cfg, "/srv/codeclimb"), cfg);
 });

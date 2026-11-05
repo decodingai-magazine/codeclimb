@@ -15,9 +15,9 @@ const model = process.argv[2] ?? "github-copilot/claude-haiku-5.5";
 const tmp = await mkdtemp(join(tmpdir(), "cc-smoke-"));
 const repo = new ExperimentRepo(join(tmp, "experiments.git"));
 await repo.ensure();
-await repo.importDir("scenarios/datenorm/spec/starter", "smoke-r0");
+await repo.importDir("scenarios/datenorm/starter", "smoke-r0");
 const backend = new DockerBackend();
-const sandbox = await backend.create({ name: "cc-smoke-pi", baseline: "autocode-base", commit: await repo.bundle("smoke-r0") });
+const sandbox = await backend.create({ name: "cc-smoke-pi", baseline: "codeclimb-python", commit: await repo.bundle("smoke-r0") });
 try {
   const session = await createIsolatedSession({ model, tools: sandboxTools(sandbox), sessionManager: SessionManager.inMemory("/repo") });
   const used: string[] = [];

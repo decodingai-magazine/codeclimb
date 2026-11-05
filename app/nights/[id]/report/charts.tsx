@@ -1,12 +1,12 @@
 "use client";
 // The night's two charts, each with a table view: how the night converged (every experiment's
-// primary score per round, the kept step line, threshold, validation and test), and the
+// primary score per round, the kept step line, threshold and test), and the
 // per-family heatmap of the share of items wrong. Ported from codeclimb/report/client.js.
 import { useRef, useState } from "react";
 import { f3, signed } from "../../../worker";
 import { branchOf, type Derived, families, niceTicks, type Row, shortId } from "./derive";
 
-type MarkKind = "keep" | "revert" | "error" | "val" | "test" | "line" | "thr";
+type MarkKind = "keep" | "revert" | "error" | "test" | "line" | "thr";
 
 export function Marker({ kind, x, y, r }: { kind: MarkKind; x: number; y: number; r: number }) {
   switch (kind) {
@@ -18,8 +18,6 @@ export function Marker({ kind, x, y, r }: { kind: MarkKind; x: number; y: number
       const d = r - 1;
       return <path d={`M${x - d},${y - d}L${x + d},${y + d}M${x - d},${y + d}L${x + d},${y - d}`} stroke="var(--chart-muted)" strokeWidth={2} strokeLinecap="round" />;
     }
-    case "val":
-      return <path d={`M${x},${y - r - 1}L${x + r + 1},${y}L${x},${y + r + 1}L${x - r - 1},${y}Z`} fill="var(--chart-ink)" stroke="var(--surface)" strokeWidth={2} />;
     case "test":
       return <rect x={x - r} y={y - r} width={2 * r} height={2 * r} rx={2} fill="var(--chart-ink)" stroke="var(--surface)" strokeWidth={2} />;
     case "line":
@@ -66,7 +64,7 @@ function Tooltip({ tip, width }: { tip: Tip | null; width: number }) {
   );
 }
 
-type Mark = { x: number; y: number; e: Row; kind: "keep" | "revert" | "error" | "val" | "test" };
+type Mark = { x: number; y: number; e: Row; kind: "keep" | "revert" | "error" | "test" };
 
 export function ConvergenceChart({ nightId, v, branches, primary, selected, onSelect }: {
   nightId: string;
@@ -81,13 +79,13 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
   const [tip, setTip] = useState<Tip | null>(null);
   const W = 620, H = 300, m = { t: 16, r: 112, b: 40, l: 44 };
   const pw = W - m.l - m.r, ph = H - m.t - m.b;
-  const hasFinal = !!(v.lastVal || v.lastTest);
+  const hasFinal = !!v.lastTest;
   const step = pw / Math.max(1, v.rounds + (hasFinal ? 1 : 0));
   const cx = (r: number) => m.l + step * (r - 0.5);
   const off = Math.min(14, step / (branches + 1));
   const vals: number[] = [];
   for (const e of v.exps) if (e.decision !== "error" && v.score(e) != null) vals.push(v.score(e)!);
-  for (const x of [v.threshold, v.score(v.lastVal), v.score(v.lastTest)]) if (x != null) vals.push(x);
+  for (const x of [v.threshold, v.score(v.lastTest)]) if (x != null) vals.push(x);
   let lo = vals.length ? Math.min(...vals) : 0;
   let hi = vals.length ? Math.max(...vals) : 1;
   lo = Math.floor((lo - 0.02) * 20) / 20;
@@ -119,10 +117,8 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
   }));
   if (hasFinal) {
     const fx = cx(v.rounds + 1);
-    if (v.lastVal && v.score(v.lastVal) != null) marks.push({ x: fx - 8, y: y(v.score(v.lastVal)!), e: v.lastVal, kind: "val" });
-    if (v.lastTest && v.score(v.lastTest) != null) marks.push({ x: fx + 8, y: y(v.score(v.lastTest)!), e: v.lastTest, kind: "test" });
+    if (v.lastTest && v.score(v.lastTest) != null) marks.push({ x: fx, y: y(v.score(v.lastTest)!), e: v.lastTest, kind: "test" });
   }
-  if (v.lastVal && v.score(v.lastVal) != null) edge.push({ y: y(v.score(v.lastVal)!), text: `val ${f3(v.score(v.lastVal))}`, cls: "label-mid" });
   if (v.lastTest && v.score(v.lastTest) != null) edge.push({ y: y(v.score(v.lastTest)!), text: `test ${f3(v.score(v.lastTest))}`, cls: "label-mid" });
   // Direct labels at the right edge, spread so they never overlap.
   edge.sort((a, b) => a.y - b.y);
@@ -153,12 +149,11 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
     const rows: [string, string][] = [[primary, f3(v.score(e))]];
     const ps = mk.kind === "keep" || mk.kind === "revert" ? v.parentScore(e) : null;
     if (ps != null) rows.push(["vs parent", signed(v.score(e)! - ps)]);
-    if (mk.kind === "val" && e.metrics?.gap != null) rows.push(["gap", f3(e.metrics.gap)]);
-    rows.push(["decision", mk.kind === "val" ? (e.decision === "keep" ? "no overfit" : "overfit") : e.decision]);
+    rows.push(["decision", e.decision]);
     setTip({
       x: p.px, y: p.py, rows,
-      title: mk.kind === "val" ? "Validation" : mk.kind === "test" ? "Test" : shortId(e.exp_id, nightId),
-      text: mk.kind === "val" || mk.kind === "test" ? null : e.hypothesis,
+      title: mk.kind === "test" ? "Test" : shortId(e.exp_id, nightId),
+      text: mk.kind === "test" ? null : e.hypothesis,
     });
   };
 
@@ -201,7 +196,7 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
             onMouseLeave={() => setTip(null)}
             onClick={(ev) => {
               const mk = nearest(locate(ev));
-              if (mk) onSelect(mk.e.exp_id); // val/test rows carry the kept experiment's id
+              if (mk) onSelect(mk.e.exp_id); // the test row carries the kept experiment's id
             }}
           />
         </svg>
@@ -213,7 +208,6 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
         <LegendItem kind="error" label="error" />
         <LegendItem kind="line" label="kept score" />
         {v.threshold != null && <LegendItem kind="thr" label="threshold" />}
-        {v.lastVal && <LegendItem kind="val" label="validation" />}
         {v.lastTest && <LegendItem kind="test" label="test" />}
       </div>
     </div>
@@ -222,7 +216,6 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
 
 export function ConvergenceTable({ nightId, v, primary }: { nightId: string; v: Derived; primary: string }) {
   const finals = [
-    ...(v.lastVal ? [["validation", v.lastVal] as const] : []),
     ...(v.lastTest ? [["test", v.lastTest] as const] : []),
   ];
   return (
@@ -269,7 +262,6 @@ function heatColumns(nightId: string, v: Derived, mode: "lineage" | "all"): Heat
       cols.push({ key: l.exp.exp_id, label: `r${l.round}`, sub: `b${branchOf(l.exp.exp_id)}`, row: l.exp });
     }
   }
-  if (v.lastVal) cols.push({ key: "val", label: "val", sub: `fold ${v.lastVal.val_fold}`, row: v.lastVal, link: v.lastVal.exp_id });
   if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });
   return cols;
 }
@@ -301,7 +293,7 @@ export function FamilyHeatmap({ nightId, v, mode, selected, onSelect }: {
       ["accuracy", val == null ? "n/a" : f3(val)],
       ["wrong", val == null ? "n/a" : `${Math.round((1 - val) * 100)}%`],
     ];
-    if (j > 0 && mode === "lineage" && c.key !== "val" && c.key !== "test") rows.push(["vs previous", val == null || prev == null ? "–" : signed(val - prev)]);
+    if (j > 0 && mode === "lineage" && c.key !== "test") rows.push(["vs previous", val == null || prev == null ? "–" : signed(val - prev)]);
     setTip({ x: px, y: py, title: f.slice(4), rows });
   };
   return (
@@ -321,7 +313,7 @@ export function FamilyHeatmap({ nightId, v, mode, selected, onSelect }: {
                 const val = c.row.metrics?.[f];
                 const b = bin(val);
                 const prev = j > 0 ? cols[j - 1].row.metrics?.[f] : undefined;
-                const changed = mode === "lineage" && j > 0 && c.key !== "val" && c.key !== "test" && val != null && prev != null && Math.abs(val - prev) > 1e-9;
+                const changed = mode === "lineage" && j > 0 && c.key !== "test" && val != null && prev != null && Math.abs(val - prev) > 1e-9;
                 return (
                   <g key={c.key}>
                     <rect

@@ -99,7 +99,6 @@
       lineage.push({ round: r, exp: cur, keptThisRound: !!k });
     }
     const pick = (kind) => rows.filter((r) => r.kind === kind);
-    const val = pick("validation");
     const test = pick("test");
     const score = (e) => (e && e.metrics ? e.metrics[P] : null);
     const parentScore = (e) => {
@@ -111,10 +110,9 @@
     const counts = { keep: 0, revert: 0, error: 0 };
     for (const e of exps) counts[e.decision] = (counts[e.decision] || 0) + 1;
     const keptRounds = lineage.filter((l) => l.keptThisRound).length;
-    const lastVal = val[val.length - 1] || null;
     const lastTest = test[test.length - 1] || null;
     const durS = night.startedAt && night.finishedAt ? (Date.parse(night.finishedAt) - night.startedAt) / 1000 : null;
-    return { rows, exps, byId, rounds, lineage, val, test, lastVal, lastTest, score, parentScore, threshold, bestId, counts, keptRounds, durS, cur };
+    return { rows, exps, byId, rounds, lineage, test, lastTest, score, parentScore, threshold, bestId, counts, keptRounds, durS, cur };
   }
 
   // ---------- state ----------
@@ -151,7 +149,6 @@
       const d = r - 1;
       return s("path", { d: `M${x - d},${y - d}L${x + d},${y + d}M${x - d},${y + d}L${x + d},${y - d}`, stroke: "var(--chart-muted)", "stroke-width": 2, "stroke-linecap": "round" });
     }
-    if (kind === "val") return s("path", { d: `M${x},${y - r - 1}L${x + r + 1},${y}L${x},${y + r + 1}L${x - r - 1},${y}Z`, fill: "var(--chart-ink)", stroke: "var(--surface)", "stroke-width": 2 });
     if (kind === "test") return s("rect", { x: x - r, y: y - r, width: 2 * r, height: 2 * r, rx: 2, fill: "var(--chart-ink)", stroke: "var(--surface)", "stroke-width": 2 });
     if (kind === "line") return s("line", { x1: x - 8, y1: y, x2: x + 8, y2: y, stroke: "var(--chart-kept)", "stroke-width": 2, "stroke-linecap": "round" });
     if (kind === "thr") return s("line", { x1: x - 8, y1: y, x2: x + 8, y2: y, stroke: "var(--fg-3)", "stroke-width": 1.5, "stroke-dasharray": "4 3" });
@@ -180,7 +177,7 @@
   function convergenceChart(night, v) {
     const W = 620, H = 300, m = { t: 16, r: 112, b: 40, l: 44 };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
-    const hasFinal = !!(v.lastVal || v.lastTest);
+    const hasFinal = !!v.lastTest;
     const slots = v.rounds + (hasFinal ? 1 : 0);
     const step = pw / Math.max(1, slots);
     const cx = (r) => m.l + step * (r - 0.5);
@@ -189,7 +186,6 @@
     const vals = [];
     for (const e of v.exps) if (e.decision !== "error") vals.push(v.score(e));
     if (v.threshold != null) vals.push(v.threshold);
-    if (v.lastVal) vals.push(v.score(v.lastVal));
     if (v.lastTest) vals.push(v.score(v.lastTest));
     let lo = Math.min(...vals), hi = Math.max(...vals);
     if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
@@ -241,8 +237,7 @@
     }
     if (hasFinal) {
       const fx = cx(v.rounds + 1);
-      if (v.lastVal) marks.push({ x: fx - 8, y: y(v.score(v.lastVal)), e: v.lastVal, kind: "val" });
-      if (v.lastTest) marks.push({ x: fx + 8, y: y(v.score(v.lastTest)), e: v.lastTest, kind: "test" });
+      if (v.lastTest) marks.push({ x: fx, y: y(v.score(v.lastTest)), e: v.lastTest, kind: "test" });
     }
     const markG = s("g");
     for (const mk of marks) {
@@ -251,7 +246,6 @@
       markG.append(marker(mk.kind, mk.x, mk.y, 5));
     }
     svg.append(markG);
-    if (v.lastVal) edge.push({ y: y(v.score(v.lastVal)), text: "val " + f3(v.score(v.lastVal)), cls: "label-mid" });
     if (v.lastTest) edge.push({ y: y(v.score(v.lastTest)), text: "test " + f3(v.score(v.lastTest)), cls: "label-mid" });
     edge.sort((a, b) => a.y - b.y);
     const GAP = 15;
@@ -281,12 +275,11 @@
       const mk = nearest(p);
       if (!mk) return hideTip();
       const e = mk.e;
-      const nodes = [h("b", { text: mk.kind === "val" ? "Validation" : mk.kind === "test" ? "Test" : shortId(e.exp_id, night.id) })];
+      const nodes = [h("b", { text: mk.kind === "test" ? "Test" : shortId(e.exp_id, night.id) })];
       nodes.push(tipRow(P, f3(v.score(e))));
       if ((mk.kind === "keep" || mk.kind === "revert") && v.parentScore(e) != null) nodes.push(tipRow("vs parent", signed(v.score(e) - v.parentScore(e))));
-      if (mk.kind === "val" && e.metrics && e.metrics.gap != null) nodes.push(tipRow("gap", f3(e.metrics.gap)));
-      nodes.push(tipRow("decision", mk.kind === "val" ? (e.decision === "keep" ? "no overfit" : "overfit") : e.decision));
-      if (e.hypothesis && mk.kind !== "val" && mk.kind !== "test") nodes.push(h("div", { class: "clip", style: "margin-top:6px", text: e.hypothesis }));
+      nodes.push(tipRow("decision", e.decision));
+      if (e.hypothesis && mk.kind !== "test") nodes.push(h("div", { class: "clip", style: "margin-top:6px", text: e.hypothesis }));
       showTip(wrap, p.px, p.py, nodes);
     });
     hit.addEventListener("mouseleave", hideTip);
@@ -299,7 +292,7 @@
     const legend = h("div", { class: "legend" },
       legendItem("keep", "kept"), legendItem("revert", "reverted"), legendItem("error", "error"),
       legendItem("line", "kept score"), v.threshold != null ? legendItem("thr", "threshold") : null,
-      v.lastVal ? legendItem("val", "validation") : null, v.lastTest ? legendItem("test", "test") : null);
+      v.lastTest ? legendItem("test", "test") : null);
     return h("div", null, wrap, legend);
   }
 
@@ -308,7 +301,7 @@
       h("td", { class: "num", text: "r" + e.round }), h("td", { class: "mono", text: shortId(e.exp_id, night.id) }),
       h("td", { class: "num", text: f3(v.score(e)) }), h("td", { class: "num", text: e.decision === "error" || v.parentScore(e) == null ? "–" : signed(v.score(e) - v.parentScore(e)) }),
       h("td", null, decisionTag(e.decision))));
-    const extra = [].concat(v.lastVal ? [["validation", v.lastVal]] : [], v.lastTest ? [["test", v.lastTest]] : [])
+    const extra = [].concat(v.lastTest ? [["test", v.lastTest]] : [])
       .map(([k, r]) => h("tr", null, h("td", { class: "num", text: "final" }), h("td", { text: k }), h("td", { class: "num", text: f3(v.score(r)) }), h("td", { class: "num", text: "–" }), h("td", { text: r.decision })));
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, h("th", { class: "num", text: "Round" }), h("th", { text: "Experiment" }), h("th", { class: "num", text: P }), h("th", { class: "num", text: "Δ parent" }), h("th", { text: "Decision" }))),
@@ -321,7 +314,6 @@
     const cols = [];
     const seen = new Set();
     for (const l of v.lineage) if (l.exp && !seen.has(l.exp.exp_id)) { seen.add(l.exp.exp_id); cols.push({ key: l.exp.exp_id, label: "r" + l.round, sub: "b" + branchOf(l.exp.exp_id), row: l.exp }); }
-    if (v.lastVal) cols.push({ key: "val", label: "val", sub: "fold " + v.lastVal.val_fold, row: v.lastVal, link: v.lastVal.exp_id });
     if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });
     return cols;
   }
@@ -357,7 +349,7 @@
           fill: b < 0 ? "var(--heat-none)" : `var(--heat-${b})`, class: "cell",
           tabindex: "0", "aria-label": `${f.slice(4)} ${c.label}: ${val == null ? "n/a" : f3(val)}`,
         });
-        const show = (px, py) => showTip(wrap, px, py, [h("b", { text: f.slice(4) }), tipRow("column", c.label + (c.sub ? " · " + c.sub : "")), tipRow("accuracy", val == null ? "n/a" : f3(val)), tipRow("wrong", val == null ? "n/a" : Math.round((1 - val) * 100) + "%"), j > 0 && state.heat === "lineage" && c.key !== "val" && c.key !== "test" ? tipRow("vs previous", val == null || prev == null ? "–" : signed(val - prev)) : null].filter(Boolean));
+        const show = (px, py) => showTip(wrap, px, py, [h("b", { text: f.slice(4) }), tipRow("column", c.label + (c.sub ? " · " + c.sub : "")), tipRow("accuracy", val == null ? "n/a" : f3(val)), tipRow("wrong", val == null ? "n/a" : Math.round((1 - val) * 100) + "%"), j > 0 && state.heat === "lineage" && c.key !== "test" ? tipRow("vs previous", val == null || prev == null ? "–" : signed(val - prev)) : null].filter(Boolean));
         rect.addEventListener("mousemove", (ev) => { const r = wrap.getBoundingClientRect(); show(ev.clientX - r.left + wrap.scrollLeft, ev.clientY - r.top); });
         rect.addEventListener("mouseleave", hideTip);
         rect.addEventListener("focus", () => show(lw + j * cw, top + i * ch));
@@ -365,7 +357,7 @@
         rect.addEventListener("click", () => select(c.link || c.key));
         // A change from the previous lineage column gets a small mark, so improvements stand out without color alone.
         svg.append(rect);
-        if (state.heat === "lineage" && j > 0 && c.key !== "val" && c.key !== "test" && val != null && prev != null && Math.abs(val - prev) > 1e-9) {
+        if (state.heat === "lineage" && j > 0 && c.key !== "test" && val != null && prev != null && Math.abs(val - prev) > 1e-9) {
           svg.append(s("text", { x: lw + j * cw + cw / 2, y: top + i * ch + ch / 2 + 4, "text-anchor": "middle", style: `fill: var(--heat-ink-${b}); font-size: 11px; font-weight: 700; pointer-events: none` }, val > prev ? "▲" : "▼"));
         }
       });
@@ -426,13 +418,13 @@
   function evalsTable(night, v) {
     const extra = v.rows.filter((r) => r.kind !== "experiment");
     if (!extra.length) return null;
-    const label = { rescore: "re-score", baseline: "parent baseline", noise: "noise", validation: "validation", test: "test" };
+    const label = { rescore: "re-score", baseline: "parent baseline", noise: "noise", test: "test" };
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, h("th", { class: "num", text: "Round" }), h("th", { text: "Eval" }), h("th", { text: "Commit" }), h("th", { text: "Split" }), h("th", { class: "num", text: P }), h("th", { text: "Result" }), h("th", { class: "num", text: "Wall" }))),
       h("tbody", null, extra.map((r) => h("tr", null,
         h("td", { class: "num", text: "r" + r.round }), h("td", { text: label[r.kind] || r.kind }), h("td", { class: "mono", text: shortId(r.exp_id, night.id) }),
-        h("td", { text: r.split + (r.kind === "validation" ? " · fold " + r.val_fold : "") }), h("td", { class: "num", text: f3(r.metrics[P]) }),
-        h("td", { text: r.kind === "validation" ? (r.decision === "keep" ? "no overfit (gap " + f3(r.metrics.gap) + ")" : r.decision === "revert" ? "overfit (gap " + f3(r.metrics.gap) + ")" : "error") : r.decision === "error" ? "error" : "ok" }),
+        h("td", { text: r.split }), h("td", { class: "num", text: f3(r.metrics[P]) }),
+        h("td", { text: r.decision === "error" ? "error" : "ok" }),
         h("td", { class: "num", text: secs(r.wall_s) }))))));
   }
 
@@ -584,7 +576,6 @@
         h("td", { class: "num", text: String(v.rounds) }),
         h("td", { class: "num", text: v.keptRounds + " / " + v.rounds }),
         h("td", { class: "num", text: f3(v.cur ? v.score(v.cur) : null) }),
-        h("td", { class: "num", text: f3(v.lastVal ? v.score(v.lastVal) : null) }),
         h("td", { class: "num", text: f3(v.lastTest ? v.score(v.lastTest) : null) }),
         h("td", { class: "num", text: v.threshold != null ? f3(v.threshold) : "–" }),
         h("td", { class: "num", text: usd(n.spend_usd) }),
@@ -593,7 +584,7 @@
     return h("section", { class: "card" },
       h("div", { class: "card-head" }, h("h2", { text: "All Nights" }), h("span", { class: "sub", text: nights.length + " nights in " + D.title + ". Pick one to explore." })),
       h("div", { class: "table-wrap" }, h("table", null,
-        h("thead", null, h("tr", null, ["Night", "Stop reason"].map((t) => h("th", { text: t })), ["Rounds", "Kept in", "Kept " + P, "Validation", "Test", "Threshold", "Spend", "Wall time"].map((t) => h("th", { class: "num", text: t })))),
+        h("thead", null, h("tr", null, ["Night", "Stop reason"].map((t) => h("th", { text: t })), ["Rounds", "Kept in", "Kept " + P, "Test", "Threshold", "Spend", "Wall time"].map((t) => h("th", { class: "num", text: t })))),
         h("tbody", null, rows))));
   }
 
@@ -631,7 +622,6 @@
     const keptExp = v.cur;
     const kpis = h("div", { class: "kpis" },
       h("div", { class: "kpi lead" }, h("div", { class: "label", text: "Kept " + P }), h("div", { class: "value", text: f3(keptExp ? v.score(keptExp) : null) }), h("div", { class: "note mono", text: keptExp ? shortId(keptExp.exp_id, night.id) + (v.threshold != null ? " · threshold " + f3(v.threshold) : "") : "nothing kept" })),
-      h("div", { class: "kpi" }, h("div", { class: "label", text: "Validation" }), h("div", { class: "value", text: f3(v.lastVal ? v.score(v.lastVal) : null) }), h("div", { class: "note", text: v.lastVal ? (v.lastVal.decision === "keep" ? "no overfit · gap " : "overfit · gap ") + f3(v.lastVal.metrics.gap) : "not run" })),
       h("div", { class: "kpi" }, h("div", { class: "label", text: "Test" }), h("div", { class: "value", text: f3(v.lastTest ? v.score(v.lastTest) : null) }), h("div", { class: "note", text: v.lastTest ? "scored once, at the end" : "not run yet" })),
       h("div", { class: "kpi" }, h("div", { class: "label", text: "Rounds" }), h("div", { class: "value", text: String(v.rounds) }), h("div", { class: "note", text: "kept a commit in " + v.keptRounds })),
       h("div", { class: "kpi" }, h("div", { class: "label", text: "Experiments" }), h("div", { class: "value", text: String(v.exps.length) }), h("div", { class: "note", text: v.counts.keep + " kept · " + v.counts.revert + " reverted · " + v.counts.error + " errors" })),
@@ -642,7 +632,7 @@
     const toggle = (key, on) => h("button", { class: "link-btn", "aria-pressed": String(on), onclick: () => { state[key] = !state[key]; render(); } }, on ? "Chart" : "Table");
     const left = h("div", { style: "display:grid; gap: var(--space-5); min-width: 0" },
       h("section", { class: "card" },
-        h("div", { class: "card-head" }, h("h2", { text: "How the Night Converged" }), h("span", { class: "sub", text: "Every experiment's " + P + " on the optimization folds. The red line is the kept commit." }), h("div", { class: "tools" }, toggle("convTable", state.convTable))),
+        h("div", { class: "card-head" }, h("h2", { text: "How the Night Converged" }), h("span", { class: "sub", text: "Every experiment's " + P + " on dev. The red line is the kept commit." }), h("div", { class: "tools" }, toggle("convTable", state.convTable))),
         convBody),
       h("section", { class: "card" },
         h("div", { class: "card-head" }, h("h2", { text: "Metric Families" }), h("span", { class: "sub", text: "Share of items wrong per input family: darker means more left to fix." }),
@@ -655,7 +645,7 @@
       h("section", { class: "card" },
         h("div", { class: "card-head" }, h("h2", { text: "Experiments" }), h("span", { class: "sub", text: "Click a row to inspect it and pick it for export." })),
         experimentsTable(night, v)),
-      evalsTable(night, v) ? h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Extra Evaluations" }), h("span", { class: "sub", text: "Re-scores, noise floor, validation on the held-out fold, and the one test score." })), evalsTable(night, v)) : null,
+      evalsTable(night, v) ? h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Extra Evaluations" }), h("span", { class: "sub", text: "Re-scores, noise floor, and the one test score." })), evalsTable(night, v)) : null,
       h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", { text: "Reviewer Feedback" }), h("span", { class: "sub", text: night.config ? night.config.reviewer_model : "" })), reviewsCard(night)));
     sideEl = h("aside", { class: "side" }, detailCard(night, v), exportCard(night, v));
     const main = h("main", null, nightsTable(), hero, kpis, h("div", { class: "grid-2" }, left, sideEl));

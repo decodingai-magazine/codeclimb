@@ -1,8 +1,8 @@
-"""Build the hidden datenorm dataset (train with 5 stratified folds + test).
+"""Build the hidden datenorm dataset (train/dev from 5 stratified folds, plus test).
 
 Deterministic: the same seed always writes the same files.
 
-    python3 scenarios/datenorm/tools/build_dataset.py --out scenarios/datenorm/dataset
+    python3 scenarios/datenorm/scripts/build_dataset.py --out scenarios/datenorm/gold
 """
 
 import argparse
@@ -17,6 +17,7 @@ TODAY = dt.date(2024, 6, 15)
 PER_FAMILY = 30
 TEST_SHARE = 0.3
 N_FOLDS = 5
+TRAIN_FOLDS = {4}
 
 EN_MONTHS = [calendar.month_name[m] for m in range(1, 13)]
 EN_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
@@ -291,13 +292,17 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     keys = ["id", "text", "locale", "family", "gold"]
-    with open(out / "train.jsonl", "w") as f:
-        for item in train:
-            f.write(json.dumps({k: item[k] for k in keys + ["fold"]}, ensure_ascii=False) + "\n")
-    with open(out / "test.jsonl", "w") as f:
-        for item in test:
+    with open(out / "items.jsonl", "w") as f:
+        for item in train + test:
             f.write(json.dumps({k: item[k] for k in keys}, ensure_ascii=False) + "\n")
-    print(f"train={len(train)} test={len(test)} -> {out}")
+    # The fixed split: fold 4 goes to train (the coder's few-shot material), folds 0-3 to dev.
+    splits = {
+        "train": [it["id"] for it in train if it["fold"] in TRAIN_FOLDS],
+        "dev": [it["id"] for it in train if it["fold"] not in TRAIN_FOLDS],
+        "test": [it["id"] for it in test],
+    }
+    (out / "splits.json").write_text(json.dumps(splits, indent=1) + "\n")
+    print(" ".join(f"{k}={len(v)}" for k, v in splits.items()), f"-> {out}")
 
 
 if __name__ == "__main__":

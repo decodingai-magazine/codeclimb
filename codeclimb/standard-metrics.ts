@@ -6,7 +6,7 @@
 import type { MeterCall } from "./meter/proxy";
 import type { Metrics } from "./stats";
 
-/** Written by `run_cmd` next to its outputs. */
+/** Written by a stage's `run` next to its outputs. */
 export const TIMINGS_FILE = "timings.jsonl";
 
 export interface Timing {

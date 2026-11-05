@@ -1,8 +1,9 @@
 // results.jsonl: append-only, one line per experiment and per extra eval
-// (re-score, noise, validation, test). With git, the source of truth.
+// (re-score, baseline, noise, test). With git, the source of truth.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
-export type Split = "opt" | "val" | "test" | "noise";
+/** `dev` scores every round; `noise` is dev scored repeatedly for σ; `test` is scored once at the end. */
+export type Split = "dev" | "test" | "noise";
 export type Decision = "keep" | "revert" | "error";
 
 export interface ResultRow {
@@ -11,7 +12,6 @@ export interface ResultRow {
   round: number;
   stack: "inngest";
   split: Split;
-  val_fold: number;
   model: string | null;
   reviewer_model: string;
   hypothesis: string | null;
@@ -31,10 +31,10 @@ export interface ResultRow {
   t_teardown: number;
   infra_errors: number;
   /**
-   * Not in the contract: which extra eval a row is (experiment | rescore | noise | validation | test). `baseline`
+   * Not in the contract: which extra eval a row is (experiment | rescore | noise | test). `baseline`
    * is the already re-scored parent's run in a round's evaluator: recorded for comparison, its score unchanged.
    */
-  kind: "experiment" | "rescore" | "baseline" | "noise" | "validation" | "test";
+  kind: "experiment" | "rescore" | "baseline" | "noise" | "test";
   /** Not in the contract: unique per row (an experiment's own eval, a re-score, a noise run, ...). */
   eval_id: string;
   night_id: string;
@@ -60,7 +60,7 @@ export const RESULT_ROW_SCHEMA = {
   title: "CodeClimb results.jsonl row",
   type: "object",
   required: [
-    "exp_id", "parent_id", "round", "stack", "split", "val_fold", "model", "reviewer_model", "hypothesis",
+    "exp_id", "parent_id", "round", "stack", "split", "model", "reviewer_model", "hypothesis",
     "commit", "metrics", "coder_usd", "program_usd", "reviewer_usd", "tokens", "wall_s", "decision", "backend",
     "t_provision", "t_code", "t_eval", "t_review", "t_teardown", "infra_errors",
   ],
@@ -69,8 +69,7 @@ export const RESULT_ROW_SCHEMA = {
     parent_id: nullable("string"),
     round: { type: "integer", minimum: 0 },
     stack: { type: "string", enum: ["inngest", "langchain"] },
-    split: { type: "string", enum: ["opt", "val", "test", "noise"] },
-    val_fold: { type: "integer", minimum: 0 },
+    split: { type: "string", enum: ["dev", "test", "noise"] },
     model: nullable("string"),
     reviewer_model: str,
     hypothesis: nullable("string"),
@@ -89,7 +88,7 @@ export const RESULT_ROW_SCHEMA = {
     t_review: num,
     t_teardown: num,
     infra_errors: { type: "integer", minimum: 0 },
-    kind: { type: "string", enum: ["experiment", "rescore", "baseline", "noise", "validation", "test"] },
+    kind: { type: "string", enum: ["experiment", "rescore", "baseline", "noise", "test"] },
     eval_id: str,
     night_id: str,
     evaluator_instance: str,

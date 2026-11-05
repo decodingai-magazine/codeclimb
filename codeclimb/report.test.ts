@@ -10,7 +10,7 @@ import { renderReport } from "./report/html";
 import type { ResultRow } from "./results";
 
 const row = (over: Partial<ResultRow>): ResultRow => ({
-  exp_id: "n-r1-b0", parent_id: "n-r0-starter", round: 1, stack: "inngest", split: "opt", val_fold: 0, model: "p/a",
+  exp_id: "n-r1-b0", parent_id: "n-r0-starter", round: 1, stack: "inngest", split: "dev", model: "p/a",
   reviewer_model: "p/c", hypothesis: "h", commit: "", metrics: { accuracy: 0.5 }, coder_usd: 0.1, program_usd: 0,
   reviewer_usd: 0, tokens: 0, wall_s: 1, decision: "keep", backend: "docker", t_provision: 0, t_code: 1, t_eval: 0,
   t_review: 0, t_teardown: 0, infra_errors: 0, kind: "experiment", eval_id: "e", night_id: "n", ...over,
@@ -83,7 +83,7 @@ test("report data reads every night, saved reviews and done.json; best resolves 
   }
   writeFileSync(join(root, "nights", "b", "reviews", "r1.json"), JSON.stringify({ round: 1, feedback: "f", hypotheses: ["x"], reviewer_usd: 0.05 }));
   writeFileSync(join(root, "nights", "b", "done.json"), JSON.stringify({
-    stop_reason: "thresholds", rounds: 1, validations: 1, kept: { exp_id: "b-r1-b0", commit: "c", opt_score: 0.5 }, spend_usd: 0.25, finished_at: "2026-01-01T00:00:00Z",
+    stop_reason: "thresholds", rounds: 1, kept: { exp_id: "b-r1-b0", commit: "c", dev_score: 0.5 }, spend_usd: 0.25, finished_at: "2026-01-01T00:00:00Z",
   }));
 
   const data = await buildReportData(results, { diffs: false });

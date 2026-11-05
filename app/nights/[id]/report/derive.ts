@@ -1,5 +1,5 @@
 // Views derived from one night's report data: experiments in order, the kept lineage per round,
-// validation and test rows, and the counts the KPI tiles show. Ported from codeclimb/report/client.js.
+// the test row, and the counts the KPI tiles show. Ported from codeclimb/report/client.js.
 import type { ReportNight } from "../../../../codeclimb/report/data";
 import type { ResultRow } from "../../../../codeclimb/results";
 
@@ -23,7 +23,6 @@ export function derive(night: ReportNight, primary: string) {
     if (k) cur = k;
     lineage.push({ round: r, exp: cur, keptThisRound: !!k });
   }
-  const val = rows.filter((r) => r.kind === "validation");
   const test = rows.filter((r) => r.kind === "test");
   const score = (e: Row | null | undefined): number | null => (e?.metrics ? e.metrics[primary] ?? null : null);
   const parentScore = (e: Row): number | null => {
@@ -38,7 +37,6 @@ export function derive(night: ReportNight, primary: string) {
   return {
     rows, exps, byId, rounds, lineage, score, parentScore, threshold, bestId, counts, durS, cur,
     keptRounds: lineage.filter((l) => l.keptThisRound).length,
-    lastVal: val.at(-1) ?? null,
     lastTest: test.at(-1) ?? null,
   };
 }

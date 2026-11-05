@@ -1,5 +1,8 @@
 // Moving code in and out of a sandbox as git bundles: no git credentials and no
 // host paths inside sandboxes, one code path for every backend.
+import { execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import type { RepoCommit, Sandbox } from "./types";
 
 const PARENT_BUNDLE = "/tmp/cc/parent.bundle";
@@ -54,4 +57,17 @@ export async function commitAndExport(
     "commit",
   );
   return { sha, bundle: await sandbox.readFile(OUT_BUNDLE) };
+}
+
+/** Copies a host file or directory to `dest` in the sandbox (a directory's contents land in `dest`), as one tar. */
+export async function uploadPath(sandbox: Sandbox, src: string, dest: string): Promise<void> {
+  const isDir = statSync(src).isDirectory();
+  const tar = isDir
+    ? execFileSync("tar", ["-C", src, "-cf", "-", "."], { maxBuffer: 512 * 2 ** 20 })
+    : execFileSync("tar", ["-C", dirname(src), "-cf", "-", basename(src)], { maxBuffer: 512 * 2 ** 20 });
+  const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+  const into = isDir ? dest : dirname(dest);
+  const rename = isDir || basename(src) === basename(dest) ? "" : ` && mv ${q(`${into}/${basename(src)}`)} ${q(dest)}`;
+  await sandbox.writeFile("/tmp/cc/upload.tar", tar);
+  await run(sandbox, `mkdir -p ${q(into)} && tar -xf /tmp/cc/upload.tar -C ${q(into)} && rm -f /tmp/cc/upload.tar${rename}`, `upload ${src}`);
 }

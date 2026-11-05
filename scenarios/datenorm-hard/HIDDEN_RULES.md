@@ -1,6 +1,6 @@
 # datenorm-hard: the hidden rules
 
-This is the answer key for humans. It is the set of conventions `tools/build_dataset.py` uses for gold answers and that `spec/SPEC.md` deliberately leaves open. It never enters a sandbox: `.dockerignore` excludes it, and it sits outside `spec/`.
+This is the answer key for humans. It is the set of conventions `scripts/build_dataset.py` uses for gold answers and that `spec/agent/SPEC.md` deliberately leaves open. It never enters a sandbox: only the bundle from `scripts/export_agent.py` reaches a coder, and it holds `spec/agent/` and train.
 
 Each rule is a choice between two or three plausible readings. The loop can discover the right one by trying the readings on separate branches and comparing `acc_<family>`.
 

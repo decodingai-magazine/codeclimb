@@ -14,15 +14,14 @@ export type ReportNight = {
   id: string;
   startedAt: number | null;
   finishedAt: string | null;
-  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd" | "overfit_gap"> & {
+  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd"> & {
     /** Optimized standard metrics (lower is better); empty for nights before they existed. */
     objectives: string[];
   } | null;
   done: {
     stop_reason: string;
     rounds: number;
-    validations: number;
-    kept: { exp_id: string; commit: string; opt_score: number };
+    kept: { exp_id: string; commit: string; dev_score: number };
     spend_usd: number;
   } | null;
   /** Night spend: done.json's figure, else coder + program per row plus each round's reviewer cost once. */
@@ -87,13 +86,12 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
         ? {
             primary_metric: c.primary_metric, thresholds: c.thresholds, gates: c.gates, min_gain: c.min_gain,
             max_rounds: c.max_rounds, models: c.models, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
-            overfit_gap: c.overfit_gap,
             // Nights before standard metrics have no `standard_metrics`: nothing was optimized besides the primary.
             objectives: c.standard_metrics ? efficiencyMetrics(c) : [],
           }
         : null,
       done: done
-        ? { stop_reason: done.stop_reason, rounds: done.rounds, validations: done.validations, kept: done.kept, spend_usd: done.spend_usd }
+        ? { stop_reason: done.stop_reason, rounds: done.rounds, kept: done.kept, spend_usd: done.spend_usd }
         : null,
       spend_usd: done?.spend_usd ?? nightSpend(nightRows),
       reviews: reviews.map(({ round, model, feedback, hypotheses }) => ({ round, model, feedback, hypotheses })),

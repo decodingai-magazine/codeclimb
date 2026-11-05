@@ -1,13 +1,8 @@
 # Metering smoke night: a tiny scenario whose program calls a model through the
 # metering proxy, so cost metrics are real. Docker sandboxes, Inngest dev server.
-# Build the image first: npm run build:baseline && npm run build:baseline:capitals
-spec_dir: scenarios/capitals/spec
-dataset_dir: scenarios/capitals/dataset
-run_cmd: python3 /eval/run.py
-run_files: [scenarios/capitals/metrics/run.py]
-score_cmd: python3 scenarios/capitals/metrics/score.py
+# Build the image first: npm run build:image
+scenario: scenarios/capitals
 sandbox: docker
-baseline: autocode-base-capitals
 max_rounds: 1
 deadline: 1h
 timeouts:
@@ -24,8 +19,6 @@ thresholds:
 gates:
   schema_violations: 0
 min_gain: 0.01
-overfit_gap: 0.25
-max_validations: 1
 budget_usd:
   experiment: 0.5
   night: 2.0

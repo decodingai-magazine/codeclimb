@@ -40,7 +40,7 @@ function readJson<T>(file: string): T | null {
 // ---------- nights ----------
 
 type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig };
-type DoneFile = { stop_reason: string; rounds: number; kept: { exp_id: string; opt_score: number }; spend_usd: number; finished_at: string };
+type DoneFile = { stop_reason: string; rounds: number; kept: { exp_id: string; dev_score: number }; spend_usd: number; finished_at: string };
 type CodeState = {
   startedAt: number; coderUsd: number; devUsd?: number; tokens: number; tCode: number; finishedAt?: number; stop?: string;
 };
@@ -90,7 +90,7 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   return {
     id: night.night_id, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
     round, max_rounds: cfg.max_rounds, primary_metric: cfg.primary_metric,
-    best: done?.kept.opt_score ?? kept?.metrics[cfg.primary_metric] ?? null, best_exp: done?.kept.exp_id ?? kept?.exp_id ?? null,
+    best: done?.kept.dev_score ?? kept?.metrics[cfg.primary_metric] ?? null, best_exp: done?.kept.exp_id ?? kept?.exp_id ?? null,
     threshold: cfg.thresholds[cfg.primary_metric] ?? null,
     spend_usd: done?.spend_usd ?? nightSpend(rows), budget_usd: cfg.budget_usd.night,
     started_at: night.startedAt, deadline_at: night.deadlineMs, finished_at: done?.finished_at ?? null,

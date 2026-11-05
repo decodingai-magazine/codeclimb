@@ -15,13 +15,11 @@
     "run-night:cloud": "CODECLIMB_ENV=cloud tsx scripts/run-night.ts",
     "tunnel": "ngrok http 127.0.0.1:${CODECLIMB_PROXY_PORT:-7422}",
     "validate-results": "tsx scripts/validate-results.ts",
-    "build:baseline": "docker build -t autocode-base scenarios/datenorm",
-    "build:dataset": "python3 scenarios/datenorm/tools/build_dataset.py --out scenarios/datenorm/dataset",
+    "build:image": "docker build -t codeclimb-python -f docker/python.Dockerfile docker",
+    "build:dataset": "python3 scenarios/datenorm/scripts/build_dataset.py --out scenarios/datenorm/gold",
     "report": "tsx scripts/report.ts",
     "export": "tsx scripts/export.ts",
-    "build:baseline:hard": "docker build -t autocode-base-hard scenarios/datenorm-hard",
-    "build:dataset:hard": "python3 scenarios/datenorm-hard/tools/build_dataset.py --out scenarios/datenorm-hard/dataset",
-    "build:baseline:capitals": "docker build -t autocode-base-capitals scenarios/capitals",
+    "build:dataset:hard": "python3 scenarios/datenorm-hard/scripts/build_dataset.py --out scenarios/datenorm-hard/gold",
     "test": "tsx --test codeclimb/*.test.ts"
   },
   "dependencies": {

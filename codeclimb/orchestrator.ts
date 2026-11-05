@@ -2,19 +2,20 @@
 // small JSON (SHAs, metrics, file paths), so the parent's state can be rebuilt
 // from memoized step outputs on replay.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult } from "./coder";
 import { readSpecText } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
-import { type EvalResult, readPerItem, trainFolds } from "./evaluate";
+import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
 import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, runReview, type ReviewOutput } from "./reviewer";
-import { beatsParent, cutsMetric, type Metrics, mean, overfitTest, passesGates, stddev } from "./stats";
+import { hostCommand } from "./scenario";
+import { beatsParent, cutsMetric, type Metrics, mean, passesGates, stddev } from "./stats";
 
 /** What the parent tracks about the commit the next round starts from. */
 export interface Kept {
@@ -23,17 +24,14 @@ export interface Kept {
   /** Score used by the keep rule: re-score (or noise mean) when `rescored`, else the raw best-of-N score. */
   score: number;
   metrics: Metrics | null;
-  /** metrics.json of the latest optimization-fold re-score (per-item scores for the overfit SE). */
+  /** metrics.json of the latest dev re-score. */
   metricsPath: string | null;
   rescored: boolean;
-  /** Folds this commit was validated on (each fold validates at most once per commit). */
-  validatedFolds: number[];
 }
 
 export interface NightInit {
   startedAt: number;
   deadlineMs: number;
-  folds: number[];
   starterExpId: string;
   starterSha: string;
   sigma: number;
@@ -69,28 +67,39 @@ function previousNoise(cfg: NightConfig, nightId: string): { sigma: number; effS
   return noiseSigmas(cfg, noise.filter((r) => r.night_id === last && r.decision !== "error").map((r) => r.metrics));
 }
 
+/** Every file under `dir`, relative to it, sorted. */
+function filesUnder(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true, encoding: "utf8" })
+    .filter((f) => !f.split("/").includes("__pycache__") && statSync(join(dir, f)).isFile())
+    .sort();
+}
+
 export async function initNight(cfg: NightConfig, nightId: string): Promise<NightInit> {
   const paths = nightPaths(cfg, nightId);
   mkdirSync(paths.nightDir, { recursive: true });
+  // The coder's bundle, rebuilt on every start (a replayed step overwrites it).
+  rmSync(paths.bundleDir, { recursive: true, force: true });
+  await hostCommand(cfg.scenario_dir, cfg.scenario.bundle, { out: paths.bundleDir });
+  if (!existsSync(join(paths.bundleDir, "spec"))) throw new Error(`the scenario's bundle command wrote no spec/ into ${paths.bundleDir}`);
   const repo = new ExperimentRepo(paths.gitDir);
   await repo.ensure();
   const starterExpId = `${nightId}-r0-starter`;
-  const starterSha = await repo.importDir(join(cfg.spec_dir, "starter"), starterExpId);
+  const starterSha = await repo.importDir(join(cfg.scenario_dir, "starter"), starterExpId);
   const startedAt = Date.now();
   const noise = previousNoise(cfg, nightId);
   const init: NightInit = {
     startedAt,
     deadlineMs: resolveDeadline(cfg.deadline, startedAt),
-    folds: trainFolds(cfg),
     starterExpId,
     starterSha,
     sigma: noise?.sigma ?? 0,
     effSigma: noise?.effSigma ?? {},
     sigmaMeasured: noise !== null,
   };
-  // Metric-script hashes: run_cmd + score_cmd must stay unchanged across the night.
-  const scoreFiles = cfg.score_cmd.split(/\s+/).map((t) => join(cfg.base_dir, t)).filter((p) => existsSync(p) && p.endsWith(".py"));
-  const hashes = Object.fromEntries([...cfg.run_files, ...scoreFiles].map((f) => [f, sha256(f)]));
+  // What scores the night must stay unchanged across it: the scenario's evaluators, gold and scenario.yaml.
+  const scored = ["scenario.yaml", ...["evaluators", "gold"].flatMap((d) => filesUnder(join(cfg.scenario_dir, d)).map((f) => join(d, f)))];
+  const hashes = Object.fromEntries(scored.map((f) => [relative(cfg.base_dir, join(cfg.scenario_dir, f)), sha256(join(cfg.scenario_dir, f))]));
   writeFileSync(paths.nightJson, JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: hashes }, null, 2));
   return init;
 }
@@ -149,12 +158,11 @@ interface RowBase {
   cfg: NightConfig;
   nightId: string;
   round: number;
-  valFold: number;
 }
 
 function baseRow(b: RowBase, fields: Partial<ResultRow>): ResultRow {
   return {
-    exp_id: "", parent_id: null, round: b.round, stack: "inngest", split: "opt", val_fold: b.valFold, model: null,
+    exp_id: "", parent_id: null, round: b.round, stack: "inngest", split: "dev", model: null,
     reviewer_model: b.cfg.reviewer_model, hypothesis: null, commit: "", metrics: {}, coder_usd: 0, program_usd: 0,
     reviewer_usd: 0, tokens: 0, wall_s: 0, decision: "keep", backend: b.cfg.sandbox, t_provision: 0, t_code: 0,
     t_eval: 0, t_review: 0, t_teardown: 0, infra_errors: 0, kind: "experiment", eval_id: "", night_id: b.nightId,
@@ -162,7 +170,7 @@ function baseRow(b: RowBase, fields: Partial<ResultRow>): ResultRow {
   };
 }
 
-/** Row for an extra eval (re-score, noise, validation, test) of an existing commit. */
+/** Row for an extra eval (re-score, baseline, noise, test) of an existing commit. */
 export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: EvalOutcome, extra: Partial<ResultRow>): ResultRow {
   const r = outcome.ok ? outcome.result : null;
   const ok = !!r?.ok;
@@ -325,7 +333,6 @@ export async function reviewRound(args: {
   parentMetrics: Metrics | null;
   summaries: RoundDecision["summaries"];
   log: HypothesisLogEntry[];
-  validationGap?: number;
   /** Branches the next round runs: one hypothesis each. */
   branches: number;
 }): Promise<ReviewOutput> {
@@ -337,7 +344,7 @@ export async function reviewRound(args: {
   }
   const review = await runReview({
     model: args.cfg.reviewer_model,
-    spec: readSpecText(args.cfg.spec_dir),
+    spec: readSpecText(nightPaths(args.cfg, args.nightId).bundleDir),
     round: args.round,
     branches: args.branches,
     primaryMetric: args.cfg.primary_metric,
@@ -349,7 +356,6 @@ export async function reviewRound(args: {
     minEfficiencyGain: args.cfg.standard_metrics.min_efficiency_gain,
     results,
     log: args.log,
-    validationGap: args.validationGap,
   });
   const file = nightPaths(args.cfg, args.nightId).reviewJson(args.round);
   mkdirSync(dirname(file), { recursive: true });
@@ -383,30 +389,12 @@ export function recordNoise(b: RowBase & { kept: Pick<Kept, "expId" | "sha">; ou
   };
 }
 
-export function validateKept(b: RowBase & { kept: Kept; outcome: EvalOutcome }) {
-  const P = b.cfg.primary_metric;
-  const val = b.outcome.ok && b.outcome.result.ok ? b.outcome.result : null;
-  if (!val || !b.kept.metricsPath) {
-    appendRows(b.cfg.results_path, [evalRow(b, b.kept, b.outcome, { split: "val", kind: "validation", decision: "error" })]);
-    return { ok: false as const };
-  }
-  const t = overfitTest(b.kept.score, val.metrics[P], readPerItem(b.kept.metricsPath), readPerItem(val.metricsPath!), b.cfg.overfit_gap);
-  appendRows(b.cfg.results_path, [
-    evalRow(b, b.kept, b.outcome, {
-      split: "val", kind: "validation", decision: t.overfit ? "revert" : "keep",
-      metrics: { ...val.metrics, gap: t.gap, gap_se: t.se },
-    }),
-  ]);
-  return { ok: true as const, ...t };
-}
-
 export async function finishNight(b: RowBase & {
   kept: Kept;
   test: EvalOutcome;
   stopReason: string;
   rounds: number;
   spend: number;
-  validations: number;
 }) {
   appendRows(b.cfg.results_path, [evalRow(b, b.kept, b.test, { split: "test", kind: "test" })]);
   const swept = await sweepNight(b.nightId);
@@ -414,8 +402,7 @@ export async function finishNight(b: RowBase & {
     night_id: b.nightId,
     stop_reason: b.stopReason,
     rounds: b.rounds,
-    validations: b.validations,
-    kept: { exp_id: b.kept.expId, commit: b.kept.sha, opt_score: b.kept.score },
+    kept: { exp_id: b.kept.expId, commit: b.kept.sha, dev_score: b.kept.score },
     test_metrics: b.test.ok && b.test.result.ok ? b.test.result.metrics : null,
     spend_usd: Math.round(b.spend * 10_000) / 10_000,
     leftover_sandboxes_destroyed: swept,

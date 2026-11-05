@@ -23,7 +23,6 @@ import {
   recordRows,
   reviewRound,
   rotate,
-  validateKept,
 } from "../../codeclimb/orchestrator";
 import { isEmbeddingModel } from "../../codeclimb/meter/backends";
 import { checkModels } from "../../codeclimb/pi/session";
@@ -132,7 +131,6 @@ export const runNight = ccInngest.createFunction(
     let kept: Kept = {
       expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null, metricsPath: null,
       rescored: true, // round-1 parent = the starter repo, scored 0
-      validatedFolds: [],
     };
     let sigma = init.sigma;
     let effSigma = init.effSigma;
@@ -142,11 +140,8 @@ export const runNight = ccInngest.createFunction(
     const noteKept = () => {
       if (kept.rescored) bestPrimary = Math.max(bestPrimary, kept.score);
     };
-    let valIdx = 0;
-    let validations = 0;
     let feedback = "";
     let hypotheses: (string | null)[] = Array(B).fill(null);
-    let validationGap: number | undefined;
     const log: HypothesisLogEntry[] = [];
     const roundSpends: number[] = [];
     let spend = 0;
@@ -167,9 +162,7 @@ export const runNight = ccInngest.createFunction(
         round -= 1;
         break;
       }
-      const valFold = init.folds[valIdx];
-      const optFolds = init.folds.filter((f) => f !== valFold);
-      const rowBase = { cfg, nightId, round, valFold };
+      const rowBase = { cfg, nightId, round };
 
       // The coders work in parallel from the kept commit.
       // Width schedule: the first `width` models code this round (see `parallelWidth`).
@@ -191,11 +184,11 @@ export const runNight = ccInngest.createFunction(
 
       // Then one evaluator, with every coder stopped: the parent and each committed branch in turn.
       const parentSpec: EvalSpec = {
-        evalId: `${nightId}-r${round}-${parent.rescored ? "baseline" : "rescore"}`, expId: parent.expId, split: "opt", folds: optFolds,
+        evalId: `${nightId}-r${round}-${parent.rescored ? "baseline" : "rescore"}`, expId: parent.expId, split: "dev",
       };
       const specs: EvalSpec[] = [parentSpec];
       for (const c of coded) {
-        if (c.ok && c.code.sha) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "opt", folds: optFolds, scoreRunId: c.runId });
+        if (c.ok && c.code.sha) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "dev", scoreRunId: c.runId });
       }
       const evals = new Map((await invokeEvaluator(`r${round}-eval`, rotate(specs, round))).map((o) => [o.evalId, o]));
       const branches: BranchOutcome[] = coded.map((c) => {
@@ -222,7 +215,7 @@ export const runNight = ccInngest.createFunction(
           review = await step.run(`r${round}-review`, () =>
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: kept.score, parentMetrics: kept.metrics,
-              summaries: decision.summaries, log: [...log], validationGap,
+              summaries: decision.summaries, log: [...log],
               branches: parallelWidth(cfg, round + 1, decision.keep ? 0 : roundsWithoutKeep + 1),
             }),
           );
@@ -255,17 +248,16 @@ export const runNight = ccInngest.createFunction(
       }
       feedback = review.feedback;
       hypotheses = review.hypotheses;
-      validationGap = undefined;
 
       if (decision.keep) {
         const { reason: _, ...k } = decision.keep;
-        kept = { ...k, metricsPath: null, rescored: false, validatedFolds: [] };
+        kept = { ...k, metricsPath: null, rescored: false };
         // Noise floor: on the first night, eval the first kept commit 5× in one evaluator (doubles as its re-score).
         if (!sigmaMeasured) {
           const outcomes = await invokeEvaluator(
             `r${round}-noise`,
             Array.from({ length: NOISE_RUNS }, (_, i) => ({
-              evalId: `${nightId}-r${round}-noise${i}`, expId: kept.expId, split: "opt" as const, folds: optFolds,
+              evalId: `${nightId}-r${round}-noise${i}`, expId: kept.expId, split: "dev" as const,
             })),
           );
           const noise = await step.run(`r${round}-noise`, () => recordNoise({ ...rowBase, kept, outcomes }));
@@ -277,9 +269,9 @@ export const runNight = ccInngest.createFunction(
             noteKept();
           }
         } else if (passesThresholds(kept.metrics ?? {}, cfg.thresholds)) {
-          // The raw (best-of-N) score passes: re-score now, before validation, not alongside a round.
+          // The raw (best-of-N) score passes: re-score now, so the thresholds stop reads an unbiased score.
           const outcome = await invokeOne(`r${round}-rescore-now`, {
-            evalId: `${nightId}-r${round}-rescore-now`, expId: kept.expId, split: "opt", folds: optFolds,
+            evalId: `${nightId}-r${round}-rescore-now`, expId: kept.expId, split: "dev",
           });
           await step.run(`r${round}-rescore-record`, () =>
             recordRows(cfg, [evalRow(rowBase, kept, outcome, { kind: "rescore" })]),
@@ -291,43 +283,13 @@ export const runNight = ccInngest.createFunction(
         }
       }
 
-      // Thresholds pass on the kept commit's re-score → validate on the held-out fold.
-      if (kept.rescored && kept.metrics && passesThresholds(kept.metrics, cfg.thresholds) && !kept.validatedFolds.includes(valFold)) {
-        if (validations >= cfg.max_validations) {
-          stopReason = "max_validations";
-          break;
-        }
-        const outcome = await invokeOne(`val-${validations}`, {
-          evalId: `${nightId}-val${validations}`, expId: kept.expId, split: "val", folds: [valFold],
-        });
-        const v = await step.run(`val-${validations}-check`, () => validateKept({ ...rowBase, kept, outcome }));
-        validations += 1;
-        kept = { ...kept, validatedFolds: [...kept.validatedFolds, valFold] };
-        if (v.ok && !v.overfit) {
-          stopReason = "thresholds";
-          break;
-        }
-        if (validations >= cfg.max_validations) {
-          stopReason = "max_validations";
-          break;
-        }
-        if (v.ok) {
-          // Overfit: the next fold becomes validation; re-score the kept commit on the new optimization folds.
-          valIdx = (valIdx + 1) % init.folds.length;
-          kept = { ...kept, rescored: false };
-          validationGap = v.gap;
-          feedback = `${feedback}\n\nValidation gap (optimization − validation ${cfg.primary_metric}): ${v.gap.toFixed(4)}. The change overfits; prefer changes that generalize.`.trim();
-        }
-      }
+      // Thresholds pass on the kept commit's dev re-score: done.
+      if (kept.rescored && kept.metrics && passesThresholds(kept.metrics, cfg.thresholds)) stopReason = "thresholds";
     }
 
     // After any stop: score the final kept commit on test once, for the report only.
-    const test = await invokeOne("test", { evalId: `${nightId}-test`, expId: kept.expId, split: "test", folds: [] });
-    return step.run("finish", () =>
-      finishNight({
-        cfg, nightId, round, valFold: init.folds[valIdx], kept, test, stopReason, rounds: round, spend, validations,
-      }),
-    );
+    const test = await invokeOne("test", { evalId: `${nightId}-test`, expId: kept.expId, split: "test" });
+    return step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
   },
 );
 

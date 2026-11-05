@@ -40,7 +40,6 @@ export interface ReviewInput {
   results: BranchSummary[];
   log: HypothesisLogEntry[];
   /** Set after an overfit validation: only the gap value, never per-item results. */
-  validationGap?: number;
 }
 
 export interface ReviewOutput {
@@ -97,11 +96,6 @@ export function reviewerPrompt(input: ReviewInput): string {
     );
   }
   lines.push(`Kept commit (parent of the next round): ${input.primaryMetric}=${input.parentScore.toFixed(4)}; metrics: ${fmtMetrics(input.parentMetrics, input)}`);
-  if (input.validationGap !== undefined) {
-    lines.push(
-      `Validation on a held-out fold found overfitting: optimization − validation ${input.primaryMetric} gap = ${input.validationGap.toFixed(4)}. Steer toward changes that generalize.`,
-    );
-  }
   for (const b of input.results) {
     lines.push(
       `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${input.primaryMetric}=${b.primary.toFixed(4)}; metrics: ${fmtMetrics(b.metrics, input)}\nDiff vs parent:\n\`\`\`diff\n${b.diff}\n\`\`\``,

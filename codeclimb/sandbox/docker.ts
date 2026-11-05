@@ -3,7 +3,7 @@
 // kills the whole process tree inside the container, not just the docker CLI.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cloneInto } from "./repo";
+import { cloneInto, uploadPath } from "./repo";
 import type {
   CreateSandboxOptions,
   ExecOptions,
@@ -125,6 +125,7 @@ export class DockerBackend implements SandboxBackend {
     if (r.code !== 0) throw new Error(`docker run failed: ${r.stderr.toString().trim()}`);
     const sandbox = new DockerSandbox(opts.name);
     try {
+      if (opts.specDir) await uploadPath(sandbox, opts.specDir, "/spec");
       if (opts.commit) await cloneInto(sandbox, opts.commit);
     } catch (e) {
       await sandbox.destroy();

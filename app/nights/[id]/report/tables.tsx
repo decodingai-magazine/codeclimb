@@ -79,7 +79,7 @@ export function ExperimentsTable({ night, v, primary, selected, onSelect }: {
   );
 }
 
-const EVAL_LABEL: Record<string, string> = { rescore: "re-score", baseline: "parent baseline", noise: "noise", validation: "validation", test: "test" };
+const EVAL_LABEL: Record<string, string> = { rescore: "re-score", baseline: "parent baseline", noise: "noise", test: "test" };
 
 export function EvalsTable({ nightId, v, primary }: { nightId: string; v: Derived; primary: string }) {
   const extra = v.rows.filter((r) => r.kind !== "experiment");
@@ -95,13 +95,9 @@ export function EvalsTable({ nightId, v, primary }: { nightId: string; v: Derive
               <td className="num">r{r.round}</td>
               <td>{EVAL_LABEL[r.kind] ?? r.kind}</td>
               <td className="mono">{shortId(r.exp_id, nightId)}</td>
-              <td>{r.split}{r.kind === "validation" ? ` · fold ${r.val_fold}` : ""}</td>
+              <td>{r.split}</td>
               <td className="num">{f3(r.metrics[primary])}</td>
-              <td>
-                {r.kind === "validation"
-                  ? r.decision === "keep" ? `no overfit (gap ${f3(r.metrics.gap)})` : r.decision === "revert" ? `overfit (gap ${f3(r.metrics.gap)})` : "error"
-                  : r.decision === "error" ? "error" : "ok"}
-              </td>
+              <td>{r.decision === "error" ? "error" : "ok"}</td>
               <td className="num">{duration(r.wall_s)}</td>
             </tr>
           ))}

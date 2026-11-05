@@ -23,7 +23,7 @@ const step = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
 const tmp = await mkdtemp(join(tmpdir(), "cc-smoke-"));
 const repo = new ExperimentRepo(join(tmp, "experiments.git"));
 await repo.ensure();
-await repo.importDir("scenarios/datenorm/spec/starter", "smoke-r0");
+await repo.importDir("scenarios/datenorm/starter", "smoke-r0");
 const backend = new InngestBackend();
 // No pgrep in the base image.
 const SLEEPS = `n=0; for c in /proc/[0-9]*/comm; do [ "$(cat $c 2>/dev/null)" = sleep ] && n=$((n+1)); done; echo $n`;
@@ -31,7 +31,7 @@ const name = `cc-smoke-inngest-${Date.now()}`;
 
 const commit = await repo.bundle("smoke-r0");
 const sandbox = await step("create (spec + commit)", () =>
-  backend.create({ name, baseline: "autocode-base", specDir: "scenarios/datenorm/spec", commit, labels: { "cc.run": "smoke-run" } }),
+  backend.create({ name, baseline: "codeclimb-python", specDir: "scenarios/datenorm/spec/agent", commit, labels: { "cc.run": "smoke-run" } }),
 );
 try {
   await step("tools", async () => {
@@ -100,7 +100,7 @@ try {
   });
   await step("re-create under the same name gives a new sandbox", async () => {
     const before = await sandbox.instanceId();
-    const again = await backend.create({ name, baseline: "autocode-base" });
+    const again = await backend.create({ name, baseline: "codeclimb-python" });
     assert.notEqual(await again.instanceId(), before);
     assert.equal(await again.isAlive(), true);
   });
