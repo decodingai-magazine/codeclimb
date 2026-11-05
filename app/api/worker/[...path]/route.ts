@@ -1,5 +1,5 @@
 // The browser's only way to the worker: /api/worker/<path> → <worker>/api/<path>,
-// with the worker token added on the server. Basic Auth (proxy.ts) guards it.
+// with the worker token added on the server. The app listens on loopback only.
 import type { NextRequest } from "next/server";
 
 const WORKER = process.env.CODECLIMB_WORKER_URL ?? "http://127.0.0.1:7421";

@@ -26,22 +26,14 @@ INNGEST_DEV=1 npm run dev
 
 Open http://localhost:8288. **Apps** should list `codeclimb` and **Functions** should list `hello-world`.
 
-### Log in
-
-The whole app sits behind HTTP Basic Auth (`proxy.ts`), with one user. Your browser asks for the login once per session.
-
-- Credentials come from `CODECLIMB_USER` and `CODECLIMB_PASSWORD`, which live in `.env.local`.
-- With either variable unset, every request gets 401.
-- `/api/inngest` stays open, because Inngest signs its own requests.
-- To make a new password: `openssl rand -base64 48 | tr '+/' '-_' | tr -d '='`.
-- `curl` needs the login too: `curl -u "$CODECLIMB_USER:$CODECLIMB_PASSWORD" ...`.
+The app has no login. `npm run dev` and `npm run start` listen on `127.0.0.1` only, so only this machine can reach it.
 
 ### Trigger the hello world function
 
 From the app, via `inngest.send()`:
 
 ```bash
-curl -u "$CODECLIMB_USER:$CODECLIMB_PASSWORD" -X POST http://localhost:3000/api/hello -d '{"name": "codeclimb"}'
+curl -X POST http://localhost:3000/api/hello -d '{"name": "codeclimb"}'
 ```
 
 Or from the Dev Server UI: open **Functions**, pick `hello-world`, select **Invoke** and send:
@@ -179,11 +171,11 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 
 ### The app: prepare, watch, stop, export
 
-The Next.js app (`npm run dev`, behind the [login](#log-in)) is the browser front end for a worker. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
+The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, in the Decoding AI design with light and dark themes. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
 - **New run** (`/new`): pick a scenario, read its `SPEC.md` and `METRICS.md` and the dataset's shape (counts per split and fold, never gold), adjust sandbox, models, rounds, deadline, timeouts, budgets and threshold, then start. The worker validates with the CLI's parser and checks the models first.
-- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), **Export** of any committed experiment as a `.tar.gz` or a git bundle with its lineage, and the full report (convergence, families, latency, cost, experiments), reloaded when a result lands.
+- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff, and **Export** downloads it as a `.tar.gz` or a git bundle with its lineage, or gives the CLI command for a folder or git remote.
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
 
@@ -192,7 +184,7 @@ The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) nex
 | `GET /api/scenarios` | Configs in `configs/` with spec, dataset stats, and the sandbox backends this worker can use |
 | `GET /api/nights`, `GET /api/nights/:id` | Night summaries from `runs/*/nights/*` |
 | `GET /api/nights/:id/live` | Summary plus the current round's branches and the exportable experiments |
-| `GET /api/nights/:id/report` | The report page for that night |
+| `GET /api/nights/:id/report` | The night's report data as JSON (`ReportData`), which the app renders |
 | `POST /api/nights` | `{scenario, night_id?, overrides}`: start a night (sends `codeclimb/night.start`) |
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
 | `GET /api/nights/:id/export/:exp?format=tar.gz\|bundle` | Download an experiment |
@@ -291,7 +283,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scripts/worker.ts` | `connect()` worker with its own app id `codeclimb-worker`, which keeps Pi out of the Next bundle |
 | `scripts/run-night.ts` | `run-night --config <yaml>` CLI |
 | `codeclimb/api.ts` | The worker API (and `/v1` metering proxy mount) the app reads |
-| `app/` | The Next.js app: Nights, New run, Live night, and the `/api/worker` proxy |
+| `app/` | The Next.js app: Nights, New run, the night page with its report (`app/nights/[id]/report/`), and the `/api/worker` proxy |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
 | `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |

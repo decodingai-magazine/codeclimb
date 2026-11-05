@@ -1,6 +1,6 @@
 # Plan: CodeClimb on local Inngest and on Inngest Cloud
 
-Status: 2026-10-30. Done: the app login (`proxy.ts`), Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Verified: Cloud nights end to end from the app, with and without metering.
+Status: 2026-10-30. Done: Phase 0 (laptop worker on Cloud), Phase 1 (Inngest Sandboxes backend), Phase 2 (decided: no hosting, see below), and Phase 3 (the app). Verified: Cloud nights end to end from the app, with and without metering.
 
 This plan follows the production design in the vault spec `8 - Projects/CodeClimb/codeclimb-spec-inngest.md`. One codebase runs in two modes, and both stay supported for good. Both run CodeClimb on your machine:
 
@@ -21,7 +21,7 @@ CodeClimb is headless: the worker's API is the interface, and the app is one cli
 | App → worker API | `http://127.0.0.1:7421` | Same |
 | State (`runs/`) | Your disk | Same |
 | Models | Any Pi provider, including Copilot through `~/.pi/agent/auth.json` | Same |
-| Login | Basic Auth (`proxy.ts`), credentials from `.env.local` | Same |
+| Login | None: the app listens on `127.0.0.1` only | Same |
 | Agent tooling | `inngest-dev` MCP (`.mcp.json`) | Inngest Cloud MCP plugin |
 
 The worker runs Pi, `score_cmd` and the proxy in both modes. Inngest, whether the dev server or Cloud, never runs CodeClimb's code: it calls the worker. A coder step holds a Pi session for `timeouts.experiment_min`, so the worker is a long-running process, and your machine must stay on and online until a night ends. If the worker drops off, Inngest Cloud keeps the run and retries the step when it reconnects.
@@ -52,7 +52,6 @@ In dev mode the SDK sends `inngest.sandboxes` calls to the dev server, which run
 - `cancelOn` on every child, plus `run-cancelled-cleanup`, cover the spec's cancel caveats.
 - `codeclimb-worker` (connect) and `codeclimb` (the Next.js app) are separate Inngest apps already.
 - `buildReportData`, `client.js` and `exportExperiment` already produce everything the app shows and exports.
-- The app login is done: `proxy.ts`, see section 6.
 
 ## 3. Findings that shape the work
 
@@ -217,7 +216,7 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 
 ## 6. Access
 
-- **App: done.** HTTP Basic Auth in `proxy.ts`, with one user (`CODECLIMB_USER`) and a 64-character random password (`CODECLIMB_PASSWORD`). It compares in constant time, fails closed when either is unset, and leaves `/api/inngest` open for Inngest's signed calls. The credentials are in `.env.local`.
+- **App.** No login. `next dev` and `next start` bind to `127.0.0.1`, so the app is local-only. (An earlier Basic Auth login was removed: it added nothing for a local app.)
 - **Worker API.** Binds to loopback with no token. Off loopback (`CODECLIMB_API_HOST`), it requires `CODECLIMB_WORKER_TOKEN` on every request.
 - **Proxy.** Per-eval tokens with a budget cap, revoked when the eval ends. In Cloud mode only the proxy's port is tunnelled, never the API's.
 
@@ -243,7 +242,6 @@ Night status combines `done.json` with the Inngest run status, read from the dev
 
 ## 9. Checklist
 
-- [x] App login (`proxy.ts`, `.env.local`)
 - [x] Pro account confirmed
 - [x] Confirm Sandboxes access: create one test sandbox, list its processes (this answers question 5), destroy it
 - [ ] Send the questions to Inngest
