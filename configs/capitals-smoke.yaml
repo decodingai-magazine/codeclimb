@@ -1,6 +1,3 @@
-# Metering smoke night: a tiny scenario whose program calls a model through the
-# metering proxy, so cost metrics are real. Docker sandboxes, Inngest dev server.
-# Build the image first: npm run build:image
 scenario: scenarios/capitals
 sandbox: docker
 max_rounds: 1
@@ -11,13 +8,12 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
 coder_thinking: medium  # off | minimal | low | medium | high
-parallel:              # every model through round step_after, then min
-  decay: step           # step | linear | none (every model, every round)
+parallel:
+  decay: step           # step | linear | none
   step_after: 3
   min: 1
 reviewer_model: github-copilot/claude-haiku-4.5
 reviewer_thinking: high
-# The models the built program may call (through the metering proxy).
 allowed_models: [github-copilot/claude-haiku-4.5]
 primary_metric: accuracy
 thresholds:
@@ -29,5 +25,5 @@ budget_usd:
   experiment: 0.5
   night: 2.0
   eval: 0.1
-  dev: 0.05   # the coder's runs of the program while it develops
+  dev: 0.05
 results_path: runs/capitals-smoke/results.jsonl

@@ -1,10 +1,7 @@
-# Full night: up to 24 rounds × 1 experiment on the datenorm scenario, Docker sandboxes,
-# Inngest dev server. Coders: GitHub Copilot Haiku via Pi; reviewer: a different Haiku.
 scenario: scenarios/datenorm
 sandbox: docker
 max_rounds: 24
-plateau_rounds: 3     # stop after 3 rounds in a row with nothing kept (0 = never)
-# max_tokens: 5000000 # cap on coder + reviewer tokens for the night (omit = no cap)
+plateau_rounds: 3
 deadline: 8h
 timeouts:
   experiment_min: 15
@@ -12,8 +9,8 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
 coder_thinking: medium  # off | minimal | low | medium | high
-parallel:              # every model through round step_after, then min
-  decay: step           # step | linear | none (every model, every round)
+parallel:
+  decay: step           # step | linear | none
   step_after: 3
   min: 1
 reviewer_model: github-copilot/claude-haiku-4.5
