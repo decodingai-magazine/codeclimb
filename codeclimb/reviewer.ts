@@ -10,6 +10,8 @@ import { maskTerms } from "./scenario";
 import type { Metrics } from "./stats";
 
 export interface BranchSummary {
+  /** The coder committed no change: its closing message. */
+  unchanged?: string;
   expId: string;
   model: string;
   hypothesis: string;
@@ -174,6 +176,7 @@ export function reviewerPrompt(input: ReviewInput): string {
     `## Experiment ${b.expId} (${b.model})\nHypothesis: ${b.hypothesis}\n${score(b.primary)}metrics: ${fmtMetrics(b.metrics, input)}` +
       fmtDiagnostics(b.metrics, input) +
       (input.parentMetrics ? `\nChange from the kept commit: ${fmtChange(b.metrics, input.parentMetrics, input)}` : "") +
+      (b.unchanged === undefined ? "" : `\nThe coder committed no change, so nothing was evaluated: these are the checkpoint's scores, and the hypothesis above was not tested in this commit. Judge no result from them. What it reported:\n${b.unchanged}`) +
       (b.guardrails.length ? `\nFailed guardrails${input.override ? " by a tiny margin" : ", can't be kept"}: ${b.guardrails.join("; ")}` : "") +
       (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
       (b.details ? `\nPer-item errors on dev (may be cut off):\n${b.details}` : "") +

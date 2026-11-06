@@ -455,3 +455,36 @@ test("scenario: override_limit is a number >= 0", () => {
   assert.throws(() => parseScenario(`${base}override_limit: -1\n`), /override_limit/);
   assert.throws(() => parseScenario(`${base}override_limit: tiny\n`), /override_limit/);
 });
+
+test("no code change: nothing evaluated, the parent's scores, no infra error, the coder's report read", () => {
+  const parent = parentAt(0.5, { accuracy: 0.5 });
+  const code = { ...coded("c"), unchanged: "Second pass didn't help on train, reverted it." };
+  const d = round(parent, { ok: true, expId: "n-r1-e0", model: "p/a", code, eval: null });
+  assert.deepEqual([d.row.decision, d.row.unchanged, d.row.infra_errors, d.row.metrics], ["revert", true, 0, { accuracy: 0.5 }]);
+  assert.deepEqual([d.candidate, d.summary.primary, d.summary.guardrails, d.summary.errors], [null, 0.5, [], undefined]);
+  assert.deepEqual(validateRow(d.row), []);
+  assert.equal(applyReview(d, true).keep, null);
+  assert.equal(round(parentAt(0, null), { ok: true, expId: "n-r1-e0", model: "p/a", code, eval: null }).row.decision, "revert");
+  const prompt = reviewerPrompt({ ...REVIEW, canKeep: false, result: { ...REVIEW.result, unchanged: code.unchanged } });
+  assert.match(prompt, /committed no change[^]*Second pass didn't help/);
+  assert.doesNotMatch(reviewerPrompt(REVIEW), /committed no change/);
+});
+
+test("sameTree: an empty commit holds the parent's files", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-tree-"));
+  try {
+    const repo = new ExperimentRepo(join(dir, "x.git"));
+    await repo.ensure();
+    const code = join(dir, "code");
+    mkdirSync(code);
+    writeFileSync(join(code, "a.py"), "x = 1\n");
+    await repo.importDir(code, "a");
+    await repo.importDir(code, "same");
+    writeFileSync(join(code, "a.py"), "x = 2\n");
+    await repo.importDir(code, "other");
+    assert.equal(await repo.sameTree("a", "same"), true);
+    assert.equal(await repo.sameTree("a", "other"), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

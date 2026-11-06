@@ -40,6 +40,8 @@ export interface ResultRow {
   night_id: string;
   /** Not in the contract: the evaluator incarnation that ran the eval, and the eval's position in it. */
   evaluator_instance?: string;
+  /** The coder committed no change: nothing was evaluated, and the metrics are the parent's. */
+  unchanged?: boolean;
   /** Kept by the reviewer despite a guardrail it failed by a tiny margin. */
   override?: boolean;
   /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
@@ -93,6 +95,7 @@ export const RESULT_ROW_SCHEMA = {
     night_id: str,
     evaluator_instance: str,
     override: { type: "boolean" },
+    unchanged: { type: "boolean" },
     dev_usd: num,
   },
 } as const;

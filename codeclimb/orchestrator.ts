@@ -257,7 +257,8 @@ function readCodeState(cfg: NightConfig, nightId: string, expId: string): { code
  * gone empty. Against the starter, which has no scores, only an empty stage stops it. A guardrail failed
  * by at most the scenario's `override_limit` still makes it a candidate, as an override. Only the reviewer
  * keeps a candidate (`applyReview`). Anything else is reverted, a failed review included, and the next
- * round starts from the checkpoint again.
+ * round starts from the checkpoint again. An experiment that changed no code was not evaluated: it
+ * reverts with the parent's scores, and the review reads what the coder reported instead.
  */
 export function decideRound(args: RowBase & { parent: Kept; experiment: ExperimentOutcome; hypothesis: string | null }): RoundDecision {
   const { cfg, parent, experiment: x } = args;
@@ -274,11 +275,13 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
   }
   const ev = x.eval;
   const evalOk = !!(x.code.sha && ev?.ok);
-  const metrics = evalOk ? ev!.metrics : { [P]: 0 };
-  const primary = metrics[P] ?? 0;
+  // The same files have the parent's scores: nothing moved, and nothing was run to say otherwise.
+  const unchanged = x.code.unchanged !== undefined;
+  const metrics = unchanged ? (parent.metrics ?? { [P]: 0 }) : evalOk ? ev!.metrics : { [P]: 0 };
+  const primary = unchanged ? parent.score : (metrics[P] ?? 0);
   const failedCheck = x.code.check?.errors ?? [];
   const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
-  const guardrails = !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
+  const guardrails = unchanged ? [] : !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
   const gated = evalOk && passesGates(metrics, cfg.gates);
   const override = gated && !!parent.metrics && tinyRegressions(metrics, parent.metrics, cfg.scenario.headline, cfg.scenario.override_limit ?? 0);
   const candidate = (gated && !guardrails.length) || override ? { expId: x.expId, sha: x.code.sha!, score: primary, metrics } : null;
@@ -288,15 +291,17 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
     ...(x.code.dev_usd ? { dev_usd: x.code.dev_usd } : {}),
     tokens: x.code.tokens,
     wall_s: Math.round((x.code.t_provision + x.code.t_code + x.code.t_teardown + (ev?.wall_s ?? 0)) * 100) / 100,
-    decision: evalOk ? "revert" : "error",
+    decision: evalOk || unchanged ? "revert" : "error",
     t_provision: x.code.t_provision + (ev?.t_provision ?? 0), t_code: x.code.t_code, t_eval: ev?.t_eval ?? 0,
     t_teardown: x.code.t_teardown + (ev?.t_teardown ?? 0),
-    infra_errors: x.code.infra_errors + (ev?.infra_errors ?? 0) + (x.code.sha && !ev && !failedCheck.length ? 1 : 0),
+    infra_errors: x.code.infra_errors + (ev?.infra_errors ?? 0) + (x.code.sha && !ev && !failedCheck.length && !unchanged ? 1 : 0),
     ...(ev ? { evaluator_instance: ev.evaluator_instance } : {}),
+    ...(unchanged ? { unchanged: true } : {}),
   });
   const summary = {
     expId: x.expId, model: x.model, hypothesis: x.code.hypothesis, decision: row.decision, primary, metrics, guardrails,
     ...(errors.length ? { errors } : {}), notes: x.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null,
+    ...(unchanged ? { unchanged: x.code.unchanged } : {}),
   };
   return { row, keep: null, candidate, override, summary, spend: rowSpend(row) };
 }

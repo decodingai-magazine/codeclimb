@@ -213,7 +213,7 @@ export const runNight = ccInngest.createFunction(
       // Then its evaluation on dev, with the coder stopped.
       let experiment: ExperimentOutcome;
       if (coded.ok) {
-        const evaluated = coded.code.sha && !coded.code.check?.errors.length
+        const evaluated = coded.code.sha && !coded.code.check?.errors.length && coded.code.unchanged === undefined
           ? await evaluate(`r${round}-eval`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
           : null;
         experiment = { ok: true, expId, model: cfg.model, code: coded.code, eval: evaluated?.ok ? evaluated.result : null };
@@ -276,12 +276,12 @@ export const runNight = ccInngest.createFunction(
       const entry: HypothesisLogEntry = {
         round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score, ...moved, decision: s.decision,
         // An error's tail names the failure; its head is the command, and coders get it whole.
-        reason: s.errors?.join("; ").slice(-300) ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
+        reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ").slice(-300) ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
       };
       log.push(entry);
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));
       // A rejected commit stays readable to later coders, whatever rejected it.
-      if (!decision.keep && experiment.ok && experiment.code.sha) await step.run(`r${round}-rejected`, () => saveRejected(cfg, nightId, round, parent.expId, expId));
+      if (!decision.keep && experiment.ok && experiment.code.sha && s.unchanged === undefined) await step.run(`r${round}-rejected`, () => saveRejected(cfg, nightId, round, parent.expId, expId));
       feedback = review.feedback;
       failures = await step.run(`r${round}-failures`, () => maskFailures(cfg, s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
       hypothesis = review.hypothesis;

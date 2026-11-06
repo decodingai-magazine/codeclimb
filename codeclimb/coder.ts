@@ -68,6 +68,8 @@ export interface CodeResult {
   resumed: boolean;
   /** The scenario's `check` of the commit; with errors the branch is not evaluated. */
   check?: RepoCheck;
+  /** The commit's files equal its parent's: the coder's closing message, why. Nothing to evaluate. */
+  unchanged?: string;
   /** The models ran out of credits: `sha` is the work so far, for `resume` to go on from. */
   credits?: CreditStop;
 }
@@ -354,7 +356,8 @@ export async function runCoder(
   state.stop = stop;
   save();
 
-  const hypothesis = input.hypothesis || parseApproach(session.getLastAssistantText() ?? "");
+  const closing = session.getLastAssistantText() ?? "";
+  const hypothesis = input.hypothesis || parseApproach(closing);
   session.dispose();
 
   if (stop === "cancelled") {
@@ -364,6 +367,7 @@ export async function runCoder(
 
   const exported = await commitAndExport(sandbox, expRef(input.parentExpId), `${input.expId}: ${hypothesis}\n`);
   const sha = await repo.importBundle(exported.bundle, input.expId);
+  const unchanged = (await repo.sameTree(input.parentExpId, input.expId)) ? { unchanged: closing.trim().slice(0, 1000) || "(no closing message)" } : {};
   const tt = performance.now();
   await sandbox.destroy();
   const t_teardown = secs(performance.now() - tt);
@@ -373,6 +377,7 @@ export async function runCoder(
     error: agentError,
     sha,
     hypothesis,
+    ...unchanged,
     stop,
     coder_usd: state.coderUsd,
     dev_usd: state.devUsd,

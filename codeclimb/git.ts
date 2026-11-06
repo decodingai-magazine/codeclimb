@@ -95,6 +95,11 @@ export class ExperimentRepo {
     }
   }
 
+  /** Whether two experiments hold the same files, whatever their commits say. */
+  async sameTree(a: string, b: string): Promise<boolean> {
+    return (await this.git(["rev-parse", `${expRef(a)}^{tree}`])) === (await this.git(["rev-parse", `${expRef(b)}^{tree}`]));
+  }
+
   async sha(expId: string): Promise<string> {
     return this.git(["rev-parse", expRef(expId)]);
   }
