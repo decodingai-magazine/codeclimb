@@ -100,8 +100,18 @@ export class ExperimentRepo {
   }
 
   /** Unified diff parent → experiment, truncated for the reviewer prompt. */
-  async diff(parentExpId: string, expId: string, maxChars = 12_000): Promise<string> {
+  async diff(parentExpId: string, expId: string, maxChars = 60_000): Promise<string> {
     const d = await this.git(["diff", "--stat", "-p", expRef(parentExpId), expRef(expId)]);
     return d.length > maxChars ? `${d.slice(0, maxChars)}\n... [diff truncated, ${d.length} chars]` : d;
+  }
+
+  /** Every text file of a commit, truncated for the reviewer prompt. */
+  async source(expId: string, maxChars = 60_000): Promise<string> {
+    const ref = expRef(expId);
+    const listed = await this.git(["grep", "-I", "--name-only", "-e", "", ref]).catch(() => "");
+    const paths = listed.split("\n").filter(Boolean).map((l) => l.slice(ref.length + 1));
+    const files = await Promise.all(paths.map(async (p) => `### ${p}\n\`\`\`\n${await this.git(["show", `${ref}:${p}`])}\n\`\`\``));
+    const text = files.join("\n\n");
+    return text.length > maxChars ? `${text.slice(0, maxChars)}\n... [source truncated, ${text.length} chars]` : text;
   }
 }

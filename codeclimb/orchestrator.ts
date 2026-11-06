@@ -15,7 +15,7 @@ import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
 import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
-import { type BranchSummary, type HypothesisLogEntry, runReview, type ReviewOutput } from "./reviewer";
+import { type BranchSummary, type HypothesisLogEntry, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, readProtocol, type RepoCheck } from "./scenario";
 import { beatsParent, cutsMetric, guardrailFailures, type Metrics, passesGates } from "./stats";
 
@@ -196,7 +196,8 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
   });
 }
 
-const MAX_DETAILS_CHARS = 12_000;
+// A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
+const MAX_DETAILS_CHARS = 200_000;
 
 export type KeepReason = "primary" | "efficiency" | "reviewer";
 
@@ -277,7 +278,8 @@ export function decideRound(args: RowBase & {
     const metrics = evalOk ? ev!.metrics : { [P]: 0 };
     const primary = metrics[P] ?? 0;
     const failedCheck = b.code.check?.errors ?? [];
-    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : [...failedCheck, ...(ev?.error ? [ev.error.slice(0, 500)] : [])];
+    const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
+    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : errors;
     const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
     if (evalOk) scored.push({ expId: b.expId, branch: b.branch, primary, metrics, sha: b.code.sha!, eligible, instance: ev!.evaluator_instance });
     branchRows.push(baseRow(args, {
@@ -292,7 +294,7 @@ export function decideRound(args: RowBase & {
       infra_errors: b.code.infra_errors + (ev?.infra_errors ?? 0) + (b.code.sha && !ev && !failedCheck.length ? 1 : 0),
       ...(ev ? { evaluator_instance: ev.evaluator_instance, eval_order: ev.eval_order } : {}),
     }));
-    summaries.push({ expId: b.expId, model: b.model, hypothesis: b.code.hypothesis, decision: evalOk ? "revert" : "error", primary, metrics, guardrails, notes: b.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null });
+    summaries.push({ expId: b.expId, model: b.model, hypothesis: b.code.hypothesis, decision: evalOk ? "revert" : "error", primary, metrics, guardrails, ...(errors.length ? { errors } : {}), notes: b.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null });
   }
 
   const objectives = efficiencyMetrics(cfg);
@@ -356,14 +358,23 @@ export function applyReview(d: RoundDecision, keepId: string | null): RoundDecis
   };
 }
 
-/** Per-item errors of a branch's dev eval, per stage, capped: what `details` in a stage report holds. */
+/** `details` as text, at most `maxChars`: past that every item keeps an equal share, so no item crowds out the rest. */
+export function spreadDetails(details: unknown, maxChars: number): string {
+  const whole = JSON.stringify(details);
+  if (whole.length <= maxChars || typeof details !== "object" || details === null) return whole.slice(0, maxChars);
+  const items = Object.entries(details);
+  const share = Math.floor(maxChars / items.length);
+  return items.map(([k, v]) => `${k}: ${JSON.stringify(v).slice(0, share)}`).join("\n");
+}
+
+/** Per-item errors of a branch's dev eval, per stage: what `details` in a stage report holds. */
 function readDetails(cfg: NightConfig, metricsPath: string | null): string {
   if (!metricsPath) return "";
   const parts = cfg.scenario.stages.flatMap((stage) => {
     const file = join(dirname(metricsPath), stage.name, "report.json");
     if (!stage.details || !existsSync(file)) return [];
     const { details } = JSON.parse(readFileSync(file, "utf8")) as { details?: unknown };
-    return details === undefined ? [] : [`### ${stage.name}\n${JSON.stringify(details).slice(0, MAX_DETAILS_CHARS)}`];
+    return details === undefined ? [] : [`### ${stage.name}\n${spreadDetails(details, MAX_DETAILS_CHARS)}`];
   });
   return parts.join("\n\n");
 }
@@ -391,7 +402,7 @@ export async function reviewRound(args: {
     const diff = await repo.diff(args.parentExpId, s.expId).catch(() => "(no commit)");
     results.push({ ...s, diff, details: readDetails(args.cfg, metricsPath) });
   }
-  const review = await runReview({
+  const input: ReviewInput = {
     model: args.cfg.reviewer_model,
     thinkingLevel: args.cfg.reviewer_thinking,
     mock: args.cfg.mock,
@@ -414,10 +425,15 @@ export async function reviewRound(args: {
     candidates: args.candidates,
     mechanicalKeep: args.mechanicalKeep,
     headline: Object.keys(args.cfg.scenario.headline),
+    diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),
-  });
-  const file = nightPaths(args.cfg, args.nightId).reviewJson(args.round);
+    parentSource: await repo.source(args.parentExpId),
+  };
+  const paths = nightPaths(args.cfg, args.nightId);
+  const file = paths.reviewJson(args.round);
   mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(paths.reviewPrompt(args.round), reviewerPrompt(input)); // before the call, so a failed review leaves it too
+  const review = await runReview(input);
   writeFileSync(file, JSON.stringify({ round: args.round, model: args.cfg.reviewer_model, ...review }, null, 2));
   return review;
 }

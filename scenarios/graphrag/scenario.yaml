@@ -22,6 +22,15 @@ headline:
   retrieval.by_kind.temporal.metrics.r_precision.mean: ci95
   retrieval.by_kind.intersection.metrics.answer_mrr.mean: ci95
   retrieval.by_kind.unanswerable.metrics.abstained.mean: ci95
+# What the reviewer reads to explain the headlines: precision against recall, what a do-nothing graph
+# scores, and how much each query returned. The confusion-matrix cells and sample sizes stay out.
+diagnostics:
+  - '^extraction\.mentions\.(precision|recall)$'
+  - '^extraction\.relations\.directed\.(precision|recall)$'
+  - '^extraction\.relations\.unresolved_ends$'
+  - '^extraction\.type_accuracy\.accuracy$'
+  - '^graph\.baselines\.history_only\.(precision|recall)$'
+  - '^retrieval\.by_kind\.[^.]+\.metrics\.(subgraph_precision|node_precision|edge_precision|returned_nodes|returned_edges|returned_docs)\.mean$'
 stages:
   - name: extraction
     inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}

@@ -28,6 +28,8 @@ import type { Sandbox } from "./sandbox/types";
 import { traceSession } from "./tracing";
 import type { RepoCheck } from "./scenario";
 
+export type EvalFailure = { expId: string; errors: string[] };
+
 export type ExperimentInput = {
   nightId: string;
   expId: string;
@@ -37,6 +39,8 @@ export type ExperimentInput = {
   model: string;
   /** Reviewer feedback from earlier rounds; empty in round 1. */
   feedback: string;
+  /** The last round's branches that were never scored, with their errors unedited. */
+  failures?: EvalFailure[];
   /** Reviewer's hypothesis for this branch; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
   config: NightConfig;
@@ -106,13 +110,17 @@ export function coderPrompt(
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
   dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number; openNetwork?: boolean },
   evalMin?: number,
+  failures: EvalFailure[] = [],
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
-      "If /spec/train/examples.jsonl exists, it holds the train items with their answers: the only labeled data you may read, and the only source for few-shot examples.",
+      "If /spec/train exists, it holds the train items with their answers: the only labeled data you may read, and the only source for few-shot examples.",
     `<spec>\n${spec}\n</spec>`,
   ];
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
+  if (failures.length) {
+    parts.push(`<failures>\nThese branches failed before they were scored. Their code is gone, but your code can fail the same way. The errors, unedited:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
+  }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
   parts.push(
     [
@@ -306,7 +314,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures),
       );
     } else {
       stop = "timeout";

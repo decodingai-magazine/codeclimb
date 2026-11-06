@@ -23,6 +23,8 @@ export function nightPaths(cfg: NightConfig, nightId: string) {
     evalDir: (evalId: string) => join(nightDir, "evals", evalId),
     /** The reviewer's feedback and next-round hypotheses, kept for the report. */
     reviewJson: (round: number) => join(nightDir, "reviews", `r${round}.json`),
+    /** What the reviewer read that round. */
+    reviewPrompt: (round: number) => join(nightDir, "reviews", `r${round}.prompt.md`),
     report: join(root, "report.html"),
   };
 }

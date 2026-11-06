@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { coderPrompt, parseApproach } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { applyReview, checkStop, decideRound, type Kept, rotate } from "./orchestrator";
+import { applyReview, checkStop, decideRound, type Kept, rotate, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt } from "./reviewer";
 import { flattenReport, parseScenario, readProtocol } from "./scenario";
@@ -52,6 +52,8 @@ test("scenario: headline, sandboxes, protocol, flattened reports", () => {
   const base = "name: s\nimage: i\nbundle: b\nstages:\n  - { name: a, inputs: i, run: r, score: s, details: d }\n";
   assert.equal(parseScenario(`${base}check: c --repo {repo}\n`).check, "c --repo {repo}");
   assert.equal(parseScenario(base).check, undefined);
+  assert.deepEqual(parseScenario(`${base}diagnostics: ["^a$"]\n`).diagnostics, ["^a$"]);
+  assert.throws(() => parseScenario(`${base}diagnostics: ["("]\n`), /Invalid regular expression/);
   const s = parseScenario(`${base}headline: { a.mean: ci95, b: 0.1 }\neval_sandboxes: per_candidate\nprotocol: [x.md]\n`);
   assert.deepEqual([s.headline, s.eval_sandboxes, s.protocol, s.stages[0].details], [{ "a.mean": "ci95", b: 0.1 }, "per_candidate", ["x.md"], "d"]);
   assert.deepEqual([parseScenario(base).headline, parseScenario(base).eval_sandboxes], [{}, "shared"]);
@@ -172,6 +174,15 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   });
   assert.equal(none.keep, null);
 
+  const long = `evaluate failed: ${"x".repeat(1500)}`; // a failed evaluation reaches the next coders whole
+  const unscored = decideRound({
+    cfg, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null],
+    branches: [{ ok: true, expId: "x", branch: 0, model: "p/a", code: code("c"), eval: { ...ev(0), ok: false, error: long } }],
+  });
+  assert.deepEqual(unscored.summaries[0].errors, [long]);
+  assert.deepEqual(unscored.summaries[0].guardrails, [long]);
+  assert.equal(d.summaries[1].errors, undefined);
+
   // An already re-scored parent's run in the evaluator is a baseline row: recorded, its score unchanged.
   const withBaseline = decideRound({
     cfg, nightId: "n", round: 2, parent, rescore: null, hypotheses: [null],
@@ -261,13 +272,13 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
 test("the reviewer reads a branch against the kept commit's repeated runs", () => {
   const input = {
     model: "m", thinkingLevel: "low" as const, spec: "s", round: 3, branches: 1, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7 },
-    objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: ["b"], mechanicalKeep: null, headline: ["e.f1", "r.x.mean", "gone"], protocol: "",
+    objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: ["b"], mechanicalKeep: "b", headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
   };
   const prompt = reviewerPrompt({ ...input, parentRuns: [{ "e.f1": 0.74, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }, { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }] });
   assert.match(prompt, /- e\.f1: 0\.7400, 0\.7000 \(spread 0\.0400\)/);
   assert.match(prompt, /- r\.x\.mean: 0\.5000, 0\.5000 \(spread 0\), ci95 ±0\.1000/);
   assert.doesNotMatch(prompt, /- gone/);
-  assert.match(prompt, /headline metrics count equally: e\.f1 only names/);
+  assert.match(prompt, /headline metrics count equally: e\.f1, r\.x\.mean, gone\./);
   assert.doesNotMatch(reviewerPrompt({ ...input, parentRuns: [] }), /## Noise/);
   const branch = (metrics: Record<string, number>) => ({ expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics, guardrails: [], notes: [], diff: "", details: "" });
   const runs = [{ "e.f1": 0.74 }, { "e.f1": 0.7 }]; // spread 0.04: anything in 0.66-0.78 is noise
@@ -275,6 +286,42 @@ test("the reviewer reads a branch against the kept commit's repeated runs", () =
   assert.match(reviewerPrompt({ ...input, parentRuns: runs, results: [branch({ "e.f1": 0.79 })] }), /Moved past noise: e\.f1=0\.7900 \(above 0\.7000–0\.7400\)/);
   assert.match(reviewerPrompt({ ...input, parentRuns: runs, results: [branch({ "e.f1": 0.6 })] }), /Moved past noise: e\.f1=0\.6000 \(below/);
   assert.doesNotMatch(reviewerPrompt({ ...input, headline: [], parentRuns: [] }), /count equally/);
+
+  // Diagnostics sit under the metrics, skip the cells nobody listed, and never enter the moved list.
+  const diagnosed = reviewerPrompt({ ...input, parentRuns: [], results: [branch({ "e.f1": 0.7, "e.precision": 0.6, "e.recall": 0.9, "e.tp": 5 })] });
+  assert.match(diagnosed, /metrics: e\.f1=0\.7000\nDiagnostics: e\.precision=0\.6000, e\.recall=0\.9000\n/);
+  assert.doesNotMatch(diagnosed, /e\.tp/);
+
+  // With headline metrics nothing frames the round as one number.
+  const framed = (headline: string[]) => reviewerPrompt({ ...input, headline, parentRuns: [], results: [{ ...branch({ "e.f1": 0.7 }), primary: 0.7 }] });
+  for (const framing of [/Primary metric/, /e\.f1=0\.7000; metrics/, /mechanical rule/]) {
+    assert.doesNotMatch(framed(["e.f1"]), framing);
+    assert.match(framed([]), framing);
+  }
+
+  // The log says what moved and why it went, and that reverted code is gone.
+  const entry = { round: 1, hypothesis: "h1", deltaPrimary: -0.1, decision: "revert", reason: "r.x fell" };
+  const logged = reviewerPrompt({ ...input, parentRuns: [], log: [{ ...entry, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }] });
+  assert.match(logged, /- r1: h1 → Δe\.f1=-0\.1000, Δr\.x\.mean=\+0\.2000 \(revert: r\.x fell\)/);
+  assert.match(logged, /A reverted branch's code is gone/);
+  assert.match(reviewerPrompt({ ...input, headline: [], parentRuns: [], log: [entry] }), /- r1: h1 → Δe\.f1=-0\.1000 \(revert/);
+  assert.match(reviewerPrompt({ ...input, parentRuns: [], log: [entry] }), /- r1: h1 → no metric moved/);
+
+  assert.match(reviewerPrompt({ ...input, parentRuns: [], parentSource: "### a.py" }), /## Kept commit source\n.*\n### a\.py/);
+});
+
+test("over the cap every detail item keeps a share", () => {
+  const details = { a: "x".repeat(1000), b: "y".repeat(1000), c: "z" };
+  assert.equal(spreadDetails({ a: 1 }, 100), '{"a":1}');
+  const spread = spreadDetails(details, 300);
+  assert.match(spread, /^a: "x{99}\nb: "y{99}\nc: "z"$/);
+});
+
+test("the coders read a failed evaluation's error unedited", () => {
+  const error = "cmd failed: row 3: extra field `doc_uri`\nTraceback";
+  const prompt = coderPrompt("s", "", null, 10, undefined, undefined, undefined, [{ expId: "n-r1-e1", errors: [error] }]);
+  assert.ok(prompt.includes(`- n-r1-e1: ${error}`));
+  assert.doesNotMatch(coderPrompt("s", "", null, 10), /<failures>/);
 });
 
 test("the reviewer's keep replaces the mechanical one, among candidates only", () => {

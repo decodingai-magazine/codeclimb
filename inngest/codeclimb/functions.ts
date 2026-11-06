@@ -7,7 +7,7 @@
 import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
-import { type ExperimentInput, runCoder } from "../../codeclimb/coder";
+import { type EvalFailure, type ExperimentInput, runCoder } from "../../codeclimb/coder";
 import { efficiencyMetrics, evalMinutes, parallelWidth, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
@@ -196,6 +196,7 @@ export const runNight = ccInngest.createFunction(
       if (kept.rescored) bestPrimary = Math.max(bestPrimary, kept.score);
     };
     let feedback = "";
+    let failures: EvalFailure[] = [];
     let hypotheses: (string | null)[] = Array(B).fill(null);
     const log: HypothesisLogEntry[] = [];
     const roundSpends: number[] = [];
@@ -226,7 +227,7 @@ export const runNight = ccInngest.createFunction(
         const expId = `${nightId}-r${round}-e${b}`;
         const data: ExperimentEvent = {
           nightId, expId, parentExpId: parent.expId, round, branch: b, model,
-          feedback, hypothesis: hypotheses[b] ?? null, config: cfg, ...(resume ? { resume: true } : {}),
+          feedback, failures, hypothesis: hypotheses[b] ?? null, config: cfg, ...(resume ? { resume: true } : {}),
         };
         return step.invoke(`r${round}-e${b}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
           (out) => ({ ok: true as const, expId, branch: b, model, code: out.code, runId: out.runId }),
@@ -271,7 +272,7 @@ export const runNight = ccInngest.createFunction(
 
       // Review: what to keep, feedback, and one hypothesis per experiment of the next round. After the
       // last round with no candidate there is nothing to ask.
-      let review = { feedback, hypotheses: hypotheses.map((h) => h ?? ""), reviewer_usd: 0, t_review: 0, tokens: 0 };
+      let review = { keep_reason: "", feedback, hypotheses: hypotheses.map((h) => h ?? ""), reviewer_usd: 0, t_review: 0, tokens: 0 };
       let decision = mechanical;
       if (round < cfg.max_rounds || mechanical.candidates.length) {
         const nextWidth = round < cfg.max_rounds ? parallelWidth(cfg, round + 1) : 0;
@@ -318,13 +319,18 @@ export const runNight = ccInngest.createFunction(
       roundsWithoutKeep = decision.keep ? 0 : roundsWithoutKeep + 1;
       for (const s of decision.summaries) {
         const deltas = Object.fromEntries(
-          efficiencyMetrics(cfg).flatMap((m) =>
-            typeof s.metrics[m] === "number" && typeof decision.parentRun?.[m] === "number" ? [[m, s.metrics[m] - decision.parentRun[m]]] : [],
+          [...efficiencyMetrics(cfg), ...Object.keys(cfg.scenario.headline)].flatMap((m) =>
+            s.decision !== "error" && typeof s.metrics[m] === "number" && typeof decision.parentRun?.[m] === "number" ? [[m, s.metrics[m] - decision.parentRun[m]]] : [],
           ),
         );
-        log.push({ round, hypothesis: s.hypothesis, deltaPrimary: s.primary - (decision.parentRun?.[cfg.primary_metric] ?? parent.score), deltas, decision: s.decision });
+        log.push({
+          round, hypothesis: s.hypothesis, deltaPrimary: s.primary - (decision.parentRun?.[cfg.primary_metric] ?? parent.score), deltas, decision: s.decision,
+          // An error's tail names the failure; its head is the command, and coders get it whole.
+          reason: s.errors?.join("; ").slice(-300) ?? (s.guardrails.join("; ") || review.keep_reason),
+        });
       }
       feedback = review.feedback;
+      failures = decision.summaries.flatMap((s) => (s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
       hypotheses = review.hypotheses;
 
       if (decision.keep) {

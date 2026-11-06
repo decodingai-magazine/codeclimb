@@ -17,6 +17,8 @@ export interface BranchSummary {
   metrics: Metrics;
   /** Why it can't be kept: headline regressions, a stage gone empty. */
   guardrails: string[];
+  /** Why it was never scored, unedited: what the next coders read. */
+  errors?: string[];
   /** The scenario's check of the branch: not failures, but what to weigh. */
   notes: string[];
   diff: string;
@@ -28,9 +30,11 @@ export interface HypothesisLogEntry {
   round: number;
   hypothesis: string;
   deltaPrimary: number;
-  /** Change of each optimized standard metric vs the parent's run in the same evaluator. */
+  /** Change of each headline and optimized standard metric vs the parent's run in the same evaluator. */
   deltas?: Metrics;
   decision: string;
+  /** The guardrails it failed, else the reviewer's reason for the round. */
+  reason?: string;
 }
 
 export interface ReviewInput {
@@ -56,10 +60,14 @@ export interface ReviewInput {
   candidates: string[];
   /** What the mechanical rule would keep; a hint, not a verdict. */
   mechanicalKeep: string | null;
-  /** The scenario's headline metrics; when set, the prompt shows only these, the thresholds and the gates. */
+  /** The scenario's headline metrics; when set, these decide the keep and no single metric frames the prompt. */
   headline: string[];
+  /** Regexes of the metrics that explain the headlines without deciding the keep. */
+  diagnostics: string[];
   /** The scenario's evaluation protocol, how to read its metrics. */
   protocol: string;
+  /** The kept commit's source, which the branches' diffs apply to. */
+  parentSource: string;
 }
 
 export interface ReviewOutput {
@@ -73,13 +81,13 @@ export interface ReviewOutput {
   tokens: number;
 }
 
-const SYSTEM_PROMPT = `You review experiments in an automated research loop. Coding agents change a program to raise a primary metric on hidden evaluation data. Each round, several branches start from the same kept commit, each testing one hypothesis.
+const SYSTEM_PROMPT = `You review experiments in an automated research loop. Coding agents change a program to raise its metrics on hidden evaluation data. Each round, several branches start from the same kept commit, each testing one hypothesis.
 
-You receive the program's specification, each branch's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the candidates that may be kept, and the log of earlier hypotheses with their effect. Write:
+You receive the program's specification, the kept commit's source, each branch's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the candidates that may be kept, and the log of earlier hypotheses with their effect. Find why each metric falls short by reading the errors against the code. Write:
 1. keep: the id of the one candidate to keep as the next round's parent, or null to stay on the parent. Weigh every metric, not one number, and read each against the kept commit's own repeated runs: a branch inside their range neither gained nor lost. A metric that clears that range by a wide margin, with the others inside it, is a gain, whichever metric it is. Each branch lists the metrics that moved past noise: with none listed there is no gain, and being the best branch doesn't make one, so keep null when no branch has one. A gain in one metric bought by a loss in another is no gain, a change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. Follow the evaluation protocol if one is given.
 2. keep_reason: one or two sentences saying why.
-3. feedback: concise guidance for the next round (what worked, what regressed, which metric families are weakest). Base it on the data; do not invent failures you cannot see.
-4. hypotheses: exactly N distinct, concrete, testable hypotheses, one per branch. Each is one or two sentences naming the change to make. Make them different from each other and from hypotheses that already failed.
+3. feedback: concise guidance for the next round (what worked, what regressed, which metric families are weakest). Base it on the data; do not invent failures you cannot see. Coders also get each failed evaluation's error unedited, so don't retype it.
+4. hypotheses: exactly N distinct, concrete, testable hypotheses, one per branch. Each is one or two sentences naming the change to make. Make them different from each other and from hypotheses that already failed. Coders start from the kept commit and can't read a reverted branch's code, so a hypothesis that reuses reverted work must describe all of it.
 
 The specification may leave interpretation choices open on purpose (which year a date without one means, which of two dates counts, how loose matching may be). A family stuck at partial accuracy often means the evaluation uses a different reading: propose the alternative readings as hypotheses on separate branches, so one round's metrics tell which one is right.
 
@@ -104,9 +112,16 @@ function fmtMetrics(m: Metrics | null, input: Pick<ReviewInput, "objectives" | "
     .join(", ");
 }
 
-function fmtDeltas(d: Metrics | undefined): string {
-  const parts = Object.entries(d ?? {}).map(([k, v]) => `Δ${k}=${v > 0 ? "+" : ""}${fmtNum(v)}`);
-  return parts.length ? `, ${parts.join(", ")}` : "";
+/** The metrics that explain the shown ones, one line under them; none, no line. */
+function fmtDiagnostics(m: Metrics | null, input: ReviewInput): string {
+  const patterns = input.diagnostics.map((p) => new RegExp(p));
+  const shown = Object.entries(m ?? {}).filter(([k]) => !shownMetric(k, input) && patterns.some((p) => p.test(k)));
+  return shown.length ? `\nDiagnostics: ${shown.map(([k, v]) => `${k}=${fmtNum(v)}`).join(", ")}` : "";
+}
+
+/** The metrics that moved at all; the noise of that round is gone, so read small ones with care. */
+function fmtDeltas(d: Metrics | undefined): string[] {
+  return Object.entries(d ?? {}).flatMap(([k, v]) => (v ? [`Δ${k}=${v > 0 ? "+" : ""}${fmtNum(v)}`] : []));
 }
 
 /** Each metric that decides the keep, across the kept commit's runs, with its sampling interval where it has one. */
@@ -136,25 +151,31 @@ function fmtMoved(m: Metrics, input: ReviewInput): string {
 }
 
 export function reviewerPrompt(input: ReviewInput): string {
+  const headlined = input.headline.length > 0;
+  // With headline metrics no one metric frames the round: the primary only names the score in charts.
+  const goal = headlined ? "the headline metrics" : input.primaryMetric;
+  const score = (v: number) => (headlined ? "" : `${input.primaryMetric}=${v.toFixed(4)}; `);
   const lines = [
     `<spec>\n${input.spec}\n</spec>`,
     ...(input.protocol ? [`<protocol>\n${input.protocol}\n</protocol>`] : []),
-    `Round ${input.round} finished. Primary metric: ${input.primaryMetric}. Thresholds: ${JSON.stringify(input.thresholds)}. Gates (caps): ${JSON.stringify(input.gates)}.`,
+    `Round ${input.round} finished. ${headlined ? `The headline metrics count equally: ${input.headline.join(", ")}.` : `Primary metric: ${input.primaryMetric}.`} Thresholds: ${JSON.stringify(input.thresholds)}. Gates (caps): ${JSON.stringify(input.gates)}.`,
   ];
-  if (input.headline.length) lines.push(`The headline metrics count equally: ${input.primaryMetric} only names the score in charts and logs.`);
+  if (input.diagnostics.length) lines.push("Diagnostics explain the metrics, by what a run returned and what the simplest baseline scores. They are never a gain by themselves.");
   if (input.objectives.length) {
     lines.push(
-      `Also optimized, lower is better: ${input.objectives.join(", ")}. Of branches tied on ${input.primaryMetric}, prefer the cheaper, then faster one; ` +
-        `when no branch raises ${input.primaryMetric}, a branch that keeps it and cuts one of these by more than ${Math.round(input.minEfficiencyGain * 100)}% is worth keeping. ` +
-        `Correctness comes first: propose efficiency hypotheses when ${input.primaryMetric} has stalled or alongside accuracy ones.`,
+      `Also optimized, lower is better: ${input.objectives.join(", ")}. Of branches tied on ${goal}, prefer the cheaper, then faster one; ` +
+        `when no branch raises ${goal}, a branch that keeps ${goal} and cuts one of these by more than ${Math.round(input.minEfficiencyGain * 100)}% is worth keeping. ` +
+        `Correctness comes first: propose efficiency hypotheses when ${goal} stalled or alongside accuracy ones.`,
     );
   }
-  lines.push(`Kept commit (parent of the next round), this round's run: ${input.primaryMetric}=${input.parentScore.toFixed(4)}; metrics: ${fmtMetrics(input.parentMetrics, input)}`);
+  lines.push(`Kept commit (parent of the next round), this round's run: ${score(input.parentScore)}metrics: ${fmtMetrics(input.parentMetrics, input)}${fmtDiagnostics(input.parentMetrics, input)}`);
   const noise = fmtNoise(input);
   if (noise) lines.push(noise);
+  if (input.parentSource) lines.push(`## Kept commit source\nEvery branch's diff applies to this.\n${input.parentSource}`);
   for (const b of input.results) {
     lines.push(
-      `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${input.primaryMetric}=${b.primary.toFixed(4)}; metrics: ${fmtMetrics(b.metrics, input)}` +
+      `## Branch ${b.expId} (${b.model}) → ${b.decision}\nHypothesis: ${b.hypothesis}\n${score(b.primary)}metrics: ${fmtMetrics(b.metrics, input)}` +
+        fmtDiagnostics(b.metrics, input) +
         (input.parentRuns.length ? `\nMoved past noise: ${fmtMoved(b.metrics, input)}` : "") +
         (b.guardrails.length ? `\nFailed guardrails, can't be kept: ${b.guardrails.join("; ")}` : "") +
         (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
@@ -163,14 +184,18 @@ export function reviewerPrompt(input: ReviewInput): string {
     );
   }
   if (input.log.length) {
+    const logged = (l: HypothesisLogEntry) => {
+      const moved = [...(headlined ? [] : [`Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}`]), ...fmtDeltas(l.deltas)];
+      return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || "no metric moved"} (${l.decision}${l.reason ? `: ${l.reason}` : ""})`;
+    };
     lines.push(
-      "## Hypothesis log (all rounds)\n" +
-        input.log.map((l) => `- r${l.round}: ${l.hypothesis} → Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}${fmtDeltas(l.deltas)} (${l.decision})`).join("\n"),
+      "## Hypothesis log (all rounds)\nEach Δ is against the kept commit's run in that round. A reverted branch's code is gone: coders start from the kept commit and can't read it.\n" +
+        input.log.map(logged).join("\n"),
     );
   }
   lines.push(
     input.candidates.length
-      ? `Candidates you may keep: ${input.candidates.join(", ")}. The mechanical rule, which reads ${input.primaryMetric} alone, would keep: ${input.mechanicalKeep ?? "nothing"}.`
+      ? `Candidates you may keep: ${input.candidates.join(", ")}.${headlined ? "" : ` The mechanical rule, which reads ${input.primaryMetric} alone, would keep: ${input.mechanicalKeep ?? "nothing"}.`}`
       : `No branch can be kept this round: keep must be null.`,
   );
   lines.push(`Return JSON with keep, keep_reason, feedback and exactly ${input.branches} hypotheses.`);
