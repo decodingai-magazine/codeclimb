@@ -259,7 +259,7 @@ function heatColumns(nightId: string, v: Derived, mode: "lineage" | "all"): Heat
   for (const l of v.lineage) {
     if (l.exp && !seen.has(l.exp.exp_id)) {
       seen.add(l.exp.exp_id);
-      cols.push({ key: l.exp.exp_id, label: `r${l.round}`, sub: `b${branchOf(l.exp.exp_id)}`, row: l.exp });
+      cols.push({ key: l.exp.exp_id, label: `r${l.round}`, sub: `e${branchOf(l.exp.exp_id)}`, row: l.exp });
     }
   }
   if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });

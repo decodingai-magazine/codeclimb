@@ -41,7 +41,7 @@ export interface Sandbox {
 }
 
 export interface CreateSandboxOptions {
-  /** Unique, deterministic name, e.g. `cc-<night>-r2-b1`. Reused to find a live sandbox on retry. */
+  /** Unique, deterministic name, e.g. `cc-<night>-r2-e1`. Reused to find a live sandbox on retry. */
   name: string;
   /** Baseline environment (Docker image / Inngest custom image). */
   baseline: string;

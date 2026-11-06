@@ -1,4 +1,4 @@
-# Four rounds of three branches of graphrag on Inngest Cloud and Inngest Sandboxes: npm run worker:cloud, npm run tunnel, then
+# Four rounds of graphrag, two experiments per round through round 3, then one, on Inngest Cloud and Inngest Sandboxes: npm run worker:cloud, npm run tunnel, then
 # npm run run-night:cloud -- --config configs/graphrag-cloud-long.yaml. eval_min × 3 stages stays under the 50-minute cap.
 # All three stages are scored on dev every round; the reviewer picks the keep from the branches that pass
 # the scenario's headline guardrails. `primary_metric` only names the score in charts and logs.
@@ -12,7 +12,10 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
-  - github-copilot/claude-haiku-5.5
+parallel:              # every model through round step_after, then min
+  decay: step           # step | linear | none (every model, every round)
+  step_after: 3
+  min: 1
 reviewer_model: github-copilot/claude-sonnet-5
 # The models the program may call, through the metering proxy.
 allowed_models:

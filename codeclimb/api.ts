@@ -84,7 +84,7 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   const stop = readJson<{ at: string; reason: string }>(join(dir, "stop.json"));
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === night.night_id);
   const exps = existsSync(join(dir, "exps")) ? readdirSync(join(dir, "exps")) : [];
-  const round = Math.max(0, ...exps.map((e) => Number(/-r(\d+)-b\d+$/.exec(e)?.[1] ?? 0)));
+  const round = Math.max(0, ...exps.map((e) => Number(/-r(\d+)-e\d+$/.exec(e)?.[1] ?? 0)));
   const kept = rows.filter((r) => r.kind === "experiment" && r.decision === "keep").at(-1);
   const status = done ? "finished" : stop ? "stopped" : Date.now() - lastActivity(dir) > STALE_MS ? "stale" : "running";
   return {
@@ -103,11 +103,8 @@ function live(n: ReturnType<typeof findNight>) {
   const s = summary(n);
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === n.night.night_id);
   const running = s.round > 0 && s.status === "running";
-  // The round's width, from the finished rounds before it (same rule as the night loop).
-  let stalled = 0;
-  for (let r = s.round - 1; r >= 1 && !rows.some((x) => x.kind === "experiment" && x.round === r && x.decision === "keep"); r--) stalled++;
-  const branches = (running ? cfg.models.slice(0, parallelWidth(cfg, s.round, stalled)) : []).map((model, b) => {
-    const expId = `${n.night.night_id}-r${s.round}-b${b}`;
+  const branches = (running ? cfg.models.slice(0, parallelWidth(cfg, s.round)) : []).map((model, b) => {
+    const expId = `${n.night.night_id}-r${s.round}-e${b}`;
     const state = readJson<CodeState>(join(n.dir, "exps", expId, "code-state.json"));
     const row = rows.find((r) => r.exp_id === expId && r.kind === "experiment");
     const phase = row ? "evaluated" : !state ? "starting" : state.finishedAt ? "waiting for eval" : "coding";

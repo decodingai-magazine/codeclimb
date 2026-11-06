@@ -63,7 +63,7 @@
     return (v / 3600).toFixed(1) + " h";
   };
   const branchOf = (id) => {
-    const m = /-b(\d+)$/.exec(id);
+    const m = /-e(\d+)$/.exec(id);
     return m ? Number(m[1]) : 0;
   };
   const shortId = (id, night) => id.replace(night + "-", "");
@@ -313,7 +313,7 @@
     if (state.heat === "all") return v.exps.filter((e) => e.decision !== "error").map((e) => ({ key: e.exp_id, label: shortId(e.exp_id, night.id), sub: e.decision, row: e }));
     const cols = [];
     const seen = new Set();
-    for (const l of v.lineage) if (l.exp && !seen.has(l.exp.exp_id)) { seen.add(l.exp.exp_id); cols.push({ key: l.exp.exp_id, label: "r" + l.round, sub: "b" + branchOf(l.exp.exp_id), row: l.exp }); }
+    for (const l of v.lineage) if (l.exp && !seen.has(l.exp.exp_id)) { seen.add(l.exp.exp_id); cols.push({ key: l.exp.exp_id, label: "r" + l.round, sub: "e" + branchOf(l.exp.exp_id), row: l.exp }); }
     if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });
     return cols;
   }

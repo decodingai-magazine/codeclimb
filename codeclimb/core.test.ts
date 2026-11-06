@@ -125,22 +125,22 @@ test("token cap and plateau stops", () => {
   assert.throws(() => parseConfig(`${BASE_YAML}plateau_rounds: -1\n`, ROOT), /plateau_rounds/);
 });
 
-test("parallel width decays from every model to min, and widens again after a stall", () => {
-  assert.deepEqual(cfg.parallel, { decay: "linear", min: 1, widen_after: 1 });
-  const c = { ...cfg, models: ["p/a", "p/a", "p/a", "p/b"], max_rounds: 10 };
-  const widths = Array.from({ length: 10 }, (_, i) => parallelWidth(c, i + 1, 0));
-  assert.deepEqual(widths, [4, 4, 3, 3, 3, 2, 2, 2, 1, 1]);
-  assert.equal(parallelWidth(c, 9, 1), 4); // nothing kept last round: explore again
-  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, widen_after: 2 } }, 9, 1), 1);
-  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, widen_after: 0 } }, 9, 5), 1);
-  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, min: 2 } }, 10, 0), 2);
-  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, decay: "none" } }, 10, 0), 4);
-  assert.equal(parallelWidth({ ...c, max_rounds: 1 }, 1, 0), 4);
-  const parsed = parseConfig(`${BASE_YAML}parallel: { decay: none, min: 2, widen_after: 0 }\n`, ROOT);
-  assert.deepEqual(parsed.parallel, { decay: "none", min: 2, widen_after: 0 });
+test("parallel width: a hard step by default, or a linear decay", () => {
+  assert.deepEqual(cfg.parallel, { decay: "step", min: 1, step_after: 3 });
+  const c = { ...cfg, models: ["p/a", "p/b"], max_rounds: 6 };
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map((r) => parallelWidth(c, r)), [2, 2, 2, 1, 1, 1]);
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, step_after: 1 } }, 2), 1);
+  assert.equal(parallelWidth({ ...c, parallel: { ...c.parallel, min: 2 } }, 6), 2);
+  const linear = { ...c, models: ["p/a", "p/a", "p/a", "p/b"], max_rounds: 10, parallel: { ...c.parallel, decay: "linear" as const } };
+  assert.deepEqual(Array.from({ length: 10 }, (_, i) => parallelWidth(linear, i + 1)), [4, 4, 3, 3, 3, 2, 2, 2, 1, 1]);
+  assert.equal(parallelWidth({ ...linear, parallel: { ...linear.parallel, min: 2 } }, 10), 2);
+  assert.equal(parallelWidth({ ...linear, parallel: { ...linear.parallel, decay: "none" } }, 10), 4);
+  assert.equal(parallelWidth({ ...linear, max_rounds: 1 }, 1), 4);
+  const parsed = parseConfig(`${BASE_YAML}parallel: { decay: none, min: 2, step_after: 5 }\n`, ROOT);
+  assert.deepEqual(parsed.parallel, { decay: "none", min: 2, step_after: 5 });
   assert.throws(() => parseConfig(`${BASE_YAML}parallel: { min: 4 }\n`, ROOT), /parallel.min/);
   assert.throws(() => parseConfig(`${BASE_YAML}parallel: { decay: cosine }\n`, ROOT), /parallel.decay/);
-  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { widen_after: -1 }\n`, ROOT), /widen_after/);
+  assert.throws(() => parseConfig(`${BASE_YAML}parallel: { step_after: 0 }\n`, ROOT), /step_after/);
 });
 
 test("decideRound keeps the best gate-passing branch only past the keep rule", () => {
@@ -156,12 +156,12 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   const d = decideRound({
     cfg, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null, null, null],
     branches: [
-      { ok: true, expId: "n-r1-b0", branch: 0, model: "p/a", code: code("a"), eval: ev(0.9, 2) }, // best but fails a gate
-      { ok: true, expId: "n-r1-b1", branch: 1, model: "p/a", code: code("b"), eval: ev(0.6) },
-      { ok: false, expId: "n-r1-b2", branch: 2, model: "p/b", error: "boom" },
+      { ok: true, expId: "n-r1-e0", branch: 0, model: "p/a", code: code("a"), eval: ev(0.9, 2) }, // best but fails a gate
+      { ok: true, expId: "n-r1-e1", branch: 1, model: "p/a", code: code("b"), eval: ev(0.6) },
+      { ok: false, expId: "n-r1-e2", branch: 2, model: "p/b", error: "boom" },
     ],
   });
-  assert.equal(d.keep?.expId, "n-r1-b1");
+  assert.equal(d.keep?.expId, "n-r1-e1");
   assert.deepEqual(d.rows.map((r) => r.decision), ["revert", "keep", "error"]);
   for (const r of d.rows) assert.deepEqual(validateRow(r), []);
 
@@ -175,7 +175,7 @@ test("decideRound keeps the best gate-passing branch only past the keep rule", (
   const withBaseline = decideRound({
     cfg, nightId: "n", round: 2, parent, rescore: null, hypotheses: [null],
     baseline: { ok: true, evalId: "n-r2-baseline", result: ev(0.3) },
-    branches: [{ ok: true, expId: "n-r2-b0", branch: 0, model: "p/a", code: code("d"), eval: ev(0.4) }],
+    branches: [{ ok: true, expId: "n-r2-e0", branch: 0, model: "p/a", code: code("d"), eval: ev(0.4) }],
   });
   assert.equal(withBaseline.parentAfter.score, 0.5);
   assert.deepEqual(withBaseline.rows.map((r) => [r.kind, r.evaluator_instance]), [["baseline", "i1"], ["experiment", "i1"]]);
@@ -214,7 +214,7 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 });
 
 test("efficiency: tie-break, efficiency keep and its guards", () => {
-  const parent: Kept = { expId: "n-r1-b0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true };
+  const parent: Kept = { expId: "n-r1-e0", sha: "p", score: 0.9, metrics: null, metricsPath: null, rescored: true };
   const code = (sha: string) => ({
     ok: true, sha, hypothesis: `h-${sha}`, stop: "done" as const, coder_usd: 0.1, dev_usd: 0, tokens: 10,
     t_provision: 1, t_code: 2, t_teardown: 1, infra_errors: 0, resumed: false,
@@ -223,7 +223,7 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
     ok: true, metrics: { accuracy, schema_violations: 0, cost_per_item_usd: cost, latency_total_s: lat }, metricsPath: "/m.json",
     program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: instance, eval_order: 0,
   });
-  const branch = (b: number, e: ReturnType<typeof ev>) => ({ ok: true as const, expId: `n-r2-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: e });
+  const branch = (b: number, e: ReturnType<typeof ev>) => ({ ok: true as const, expId: `n-r2-e${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: e });
   const round = (branches: ReturnType<typeof branch>[], over: Partial<Parameters<typeof decideRound>[0]> = {}) =>
     decideRound({
       cfg, nightId: "n", round: 2, parent, bestPrimary: 0.9, rescore: null,
@@ -232,15 +232,15 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
 
   // Tied on a primary gain: the clearly cheaper branch wins over the higher branch index order.
   const tie = round([branch(0, ev(0.95, 0.01, 2.0)), branch(1, ev(0.95, 0.005, 2.0))]);
-  assert.deepEqual([tie.keep?.expId, tie.keep?.reason], ["n-r2-b1", "primary"]);
+  assert.deepEqual([tie.keep?.expId, tie.keep?.reason], ["n-r2-e1", "primary"]);
   // Within 10%: not meaningfully cheaper, so the first branch keeps it.
-  assert.equal(round([branch(0, ev(0.95, 0.01, 2.0)), branch(1, ev(0.95, 0.0095, 2.0))]).keep?.expId, "n-r2-b0");
+  assert.equal(round([branch(0, ev(0.95, 0.01, 2.0)), branch(1, ev(0.95, 0.0095, 2.0))]).keep?.expId, "n-r2-e0");
 
   // No primary gain: a branch at the same primary that is >10% faster is an efficiency keep.
   const eff = round([branch(0, ev(0.9, 0.01, 2.0)), branch(1, ev(0.9, 0.01, 1.5))]);
-  assert.deepEqual([eff.keep?.expId, eff.keep?.reason], ["n-r2-b1", "efficiency"]);
-  assert.equal(eff.rows.find((r) => r.exp_id === "n-r2-b1")?.keep_reason, "efficiency");
-  assert.equal(eff.summaries.find((x) => x.expId === "n-r2-b1")?.decision, "keep (cheaper/faster)");
+  assert.deepEqual([eff.keep?.expId, eff.keep?.reason], ["n-r2-e1", "efficiency"]);
+  assert.equal(eff.rows.find((r) => r.exp_id === "n-r2-e1")?.keep_reason, "efficiency");
+  assert.equal(eff.summaries.find((x) => x.expId === "n-r2-e1")?.decision, "keep (cheaper/faster)");
   assert.deepEqual(eff.parentRun?.latency_total_s, 2.0);
   // ...not when it raises the other objective by as much,
   assert.equal(round([branch(1, ev(0.9, 0.02, 1.5))]).keep, null);
@@ -285,23 +285,23 @@ test("the reviewer's keep replaces the mechanical one, among candidates only", (
     ok: true, metrics: { accuracy, schema_violations: 0 }, metricsPath: "/m.json", program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3,
     infra_errors: 0, evaluator_instance: "i", eval_order: 0,
   });
-  const branch = (b: number, score: number) => ({ ok: true as const, expId: `n-r1-b${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: ev(score) });
+  const branch = (b: number, score: number) => ({ ok: true as const, expId: `n-r1-e${b}`, branch: b, model: "p/a", code: code(`s${b}`), eval: ev(score) });
   const headlined = { ...cfg, scenario: { ...cfg.scenario, headline: { accuracy: 0.05 } } };
   const d = decideRound({
     cfg: headlined, nightId: "n", round: 1, parent, rescore: null, hypotheses: [null, null, null],
     baseline: { ok: true, evalId: "n-r1-baseline", result: ev(0.5) },
     branches: [branch(0, 0.8), branch(1, 0.6), branch(2, 0.4)],
   });
-  assert.equal(d.keep?.expId, "n-r1-b0");
-  assert.deepEqual(d.candidates.map((c) => c.expId), ["n-r1-b0", "n-r1-b1"]); // b2 fell more than the margin
+  assert.equal(d.keep?.expId, "n-r1-e0");
+  assert.deepEqual(d.candidates.map((c) => c.expId), ["n-r1-e0", "n-r1-e1"]); // e2 fell more than the margin
   assert.match(d.summaries[2].guardrails[0], /accuracy fell/);
 
-  const picked = applyReview(d, "n-r1-b1");
-  assert.deepEqual([picked.keep?.expId, picked.keep?.reason, picked.keep?.sha], ["n-r1-b1", "reviewer", "s1"]);
+  const picked = applyReview(d, "n-r1-e1");
+  assert.deepEqual([picked.keep?.expId, picked.keep?.reason, picked.keep?.sha], ["n-r1-e1", "reviewer", "s1"]);
   const decisions = () => picked.rows.filter((r) => r.kind === "experiment").map((r) => r.decision);
   assert.deepEqual(decisions(), ["revert", "keep", "revert"]);
-  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-b0")?.keep_reason, undefined);
-  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-b1")?.keep_reason, "reviewer");
+  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-e0")?.keep_reason, undefined);
+  assert.equal(picked.rows.find((r) => r.exp_id === "n-r1-e1")?.keep_reason, "reviewer");
   for (const r of picked.rows) assert.deepEqual(validateRow(r), []);
   assert.equal(picked.summaries[1].decision, "keep");
 

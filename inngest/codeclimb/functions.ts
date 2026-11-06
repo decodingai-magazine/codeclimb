@@ -170,15 +170,15 @@ export const runNight = ccInngest.createFunction(
       // The coders work in parallel from the kept commit.
       // Width schedule: the first `width` models code this round (see `parallelWidth`).
       const parent = kept;
-      const width = parallelWidth(cfg, round, roundsWithoutKeep);
+      const width = parallelWidth(cfg, round);
       const coded = await Promise.all(
         cfg.models.slice(0, width).map((model, b) => {
-          const expId = `${nightId}-r${round}-b${b}`;
+          const expId = `${nightId}-r${round}-e${b}`;
           const data: ExperimentEvent = {
             nightId, expId, parentExpId: parent.expId, round, branch: b, model,
             feedback, hypothesis: hypotheses[b] ?? null, config: cfg,
           };
-          return step.invoke(`r${round}-b${b}`, { function: runExperiment, data, timeout: expTimeout }).then(
+          return step.invoke(`r${round}-e${b}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, expId, branch: b, model, code: out.code, runId: out.runId }),
             (e: unknown) => ({ ok: false as const, expId, branch: b, model, error: String((e as Error)?.message ?? e) }),
           );
@@ -216,13 +216,12 @@ export const runNight = ccInngest.createFunction(
       kept = { ...kept, ...mechanical.parentAfter };
       noteKept();
 
-      // Review: what to keep, feedback, and one hypothesis per branch of the next round. The next round's
-      // width depends on the keep, so ask for the wider case. After the last round with no candidate there
-      // is nothing to ask.
+      // Review: what to keep, feedback, and one hypothesis per experiment of the next round. After the
+      // last round with no candidate there is nothing to ask.
       let review = { feedback, hypotheses: hypotheses.map((h) => h ?? ""), reviewer_usd: 0, t_review: 0, tokens: 0 };
       let decision = mechanical;
       if (round < cfg.max_rounds || mechanical.candidates.length) {
-        const nextWidth = round < cfg.max_rounds ? Math.max(parallelWidth(cfg, round + 1, 0), parallelWidth(cfg, round + 1, roundsWithoutKeep + 1)) : 0;
+        const nextWidth = round < cfg.max_rounds ? parallelWidth(cfg, round + 1) : 0;
         try {
           const reviewed = await step.run(`r${round}-review`, () =>
             reviewRound({

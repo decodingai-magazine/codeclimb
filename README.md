@@ -106,9 +106,9 @@ npm test                               # unit tests (keep rule, stops, schema)
 
 A night runs these steps:
 
-1. **Rounds.** Each round starts one `run-experiment` child per branch, all in parallel, via `step.invoke`. Branch `b` uses `models[b]`, and `parallel` sets how many branches a round runs, like a learning-rate schedule for exploration:
-   - `decay: linear` (default) runs every model in round 1 and decays linearly to `min` (default 1) by `max_rounds`. With 4 models and 10 rounds the widths are 4, 4, 3, 3, 3, 2, 2, 2, 1, 1. `decay: none` runs every model every round.
-   - `widen_after` (default 1, `0` = off): after that many rounds in a row with nothing kept, the next round runs every model again. A stalled night explores; one that keeps improving narrows to refining.
+1. **Rounds.** Each round starts one `run-experiment` child per branch, all in parallel, via `step.invoke`. Experiments are `r<round>-e<n>`, and experiment `n` uses `models[n]`, and `parallel` sets how many branches a round runs, like a learning-rate schedule for exploration:
+   - `decay: step` (default) runs every model through round `step_after` (default 3), then `min` (default 1). With 2 models and 6 rounds the widths are 2, 2, 2, 1, 1, 1.
+   - `decay: linear` runs every model in round 1 and decays to `min` by `max_rounds`. With 4 models and 10 rounds the widths are 4, 4, 3, 3, 3, 2, 2, 2, 1, 1. `decay: none` runs every model every round.
    - List the preferred model first: narrow rounds use the first models in `models`.
 2. **Experiment.** Each child gives Pi a fresh sandbox built from the scenario's image plus the kept commit, with the scenario's bundle (spec and train examples) at `/spec`. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit.
 3. **Evaluation.** Once every coder has stopped, one `run-evaluator` child evaluates the round's candidates one after another in a single sandbox: the parent and each committed branch, in an order that rotates by round. Before each candidate it kills every leftover process, wipes `/repo`, `/work`, `/tmp` and `/eval`, and clones the candidate. Per stage of `scenario.yaml`, the host writes the dev inputs (`inputs`), the sandbox runs the program on them (`run`), and the host scores the downloaded outputs (`score`). So every candidate of a round is timed on the same machine with nothing else running.
@@ -292,7 +292,7 @@ Opened from disk, the export panel's button copies the matching CLI command inst
 
 ```bash
 npm run export -- --config configs/datenorm-hard.yaml --exp best --to-dir ../datenorm-solution                  # plain files
-npm run export -- --config configs/datenorm-hard.yaml --exp hard2-r6-b2 --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
+npm run export -- --config configs/datenorm-hard.yaml --exp hard2-r6-e2 --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
 npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
 ```
 
@@ -327,7 +327,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 ### Deviations from the spec in this iteration
 
 - **Models:** GitHub Copilot through Pi's `github-copilot` provider, not OpenCode Go.
-  - Coders are `claude-haiku-5.5` ×3 and the reviewer is `claude-haiku-4.5`, so the reviewer is not one of the coders.
+  - Coders are `claude-haiku-5.5` ×2 and the reviewer is `claude-haiku-4.5`, so the reviewer is not one of the coders.
   - `coder_usd` is Pi's `message_end` cost at list prices. Copilot bills by subscription, so this is a comparable dollar figure, not an actual charge.
 - **Local or Cloud:** the dev server or Inngest Cloud, a `connect()` worker on the laptop, and Docker or Inngest sandboxes (see [Run on Inngest Cloud](#run-on-inngest-cloud)).
 - **No metering proxy:** `datenorm` is standard-library Python with no model calls.
