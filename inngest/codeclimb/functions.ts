@@ -23,10 +23,10 @@ import {
   finishNight,
   initNight,
   type Kept,
-  maskFailures,
+  historyLine, maskFailures,
   markPaused,
   type PausedAt,
-  recordRows,
+  recordRows, saveRejected,
   reviewRound,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
@@ -170,6 +170,7 @@ export const runNight = ccInngest.createFunction(
     let failures: EvalFailure[] = [];
     let hypothesis: string | null = null;
     const log: HypothesisLogEntry[] = [];
+    const history: string[] = []; // The log as coders read it, held-out names masked.
     const roundSpends: number[] = [];
     const roundTokens: number[] = [];
     let tokens = 0;
@@ -196,7 +197,7 @@ export const runNight = ccInngest.createFunction(
       const code = (resume: number) => {
         const data: ExperimentEvent = {
           nightId, expId, parentExpId: parent.expId, round, model: cfg.model,
-          feedback, failures, hypothesis, config: cfg, ...(resume ? { resume: true } : {}),
+          feedback, failures, history, hypothesis, config: cfg, ...(resume ? { resume: true } : {}),
         };
         return step.invoke(`r${round}-e0${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
           (out) => ({ ok: true as const, code: out.code, runId: out.runId }),
@@ -233,7 +234,7 @@ export const runNight = ccInngest.createFunction(
             reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
               reviewRound({
                 cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-                summary: decided.summary, canKeep: !!decided.candidate, log: [...log],
+                summary: decided.summary, canKeep: !!decided.candidate, override: decided.override, log: [...log],
               }).catch((e: unknown) => {
                 if (e instanceof OutOfCredits) return { credits: e.stop };
                 throw e;
@@ -272,11 +273,15 @@ export const runNight = ccInngest.createFunction(
       const moved = against
         ? { deltas: Object.fromEntries(scored.flatMap((m) => (typeof against[m] === "number" ? [[m, s.metrics[m] - against[m]]] : []))) }
         : { scores: Object.fromEntries(scored.map((m) => [m, s.metrics[m]])) };
-      log.push({
+      const entry: HypothesisLogEntry = {
         round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score, ...moved, decision: s.decision,
         // An error's tail names the failure; its head is the command, and coders get it whole.
-        reason: s.errors?.join("; ").slice(-300) ?? (s.guardrails.join("; ") || review.keep_reason),
-      });
+        reason: s.errors?.join("; ").slice(-300) ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
+      };
+      log.push(entry);
+      history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));
+      // A rejected commit stays readable to later coders, whatever rejected it.
+      if (!decision.keep && experiment.ok && experiment.code.sha) await step.run(`r${round}-rejected`, () => saveRejected(cfg, nightId, round, parent.expId, expId));
       feedback = review.feedback;
       failures = await step.run(`r${round}-failures`, () => maskFailures(cfg, s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
       hypothesis = review.hypothesis;

@@ -15,9 +15,9 @@ import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
 import { appendRows, type ResultRow, rowSpend } from "./results";
-import { type BranchSummary, type HypothesisLogEntry, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
+import { type BranchSummary, type HypothesisLogEntry, logLine, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
-import { emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
+import { emptyStages, guardrailFailures, type Metrics, passesGates, tinyRegressions } from "./stats";
 
 /** The checkpoint: the commit the next round starts from, with the dev scores of its own evaluation. */
 export interface Kept {
@@ -137,6 +137,29 @@ export async function scanText(cfg: NightConfig, text: string): Promise<string[]
   }
 }
 
+/** `text` as a coder may read it. */
+export async function maskText(cfg: NightConfig, text: string): Promise<string> {
+  return maskTerms(text, await scanText(cfg, text));
+}
+
+/** One round of the log as a coder reads it. */
+export function historyLine(cfg: NightConfig, entry: HypothesisLogEntry): Promise<string> {
+  return maskText(cfg, logLine(entry, Object.keys(cfg.scenario.headline).length ? null : cfg.primary_metric));
+}
+
+/** A rejected diff is read-only history: more than this is cut, since a coder pays tokens to read it. */
+const MAX_REJECTED_DIFF_CHARS = 40_000;
+
+/** Puts a rejected experiment's diff in the bundle, masked: /spec/history/r<round>.diff in every later sandbox. */
+export async function saveRejected(cfg: NightConfig, nightId: string, round: number, parentExpId: string, expId: string): Promise<void> {
+  const paths = nightPaths(cfg, nightId);
+  // Masked before the cut, which could split a name past recognition.
+  const diff = await maskText(cfg, await new ExperimentRepo(paths.gitDir).diff(parentExpId, expId, Infinity));
+  const capped = diff.length > MAX_REJECTED_DIFF_CHARS ? `${diff.slice(0, MAX_REJECTED_DIFF_CHARS)}\n... [diff cut, ${diff.length} chars]` : diff;
+  mkdirSync(join(paths.bundleDir, "history"), { recursive: true });
+  writeFileSync(join(paths.bundleDir, "history", `r${round}.diff`), capped);
+}
+
 /** Errors as the next coders may read them. */
 export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): Promise<EvalFailure[]> {
   const found = await scanText(cfg, failures.flatMap((f) => f.errors).join("\n"));
@@ -215,8 +238,10 @@ export interface RoundDecision {
   row: ResultRow;
   /** The new checkpoint: only the reviewer sets it (`applyReview`), so with no review the round reverts. */
   keep: Candidate | null;
-  /** What it could be kept as: it passed the gates and guardrails. Null: it is reverted. */
+  /** What it could be kept as: it passed the gates and guardrails, or `override` holds. Null: it is reverted. */
   candidate: Candidate | null;
+  /** It failed guardrails, all by a tiny margin: the reviewer may keep it, with a reason. */
+  override: boolean;
   summary: Omit<BranchSummary, "diff" | "details"> & { metricsPath: string | null };
   spend: number;
 }
@@ -229,7 +254,8 @@ function readCodeState(cfg: NightConfig, nightId: string, expId: string): { code
 /**
  * The guardrails on a round's one experiment, against the checkpoint's stored dev scores. It is a
  * candidate if it passes the gates and the guardrails: no headline regression past its margin, no stage
- * gone empty. Against the starter, which has no scores, only an empty stage stops it. Only the reviewer
+ * gone empty. Against the starter, which has no scores, only an empty stage stops it. A guardrail failed
+ * by at most the scenario's `override_limit` still makes it a candidate, as an override. Only the reviewer
  * keeps a candidate (`applyReview`). Anything else is reverted, a failed review included, and the next
  * round starts from the checkpoint again.
  */
@@ -244,7 +270,7 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
       coder_usd: st.coderUsd, ...(st.devUsd ? { dev_usd: st.devUsd } : {}), tokens: st.tokens, decision: "error", infra_errors: 1,
     });
     const summary = { expId: x.expId, model: x.model, hypothesis: args.hypothesis ?? "(unknown)", decision: "error", primary: 0, metrics: {}, guardrails: [], notes: [], metricsPath: null };
-    return { row, keep: null, candidate: null, summary, spend: rowSpend(row) };
+    return { row, keep: null, candidate: null, override: false, summary, spend: rowSpend(row) };
   }
   const ev = x.eval;
   const evalOk = !!(x.code.sha && ev?.ok);
@@ -253,8 +279,9 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
   const failedCheck = x.code.check?.errors ?? [];
   const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
   const guardrails = !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
-  const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
-  const candidate = eligible ? { expId: x.expId, sha: x.code.sha!, score: primary, metrics } : null;
+  const gated = evalOk && passesGates(metrics, cfg.gates);
+  const override = gated && !!parent.metrics && tinyRegressions(metrics, parent.metrics, cfg.scenario.headline, cfg.scenario.override_limit ?? 0);
+  const candidate = (gated && !guardrails.length) || override ? { expId: x.expId, sha: x.code.sha!, score: primary, metrics } : null;
   const row = baseRow(args, {
     exp_id: x.expId, parent_id: parent.expId, model: x.model, hypothesis: x.code.hypothesis, commit: x.code.sha ?? "",
     eval_id: `${x.expId}-eval`, metrics, coder_usd: x.code.coder_usd, program_usd: ev?.program_usd ?? 0,
@@ -271,13 +298,13 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
     expId: x.expId, model: x.model, hypothesis: x.code.hypothesis, decision: row.decision, primary, metrics, guardrails,
     ...(errors.length ? { errors } : {}), notes: x.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null,
   };
-  return { row, keep: null, candidate, summary, spend: rowSpend(row) };
+  return { row, keep: null, candidate, override, summary, spend: rowSpend(row) };
 }
 
 /** The round with the reviewer's keep: it can only keep a candidate. */
 export function applyReview(d: RoundDecision, keep: boolean): RoundDecision {
   if (!keep || !d.candidate) return d;
-  return { ...d, keep: d.candidate, row: { ...d.row, decision: "keep" }, summary: { ...d.summary, decision: "keep" } };
+  return { ...d, keep: d.candidate, row: { ...d.row, decision: "keep", ...(d.override ? { override: true } : {}) }, summary: { ...d.summary, decision: "keep" } };
 }
 
 /** `details` as text, at most `maxChars`: past that every item keeps an equal share, so no item crowds out the rest. */
@@ -309,8 +336,9 @@ export async function reviewRound(args: {
   parentScore: number;
   parentMetrics: Metrics | null;
   summary: RoundDecision["summary"];
-  /** Whether the guardrails let it be kept. */
+  /** Whether the guardrails let it be kept, and whether only as an override. */
   canKeep: boolean;
+  override: boolean;
   log: HypothesisLogEntry[];
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
@@ -332,6 +360,7 @@ export async function reviewRound(args: {
     result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
     log: args.log,
     canKeep: args.canKeep,
+    override: args.override,
     headline: Object.keys(args.cfg.scenario.headline),
     diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),

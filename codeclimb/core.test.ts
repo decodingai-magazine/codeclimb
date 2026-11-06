@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, parseApproach } from "./coder";
+import { coderPrompt, parseApproach, rejectedDiffs } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
+import { ExperimentRepo } from "./git";
+import { nightPaths } from "./paths";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { applyReview, checkStop, decideRound, type ExperimentOutcome, type Kept, spreadDetails } from "./orchestrator";
+import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, saveRejected, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, maskTerms, parseScenario, readProtocol } from "./scenario";
-import { emptyStages, guardrailFailures, passesGates, passesThresholds } from "./stats";
+import { emptyStages, guardrailFailures, passesGates, passesThresholds, tinyRegressions } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -192,7 +196,7 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 
 const REVIEW = {
   model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 3, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 } as Record<string, number> | null,
-  objectives: [], minEfficiencyGain: 0.1, log: [], canKeep: true, headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
+  objectives: [], minEfficiencyGain: 0.1, log: [], canKeep: true, override: false, headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
   result: { expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics: { "e.f1": 0.7 } as Record<string, number>, guardrails: [] as string[], notes: [], diff: "", details: "" },
 };
 
@@ -224,7 +228,7 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   const entry = { round: 1, hypothesis: "h1", deltaPrimary: -0.1, decision: "revert", reason: "r.x fell" };
   const logged = reviewerPrompt({ ...input, log: [{ ...entry, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }] });
   assert.match(logged, /- r1: h1 → Δe\.f1=-0\.1000, Δr\.x\.mean=\+0\.2000 \(revert: r\.x fell\)/);
-  assert.match(logged, /A reverted experiment's code is gone/);
+  assert.match(logged, /survives only as a read-only diff at \/spec\/history/);
   assert.match(reviewerPrompt({ ...input, headline: [], log: [entry] }), /- r1: h1 → Δe\.f1=-0\.1000 \(revert/);
   assert.match(reviewerPrompt({ ...input, log: [entry] }), /- r1: h1 → no metric moved/);
 
@@ -345,4 +349,109 @@ test("what the reviewer names of the held-out data never reaches a coder: one re
   assert.equal(review.hypothesis, "[hidden] hypothesis");
   assert.equal((await runReview(REVIEW)).feedback, "mock feedback");
   assert.equal(maskTerms("see Foo Bar? and foo bar. a$b", ["foo", "foo bar", "a$b"]), "see [hidden]? and [hidden]. [hidden]");
+});
+
+/** A config whose scan finds `Gold Name`, with its experiments under a fresh directory. */
+function scanning() {
+  const dir = mkdtempSync(join(tmpdir(), "cc-history-"));
+  const scan = `printf '{"found":["Gold Name"]}' > {report}`;
+  return { dir, cfg: { ...cfg, results_path: join(dir, "r.jsonl"), scenario: { ...cfg.scenario, scan } } };
+}
+
+test("a later coder reads every earlier round, with held-out names masked", async () => {
+  const { dir, cfg: masked } = scanning();
+  try {
+    const lines = [
+      await historyLine(masked, { round: 1, hypothesis: "h1", deltaPrimary: 0.1, decision: "keep", reason: "better" }),
+      await historyLine(masked, { round: 2, hypothesis: "h2", deltaPrimary: -0.2, deltas: { accuracy: -0.2 }, decision: "revert", reason: "lost gold name again" }),
+    ];
+    const prompt = coderPrompt("spec", "fb", "hyp", 10, undefined, undefined, undefined, [], lines, ["/spec/history/r2.diff"]);
+    assert.match(prompt, /<history>[^]*- r1: h1[^]*keep: better[^]*- r2: h2[^]*revert: lost \[hidden\] again[^]*\/spec\/history\/r2\.diff[^]*<\/history>/);
+    assert.doesNotMatch(prompt, /gold name/i);
+    assert.doesNotMatch(coderPrompt("spec", "", null, 10), /<history>/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a rejected diff is masked, capped and listed for later coders", async () => {
+  const { dir, cfg: masked } = scanning();
+  try {
+    const paths = nightPaths(masked, "n");
+    const repo = new ExperimentRepo(paths.gitDir);
+    await repo.ensure();
+    const code = join(dir, "code");
+    mkdirSync(code);
+    writeFileSync(join(code, "a.py"), "x = 1\n");
+    await repo.importDir(code, "parent");
+    writeFileSync(join(code, "a.py"), `x = "Gold Name"\ny = "${"z".repeat(50_000)}"\n`);
+    await repo.importDir(code, "exp");
+    assert.deepEqual(rejectedDiffs(paths.bundleDir), []);
+    await saveRejected(masked, "n", 2, "parent", "exp");
+    await saveRejected(masked, "n", 10, "parent", "exp");
+    assert.deepEqual(rejectedDiffs(paths.bundleDir), ["/spec/history/r2.diff", "/spec/history/r10.diff"]);
+    const diff = readFileSync(join(paths.bundleDir, "history", "r2.diff"), "utf8");
+    assert.match(diff, /\[hidden\]/);
+    assert.doesNotMatch(diff, /gold name/i);
+    assert.match(diff, /\[diff cut, \d+ chars\]$/);
+    assert.ok(diff.length < 41_000);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("override: a tiny guardrail failure can be kept with a reason, a large one can't", () => {
+  const scenario = { ...cfg.scenario, headline: { accuracy: 0.02, precision: 0 }, override_limit: 0.005 };
+  const limited = { ...cfg, scenario };
+  const parent = parentAt(0.5, { accuracy: 0.5, precision: 1 });
+
+  const tiny = round(parent, run({ accuracy: 0.6, precision: 0.9984 }), limited);
+  assert.deepEqual([tiny.override, tiny.candidate?.expId, tiny.summary.guardrails.length], [true, "n-r1-e0", 1]);
+  const kept = applyReview(tiny, true);
+  assert.deepEqual([kept.keep?.expId, kept.row.decision, kept.row.override], ["n-r1-e0", "keep", true]);
+  assert.deepEqual(validateRow(kept.row), []);
+  assert.equal(applyReview(tiny, false).keep, null);
+
+  const large = round(parent, run({ accuracy: 0.6, precision: 0.99 }), limited);
+  assert.deepEqual([large.override, large.candidate], [false, null]);
+  assert.equal(applyReview(large, true).keep, null);
+
+  const noLimit = round(parent, run({ accuracy: 0.6, precision: 0.9984 }), { ...cfg, scenario: { ...scenario, override_limit: undefined } });
+  assert.deepEqual([noLimit.override, noLimit.candidate], [false, null]);
+  const passed = round(parent, run({ accuracy: 0.6, precision: 1 }), limited);
+  assert.deepEqual([passed.override, passed.candidate?.expId], [false, "n-r1-e0"]);
+  const gated = round(parent, run({ accuracy: 0.6, precision: 0.9984, schema_violations: 1 }), limited);
+  assert.deepEqual([gated.override, gated.candidate], [false, null]);
+});
+
+test("override: one large failure, a vanished metric or an empty stage rules it out", () => {
+  const headline = { a: 0.02, b: 0 } as const;
+  const parent = { a: 0.5, b: 1, "e.output_bytes": 10 };
+  assert.equal(tinyRegressions({ ...parent, a: 0.479, b: 0.999 }, parent, headline, 0.005), true);
+  assert.equal(tinyRegressions({ ...parent, a: 0.4, b: 0.999 }, parent, headline, 0.005), false);
+  assert.equal(tinyRegressions({ b: 0.999, "e.output_bytes": 10 }, parent, headline, 0.005), false);
+  assert.equal(tinyRegressions({ ...parent, b: 0.999, "e.output_bytes": 0 }, parent, headline, 0.005), false);
+  assert.equal(tinyRegressions(parent, parent, headline, 0.005), false);
+  assert.equal(tinyRegressions({ ...parent, b: 0.999 }, parent, headline, 0), false);
+  const ci = { "r.mean": 0.5, "r.ci95_half": 0.1 };
+  assert.equal(tinyRegressions({ ...ci, "r.mean": 0.397 }, ci, { "r.mean": "ci95" }, 0.005), true);
+  assert.equal(tinyRegressions({ ...ci, "r.mean": 0.39 }, ci, { "r.mean": "ci95" }, 0.005), false);
+});
+
+test("override: the reviewer is told, and must give a reason to keep", () => {
+  const reply = (r: string) => JSON.stringify({ keep: true, keep_reason: r, feedback: "f", hypothesis: "h" });
+  assert.equal(parseReview(reply(" "), true, true), null);
+  assert.equal(parseReview(reply("recall gained 0.1"), true, true)?.keep_reason, "recall gained 0.1");
+  assert.equal(parseReview(reply(""), true)?.keep, true);
+  const result = { ...REVIEW.result, guardrails: ["g fell to 0.9984"] };
+  assert.match(reviewerPrompt({ ...REVIEW, override: true, result }), /Failed guardrails by a tiny margin[^]*only as an override/);
+  assert.match(reviewerPrompt({ ...REVIEW, canKeep: false, result }), /Failed guardrails, can't be kept/);
+});
+
+test("scenario: override_limit is a number >= 0", () => {
+  const base = "name: s\nimage: i\nbundle: b\nstages:\n  - { name: a, inputs: i, run: r, score: s }\n";
+  assert.equal(parseScenario(`${base}override_limit: 0.005\n`).override_limit, 0.005);
+  assert.equal(parseScenario(base).override_limit, undefined);
+  assert.throws(() => parseScenario(`${base}override_limit: -1\n`), /override_limit/);
+  assert.throws(() => parseScenario(`${base}override_limit: tiny\n`), /override_limit/);
 });

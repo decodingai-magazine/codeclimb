@@ -40,6 +40,8 @@ export type ExperimentInput = {
   feedback: string;
   /** The last round's experiment if it was never scored, with its errors, held-out names masked. */
   failures?: EvalFailure[];
+  /** One line per earlier round, held-out names masked: what was tried, what moved, why it went. */
+  history?: string[];
   /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
   config: NightConfig;
@@ -99,6 +101,13 @@ export function readSpecText(bundleDir: string): string {
     .join("\n\n---\n\n");
 }
 
+/** The rejected diffs in the bundle, oldest first, as the sandbox sees them. */
+export function rejectedDiffs(bundleDir: string): string[] {
+  const dir = join(bundleDir, "history");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((f) => `/spec/history/${f}`);
+}
+
 const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
 
 export function coderPrompt(
@@ -110,6 +119,8 @@ export function coderPrompt(
   dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number; openNetwork?: boolean },
   evalMin?: number,
   failures: EvalFailure[] = [],
+  history: string[] = [],
+  rejectedDiffs: string[] = [],
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
@@ -119,6 +130,12 @@ export function coderPrompt(
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (failures.length) {
     parts.push(`<failures>\nThe last attempt failed before it was scored. Its code is gone, but your code can fail the same way. The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
+  }
+  if (history.length) {
+    const diffs = rejectedDiffs.length
+      ? `\nThe diffs of the rejected attempts, each against its own parent and possibly cut off, are read-only history: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
+      : "";
+    parts.push(`<history>\nEvery earlier round. Don't repeat what failed. Each Δ is against the kept commit of that round; only kept rounds are in your /repo.\n${history.join("\n")}${diffs}\n</history>`);
   }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
   parts.push(
@@ -315,7 +332,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir)),
       );
     } else {
       stop = "timeout";

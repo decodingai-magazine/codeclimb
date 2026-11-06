@@ -57,8 +57,10 @@ export interface ReviewInput {
   minEfficiencyGain: number;
   result: BranchSummary;
   log: HypothesisLogEntry[];
-  /** Gates and guardrails passed: it may be kept. */
+  /** Gates and guardrails passed, or `override`: it may be kept. */
   canKeep: boolean;
+  /** It failed guardrails by a tiny margin: keeping it needs a reason. */
+  override: boolean;
   /** The scenario's headline metrics; when set, these decide the keep and no single metric frames the prompt. */
   headline: string[];
   /** Regexes of the metrics that explain the headlines without deciding the keep. */
@@ -80,15 +82,15 @@ export interface ReviewOutput {
   tokens: number;
 }
 
-const SYSTEM_PROMPT = `You review experiments in an automated research loop. A coding agent changes a program to raise its metrics on hidden evaluation data. The loop is linear: each round starts from the kept commit (the checkpoint) and tests one hypothesis. If the experiment is kept it becomes the new checkpoint. If it is reverted its code is dropped, and the next round restarts from the same checkpoint with your feedback.
+const SYSTEM_PROMPT = `You review experiments in an automated research loop. A coding agent changes a program to raise its metrics on hidden evaluation data. The loop is linear: each round starts from the kept commit (the checkpoint) and tests one hypothesis. If the experiment is kept it becomes the new checkpoint. If it is reverted its code is dropped, and the next round restarts from the same checkpoint with your feedback, the log of earlier rounds and read-only diffs of what was rejected.
 
 You receive the program's specification, the checkpoint's source, the experiment's metrics on the dev split (with per-item errors when the scenario provides them), its diff, and the log of earlier hypotheses with their effect. Find why each metric falls short by reading the errors against the code. Write:
-1. keep: true to keep the experiment, false to revert it. Weigh every metric, not one number, against the checkpoint's scores. Each run is one sample, so a small change may be noise: read it against the ci95 where one is given. A clear gain with the other metrics about level is worth keeping, whichever metric it is. A worse result, or a gain in one metric bought by a loss in another, is reverted, a change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. While the kept commit is the empty starter no comparison exists: judge on the absolute scores, and keep unless the result looks broken or fitted to dev items, since it sets the bar for later rounds. Follow the evaluation protocol if one is given.
+1. keep: true to keep the experiment, false to revert it. Weigh every metric, not one number, against the checkpoint's scores. Each run is one sample, so a small change may be noise: read it against the ci95 where one is given. A clear gain with the other metrics about level is worth keeping, whichever metric it is. A worse result, or a gain in one metric bought by a loss in another, is reverted. Failed guardrails forbid a keep, unless the prompt offers an override for a tiny regression: take it only for a clear gain elsewhere, and say why the regression is acceptable. A change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. While the kept commit is the empty starter no comparison exists: judge on the absolute scores, and keep unless the result looks broken or fitted to dev items, since it sets the bar for later rounds. Follow the evaluation protocol if one is given.
 2. keep_reason: one or two sentences saying why.
-3. feedback: concise guidance for the next round: what worked, what regressed, which metric families are weakest. When you revert, say why this attempt was worse and which path not to take again: the coder restarts from the checkpoint and this is all it learns of the attempt. Base it on the data; do not invent failures you cannot see. Coders also get a failed evaluation's error, so don't retype it.
-4. hypothesis: one concrete, testable change for the next round, in one or two sentences, different from hypotheses that already failed. Coders start from the kept commit and can't read a reverted experiment's code, so a hypothesis that reuses reverted work must describe all of it.
+3. feedback: concise guidance for the next round: what worked, what regressed, which metric families are weakest. When you revert, say why this attempt was worse and which path not to take again. Base it on the data; do not invent failures you cannot see. Coders also get a failed evaluation's error, so don't retype it.
+4. hypothesis: one concrete, testable change for the next round, in one or two sentences, different from hypotheses that already failed. Coders start from the kept commit, but can read a rejected experiment's diff at /spec/history/r<round>.diff, so a hypothesis that reuses rejected work can point at it.
 
-Coders must never see the evaluation data. In feedback and the hypothesis describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Names in a repository check are hints that the experiment's text matches a dev item, which general knowledge can explain, not proof of a leak.
+Coders must never see the evaluation data. Coders read keep_reason, feedback and the hypothesis: in all three describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Names in a repository check are hints that the experiment's text matches a dev item, which general knowledge can explain, not proof of a leak.
 
 The specification may leave interpretation choices open on purpose (which year a date without one means, which of two dates counts, how loose matching may be). A family stuck at partial accuracy often means the evaluation uses a different reading: test the alternative readings one round at a time, so the metrics tell which one is right.
 
@@ -136,6 +138,13 @@ function fmtChange(m: Metrics, parent: Metrics, input: ReviewInput): string {
   return changed.length ? changed.join(", ") : "none";
 }
 
+/** One round of the log: what was tried, what moved and why it went. `primary` names the score; null with headline metrics. */
+export function logLine(l: HypothesisLogEntry, primary: string | null): string {
+  const scores = Object.entries(l.scores ?? {}).map(([k, v]) => `${k}=${fmtNum(v)}`);
+  const moved = [...(primary ? [`Δ${primary}=${l.deltaPrimary.toFixed(4)}`] : []), ...fmtDeltas(l.deltas), ...scores];
+  return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || (l.scores ? "not scored" : "no metric moved")} (${l.decision}${l.reason ? `: ${l.reason}` : ""})`;
+}
+
 export function reviewerPrompt(input: ReviewInput): string {
   const headlined = input.headline.length > 0;
   // With headline metrics no one metric frames the round: the primary only names the score in charts.
@@ -165,32 +174,29 @@ export function reviewerPrompt(input: ReviewInput): string {
     `## Experiment ${b.expId} (${b.model})\nHypothesis: ${b.hypothesis}\n${score(b.primary)}metrics: ${fmtMetrics(b.metrics, input)}` +
       fmtDiagnostics(b.metrics, input) +
       (input.parentMetrics ? `\nChange from the kept commit: ${fmtChange(b.metrics, input.parentMetrics, input)}` : "") +
-      (b.guardrails.length ? `\nFailed guardrails, can't be kept: ${b.guardrails.join("; ")}` : "") +
+      (b.guardrails.length ? `\nFailed guardrails${input.override ? " by a tiny margin" : ", can't be kept"}: ${b.guardrails.join("; ")}` : "") +
       (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
       (b.details ? `\nPer-item errors on dev (may be cut off):\n${b.details}` : "") +
       `\nDiff vs the kept commit:\n\`\`\`diff\n${b.diff}\n\`\`\``,
   );
   if (input.log.length) {
-    const logged = (l: HypothesisLogEntry) => {
-      const scores = Object.entries(l.scores ?? {}).map(([k, v]) => `${k}=${fmtNum(v)}`);
-      const moved = [...(headlined ? [] : [`Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}`]), ...fmtDeltas(l.deltas), ...scores];
-      return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || (l.scores ? "not scored" : "no metric moved")} (${l.decision}${l.reason ? `: ${l.reason}` : ""})`;
-    };
     lines.push(
-      "## Hypothesis log (all rounds)\nEach Δ is against the checkpoint of that round; plain values had no scores to compare with. A reverted experiment's code is gone: coders start from the kept commit and can't read it.\n" +
-        input.log.map(logged).join("\n"),
+      "## Hypothesis log (all rounds)\nEach Δ is against the checkpoint of that round; plain values had no scores to compare with. Coders start from the kept commit; a rejected experiment survives only as a read-only diff at /spec/history/r<round>.diff.\n" +
+        input.log.map((l) => logLine(l, headlined ? null : input.primaryMetric)).join("\n"),
     );
   }
   lines.push(
     input.canKeep
-      ? "You may keep it."
+      ? input.override
+        ? "You may keep it only as an override: for a clear gain elsewhere, with keep_reason saying why the regression is acceptable."
+        : "You may keep it."
       : "It can't be kept: keep must be false. Explain why it is worse so the next round avoids that path.",
   );
   lines.push("Return JSON with keep, keep_reason, feedback and hypothesis.");
   return lines.join("\n\n");
 }
 
-export function parseReview(text: string, canKeep: boolean): Pick<ReviewOutput, "keep" | "keep_reason" | "feedback" | "hypothesis"> | null {
+export function parseReview(text: string, canKeep: boolean, override = false): Pick<ReviewOutput, "keep" | "keep_reason" | "feedback" | "hypothesis"> | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
@@ -198,14 +204,16 @@ export function parseReview(text: string, canKeep: boolean): Pick<ReviewOutput, 
     const obj = JSON.parse(text.slice(start, end + 1)) as { keep?: unknown; keep_reason?: unknown; feedback?: unknown; hypothesis?: unknown };
     if (typeof obj.keep !== "boolean" || typeof obj.feedback !== "string" || typeof obj.hypothesis !== "string" || !obj.hypothesis.trim()) return null;
     if (obj.keep && !canKeep) return null;
-    return { keep: obj.keep, keep_reason: typeof obj.keep_reason === "string" ? obj.keep_reason.trim() : "", feedback: obj.feedback.trim(), hypothesis: obj.hypothesis.trim() };
+    const reason = typeof obj.keep_reason === "string" ? obj.keep_reason.trim() : "";
+    if (obj.keep && override && !reason) return null; // an override states why
+    return { keep: obj.keep, keep_reason: reason, feedback: obj.feedback.trim(), hypothesis: obj.hypothesis.trim() };
   } catch {
     return null;
   }
 }
 
 /**
- * `scan` returns the held-out names in a text. Feedback and the hypothesis go to coders, so the reviewer gets
+ * `scan` returns the held-out names in a text. All but `keep` goes to coders, so the reviewer gets
  * one rewrite of any it wrote, and what survives that is masked.
  */
 export async function runReview(input: ReviewInput, scan: (text: string) => Promise<string[]> = async () => []): Promise<ReviewOutput> {
@@ -234,22 +242,23 @@ export async function runReview(input: ReviewInput, scan: (text: string) => Prom
   try {
     await session.prompt(reviewerPrompt(input));
     outOfCredits();
-    let parsed = parseReview(session.getLastAssistantText() ?? "", input.canKeep);
+    const parse = () => parseReview(session.getLastAssistantText() ?? "", input.canKeep, input.override);
+    let parsed = parse();
     if (!parsed) {
-      await session.prompt(`Reply again with only the JSON object, with a hypothesis: keep must be ${input.canKeep ? "true or false" : "false"}.`);
+      await session.prompt(`Reply again with only the JSON object, with a hypothesis: keep must be ${input.canKeep ? "true or false" : "false"}${input.override ? ", and keeping needs a keep_reason" : ""}.`);
       outOfCredits();
-      parsed = parseReview(session.getLastAssistantText() ?? "", input.canKeep);
+      parsed = parse();
     }
     if (!parsed) throw new Error("reviewer returned no parsable JSON twice");
-    const forCoders = (r: Pick<ReviewOutput, "feedback" | "hypothesis">) => `${r.feedback}\n${r.hypothesis}`;
+    const forCoders = (r: Pick<ReviewOutput, "keep_reason" | "feedback" | "hypothesis">) => `${r.keep_reason}\n${r.feedback}\n${r.hypothesis}`;
     let found = await scan(forCoders(parsed));
     if (found.length) {
-      await session.prompt(`Your feedback or hypothesis names evaluation items coders may not see: ${found.join(", ")}. Reply again with the same JSON, describing the error categories without them.`);
+      await session.prompt(`Your keep_reason, feedback or hypothesis names evaluation items coders may not see: ${found.join(", ")}. Reply again with the same JSON, describing the error categories without them.`);
       outOfCredits();
-      parsed = parseReview(session.getLastAssistantText() ?? "", input.canKeep) ?? parsed;
+      parsed = parse() ?? parsed;
       found = await scan(forCoders(parsed));
     }
-    const masked = { ...parsed, feedback: maskTerms(parsed.feedback, found), hypothesis: maskTerms(parsed.hypothesis, found) };
+    const masked = { ...parsed, keep_reason: maskTerms(parsed.keep_reason, found), feedback: maskTerms(parsed.feedback, found), hypothesis: maskTerms(parsed.hypothesis, found) };
     return { ...masked, reviewer_usd: usd, tokens, t_review: Math.round((performance.now() - t0) / 10) / 100 };
   } finally {
     session.dispose();

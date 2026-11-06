@@ -30,7 +30,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 | Q14 | The baseline image installs the scenario's fixed `requirements.txt`; no `pip install` at eval time. The starter repo is a stub CLI, `python -m graphrag <stage> --root --inputs --out [--graph]`, writing empty predictions. |
 | Q15 | The night page shows a per-stage headline table (one column per headline metric with its `ci95`), a retrieval kind × metric heatmap, a convergence chart with a metric selector, and one test KPI per stage. |
 | Q17 | No sync with scrabble. |
-| Q19 | Hard-regression margins per headline metric, in `scenario.yaml`: extraction F1s 0.02, graph B-cubed recall 0.02, graph B-cubed precision 0 (any drop fails), retrieval its own `ci95`. |
+| Q19 | Hard-regression margins per headline metric, in `scenario.yaml`: extraction F1s 0.02, graph B-cubed recall 0.02, graph B-cubed precision 0 (any drop fails), retrieval its own `ci95`. `override_limit: 0.005` lets the reviewer keep, with a stated reason, an experiment that failed only headline margins and by at most that much past each. Nothing else can be overridden. |
 | Q20 | One evaluation sandbox per evaluation (Inngest caps a sandbox at 50 min). |
 | Q21 | The checkpoint is not re-run: "below the parent" compares with the scores of its own evaluation, which saves one dev evaluation per round. Margins are the only protection against a lucky run. |
 | Q23 | Accepted risk: the full gold graph (test included) enters the eval sandbox for retrieval, which has open egress on Inngest. It never reaches a coder or the reviewer. |
@@ -46,7 +46,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 
 ## Text scan
 
-`scan` in `scenario.yaml` is an optional host command. `{text}` is a file and the command writes `{"found": [...]}` to `{report}`, the held-out names it found as the text has them. It runs on all that reaches a coder and isn't the reviewer's own reading: the reviewer's feedback and hypotheses, and the errors of failed branches. The reviewer gets one rewrite of what it wrote; what survives, and any match in an error, becomes `[hidden]`. graphrag's `scripts/scan_text.py` uses the lists of `check_repo.py` plus the dev and test queries. It finds copies, not paraphrases.
+`scan` in `scenario.yaml` is an optional host command. `{text}` is a file and the command writes `{"found": [...]}` to `{report}`, the held-out names it found as the text has them. It runs on all that reaches a coder and isn't the reviewer's own reading: the reviewer's keep reason, feedback and hypotheses, the errors of failed branches, each line of the round history and each rejected diff under `/spec/history`. The reviewer gets one rewrite of what it wrote; what survives, and any match elsewhere, becomes `[hidden]`. graphrag's `scripts/scan_text.py` uses the lists of `check_repo.py` plus the dev and test queries. It finds copies, not paraphrases.
 
 ## Open
 

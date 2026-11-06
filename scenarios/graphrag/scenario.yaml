@@ -18,6 +18,8 @@ headline:
   retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: ci95
   retrieval.by_kind.multi_hop.metrics.path_complete.mean: ci95
   retrieval.by_kind.intersection.metrics.answer_mrr.mean: ci95
+# How far past its margin a headline may fall and the reviewer still keep the experiment, with a reason.
+override_limit: 0.005
 # What the reviewer reads to explain the headlines: precision against recall, what a do-nothing graph
 # scores, how much each query returned, and the small retrieval kinds, too noisy to decide a keep.
 # The confusion-matrix cells and sample sizes stay out.

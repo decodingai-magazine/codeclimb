@@ -38,6 +38,8 @@ export interface Scenario {
    * of the parent's interval (`<metric>` ending `.mean`, with `.ci95_half` beside it). Empty: no such guardrail.
    */
   headline: Record<string, number | "ci95">;
+  /** How far past its margin a headline may fall and the reviewer still keep it, with a reason. Unset: never. */
+  override_limit?: number;
   /** Regexes of the metrics the reviewer reads to explain the headlines; they never decide a keep. */
   diagnostics?: string[];
   /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
@@ -94,6 +96,8 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     if (v !== "ci95" && !(typeof v === "number" && v >= 0)) throw new Error(`${where}: headline.${k} must be a margin >= 0 or "ci95"`);
     if (v === "ci95" && !k.endsWith(".mean")) throw new Error(`${where}: headline.${k}: "ci95" needs a metric ending .mean`);
   }
+  const overrideLimit = raw.override_limit;
+  if (overrideLimit !== undefined && !(typeof overrideLimit === "number" && overrideLimit >= 0)) throw new Error(`${where}: override_limit must be a number >= 0`);
   const diagnostics = (raw.diagnostics ?? []) as unknown[];
   if (!Array.isArray(diagnostics) || !diagnostics.every((d) => typeof d === "string")) throw new Error(`${where}: diagnostics must list regexes`);
   for (const d of diagnostics as string[]) new RegExp(d); // a bad pattern fails here, not in a review
@@ -103,6 +107,7 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
     headline: headline as Scenario["headline"], protocol: protocol as string[],
     ...(diagnostics.length ? { diagnostics: diagnostics as string[] } : {}),
+    ...(overrideLimit === undefined ? {} : { override_limit: overrideLimit as number }),
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
     ...(raw.scan === undefined ? {} : { scan: str(raw, "scan", where) }),
     ...(raw.inngest_image === undefined ? {} : { inngest_image: str(raw, "inngest_image", where) }),
