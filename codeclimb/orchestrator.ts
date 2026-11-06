@@ -172,6 +172,10 @@ export type ExperimentOutcome =
 
 export type EvalOutcome = { ok: true; evalId: string; result: EvalResult } | { ok: false; evalId: string; error: string; credits?: CreditStop };
 
+/** It has a commit that failed before it was scored, by a program or check error: a coder can fix that. */
+export const repairable = (x: ExperimentOutcome): boolean =>
+  x.ok && !!x.code.sha && !x.code.unchanged && !!(x.code.check?.errors.length || (x.eval && !x.eval.ok && !x.eval.credits));
+
 /** The out-of-credits stop of an evaluation, if it hit one. */
 export const creditStopOf = (o: EvalOutcome): CreditStop | undefined => (o.ok ? o.result.credits : o.credits);
 

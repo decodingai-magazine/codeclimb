@@ -8,8 +8,9 @@ import { coderPrompt, parseApproach, rejectedDiffs } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
+import { emptyStageError } from "./evaluate";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, saveRejected, spreadDetails } from "./orchestrator";
+import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, repairable, saveRejected, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, maskTerms, parseScenario, readProtocol } from "./scenario";
@@ -487,4 +488,47 @@ test("sameTree: an empty commit holds the parent's files", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("repair: a commit that failed before scoring, not a scored, empty or uncommitted one", () => {
+  const at = (code: ExperimentOutcome & { ok: true }) => repairable(code);
+  const x = { ok: true as const, expId: "e", model: "m" };
+  const evalWith = (over: object) => ({ ...evaluated({ accuracy: 0.5 }), ...over });
+  assert.equal(at({ ...x, code: coded("a"), eval: evalWith({ ok: false, error: "stage a: run exited 1" }) }), true);
+  assert.equal(at({ ...x, code: { ...coded("a"), check: { errors: ["leak"], notes: [] } }, eval: null }), true);
+  assert.equal(at({ ...x, code: coded("a"), eval: evaluated({ accuracy: 0.5 }) }), false);
+  assert.equal(at({ ...x, code: coded("a"), eval: null }), false); // the evaluator itself failed: nothing to fix in the code
+  assert.equal(at({ ...x, code: coded("a"), eval: evalWith({ ok: false, credits: { model: "m", message: "out" } }) }), false);
+  assert.equal(at({ ...x, code: { ...coded("a"), sha: null }, eval: null }), false);
+  assert.equal(at({ ...x, code: { ...coded("a"), unchanged: "gave up" }, eval: null }), false);
+  assert.equal(repairable({ ok: false, expId: "e", model: "m", error: "lost" }), false);
+});
+
+test("repair: the coder is told its commit is in /repo and to fix only this", () => {
+  const failures = [{ expId: "e", errors: ["stage a: run exited 1"] }];
+  const fix = coderPrompt("spec", "", "h", 10, undefined, undefined, undefined, failures, [], [], true);
+  assert.match(fix, /now in \/repo[^]*no second repair[^]*run exited 1/);
+  assert.match(coderPrompt("spec", "", "h", 10, undefined, undefined, undefined, failures), /Its code is gone/);
+});
+
+test("fail fast: an empty dev stage stops with its log; test runs on", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-empty-"));
+  try {
+    assert.match(emptyStageError("a", "dev", dir, `${"x".repeat(3000)}boom`) ?? "", /^stage a: the run exited clean but wrote no output.*boom$/);
+    assert.ok((emptyStageError("a", "dev", dir, "x".repeat(3000)) ?? "").length < 2200);
+    assert.equal(emptyStageError("a", "test", dir, ""), null);
+    writeFileSync(join(dir, "timings.jsonl"), "{}\n");
+    assert.notEqual(emptyStageError("a", "dev", dir, ""), null); // timings aren't output
+    writeFileSync(join(dir, "out.jsonl"), "{}\n");
+    assert.equal(emptyStageError("a", "dev", dir, ""), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the prompts carry the simplicity, output and near-miss rules", () => {
+  const coder = coderPrompt("spec", "", null, 10);
+  assert.match(coder, /Simpler is better/);
+  assert.match(coder, /to a file and read it with grep or tail/);
+  assert.doesNotMatch(coder, /<failures>/);
 });

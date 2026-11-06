@@ -68,6 +68,15 @@ function outputBytes(dir: string): number {
 }
 
 /**
+ * Why a dev run stops at a stage that wrote nothing: a program that swallowed its errors exits clean, and
+ * an empty stage can't be kept, so later stages would only spend money. Test always runs every stage.
+ */
+export function emptyStageError(stage: string, split: EvalSplit, outputs: string, runLog: string): string | null {
+  if (split !== "dev" || outputBytes(outputs)) return null;
+  return `stage ${stage}: the run exited clean but wrote no output. End of its log: ${runLog.slice(-2000)}`;
+}
+
+/**
  * The evaluator's sandbox for the next candidate: the live one, else a new empty one. A metered
  * evaluator joins the metering network, whose relay is made sure of first.
  *
@@ -223,6 +232,8 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       const outputs = join(sdir, "outputs");
       mkdirSync(outputs, { recursive: true });
       await pexec("tar", ["-xf", join(sdir, "outputs.tar"), "-C", outputs]);
+      result.error = emptyStageError(stage.name, req.split, outputs, runLog.toString()) ?? undefined;
+      if (result.error) return result;
 
       // Latency: only the program's operations, as the runner timed them.
       const timingsPath = join(outputs, TIMINGS_FILE);

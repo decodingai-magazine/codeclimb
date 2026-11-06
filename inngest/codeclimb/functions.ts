@@ -23,7 +23,7 @@ import {
   finishNight,
   initNight,
   type Kept,
-  historyLine, maskFailures,
+  historyLine, maskFailures, repairable,
   markPaused,
   type PausedAt,
   recordRows, saveRejected,
@@ -191,50 +191,69 @@ export const runNight = ccInngest.createFunction(
       }
       const rowBase = { cfg, nightId, round };
 
-      // One experiment from the checkpoint, with what the reviewer said about the last one.
+      // One experiment and its evaluation on dev, with the coder stopped.
       const parent = kept;
-      const expId = `${nightId}-r${round}-e0`;
-      const code = (resume: number) => {
-        const data: ExperimentEvent = {
-          nightId, expId, parentExpId: parent.expId, round, model: cfg.model,
-          feedback, failures, history, hypothesis, config: cfg, ...(resume ? { resume: true } : {}),
+      const attempt = async (n: number, parentExpId: string, input: Pick<ExperimentEvent, "failures" | "hypothesis" | "repair">): Promise<ExperimentOutcome> => {
+        const expId = `${nightId}-r${round}-e${n}`;
+        const code = (resume: number) => {
+          const data: ExperimentEvent = {
+            nightId, expId, parentExpId, round, model: cfg.model,
+            feedback, history, ...input, config: cfg, ...(resume ? { resume: true } : {}),
+          };
+          return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
+            (out) => ({ ok: true as const, code: out.code, runId: out.runId }),
+            (e: unknown) => ({ ok: false as const, error: String((e as Error)?.message ?? e) }),
+          );
         };
-        return step.invoke(`r${round}-e0${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
-          (out) => ({ ok: true as const, code: out.code, runId: out.runId }),
-          (e: unknown) => ({ ok: false as const, error: String((e as Error)?.message ?? e) }),
-        );
-      };
-      let coded = await code(0);
-      for (let n = 1; coded.ok && coded.code.credits; n += 1) {
-        await pauseForCredits(round, [{ ...coded.code.credits, where: `experiment ${expId.replace(`${nightId}-`, "")}` }]);
-        coded = await code(n);
-      }
-
-      // Then its evaluation on dev, with the coder stopped.
-      let experiment: ExperimentOutcome;
-      if (coded.ok) {
+        let coded = await code(0);
+        for (let r = 1; coded.ok && coded.code.credits; r += 1) {
+          await pauseForCredits(round, [{ ...coded.code.credits, where: `experiment ${expId.replace(`${nightId}-`, "")}` }]);
+          coded = await code(r);
+        }
+        if (!coded.ok) return { ok: false, expId, model: cfg.model, error: coded.error };
         const evaluated = coded.code.sha && !coded.code.check?.errors.length && coded.code.unchanged === undefined
-          ? await evaluate(`r${round}-eval`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
+          ? await evaluate(`r${round}-eval${n ? n : ""}`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
           : null;
-        experiment = { ok: true, expId, model: cfg.model, code: coded.code, eval: evaluated?.ok ? evaluated.result : null };
-      } else {
-        experiment = { ok: false, expId, model: cfg.model, error: coded.error };
-      }
+        return { ok: true, expId, model: cfg.model, code: coded.code, eval: evaluated?.ok ? evaluated.result : null };
+      };
 
-      const decided = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis }));
+      let experiment = await attempt(0, parent.expId, { failures, hypothesis });
+      let decided = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis }));
+
+      // A failed commit says nothing about its idea: one coder fixes it, if the budget allows, and the fix
+      // stands for the round. The failed attempt keeps its row and its cost.
+      let failed: typeof decided | null = null;
+      if (repairable(experiment)) {
+        const first = decided;
+        const stop = await step.run(`r${round}-repair-check`, () =>
+          checkStop({
+            round, cfg, deadlineMs, spend: spend + first.spend, roundSpends, maxEvalUsd, tokens: tokens + (first.row.tokens ?? 0), roundTokens, roundsWithoutKeep,
+          }),
+        );
+        if (!stop.stop) {
+          failed = first;
+          const errors = first.summary.errors ?? [];
+          const toFix = await step.run(`r${round}-repair-failures`, () => maskFailures(cfg, [{ expId: first.summary.expId, errors }]));
+          await step.run(`r${round}-record-failed`, () => recordRows(cfg, [first.row]));
+          experiment = await attempt(1, first.summary.expId, { failures: toFix, hypothesis: first.summary.hypothesis, repair: true });
+          const fixed = experiment;
+          decided = await step.run(`r${round}-decide-repair`, () => decideRound({ ...rowBase, parent, experiment: fixed, hypothesis }));
+        }
+      }
+      const final = decided;
 
       // Review, even of a reverted experiment: its feedback is what the next round learns from it. After
       // the last round with nothing to keep there is nothing to ask.
       let review: Omit<ReviewOutput, "keep"> = { keep_reason: "", feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
-      let decision = decided;
-      if (round < cfg.max_rounds || decided.candidate) {
+      let decision = final;
+      if (round < cfg.max_rounds || final.candidate) {
         for (let n = 0; ; n += 1) {
           let reviewed;
           try {
             reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
               reviewRound({
                 cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-                summary: decided.summary, canKeep: !!decided.candidate, override: decided.override, log: [...log],
+                summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log],
               }).catch((e: unknown) => {
                 if (e instanceof OutOfCredits) return { credits: e.stop };
                 throw e;
@@ -248,7 +267,7 @@ export const runNight = ccInngest.createFunction(
             continue;
           }
           review = reviewed;
-          decision = applyReview(decided, reviewed.keep);
+          decision = applyReview(final, reviewed.keep);
           break;
         }
       }
@@ -259,11 +278,11 @@ export const runNight = ccInngest.createFunction(
         return n;
       });
 
-      maxEvalUsd = Math.max(maxEvalUsd, row.program_usd);
-      const roundSpend = decision.spend + review.reviewer_usd;
+      maxEvalUsd = Math.max(maxEvalUsd, row.program_usd, failed?.row.program_usd ?? 0);
+      const roundSpend = decision.spend + review.reviewer_usd + (failed?.spend ?? 0);
       roundSpends.push(roundSpend);
       spend += roundSpend;
-      const roundTok = (row.tokens ?? 0) + review.tokens;
+      const roundTok = (row.tokens ?? 0) + review.tokens + (failed?.row.tokens ?? 0);
       roundTokens.push(roundTok);
       tokens += roundTok;
       roundsWithoutKeep = decision.keep ? 0 : roundsWithoutKeep + 1;
@@ -281,7 +300,9 @@ export const runNight = ccInngest.createFunction(
       log.push(entry);
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));
       // A rejected commit stays readable to later coders, whatever rejected it.
-      if (!decision.keep && experiment.ok && experiment.code.sha && s.unchanged === undefined) await step.run(`r${round}-rejected`, () => saveRejected(cfg, nightId, round, parent.expId, expId));
+      if (!decision.keep && experiment.ok && experiment.code.sha && (s.unchanged === undefined || failed)) {
+        await step.run(`r${round}-rejected`, () => saveRejected(cfg, nightId, round, parent.expId, s.expId));
+      }
       feedback = review.feedback;
       failures = await step.run(`r${round}-failures`, () => maskFailures(cfg, s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
       hypothesis = review.hypothesis;

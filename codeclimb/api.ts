@@ -107,7 +107,8 @@ function live(n: ReturnType<typeof findNight>) {
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === n.night.night_id);
   const running = s.round > 0 && (s.status === "running" || s.status === "paused");
   const branches = (running ? [cfg.model] : []).map((model) => {
-    const expId = `${n.night.night_id}-r${s.round}-e0`;
+    const attempt = (e: number) => `${n.night.night_id}-r${s.round}-e${e}`;
+    const expId = attempt(existsSync(join(n.dir, "exps", attempt(1))) ? 1 : 0); // a repair takes over
     const state = readJson<CodeState>(join(n.dir, "exps", expId, "code-state.json"));
     const row = rows.find((r) => r.exp_id === expId && r.kind === "experiment");
     const phase = row ? "evaluated" : !state ? "starting" : state.finishedAt ? "waiting for eval" : "coding";

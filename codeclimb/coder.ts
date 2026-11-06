@@ -40,6 +40,8 @@ export type ExperimentInput = {
   feedback: string;
   /** The last round's experiment if it was never scored, with its errors, held-out names masked. */
   failures?: EvalFailure[];
+  /** This attempt fixes the failed commit it starts from (`parentExpId`), named in `failures`. */
+  repair?: boolean;
   /** One line per earlier round, held-out names masked: what was tried, what moved, why it went. */
   history?: string[];
   /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
@@ -123,6 +125,7 @@ export function coderPrompt(
   failures: EvalFailure[] = [],
   history: string[] = [],
   rejectedDiffs: string[] = [],
+  repair = false,
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
@@ -131,7 +134,10 @@ export function coderPrompt(
   ];
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (failures.length) {
-    parts.push(`<failures>\nThe last attempt failed before it was scored. Its code is gone, but your code can fail the same way. The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
+    const intro = repair
+      ? "Your last attempt, now in /repo, failed before it was scored. Fix this failure and nothing else, then test the fix: there is no second repair."
+      : "The last attempt failed before it was scored. Its code is gone, but your code can fail the same way.";
+    parts.push(`<failures>\n${intro} The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
   }
   if (history.length) {
     const diffs = rejectedDiffs.length
@@ -165,6 +171,8 @@ export function coderPrompt(
         : []),
       "- The evaluation's inputs can be much longer than the ones you test on: leave room in token limits and timeouts.",
       "- Before you stop, run every stage from start to finish on all of /spec/train if it exists and the model budget allows, else on your own cases, and read the output. An item that came back empty is a failure, not a result: when the program catches a failed item and goes on, it must report it on stderr. Fix what you find.",
+      "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
+      "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
@@ -334,7 +342,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir)),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair),
       );
     } else {
       stop = "timeout";
