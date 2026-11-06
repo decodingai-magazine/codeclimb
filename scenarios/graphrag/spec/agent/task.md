@@ -176,6 +176,11 @@ costs time and money, so try a change on train and keep what raises a metric the
 
 - **Chat model: read text.** Use it to extract rows, with few-shot examples from train. A second
   pass that hands it the article and its first rows, and asks only what's missing, targets recall.
+- **Chunking: split a document too large to handle whole.** If an article overruns a model's
+  context or output limit, or the model starts missing the rows near its end, split it, for example
+  by section or into overlapping windows. Extract per chunk, then merge the rows so each document
+  still has one row per entity. The same chunks can serve as passages for retrieval. Measure it on
+  train: short articles may not need it.
 - **Embedding model: find candidates cheaply.** Embed names with their descriptions, edges as short
   sentences, and passages, then compare by cosine similarity. Send texts in batches.
 - **Decision model: answer yes or no with a probability.** Use it where a threshold is the design:
