@@ -1,6 +1,7 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
 //   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--sandbox docker|inngest] [--no-wait]
 //   npm run run-night -- stop --night ID
+//   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -29,8 +30,9 @@ function newNightId(): string {
 }
 
 async function follow(cfg: NightConfig, nightId: string): Promise<void> {
-  const { doneJson, stopJson } = nightPaths(cfg, nightId);
+  const { doneJson, stopJson, pauseJson } = nightPaths(cfg, nightId);
   let printed = 0;
+  let paused = false;
   console.log(`[run-night] following ${nightId} (Ctrl-C detaches; the night keeps running)`);
   for (;;) {
     const rows = readRows(cfg.results_path).filter((r) => r.night_id === nightId);
@@ -51,8 +53,23 @@ async function follow(cfg: NightConfig, nightId: string): Promise<void> {
       console.log(`[run-night] stopped: ${readFileSync(stopJson, "utf8")}`);
       return;
     }
+    const pausing = existsSync(pauseJson);
+    if (pausing && !paused) {
+      const { stops } = JSON.parse(readFileSync(pauseJson, "utf8")) as { stops: { where: string; who: string; model: string; message: string }[] };
+      for (const s of stops) console.log(`[run-night] paused, out of credits: ${s.where}, ${s.who} on ${s.model}: ${s.message}`);
+      console.log(`[run-night] add credits, then: npm run run-night${process.env.CODECLIMB_ENV === "cloud" ? ":cloud" : ""} -- resume --night ${nightId}`);
+    }
+    if (paused && !pausing) console.log("[run-night] resumed");
+    paused = pausing;
     await new Promise((r) => setTimeout(r, 5000));
   }
+}
+
+if (positionals[0] === "resume") {
+  if (!values.night) throw new Error("resume needs --night <id>");
+  await ccInngest.send({ name: "codeclimb/night.resume", data: { night_id: values.night } });
+  console.log(`[run-night] sent codeclimb/night.resume for ${values.night}`);
+  process.exit(0);
 }
 
 if (positionals[0] === "stop") {

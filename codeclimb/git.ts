@@ -71,11 +71,11 @@ export class ExperimentRepo {
     }
   }
 
-  async bundle(expId: string): Promise<RepoCommit> {
+  async bundle(expId: string, alsoExpId?: string): Promise<RepoCommit> {
     const tmp = await mkdtemp(join(tmpdir(), "cc-bundle-"));
     try {
       const file = join(tmp, "b.bundle");
-      await this.git(["bundle", "create", "-q", file, expRef(expId)]);
+      await this.git(["bundle", "create", "-q", file, expRef(expId), ...(alsoExpId ? [expRef(alsoExpId)] : [])]);
       return { bundle: await readFile(file), ref: expRef(expId) };
     } finally {
       await rm(tmp, { recursive: true, force: true });

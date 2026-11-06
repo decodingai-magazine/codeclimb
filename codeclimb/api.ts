@@ -39,6 +39,7 @@ function readJson<T>(file: string): T | null {
 
 // ---------- nights ----------
 
+type PausedStop = { where: string; who: string; model: string; message: string };
 type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig };
 type DoneFile = { stop_reason: string; rounds: number; kept: { exp_id: string; dev_score: number }; spend_usd: number; finished_at: string };
 type CodeState = {
@@ -86,9 +87,11 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   const exps = existsSync(join(dir, "exps")) ? readdirSync(join(dir, "exps")) : [];
   const round = Math.max(0, ...exps.map((e) => Number(/-r(\d+)-e\d+$/.exec(e)?.[1] ?? 0)));
   const kept = rows.filter((r) => r.kind === "experiment" && r.decision === "keep").at(-1);
-  const status = done ? "finished" : stop ? "stopped" : Date.now() - lastActivity(dir) > STALE_MS ? "stale" : "running";
+  const pause = readJson<{ at: number; stops: PausedStop[] }>(join(dir, "pause.json"));
+  const status = done ? "finished" : stop ? "stopped" : pause ? "paused" : Date.now() - lastActivity(dir) > STALE_MS ? "stale" : "running";
   return {
     id: night.night_id, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
+    pause: pause && status === "paused" ? pause : null,
     round, max_rounds: cfg.max_rounds, primary_metric: cfg.primary_metric,
     best: done?.kept.dev_score ?? kept?.metrics[cfg.primary_metric] ?? null, best_exp: done?.kept.exp_id ?? kept?.exp_id ?? null,
     threshold: cfg.thresholds[cfg.primary_metric] ?? null,
@@ -102,7 +105,7 @@ function live(n: ReturnType<typeof findNight>) {
   const cfg = n.night.config;
   const s = summary(n);
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === n.night.night_id);
-  const running = s.round > 0 && s.status === "running";
+  const running = s.round > 0 && (s.status === "running" || s.status === "paused");
   const branches = (running ? cfg.models.slice(0, parallelWidth(cfg, s.round)) : []).map((model, b) => {
     const expId = `${n.night.night_id}-r${s.round}-e${b}`;
     const state = readJson<CodeState>(join(n.dir, "exps", expId, "code-state.json"));
@@ -132,6 +135,11 @@ async function report(n: ReturnType<typeof findNight>): Promise<ReportData> {
   const ids = new Set(data.nights.flatMap((x) => x.rows.map((r) => r.exp_id)));
   data.diffs = Object.fromEntries(Object.entries(data.diffs).filter(([k]) => ids.has(k)));
   return data;
+}
+
+async function resumeNight(n: ReturnType<typeof findNight>) {
+  await ccInngest.send({ name: "codeclimb/night.resume", data: { night_id: n.night.night_id } });
+  return { resumed: n.night.night_id };
 }
 
 async function stopNight(n: ReturnType<typeof findNight>) {
@@ -252,7 +260,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     // The metering proxy authenticates by its own per-ledger tokens.
     if (path.startsWith("/v1/")) return void (await (await meter()).handle(req, res));
     if (!authorized(req)) throw new HttpError(401, "missing or wrong worker token");
-    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|export)(?:\/([^/]+))?)?$/.exec(path);
+    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|export)(?:\/([^/]+))?)?$/.exec(path);
     if (req.method === "GET" && path === "/api/health") return send(res, 200, { ok: true });
     if (req.method === "GET" && path === "/api/nights") {
       const all = nightFiles().map(summary).sort((a, b) => b.started_at - a.started_at);
@@ -264,6 +272,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (req.method === "GET" && m[2] === "live") return send(res, 200, live(n));
       if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n));
       if (req.method === "POST" && m[2] === "stop") return send(res, 200, await stopNight(n));
+      if (req.method === "POST" && m[2] === "resume") return send(res, 200, await resumeNight(n));
       if (req.method === "GET" && m[2] === "export" && m[3]) return await exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "repo", res);
       if (req.method === "POST" && m[2] === "export" && m[3]) return send(res, 200, await exportTo(n, decodeURIComponent(m[3]), await readBody(req)));
     }

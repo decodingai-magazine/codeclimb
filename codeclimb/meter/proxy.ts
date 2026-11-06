@@ -10,6 +10,7 @@
 //   POST /v1/_op {"op": "query"}  the runner names the operation later calls belong to
 // Status codes follow SDK retry policy: 401 bad token, 403 model not allowed,
 // 402 eval budget spent, 400 unsupported request; only upstream failures are 502.
+import { type CreditStop, isCreditError } from "../credits";
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -76,6 +77,8 @@ export class BackendError extends Error {
   constructor(
     message: string,
     readonly usage?: CallUsage,
+    /** The account is out of credits, whatever the message says. */
+    readonly credits = false,
   ) {
     super(message);
   }
@@ -90,6 +93,8 @@ export interface MeterCall {
   output_tokens: number;
   cost_usd: number;
   ms: number;
+  /** Why it failed. */
+  error?: string;
 }
 
 /** Operation of calls made before the runner names one. */
@@ -106,6 +111,9 @@ interface Ledger {
   ctx: Context;
   attrs: Record<string, string>;
   abort: AbortController;
+  /** Set by the first out-of-credits call; later calls are refused without going upstream. */
+  creditStop?: CreditStop;
+  onCreditStop?: (stop: CreditStop) => void;
 }
 
 const tracer = trace.getTracer("codeclimb");
@@ -208,11 +216,11 @@ export class MeterProxy {
   }
 
   /** A ledger for one eval. Returns its bearer token. */
-  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string> }): string {
+  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void }): string {
     const token = `cc-${randomBytes(24).toString("hex")}`;
     this.ledgers.set(token, {
       evalId: opts.evalId, allowed: new Set(opts.allowedModels), capUsd: opts.capUsd, op: DEFAULT_OP, calls: [], costUsd: 0,
-      ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(),
+      ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(), onCreditStop: opts.onCreditStop,
     });
     return token;
   }
@@ -249,6 +257,7 @@ export class MeterProxy {
       }
       const model = String(body.model ?? "");
       if (!ledger.allowed.has(model)) throw new HttpError(403, `model ${model || "(none)"} is not in allowed_models`, "permission_error");
+      if (ledger.creditStop) throw new HttpError(402, `out of credits: ${ledger.creditStop.message}`, "insufficient_quota");
       if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `eval budget of $${ledger.capUsd} is spent`, "insufficient_quota");
       if (route === "chat") return send(res, 200, await this.chat(ledger, parseChat(body)));
       if (route === "decisions") return send(res, 200, await this.decide(ledger, model, body));
@@ -273,11 +282,11 @@ export class MeterProxy {
       ledger.ctx,
     );
     const t0 = performance.now();
-    const record = (ok: boolean, usage: CallUsage | undefined) => {
+    const record = (ok: boolean, usage: CallUsage | undefined, error?: string) => {
       const u = usage ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
       ledger.calls.push({
         kind, model, op, ok, input_tokens: u.inputTokens, output_tokens: u.outputTokens, cost_usd: u.costUsd,
-        ms: Math.round((performance.now() - t0) * 1000) / 1000,
+        ms: Math.round((performance.now() - t0) * 1000) / 1000, ...(error ? { error } : {}),
       });
       ledger.costUsd += u.costUsd;
       span.setAttributes({
@@ -289,9 +298,17 @@ export class MeterProxy {
       record(true, out.usage);
       return out;
     } catch (e) {
-      record(false, e instanceof BackendError ? e.usage : undefined);
-      span.setStatus({ code: SpanStatusCode.ERROR, message: (e as Error).message });
-      throw new HttpError(502, `upstream: ${(e as Error).message}`, "api_error");
+      const { message } = e as Error;
+      record(false, e instanceof BackendError ? e.usage : undefined, message);
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      if ((e instanceof BackendError && e.credits) || isCreditError(message)) {
+        if (!ledger.creditStop) {
+          ledger.creditStop = { who: "program", model, message };
+          ledger.onCreditStop?.(ledger.creditStop);
+        }
+        throw new HttpError(402, `out of credits: ${message}`, "insufficient_quota");
+      }
+      throw new HttpError(502, `upstream: ${message}`, "api_error");
     } finally {
       span.end();
     }

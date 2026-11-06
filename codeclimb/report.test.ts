@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -98,4 +99,23 @@ test("report data reads every night, saved reviews and done.json; best resolves 
   const boot = /<script id="cc-boot" type="application\/json">([\s\S]*?)<\/script>/.exec(html)![1];
   assert.ok(!boot.includes("<"));
   assert.equal(JSON.parse(boot).data.nights[0].rows[0].hypothesis, "</script><script>alert(1)</script>");
+});
+
+test("a resumed experiment's bundle also carries its parent, to squash onto", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cc-resume-"));
+  const repo = new ExperimentRepo(join(tmp, "git.git"));
+  await repo.ensure();
+  const src = join(tmp, "src");
+  mkdirSync(src);
+  writeFileSync(join(src, "a"), "parent");
+  await repo.importDir(src, "n-r0");
+  writeFileSync(join(src, "a"), "partial");
+  await repo.importDir(src, "n-r1-e0");
+  const { bundle, ref } = await repo.bundle("n-r1-e0", "n-r0");
+  const file = join(tmp, "b.bundle");
+  writeFileSync(file, bundle);
+  const heads = execFileSync("git", ["bundle", "list-heads", file], { encoding: "utf8" });
+  assert.match(heads, /refs\/exp\/n-r1-e0/);
+  assert.match(heads, /refs\/exp\/n-r0/);
+  assert.equal(ref, "refs/exp/n-r1-e0");
 });

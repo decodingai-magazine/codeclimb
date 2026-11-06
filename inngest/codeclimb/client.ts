@@ -22,6 +22,11 @@ export function nightStartEvent(nightId: string, config: NightConfig) {
   return { id: `night-start-${nightId}`, name: nightStart.name, data: { night_id: nightId, config } };
 }
 
+/** Goes on from a pause for credits: `run-night resume`, or the app's Resume. */
+export const nightResume = eventType("codeclimb/night.resume", {
+  schema: staticSchema<{ night_id: string }>(),
+});
+
 export const nightStop = eventType("codeclimb/night.stop", {
   schema: staticSchema<{ night_id: string; reason?: string }>(),
 });

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
 import { efficiencyMetrics, type NightConfig } from "./config";
+import { type CreditStop, isCreditError } from "./credits";
 import { ExperimentRepo, expRef } from "./git";
 import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
@@ -39,9 +40,11 @@ export type ExperimentInput = {
   /** Reviewer's hypothesis for this branch; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
   config: NightConfig;
+  /** Go on after a pause for credits from the commit `expId` holds, in the same Pi session. */
+  resume?: boolean;
 };
 
-export type StopReason = "done" | "timeout" | "budget" | "agent_error" | "cancelled";
+export type StopReason = "done" | "timeout" | "budget" | "agent_error" | "cancelled" | "credits";
 
 export interface CodeResult {
   ok: boolean;
@@ -60,6 +63,8 @@ export interface CodeResult {
   resumed: boolean;
   /** The scenario's `check` of the commit; with errors the branch is not evaluated. */
   check?: RepoCheck;
+  /** The models ran out of credits: `sha` is the work so far, for `resume` to go on from. */
+  credits?: CreditStop;
 }
 
 interface CodeState {
@@ -175,7 +180,17 @@ export async function runCoder(
   let sandbox: Sandbox | null = null;
   let sessionFile: string | undefined;
   let resumed = false;
-  if (state && ctx.attempt > 0) {
+  if (state && input.resume) {
+    // After a pause: the sandbox is gone, and its work is the commit made when the credits ran out.
+    sandbox = await backend.find(name);
+    sessionFile = latestSessionFile(sessionDir);
+    resumed = sessionFile !== undefined;
+    if (ctx.attempt === 0) {
+      state.startedAt = Date.now() - state.tCode * 1000; // the pause doesn't count against experiment_min
+      state.finishedAt = undefined;
+      state.stop = undefined;
+    }
+  } else if (state && ctx.attempt > 0) {
     sandbox = await backend.find(name);
     sessionFile = latestSessionFile(sessionDir);
     if (sandbox && sessionFile) {
@@ -212,7 +227,8 @@ export async function runCoder(
       name,
       baseline: cfg.scenario.image,
       inngestImage: cfg.scenario.inngest_image,
-      commit: await repo.bundle(input.parentExpId),
+      // Both refs: the clone is the work so far, and `commitAndExport` still squashes onto the parent.
+      commit: input.resume ? await repo.bundle(input.expId, input.parentExpId) : await repo.bundle(input.parentExpId),
       specDir: paths.bundleDir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
       network: metered ? METER_NETWORK : "none",
@@ -222,9 +238,15 @@ export async function runCoder(
   }
 
   const devBefore = state.devUsd;
+  let credits: CreditStop | undefined;
+  const outOfCredits = (stop: CreditStop) => {
+    credits ??= stop;
+    abortWith("credits");
+  };
   const token = proxy?.open({
     evalId: `${input.expId}-dev`, allowedModels: cfg.allowed_models, capUsd: Math.max(cfg.budget_usd.dev - devBefore, 0),
     attrs: { "codeclimb.exp_id": input.expId, "codeclimb.ledger": "dev" },
+    onCreditStop: outOfCredits,
   });
   const closeDev = () => {
     if (!token) return;
@@ -253,6 +275,9 @@ export async function runCoder(
   const t0 = performance.now();
   const unsubscribe = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant") {
+      if (e.message.stopReason === "error" && isCreditError(e.message.errorMessage ?? "")) {
+        outOfCredits({ who: "coder", model: input.model, message: e.message.errorMessage ?? "" });
+      }
       state!.coderUsd += e.message.usage.cost.total;
       state!.tokens += e.message.usage.totalTokens;
       state!.tCode = tCodeBefore + secs(performance.now() - t0);
@@ -284,6 +309,7 @@ export async function runCoder(
     }
   } catch (e) {
     agentError = (e as Error).message;
+    if (isCreditError(agentError)) outOfCredits({ who: "coder", model: input.model, message: agentError });
   } finally {
     clearTimeout(timer);
     closeDev();
@@ -326,5 +352,6 @@ export async function runCoder(
     t_teardown,
     infra_errors: state.infraErrors,
     resumed,
+    ...(credits ? { credits } : {}),
   };
 }

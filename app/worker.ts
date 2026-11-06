@@ -11,8 +11,10 @@ export type NightSummary = {
   id: string;
   scenario: string;
   sandbox: string;
-  status: "running" | "finished" | "stopped" | "stale";
+  status: "running" | "paused" | "finished" | "stopped" | "stale";
   stop_reason: string | null;
+  /** Set while the night waits for credits. */
+  pause: { at: number; stops: { where: string; who: string; model: string; message: string }[] } | null;
   round: number;
   max_rounds: number;
   primary_metric: string;

@@ -82,7 +82,7 @@ export function Meter({ value, max, label }: { value: number; max: number; label
   );
 }
 
-const STATUS_LABEL: Record<string, string> = { running: "running", finished: "finished", stopped: "stopped", stale: "stale" };
+const STATUS_LABEL: Record<string, string> = { running: "running", paused: "paused", finished: "finished", stopped: "stopped", stale: "stale" };
 
 /** A night's status: live while running, accented when it met its thresholds, plain otherwise. */
 export function StatusBadge({ status, stopReason }: { status: string; stopReason: string | null }) {

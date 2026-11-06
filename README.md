@@ -100,6 +100,7 @@ npm run build:image                    # docker image codeclimb-python (python 3
 npm run worker                         # terminal 2: connect() worker (orchestrator + Pi)
 npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night and follows results.jsonl
 npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
+npm run run-night -- resume --night <night_id>              # continue a night paused out of credits
 npm run validate-results -- runs/datenorm-smoke/results.jsonl
 npm test                               # unit tests (keep rule, stops, schema)
 ```
@@ -130,6 +131,16 @@ A night stops on the first of these, checked between rounds (`stop_reason` in `d
 
 The test eval gets its own evaluator too. A scenario with `eval_sandboxes: per_candidate` runs one evaluator per candidate, in parallel. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
 
+#### Out of credits: pause and resume
+
+A night pauses instead of failing when a provider reports it is out of credits. Without this, the failed calls score as a bad result: a program that gets a 402 on every call looks like a low F1, and the reviewer and the keep rule act on it.
+
+- **What is detected.** A 402 or a key limit (403 `Key limit exceeded`) from OpenRouter on a program call, and a credit or quota error from Pi on a coder or reviewer turn. A rate limit is not a credit error: Pi retries it.
+- **Where it stops.** The CLI and the night's page say which experiment, eval or review stopped, whether the program, coder or reviewer hit it, on which model, and the provider's message. `pause.json` holds the same.
+- **What is kept.** A coder commits its partial work and resumes the same Pi session. Evaluations that finished stay; only the stopped ones rerun, and calls that failed are not scored. Sandboxes are destroyed while paused, so nothing bills.
+- **Resuming.** Add credits, then run `npm run run-night -- resume --night <night_id>` or press Resume on the night's page. Time spent paused doesn't count against the night's deadline. Still out of credits? It pauses again at the same place.
+- **Limits.** A pause lasts 3 days, then the night stops. Stop works while paused. A child function never waits: it returns the stop to `run-night`, which waits on `codeclimb/night.resume`, because a waiting child would hit its `step.invoke` timeout.
+
 All output lands under `dirname(results_path)`:
 
 | Path | Content |
@@ -139,6 +150,8 @@ All output lands under `dirname(results_path)`:
 | `nights/<id>/night.json` | Resolved config, start time and deadline, and metric-script hashes. |
 | `nights/<id>/done.json` | Stop reason, kept commit and test metrics. |
 | `nights/<id>/reviews/r<N>.json` | The reviewer's feedback and hypotheses for round N. |
+| `nights/<id>/pause.json` | Where a paused night stopped. Removed on resume. |
+| `nights/<id>/pauses.jsonl` | Every pause of the night, with its resume time. |
 | `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
 | `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs, the runner's `timings.jsonl`, `meter.jsonl` (the program's model calls) and `metrics.json`. |

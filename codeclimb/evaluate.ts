@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { evalMinutes, type NightConfig } from "./config";
+import type { CreditStop } from "./credits";
 import { ExperimentRepo } from "./git";
 import { nightPaths, sandboxName } from "./paths";
 import { sandboxBackend } from "./sandbox";
@@ -53,6 +54,8 @@ export interface EvalResult {
   t_teardown: number;
   wall_s: number;
   infra_errors: number;
+  /** The models ran out of credits: no score, and the night pauses to run it again. */
+  credits?: CreditStop;
   /** The evaluator incarnation that ran it: only evals on the same instance are compared on latency. */
   evaluator_instance: string;
   eval_order: number;
@@ -165,8 +168,18 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
   let nItems = 0;
   // The program's model calls: a token for this eval only, revoked when the run ends.
   const proxy = isMetered(cfg) ? await meter() : null;
+  // The first out-of-credits call ends the stage: every later call would fail too.
+  let creditsOut = () => {};
+  const outOfCredits = new Promise<null>((r) => {
+    creditsOut = () => r(null);
+  });
   const token = proxy?.open({
     evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval,
+    onCreditStop: (stop) => {
+      result.credits = stop;
+      result.error = `out of credits on ${stop.model}: ${stop.message}`;
+      creditsOut();
+    },
     attrs: { "codeclimb.eval_id": req.evalId, "codeclimb.exp_id": req.expId },
   });
   const env = token ? meterEnv(token, await meterBaseUrl(cfg)) : undefined;
@@ -191,11 +204,14 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
 
       const runStartMs = Date.now();
       t0 = performance.now();
-      const run = await sandbox.exec(
+      const exec = sandbox.exec(
         `mkdir -p ${box}/out && (${fill(stage.run, { inputs: `${box}/inputs.jsonl`, out: `${box}/out` })}) > ${box}/run.log 2>&1`,
         { cwd: "/repo", timeoutMs: cfg.timeouts.eval_min * 60_000, ...(env ? { env } : {}) },
       );
+      exec.catch(() => undefined); // abandoned on running out of credits; the evaluator's close ends it
+      const run = await Promise.race([exec, outOfCredits]);
       result.t_eval += secs(t0);
+      if (!run || result.credits) return result; // the program may have swallowed the errors and exited 0
       if (run.timedOut || run.exitCode !== 0) {
         const log = (await sandbox.readFile(`${box}/run.log`).catch(() => Buffer.from(""))).toString().slice(-2000);
         writeFileSync(join(sdir, "run.log"), log);

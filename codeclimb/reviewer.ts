@@ -3,6 +3,7 @@
 // distinct hypothesis per next branch. A fixed model that is none of the coders.
 // Never sees anything from test.
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { isCreditError, OutOfCredits } from "./credits";
 import { createIsolatedSession } from "./pi/session";
 import type { Metrics } from "./stats";
 
@@ -199,17 +200,25 @@ export async function runReview(input: ReviewInput): Promise<ReviewOutput> {
   });
   let usd = 0;
   let tokens = 0;
+  let creditError: string | undefined;
   session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant") {
       usd += e.message.usage.cost.total;
       tokens += e.message.usage.totalTokens;
+      const error = e.message.errorMessage;
+      if (e.message.stopReason === "error" && error && isCreditError(error)) creditError = error;
     }
   });
+  const outOfCredits = () => {
+    if (creditError) throw new OutOfCredits({ who: "reviewer", model: input.model, message: creditError });
+  };
   try {
     await session.prompt(reviewerPrompt(input));
+    outOfCredits();
     let parsed = parseReview(session.getLastAssistantText() ?? "", input.branches, input.candidates);
     if (!parsed) {
       await session.prompt(`Reply again with only the JSON object: keep must be null or one of [${input.candidates.join(", ")}], with exactly ${input.branches} distinct hypotheses.`);
+      outOfCredits();
       parsed = parseReview(session.getLastAssistantText() ?? "", input.branches, input.candidates);
     }
     if (!parsed) throw new Error("reviewer returned no parsable JSON twice");

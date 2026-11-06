@@ -1,3 +1,4 @@
+import { isCreditError } from "./credits";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { BackendError, type MeterBackends, MeterProxy } from "./meter/proxy";
@@ -14,6 +15,7 @@ const backends: MeterBackends = {
     return { vectors: input.map((t) => [t.length, 0]), usage: { inputTokens: input.length * 4, outputTokens: 0, costUsd: 0.0001 } };
   },
   async rerank(_model, request) {
+    if (request.query === "broke") throw new BackendError("Insufficient credits. Add more", undefined, true);
     return { results: request.documents.map((_, index) => ({ index, relevance_score: 1 / (index + 1) })), usage: { inputTokens: 9, outputTokens: 0, costUsd: 0.0002 } };
   },
   async decide() {
@@ -93,4 +95,27 @@ test("rerank: metered per call, documents required, allowed models only", async 
   assert.equal((await post("/v1/rerank", { model: "p/other", query: "q", documents: ["a"] }, t)).status, 403);
   const calls = proxy.close(t);
   assert.deepEqual(calls.map((c) => [c.kind, c.model, c.input_tokens, c.cost_usd]), [["rerank", "p/rerank", 9, 0.0002]]);
+});
+
+test("out of credits: 402 to the program, one stop, nothing more goes upstream", async () => {
+  const stops: unknown[] = [];
+  const t = proxy.open({ evalId: "e-credits", allowedModels: ["p/rerank"], capUsd: 1, onCreditStop: (s) => stops.push(s) });
+  const body = { model: "p/rerank", query: "broke", documents: ["a"] };
+  const first = await post("/v1/rerank", body, t);
+  assert.equal(first.status, 402);
+  assert.equal(first.body.error.type, "insufficient_quota");
+  assert.equal((await post("/v1/rerank", { ...body, query: "fine" }, t)).status, 402);
+  assert.deepEqual(stops, [{ who: "program", model: "p/rerank", message: "Insufficient credits. Add more" }]);
+  const calls = proxy.close(t);
+  assert.equal(calls.length, 1); // the second call never went upstream
+  assert.equal(calls[0].error, "Insufficient credits. Add more");
+});
+
+test("credit errors are exhausted accounts, not throttles", () => {
+  for (const m of ["Key limit exceeded (daily limit). Manage it using https://openrouter.ai/workspaces/default/keys", "402 Payment Required", "Insufficient credits. Add more", "insufficient_quota", "quota exceeded", "You have exceeded your premium request allowance", "Your credit balance is too low", "Monthly usage limit reached"]) {
+    assert.ok(isCreditError(m), m);
+  }
+  for (const m of ["429 Too Many Requests", "rate limit reached", "503 service unavailable", "connection refused", "context length exceeded", "budget of $2 spent"]) {
+    assert.ok(!isCreditError(m), m);
+  }
 });

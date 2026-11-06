@@ -96,6 +96,14 @@ export default function NightPage() {
     setStopping(false);
   }
 
+  async function resume() {
+    try {
+      await api(`nights/${encodeURIComponent(id)}/resume`, { method: "POST" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   if (!live) return <main>{error ? <p className="notice">{error}</p> : <p className="muted">Loading…</p>}</main>;
 
   const end = live.finished_at ? Date.parse(live.finished_at) : now;
@@ -118,8 +126,9 @@ export default function NightPage() {
             </p>
           </div>
           <StatusBadge status={live.status} stopReason={live.stop_reason} />
-          {running && (
+          {(running || live.status === "paused") && (
             <div className="actions">
+              {live.status === "paused" && <button className="btn" type="button" onClick={resume}>Resume</button>}
               <button className="btn btn-danger" type="button" onClick={stop} disabled={stopping}>
                 <Icon name="stop" />{stopping ? "Stopping…" : "Stop night"}
               </button>
@@ -127,6 +136,14 @@ export default function NightPage() {
           )}
         </div>
         {error && <p className="notice">{error}</p>}
+        {live.pause && (
+          <p className="notice">
+            Paused since {new Date(live.pause.at).toLocaleTimeString()}, out of credits. Add credits, then resume.
+            {live.pause.stops.map((s) => (
+              <span key={s.where} style={{ display: "block" }}>{s.where}: {s.who} on {s.model}: {s.message}</span>
+            ))}
+          </p>
+        )}
 
         <div className="kpis">
           <Kpi label={`Kept ${primary}`} value={f3(kept ? v!.score(kept) : live.best)}
@@ -153,7 +170,7 @@ export default function NightPage() {
               {live.branches.map((b) => (
                 <div className="branch" key={b.exp_id}>
                   <div className="branch-head">
-                    <strong>b{b.branch}</strong>
+                    <strong>e{b.branch}</strong>
                     <span className={`badge${b.phase === "coding" ? " live" : ""}`}>{b.phase}</span>
                   </div>
                   <div className="model">{b.model}</div>

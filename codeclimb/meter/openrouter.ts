@@ -4,7 +4,8 @@
 import { BackendError, type CallUsage, type MeterBackends } from "./proxy";
 
 export const OPENROUTER_PREFIX = "openrouter/";
-const BASE_URL = "https://openrouter.ai/api";
+/** OPENROUTER_BASE_URL points the proxy at another gateway, or at a stand-in in a test. */
+const baseUrlDefault = () => process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api";
 const CALL_TIMEOUT_MS = 5 * 60_000;
 
 export const isOpenRouterModel = (ref: string) => ref.startsWith(OPENROUTER_PREFIX);
@@ -53,11 +54,11 @@ async function post(baseUrl: string, path: string, body: unknown, signal: AbortS
   });
   const reply = (await res.json().catch(() => ({}))) as Reply;
   // OpenRouter can answer 200 with an `error` body when the provider fails mid-call.
-  if (!res.ok || reply.error) throw new BackendError(reply.error?.message ?? `OpenRouter returned ${res.status}`);
+  if (!res.ok || reply.error) throw new BackendError(reply.error?.message ?? `OpenRouter returned ${res.status}`, undefined, res.status === 402);
   return reply;
 }
 
-export function openRouterBackends(baseUrl = BASE_URL): MeterBackends {
+export function openRouterBackends(baseUrl = baseUrlDefault()): MeterBackends {
   return {
     async chat(req, signal) {
       const reply = await post(
@@ -108,7 +109,7 @@ export function openRouterBackends(baseUrl = BASE_URL): MeterBackends {
  * Fails listing every `openrouter/` model the key can't call. It asks the per-model endpoints API:
  * `/models` omits some models a key can use (typesafe/jev-1.14).
  */
-export async function checkOpenRouterModels(refs: string[], baseUrl = BASE_URL): Promise<void> {
+export async function checkOpenRouterModels(refs: string[], baseUrl = baseUrlDefault()): Promise<void> {
   const models = [...new Set(refs)].filter(isOpenRouterModel);
   if (!models.length) return;
   if (!process.env.OPENROUTER_API_KEY) throw new Error(`models not ready: OPENROUTER_API_KEY is not set (needed for ${models.join(", ")})`);

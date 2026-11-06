@@ -1,8 +1,9 @@
 // Step bodies for the night run. Each takes plain data and returns plain,
 // small JSON (SHAs, metrics, file paths), so the parent's state can be rebuilt
 // from memoized step outputs on replay.
+import type { CreditStop } from "./credits";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { sweepNight } from "./cleanup";
@@ -136,7 +137,33 @@ export type BranchOutcome =
   | { ok: true; expId: string; branch: number; model: string; code: CodeResult; eval: EvalResult | null }
   | { ok: false; expId: string; branch: number; model: string; error: string };
 
-export type EvalOutcome = { ok: true; evalId: string; result: EvalResult } | { ok: false; evalId: string; error: string };
+export type EvalOutcome = { ok: true; evalId: string; result: EvalResult } | { ok: false; evalId: string; error: string; credits?: CreditStop };
+
+/** The out-of-credits stop of an evaluation, if it hit one. */
+export const creditStopOf = (o: EvalOutcome): CreditStop | undefined => (o.ok ? o.result.credits : o.credits);
+
+/** One thing that couldn't go on: `where` is the step of the night it stopped at. */
+export type PausedAt = CreditStop & { where: string };
+
+/** Marks the night paused, for the CLI and the app. */
+export function markPaused(cfg: NightConfig, nightId: string, round: number, stops: PausedAt[]): number {
+  const at = Date.now();
+  writeFileSync(nightPaths(cfg, nightId).pauseJson, JSON.stringify({ at, round, stops }, null, 2));
+  console.log(`[night ${nightId}] paused, out of credits: ${stops.map((s) => `${s.where} (${s.model})`).join(", ")}`);
+  return at;
+}
+
+/** Ends a pause: logs it, and moves the deadline by its length, since nothing ran. Returns that length. */
+export function endPause(cfg: NightConfig, nightId: string, pausedAt: number): number {
+  const paths = nightPaths(cfg, nightId);
+  const ms = Date.now() - pausedAt;
+  const pause = JSON.parse(readFileSync(paths.pauseJson, "utf8")) as object;
+  appendFileSync(paths.pausesLog, `${JSON.stringify({ ...pause, resumed_at: Date.now() })}\n`);
+  rmSync(paths.pauseJson);
+  const night = JSON.parse(readFileSync(paths.nightJson, "utf8")) as { deadlineMs: number };
+  writeFileSync(paths.nightJson, JSON.stringify({ ...night, deadlineMs: night.deadlineMs + ms }, null, 2));
+  return ms;
+}
 
 interface RowBase {
   cfg: NightConfig;
