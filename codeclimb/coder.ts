@@ -104,7 +104,7 @@ export function coderPrompt(
   hypothesis: string | null,
   minutes: number,
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
-  dev?: { models: string[]; budgetUsd: number; openNetwork?: boolean },
+  dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number; openNetwork?: boolean },
   evalMin?: number,
 ): string {
   const parts = [
@@ -130,6 +130,7 @@ export function coderPrompt(
             "- The program can call a model while you develop, as it will during the evaluation: your shell has OPENAI_BASE_URL and " +
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
+              (dev.evalBudgetUsd === undefined ? "" : `The evaluation has its own cap of $${dev.evalBudgetUsd} for one run of every stage. `) +
               `Try the model on a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
           ]
         : []),
@@ -305,7 +306,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min),
       );
     } else {
       stop = "timeout";

@@ -334,6 +334,7 @@ test("coder prompt names the dev endpoint only when the program may call models"
   assert.match(dev, /OPENAI_BASE_URL/);
   assert.match(dev, /openrouter\/x\/y/);
   assert.match(dev, /\$0\.05/);
+  assert.match(coderPrompt("spec", "", null, 10, undefined, { models: ["m"], budgetUsd: 1, evalBudgetUsd: 2 }), /own cap of \$2 for one run of every stage/);
   assert.doesNotMatch(coderPrompt("spec", "", null, 10), /OPENAI_BASE_URL/);
   assert.match(coderPrompt("spec", "", null, 10, undefined, undefined, 16), /each run of the program 16 minutes/);
 });

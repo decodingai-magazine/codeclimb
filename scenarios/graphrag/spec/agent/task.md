@@ -127,11 +127,15 @@ retrieval alone and compare across systems. Use the graph's `documents`, `entiti
  "passage_tokens": 1800}
 ```
 
+- **Only these fields.** A node has `type`, `name`, `aliases`, `score`; an edge has `source`, `target`,
+  `semantic_type`, `score`; a document has `doc_uri`, `score`; an envelope has `id`, `nodes`, `edges`,
+  `docs`, `passage_tokens`. Any other field fails the stage (`train.md`, Inputs and predictions).
 - **Handles, not ids.** A node is its `type` and `name` (or any alias), matched by key; an edge is
   its two end names, matched by key against the gold entities' names and aliases, with no type
   (`DBOS` the tool and the company are the same end); a document is its `doc_uri`. An edge's
-  document is not checked: the graph keeps one edge per document, and any of them counts. Your own
-  ids never reach the scorer.
+  document is not checked: the graph keeps one edge per document, and any of them counts, so an edge
+  never carries a `doc_uri`, even though the gold's expected edges do. Your own ids never reach the
+  scorer.
 - **The query `id` is an opaque handle.** Echo it; don't route on its prefix (`tr-sh-`, `mh-`, …), which
   is an artifact of how the set was built. **Why:** a real query carries no kind, so a system that
   reads it from the id scores what it can't do.
@@ -188,8 +192,8 @@ Per stage:
 | graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
 | retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them for `multi_hop` and `intersection` |
 
-**Run calls concurrently.** One call per document or candidate in sequence can overrun the
-evaluation's time limit, and a run that overruns scores nothing.
+**Run calls concurrently.** One call per document or candidate in sequence can overrun a stage's
+time limit, and a stage that overruns fails the whole submission (`runtime.md`, Evaluation).
 
 ## What you're optimizing
 

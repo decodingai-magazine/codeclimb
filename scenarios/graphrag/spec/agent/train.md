@@ -6,7 +6,7 @@ third-party evaluator, who runs your frozen system on them:
 | part | documents | you get |
 |---|---|---|
 | train | the first 12 (2025-09-25 to 2025-11-26): 192 mentions, 211 relations, 10 merge decisions, 30 retrieval queries | the documents and all their gold, in this bundle |
-| dev | the next 25 (2025-12-02 to 2026-05-12) | the evaluator's report after each submission, errors included |
+| dev | the next 25 (2025-12-02 to 2026-05-12): 90 retrieval queries | the evaluator's report after each submission, errors included |
 | test | the last 19 (from 2026-05-19) | nothing until the end: it is scored once, totals only |
 
 ## The bundle
@@ -58,7 +58,9 @@ A frozen system (one commit) with one command per stage, which the evaluator run
 
 `--root` is the directory holding `corpus/` (your bundle; the full dataset when evaluated); every
 `path` in an input file is relative to it. `--graph` is the gold graph retrieval loads. The command
-reads nothing else, and writes one prediction line per input item. Run it on `train/inputs/` to
+reads nothing else, and writes one prediction line per input item. `/spec` doesn't exist when
+evaluated, and `--root` holds only `corpus/`: copy any few-shot rows the system uses into your
+repository, and list them in `fewshot.json`. Run it on `train/inputs/` to
 check it end to end: that run checks the plumbing, not the quality, because train is your few-shot
 material and scores high by construction.
 
@@ -66,6 +68,22 @@ material and scores high by construction.
 stage that made it (`task.md`, The pipeline).
 
 ## Inputs and predictions
+
+Predictions are checked against a fixed schema. **A field not listed here fails the stage, and with
+it the whole submission**, even if every other row is right. Extra data belongs in your own files.
+
+| row | allowed fields |
+|---|---|
+| `entity_mention` | `kind`, `doc_uri`, `name`, `type`, `aliases`, `description`, `properties`, `count`, `confidence` |
+| `related_to` | `kind`, `doc_uri`, `source_name`, `target_name`, `semantic_type`, `source_type`, `target_type`, `confidence` |
+| graph line | `surface_id`, `entity_id` |
+| envelope | `id`, `nodes`, `edges`, `docs`, `passage_tokens` |
+| envelope node | `type`, `name`, `aliases`, `score` |
+| envelope edge | `source`, `target`, `semantic_type`, `score` |
+| envelope document | `doc_uri`, `score` |
+
+The rows in `train/examples/` are gold, not predictions, and carry more fields: an expected edge has
+a `doc_uri`, and an expected node a `role`. Write predictions from this table, not from those rows.
 
 ### Extraction
 
