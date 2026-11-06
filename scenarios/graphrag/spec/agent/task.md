@@ -165,6 +165,34 @@ Query kinds, and what a good answer holds:
 | `temporal` | "Which articles from September to November 2025 cover LangGraph?" | the node's documents published inside the window, none outside it |
 | `unanswerable` | "Which article streams events from Kafka into Flink?" | nothing |
 
+## Where models help
+
+Starting points, not requirements. `runtime.md` lists the models and their endpoints. Every call
+costs time and money, so try a change on train and keep what raises a metric there.
+
+- **Chat model: read text.** Use it to extract rows, with few-shot examples from train. A second
+  pass that hands it the article and its first rows, and asks only what's missing, targets recall.
+- **Embedding models: find candidates cheaply.** Embed names with their descriptions, edges as short
+  sentences, and passages, then compare by cosine similarity. Use one model for both sides of a
+  comparison, and send texts in batches. The two models differ in size and price, so compare them on
+  train rather than assuming either is better.
+- **Decision model: answer yes or no with a probability.** Use it where a threshold is the design:
+  one question per candidate, and several questions in one call. Set the threshold on train.
+- **Reranking: no reranking model is available.** Take a short candidate list, about 20, from BM25
+  and embeddings, score each candidate against the query with the decision model or the chat model,
+  and sort by that score. Scoring the whole graph is too slow and too costly.
+
+Per stage:
+
+| stage | where a model fits |
+|---|---|
+| extraction | embed the query document and show the extractor only the nearest known entities, so a growing history doesn't fill the prompt |
+| graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
+| retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them for `multi_hop` and `intersection` |
+
+**Run calls concurrently.** One call per document or candidate in sequence can overrun the
+evaluation's time limit, and a run that overruns scores nothing.
+
 ## What you're optimizing
 
 Primary metrics, all in the evaluator's report:

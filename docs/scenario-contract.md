@@ -38,7 +38,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 ## Facts behind the picks
 
 - `typesafe/jev-1.14`: $0.042/M in, $0/M out, 262k context. A decisions model: chat refuses it, and it takes `{state, questions}` on OpenRouter's alpha `/api/alpha/decisions` endpoint, whose shape may change. The proxy serves it at `POST /v1/decisions`. Absent from `/api/v1/models`; only `/api/v1/models/typesafe/jev-1.14/endpoints` lists it, so the model check uses the endpoints API. Cost comes from each response's `usage.cost`.
-- OpenRouter lists no rerank models; ranking uses embeddings plus an optional LLM rerank.
+- The metering proxy has no rerank route, so ranking uses embeddings plus a rerank by the decisions or chat model. OpenRouter does list rerank models.
 
 ## Repository check
 
