@@ -29,7 +29,7 @@ export function modelRuntime(): Promise<ModelRuntime> {
 
 /** How to give Pi credentials, per provider. */
 const AUTH_HINTS: Record<string, string> = {
-  "github-copilot": "run `npx pi`, then `/login github-copilot`; or set COPILOT_GITHUB_TOKEN",
+  "github-copilot": "run `npx pi`, then `/login github-copilot`",
   anthropic: "set ANTHROPIC_API_KEY; or run `npx pi`, then `/login anthropic` and paste the key",
   opencode: "set OPENCODE_API_KEY (OpenCode Zen); or run `npx pi`, then `/login opencode`",
   "opencode-go": "set OPENCODE_API_KEY (OpenCode Go); or run `npx pi`, then `/login opencode-go`",

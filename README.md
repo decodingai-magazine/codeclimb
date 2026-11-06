@@ -71,7 +71,7 @@ Pi runs in the worker on the host, never in a sandbox, so credentials stay on th
 
 | Provider | `<provider>` | Credentials | Example model |
 |---|---|---|---|
-| GitHub Copilot | `github-copilot` | `npx pi`, then `/login github-copilot`; or `COPILOT_GITHUB_TOKEN` | `github-copilot/claude-haiku-5.5` |
+| GitHub Copilot | `github-copilot` | `npx pi`, then `/login github-copilot` | `github-copilot/claude-haiku-5.5` |
 | Anthropic | `anthropic` | `ANTHROPIC_API_KEY`; or `npx pi`, then `/login anthropic` → API key | `anthropic/claude-haiku-5-5` |
 | OpenCode Zen | `opencode` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode` | `opencode/kimi-k3` |
 | OpenCode Go | `opencode-go` | `OPENCODE_API_KEY`; or `npx pi`, then `/login opencode-go` | `opencode-go/kimi-k3` |
