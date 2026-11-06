@@ -15,6 +15,10 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
     rows you have. A 400 or 403 is a bad request and won't pass on retry.
   - `POST /chat/completions`: text messages only, no streaming or tools; `response_format`, `seed`,
     `top_p`, `stop` and `reasoning` pass through, and a model that doesn't support one ignores it.
+    `max_tokens` counts a model's reasoning too: when reasoning uses it up, the reply has empty
+    `content` and `finish_reason: "length"`, with the call still paid for. Check `finish_reason`,
+    and turn reasoning off with `"reasoning": {"enabled": false}` (through the `openai` client,
+    `extra_body={"reasoning": {"enabled": False}}`) unless the task needs it.
   - `POST /embeddings`: `openrouter/qwen/qwen3-embedding-4b`. Read the vector size from the reply.
   - `POST /rerank`: `openrouter/qwen/qwen3-reranker-8b` takes `{"model", "query", "documents"}`, where
     `documents` is a list of strings, plus an optional `top_n`. It returns
@@ -41,6 +45,8 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   `/spec/train/` (gold graph, examples, inputs). Use `--root /spec` to run on train.
 - **Evaluation** runs each stage on dev with gold input; each stage gets the eval time limit the
   prompt names, on its own. Only your repository, `--root`, `--inputs` and `--graph` exist there.
+  `known_entities` grows with history: on dev it is several times longer than train's longest, so
+  a prompt that holds all of it may no longer fit or may cost far more.
   A stage that crashes, overruns or writes a field the schema doesn't allow (`train.md`, Inputs and
   predictions) fails the whole submission: no stage is scored. Dev's scores come back as the
   reviewer's feedback; test is scored once at the end.

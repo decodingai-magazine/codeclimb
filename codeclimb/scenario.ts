@@ -48,6 +48,8 @@ export interface Scenario {
   inngest_image?: string;
   /** Host: checks a branch's files in `{repo}` before it is evaluated and writes `RepoCheck` as JSON to `{report}`. */
   check?: string;
+  /** Host: finds the held-out names in the file `{text}` and writes `Scan` as JSON to `{report}`. Run on all that reaches a coder. */
+  scan?: string;
 }
 
 /** A `check` command's report. */
@@ -56,6 +58,12 @@ export interface RepoCheck {
   errors: string[];
   /** What the reviewer should know; the branch still runs. */
   notes: string[];
+}
+
+/** A `scan` command's report. */
+export interface Scan {
+  /** What it found, as it appears in the text. */
+  found: string[];
 }
 
 const STAGE_NAME = /^[a-z][a-z0-9_-]*$/;
@@ -100,6 +108,7 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     headline: headline as Scenario["headline"], eval_sandboxes: evalSandboxes, protocol: protocol as string[],
     ...(diagnostics.length ? { diagnostics: diagnostics as string[] } : {}),
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
+    ...(raw.scan === undefined ? {} : { scan: str(raw, "scan", where) }),
     ...(raw.inngest_image === undefined ? {} : { inngest_image: str(raw, "inngest_image", where) }),
   };
 }
@@ -124,6 +133,12 @@ export function loadScenario(dir: string): Scenario {
   const s = parseScenario(readFileSync(file, "utf8"), file);
   if (!existsSync(join(dir, "starter"))) throw new Error(`${file}: the scenario needs a starter/ directory (the round-0 repo)`);
   return s;
+}
+
+/** `text` with every term replaced, in any case; the longest first, so a term inside another doesn't split it. */
+export function maskTerms(text: string, terms: string[]): string {
+  const sorted = [...terms].sort((a, b) => b.length - a.length);
+  return sorted.reduce((t, term) => t.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "[hidden]"), text);
 }
 
 /** `cmd` with `{name}` placeholders replaced by shell-quoted values. Unknown placeholders are an error. */

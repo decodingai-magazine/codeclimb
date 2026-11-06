@@ -34,6 +34,8 @@ export interface CallUsage {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  /** The part of `outputTokens` a model spent reasoning, when the backend reports it. */
+  reasoningTokens?: number;
 }
 
 export interface ChatResult {
@@ -105,6 +107,11 @@ export interface MeterCall {
   ms: number;
   /** Why it failed. */
   error?: string;
+  /** Chat: `length` means `max_tokens` cut the reply off, and a reasoning model may have written none. */
+  finish_reason?: string;
+  reasoning_tokens?: number;
+  /** The status the proxy refused it with: it never went upstream and isn't a model call. */
+  rejected?: number;
 }
 
 /** Operation of calls made before the runner names one. */
@@ -141,6 +148,8 @@ class HttpError extends Error {
     readonly status: number,
     message: string,
     readonly type = "invalid_request_error",
+    /** It reached upstream, so the ledger has it already. */
+    readonly recorded = false,
   ) {
     super(message);
   }
@@ -257,13 +266,16 @@ export class MeterProxy {
 
   /** The request handler, also mounted at /v1 on the worker API's port. */
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let ledger: Ledger | undefined;
+    let kind: MeterCall["kind"] | undefined;
+    let model = "";
     try {
       const path = (req.url ?? "").split("?")[0].replace(/\/+$/, "");
       const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/decisions": "decisions", "/v1/rerank": "rerank", "/v1/_op": "op" }[path];
       if (!route) throw new HttpError(404, `unknown endpoint ${path}`, "not_found_error");
       if (req.method !== "POST") throw new HttpError(405, "use POST");
       const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
-      const ledger = auth ? this.ledgers.get(auth) : undefined;
+      ledger = auth ? this.ledgers.get(auth) : undefined;
       if (!ledger) throw new HttpError(401, "invalid or expired token", "authentication_error");
       const body = await readJson(req);
       if (route === "op") {
@@ -271,7 +283,8 @@ export class MeterProxy {
         ledger.op = body.op;
         return send(res, 200, { op: ledger.op });
       }
-      const model = String(body.model ?? "");
+      kind = route as MeterCall["kind"];
+      model = String(body.model ?? "");
       if (!ledger.allowed.has(model)) throw new HttpError(403, `model ${model || "(none)"} is not in allowed_models`, "permission_error");
       if (ledger.creditStop) throw new HttpError(402, `out of credits: ${ledger.creditStop.message}`, "insufficient_quota");
       if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `eval budget of $${ledger.capUsd} is spent`, "insufficient_quota");
@@ -281,11 +294,16 @@ export class MeterProxy {
       return send(res, 200, await this.embed(ledger, model, body.input));
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError(500, (e as Error).message, "server_error");
+      if (err.status === 401) console.warn(`[meter] ${req.url}: ${err.message}`);
+      // A refused call spends nothing, so only this line shows that it happened.
+      if (ledger && kind && !err.recorded) {
+        ledger.calls.push({ kind, model, op: ledger.op, ok: false, input_tokens: 0, output_tokens: 0, cost_usd: 0, ms: 0, error: err.message, rejected: err.status });
+      }
       if (!res.headersSent) send(res, err.status, { error: { message: err.message, type: err.type } });
     }
   }
 
-  private async metered<T extends { usage: CallUsage }>(
+  private async metered<T extends { usage: CallUsage; finishReason?: string }>(
     ledger: Ledger,
     kind: MeterCall["kind"],
     model: string,
@@ -298,11 +316,12 @@ export class MeterProxy {
       ledger.ctx,
     );
     const t0 = performance.now();
-    const record = (ok: boolean, usage: CallUsage | undefined, error?: string) => {
+    const record = (ok: boolean, usage: CallUsage | undefined, error?: string, finishReason?: string) => {
       const u = usage ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
       ledger.calls.push({
         kind, model, op, ok, input_tokens: u.inputTokens, output_tokens: u.outputTokens, cost_usd: u.costUsd,
         ms: Math.round((performance.now() - t0) * 1000) / 1000, ...(error ? { error } : {}),
+        ...(finishReason ? { finish_reason: finishReason } : {}), ...(u.reasoningTokens ? { reasoning_tokens: u.reasoningTokens } : {}),
       });
       ledger.costUsd += u.costUsd;
       span.setAttributes({
@@ -311,7 +330,7 @@ export class MeterProxy {
     };
     try {
       const out = await run(ledger.abort.signal);
-      record(true, out.usage);
+      record(true, out.usage, undefined, out.finishReason);
       return out;
     } catch (e) {
       const { message } = e as Error;
@@ -322,9 +341,9 @@ export class MeterProxy {
           ledger.creditStop = { who: "program", model, message };
           ledger.onCreditStop?.(ledger.creditStop);
         }
-        throw new HttpError(402, `out of credits: ${message}`, "insufficient_quota");
+        throw new HttpError(402, `out of credits: ${message}`, "insufficient_quota", true);
       }
-      throw new HttpError(502, `upstream: ${message}`, "api_error");
+      throw new HttpError(502, `upstream: ${message}`, "api_error", true);
     } finally {
       span.end();
     }

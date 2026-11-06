@@ -44,6 +44,10 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 
 `check` in `scenario.yaml` is an optional host command. After a branch commits, `{repo}` holds its files and the command writes `{"errors": [], "notes": []}` to `{report}`. Errors keep the branch from being evaluated (its row is `error`, and the reviewer sees why); notes go to the reviewer. graphrag's `scripts/check_repo.py` implements Q9/Q22. It finds copied ids, not paraphrases or encoded ones: the reviewer still reads the diff.
 
+## Text scan
+
+`scan` in `scenario.yaml` is an optional host command. `{text}` is a file and the command writes `{"found": [...]}` to `{report}`, the held-out names it found as the text has them. It runs on all that reaches a coder and isn't the reviewer's own reading: the reviewer's feedback and hypotheses, and the errors of failed branches. The reviewer gets one rewrite of what it wrote; what survives, and any match in an error, becomes `[hidden]`. graphrag's `scripts/scan_text.py` uses the lists of `check_repo.py` plus the dev and test queries. It finds copies, not paraphrases.
+
 ## Open
 
 - **`eval_min` limits a slow branch.** On Cloud at 16 minutes per stage, one branch's extraction timed out (`stage extraction: run timed out`, row `error`). The program's own speed is the coder's to fix; the reviewer now reads why a branch's eval failed.

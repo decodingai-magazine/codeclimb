@@ -20,6 +20,13 @@ export function cutsMetric(cand: number, ref: number, minRel: number): boolean {
   return ref - cand > minRel * ref + 1e-12;
 }
 
+const emptyStage = (m: string) => `${m.replace(/\.?output_bytes$/, "") || "the run"} wrote no output`;
+
+/** The stages that wrote nothing: what still stops a branch when there is no parent's run to compare with. */
+export function emptyStages(cand: Metrics): string[] {
+  return Object.keys(cand).filter((m) => /(^|\.)output_bytes$/.test(m) && !cand[m]).map(emptyStage);
+}
+
 /**
  * Why a branch may not be kept, whatever its other scores: a headline metric fell further below the
  * parent's run than its margin (or vanished), or a stage that had output now has none.
@@ -33,7 +40,7 @@ export function guardrailFailures(cand: Metrics, parent: Metrics, headline: Reco
     else if (cand[m] < parent[m] - allowed - 1e-12) failures.push(`${m} fell to ${cand[m].toFixed(4)} from ${parent[m].toFixed(4)} (margin ${allowed.toFixed(4)})`);
   }
   for (const m of Object.keys(parent)) {
-    if (/(^|\.)output_bytes$/.test(m) && parent[m] > 0 && !cand[m]) failures.push(`${m.replace(/\.?output_bytes$/, "") || "the run"} wrote no output`);
+    if (/(^|\.)output_bytes$/.test(m) && parent[m] > 0 && !cand[m]) failures.push(emptyStage(m));
   }
   return failures;
 }

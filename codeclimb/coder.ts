@@ -39,7 +39,7 @@ export type ExperimentInput = {
   model: string;
   /** Reviewer feedback from earlier rounds; empty in round 1. */
   feedback: string;
-  /** The last round's branches that were never scored, with their errors unedited. */
+  /** The last round's branches that were never scored, with their errors, held-out names masked. */
   failures?: EvalFailure[];
   /** Reviewer's hypothesis for this branch; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
@@ -119,7 +119,7 @@ export function coderPrompt(
   ];
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (failures.length) {
-    parts.push(`<failures>\nThese branches failed before they were scored. Their code is gone, but your code can fail the same way. The errors, unedited:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
+    parts.push(`<failures>\nThese branches failed before they were scored. Their code is gone, but your code can fail the same way. The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
   }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
   parts.push(
@@ -139,12 +139,14 @@ export function coderPrompt(
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
               (dev.evalBudgetUsd === undefined ? "" : `The evaluation has its own cap of $${dev.evalBudgetUsd} for one run of every stage. `) +
-              `Try the model on a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
+              `Start with a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
           ]
         : []),
       ...(evalMin
         ? [`- The evaluation gives each run of the program ${evalMin} minutes, and one that runs longer scores nothing. Time it on a sample and run slow work, such as model calls, concurrently.`]
         : []),
+      "- The evaluation's inputs can be much longer than the ones you test on: leave room in token limits and timeouts.",
+      "- Before you stop, run every stage from start to finish on all of /spec/train if it exists and the model budget allows, else on your own cases, and read the output. An item that came back empty is a failure, not a result: when the program catches a failed item and goes on, it must report it on stderr. Fix what you find.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",

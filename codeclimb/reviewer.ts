@@ -6,6 +6,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { isCreditError, OutOfCredits } from "./credits";
 import type { ThinkingLevel } from "./config";
 import { createIsolatedSession } from "./pi/session";
+import { maskTerms } from "./scenario";
 import type { Metrics } from "./stats";
 
 export interface BranchSummary {
@@ -17,7 +18,7 @@ export interface BranchSummary {
   metrics: Metrics;
   /** Why it can't be kept: headline regressions, a stage gone empty. */
   guardrails: string[];
-  /** Why it was never scored, unedited: what the next coders read. */
+  /** Why it was never scored: what the next coders read, with held-out names masked. */
   errors?: string[];
   /** The scenario's check of the branch: not failures, but what to weigh. */
   notes: string[];
@@ -32,6 +33,8 @@ export interface HypothesisLogEntry {
   deltaPrimary: number;
   /** Change of each headline and optimized standard metric vs the parent's run in the same evaluator. */
   deltas?: Metrics;
+  /** The same metrics as they stood, when the parent had no run to compare with. */
+  scores?: Metrics;
   decision: string;
   /** The guardrails it failed, else the reviewer's reason for the round. */
   reason?: string;
@@ -84,10 +87,12 @@ export interface ReviewOutput {
 const SYSTEM_PROMPT = `You review experiments in an automated research loop. Coding agents change a program to raise its metrics on hidden evaluation data. Each round, several branches start from the same kept commit, each testing one hypothesis.
 
 You receive the program's specification, the kept commit's source, each branch's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the candidates that may be kept, and the log of earlier hypotheses with their effect. Find why each metric falls short by reading the errors against the code. Write:
-1. keep: the id of the one candidate to keep as the next round's parent, or null to stay on the parent. Weigh every metric, not one number, and read each against the kept commit's own repeated runs: a branch inside their range neither gained nor lost. A metric that clears that range by a wide margin, with the others inside it, is a gain, whichever metric it is. Each branch lists the metrics that moved past noise: with none listed there is no gain, and being the best branch doesn't make one, so keep null when no branch has one. A gain in one metric bought by a loss in another is no gain, a change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. Follow the evaluation protocol if one is given.
+1. keep: the id of the one candidate to keep as the next round's parent, or null to stay on the parent. Weigh every metric, not one number, and read each against the kept commit's own repeated runs: a branch inside their range neither gained nor lost. A metric that clears that range by a wide margin, with the others inside it, is a gain, whichever metric it is. Each branch lists the metrics that moved past noise: with none listed there is no gain, and being the best branch doesn't make one, so keep null when no branch has one. While the kept commit is the empty starter nothing is listed and no such comparison exists: judge the candidates on their absolute scores, and keep the strongest unless it looks broken or fitted to dev items, since it sets the bar for later rounds. A gain in one metric bought by a loss in another is no gain, a change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. Follow the evaluation protocol if one is given.
 2. keep_reason: one or two sentences saying why.
-3. feedback: concise guidance for the next round (what worked, what regressed, which metric families are weakest). Base it on the data; do not invent failures you cannot see. Coders also get each failed evaluation's error unedited, so don't retype it.
+3. feedback: concise guidance for the next round (what worked, what regressed, which metric families are weakest). Base it on the data; do not invent failures you cannot see. Coders also get each failed evaluation's error, so don't retype it.
 4. hypotheses: exactly N distinct, concrete, testable hypotheses, one per branch. Each is one or two sentences naming the change to make. Make them different from each other and from hypotheses that already failed. Coders start from the kept commit and can't read a reverted branch's code, so a hypothesis that reuses reverted work must describe all of it.
+
+Coders must never see the evaluation data. In feedback and hypotheses describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Names in a repository check are hints that a branch's text matches a dev item, which general knowledge can explain, not proof of a leak.
 
 The specification may leave interpretation choices open on purpose (which year a date without one means, which of two dates counts, how loose matching may be). A family stuck at partial accuracy often means the evaluation uses a different reading: propose the alternative readings as hypotheses on separate branches, so one round's metrics tell which one is right.
 
@@ -168,7 +173,11 @@ export function reviewerPrompt(input: ReviewInput): string {
         `Correctness comes first: propose efficiency hypotheses when ${goal} stalled or alongside accuracy ones.`,
     );
   }
-  lines.push(`Kept commit (parent of the next round), this round's run: ${score(input.parentScore)}metrics: ${fmtMetrics(input.parentMetrics, input)}${fmtDiagnostics(input.parentMetrics, input)}`);
+  lines.push(
+    input.parentRuns.length
+      ? `Kept commit (parent of the next round), this round's run: ${score(input.parentScore)}metrics: ${fmtMetrics(input.parentMetrics, input)}${fmtDiagnostics(input.parentMetrics, input)}`
+      : "The kept commit is the empty starter and wasn't run: read each branch's scores as they stand. The first branch kept sets the bar for later rounds.",
+  );
   const noise = fmtNoise(input);
   if (noise) lines.push(noise);
   if (input.parentSource) lines.push(`## Kept commit source\nEvery branch's diff applies to this.\n${input.parentSource}`);
@@ -185,11 +194,12 @@ export function reviewerPrompt(input: ReviewInput): string {
   }
   if (input.log.length) {
     const logged = (l: HypothesisLogEntry) => {
-      const moved = [...(headlined ? [] : [`Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}`]), ...fmtDeltas(l.deltas)];
-      return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || "no metric moved"} (${l.decision}${l.reason ? `: ${l.reason}` : ""})`;
+      const scores = Object.entries(l.scores ?? {}).map(([k, v]) => `${k}=${fmtNum(v)}`);
+      const moved = [...(headlined ? [] : [`Δ${input.primaryMetric}=${l.deltaPrimary.toFixed(4)}`]), ...fmtDeltas(l.deltas), ...scores];
+      return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || (l.scores ? "not scored" : "no metric moved")} (${l.decision}${l.reason ? `: ${l.reason}` : ""})`;
     };
     lines.push(
-      "## Hypothesis log (all rounds)\nEach Δ is against the kept commit's run in that round. A reverted branch's code is gone: coders start from the kept commit and can't read it.\n" +
+      "## Hypothesis log (all rounds)\nEach Δ is against the kept commit's run in that round; plain values had no run to compare with. A reverted branch's code is gone: coders start from the kept commit and can't read it.\n" +
         input.log.map(logged).join("\n"),
     );
   }
@@ -218,7 +228,11 @@ export function parseReview(text: string, n: number, candidates: string[]): Pick
   }
 }
 
-export async function runReview(input: ReviewInput): Promise<ReviewOutput> {
+/**
+ * `scan` returns the held-out names in a text. Feedback and hypotheses go to coders, so the reviewer gets
+ * one rewrite of any it wrote, and what survives that is masked.
+ */
+export async function runReview(input: ReviewInput, scan: (text: string) => Promise<string[]> = async () => []): Promise<ReviewOutput> {
   const t0 = performance.now();
   const session = await createIsolatedSession({
     model: input.model,
@@ -251,7 +265,16 @@ export async function runReview(input: ReviewInput): Promise<ReviewOutput> {
       parsed = parseReview(session.getLastAssistantText() ?? "", input.branches, input.candidates);
     }
     if (!parsed) throw new Error("reviewer returned no parsable JSON twice");
-    return { ...parsed, reviewer_usd: usd, tokens, t_review: Math.round((performance.now() - t0) / 10) / 100 };
+    const forCoders = (r: Pick<ReviewOutput, "feedback" | "hypotheses">) => [r.feedback, ...r.hypotheses].join("\n");
+    let found = await scan(forCoders(parsed));
+    if (found.length) {
+      await session.prompt(`Your feedback or hypotheses name evaluation items coders may not see: ${found.join(", ")}. Reply again with the same JSON, describing the error categories without them.`);
+      outOfCredits();
+      parsed = parseReview(session.getLastAssistantText() ?? "", input.branches, input.candidates) ?? parsed;
+      found = await scan(forCoders(parsed));
+    }
+    const masked = { ...parsed, feedback: maskTerms(parsed.feedback, found), hypotheses: parsed.hypotheses.map((h) => maskTerms(h, found)) };
+    return { ...masked, reviewer_usd: usd, tokens, t_review: Math.round((performance.now() - t0) / 10) / 100 };
   } finally {
     session.dispose();
   }

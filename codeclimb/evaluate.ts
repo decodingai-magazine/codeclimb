@@ -211,10 +211,12 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       exec.catch(() => undefined); // abandoned on running out of credits; the evaluator's close ends it
       const run = await Promise.race([exec, outOfCredits]);
       result.t_eval += secs(t0);
+      // Saved even on a clean exit: a program that swallows its errors shows them only here. It stays on the host.
+      const runLog = await sandbox.readFile(`${box}/run.log`).catch(() => Buffer.from(""));
+      writeFileSync(join(sdir, "run.log"), runLog);
       if (!run || result.credits) return result; // the program may have swallowed the errors and exited 0
       if (run.timedOut || run.exitCode !== 0) {
-        const log = (await sandbox.readFile(`${box}/run.log`).catch(() => Buffer.from(""))).toString().slice(-2000);
-        writeFileSync(join(sdir, "run.log"), log);
+        const log = runLog.toString().slice(-2000);
         result.error = `stage ${stage.name}: ${run.timedOut ? `run timed out after ${cfg.timeouts.eval_min} min` : `run exited ${run.exitCode}: ${log}`}`;
         return result;
       }

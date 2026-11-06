@@ -84,7 +84,8 @@ const round9 = (x: number) => Math.round(x * 1e9) / 1e9;
  * `cost_usd`, `cost_per_item_usd`, `model_calls` and `cost_<op>_usd` per operation. Always present, 0
  * without model calls, so cost compares (and its noise is measured) for every scenario.
  */
-export function costMetrics(calls: MeterCall[], nItems: number): Metrics {
+export function costMetrics(ledger: MeterCall[], nItems: number): Metrics {
+  const calls = ledger.filter((c) => !c.rejected);
   const m: Metrics = {};
   for (const c of calls) m[`cost_${c.op}_usd`] = (m[`cost_${c.op}_usd`] ?? 0) + c.cost_usd;
   for (const k of Object.keys(m)) m[k] = round9(m[k]);

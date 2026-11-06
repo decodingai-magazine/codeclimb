@@ -19,6 +19,7 @@ interface Usage {
   /** Rerank names only this one. */
   total_tokens?: number;
   cost?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
 }
 
 interface Reply {
@@ -34,7 +35,8 @@ interface Reply {
 function usageOf(u: Usage | undefined): CallUsage {
   // Without a cost the ledger can't enforce its cap, so the call counts as failed.
   if (typeof u?.cost !== "number") throw new BackendError("OpenRouter's response has no usage.cost");
-  return { inputTokens: u.prompt_tokens ?? u.input_tokens ?? u.total_tokens ?? 0, outputTokens: u.completion_tokens ?? u.output_tokens ?? 0, costUsd: u.cost };
+  const reasoningTokens = u.completion_tokens_details?.reasoning_tokens;
+  return { inputTokens: u.prompt_tokens ?? u.input_tokens ?? u.total_tokens ?? 0, outputTokens: u.completion_tokens ?? u.output_tokens ?? 0, costUsd: u.cost, ...(reasoningTokens ? { reasoningTokens } : {}) };
 }
 
 function requireKey(): string {

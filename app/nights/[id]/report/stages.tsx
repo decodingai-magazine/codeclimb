@@ -21,13 +21,11 @@ function withInterval(metrics: Row["metrics"] | undefined, metric: string): stri
 export const stageHeadlines = (headline: string[], stages: string[]): [string, string[]][] =>
   stages.map((s) => [s, headline.filter((m) => stageOf(m, stages) === s)]);
 
-/** One line per commit worth comparing: the starter's baseline, each kept commit, the test score. */
+/** One line per commit worth comparing: each kept commit, the test score. */
 function commitRows(nightId: string, v: Derived): { key: string; label: string; row: Row }[] {
   const seen = new Set<string>();
-  const baseline = v.rows.find((r) => r.kind === "baseline");
   const kept = v.lineage.flatMap((l) => (l.exp && !seen.has(l.exp.exp_id) && seen.add(l.exp.exp_id) ? [l.exp] : []));
   return [
-    ...(baseline ? [{ key: "baseline", label: "starter", row: baseline }] : []),
     ...kept.map((e) => ({ key: e.exp_id, label: shortId(e.exp_id, nightId), row: e })),
     ...(v.lastTest ? [{ key: "test", label: "test", row: v.lastTest }] : []),
   ];

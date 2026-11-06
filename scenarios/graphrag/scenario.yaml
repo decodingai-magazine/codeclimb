@@ -7,6 +7,7 @@ bundle: uv run python scripts/export_agent.py --out {out}
 eval_sandboxes: per_candidate      # model calls are slow, and no headline reads latency
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
 check: uv run python scripts/check_repo.py --repo {repo} --out {report}
+scan: uv run python scripts/scan_text.py --text {text} --out {report}
 # A branch that drops one of these below its parent's run by more than the margin can't be kept.
 # `ci95`: the half-width of the parent's bootstrap interval. Graph precision has none: a wrong merge
 # is worse than a wrong split.
@@ -28,6 +29,7 @@ diagnostics:
   - '^extraction\.mentions\.(precision|recall)$'
   - '^extraction\.relations\.directed\.(precision|recall)$'
   - '^extraction\.relations\.unresolved_ends$'
+  - '^extraction\.documents\.empty$'
   - '^extraction\.type_accuracy\.accuracy$'
   - '^graph\.baselines\.history_only\.(precision|recall)$'
   - '^retrieval\.by_kind\.[^.]+\.metrics\.(subgraph_precision|node_precision|edge_precision|returned_nodes|returned_edges|returned_docs)\.mean$'

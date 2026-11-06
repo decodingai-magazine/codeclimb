@@ -38,6 +38,8 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
 COMPARING = {"compared_with", "alternative_to"}
+RETURNED_SHOWN = 10
+"""Nodes, edges and docs per query in `--details`: the ones a ranked metric reads."""
 K = {"single_hop": 5, "multi_hop": 5, "comparison": 5}  # aggregation and temporal cut at the expected size
 PRIMARY = {
     "single_hop": ["edge_recall_at_k"],
@@ -79,6 +81,17 @@ class Envelope(BaseModel):
     edges: list[Edge] = []
     docs: list[Doc] = []
     passage_tokens: int | None = None
+
+
+def returned(env: Envelope | None) -> dict:
+    """The top of what a query got back, for the reviewer to read against its query. The expected set stays out."""
+    if env is None:
+        return {"nodes": [], "edges": [], "docs": []}
+    return {
+        "nodes": [f"{n.name} ({n.type})" for n in env.nodes[:RETURNED_SHOWN]],
+        "edges": [f"{e.source} -{e.semantic_type}-> {e.target}" for e in env.edges[:RETURNED_SHOWN]],
+        "docs": [d.doc_uri for d in env.docs[:RETURNED_SHOWN]],
+    }
 
 
 def primary_metrics(kind: str, ranked: bool) -> list[str]:
@@ -239,7 +252,9 @@ def score(split_name: str, predictions: Path, out_path: Path, ranked: bool, deta
         "not_wired": ["anchor rarity slice", "BM25-miss slice", "closed-book gate"],
     }
     if details:
-        report["details"] = {r["id"]: {"kind": r["kind"], "metrics": scores[r["id"]]} for r in rows}
+        report["details"] = {
+            r["id"]: {"kind": r["kind"], "query": r["query"], "metrics": scores[r["id"]], "returned": returned(envelopes.get(r["id"]))} for r in rows
+        }
     write_report(out_path, report)
     primary = "; ".join(f"{kind} {p}={fmt(v['metrics'].get(p, {}).get('mean'))}" for kind, v in by_kind.items() for p in v["primary"][:1])
     logger.info(f"{len(rows)} queries: {primary} -> {out_path}")

@@ -1,7 +1,7 @@
 import { isCreditError } from "./credits";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { BackendError, type MeterBackends, MeterProxy } from "./meter/proxy";
+import { BackendError, type MeterBackends, type MeterCall, MeterProxy } from "./meter/proxy";
 import { costMetrics } from "./standard-metrics";
 
 // Fake upstream: chat costs $0.01 per call and echoes the last user message; "fail" fails after spending $0.002.
@@ -9,6 +9,7 @@ const backends: MeterBackends = {
   async chat(req) {
     const last = req.messages[req.messages.length - 1].content;
     if (last === "fail") throw new BackendError("upstream down", { inputTokens: 5, outputTokens: 0, costUsd: 0.002 });
+    if (last === "reason") return { text: "", finishReason: "length", usage: { inputTokens: 10, outputTokens: 7, costUsd: 0.01, reasoningTokens: 7 } };
     return { text: `echo:${last}`, finishReason: "stop", usage: { inputTokens: 10, outputTokens: 3, costUsd: 0.01 } };
   },
   async embed(_model, input) {
@@ -22,6 +23,7 @@ const backends: MeterBackends = {
     return { answers: {}, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
   },
 };
+const upstream = (c: MeterCall) => !c.rejected;
 const proxy = new MeterProxy(backends);
 const port = await proxy.listen();
 after(() => proxy.stop());
@@ -51,7 +53,7 @@ test("metering proxy: auth, allowed models and unsupported requests", async () =
   assert.equal((await post("/v1/nope", {}, t)).status, 404);
   assert.equal((await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { headers: { authorization: `Bearer ${t}` } })).status, 405);
   // Refused requests cost nothing.
-  assert.deepEqual(proxy.close(t), []);
+  assert.deepEqual(proxy.close(t).filter(upstream), []);
 });
 
 test("metering proxy: OpenAI responses, cost per operation, cap and revocation", async () => {
@@ -72,7 +74,7 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
   const capped = await chat(t, "over");
   assert.deepEqual([capped.status, capped.body.error.type], [402, "insufficient_quota"]);
 
-  const calls = proxy.close(t);
+  const calls = proxy.close(t).filter(upstream);
   assert.deepEqual(calls.map((c) => [c.kind, c.op, c.ok]), [
     ["chat", "program", true], ["embeddings", "query", true], ["chat", "query", false], ["chat", "query", true],
   ]);
@@ -93,7 +95,7 @@ test("rerank: metered per call, documents required, allowed models only", async 
   assert.equal((await post("/v1/rerank", { model: "p/rerank", query: "q", documents: [] }, t)).status, 400);
   assert.equal((await post("/v1/rerank", { model: "p/rerank", documents: ["a"] }, t)).status, 400);
   assert.equal((await post("/v1/rerank", { model: "p/other", query: "q", documents: ["a"] }, t)).status, 403);
-  const calls = proxy.close(t);
+  const calls = proxy.close(t).filter(upstream);
   assert.deepEqual(calls.map((c) => [c.kind, c.model, c.input_tokens, c.cost_usd]), [["rerank", "p/rerank", 9, 0.0002]]);
 });
 
@@ -107,8 +109,20 @@ test("out of credits: 402 to the program, one stop, nothing more goes upstream",
   assert.equal((await post("/v1/rerank", { ...body, query: "fine" }, t)).status, 402);
   assert.deepEqual(stops, [{ who: "program", model: "p/rerank", message: "Insufficient credits. Add more" }]);
   const calls = proxy.close(t);
-  assert.equal(calls.length, 1); // the second call never went upstream
+  assert.deepEqual(calls.map((c) => c.rejected), [undefined, 402]); // the second call never went upstream
   assert.equal(calls[0].error, "Insufficient credits. Add more");
+  assert.equal(costMetrics(calls, 1).model_calls, 1);
+});
+
+test("the ledger shows refused calls, finish reasons and reasoning tokens, and refused calls cost nothing", async () => {
+  const t = proxy.open({ evalId: "e-refused", allowedModels: ["p/a"], capUsd: 1 });
+  assert.equal((await post("/v1/chat/completions", { model: "p/other", messages: [{ role: "user", content: "x" }] }, t)).status, 403);
+  assert.equal((await post("/v1/rerank", { model: "p/a", query: "" }, t)).status, 400);
+  assert.equal((await post("/v1/chat/completions", { model: "p/a", messages: [{ role: "user", content: "reason" }] }, t)).status, 200);
+  const calls = proxy.close(t);
+  assert.deepEqual(calls.map((c) => [c.kind, c.model, c.rejected]), [["chat", "p/other", 403], ["rerank", "p/a", 400], ["chat", "p/a", undefined]]);
+  assert.deepEqual([calls[2].finish_reason, calls[2].reasoning_tokens], ["length", 7]);
+  assert.equal(costMetrics(calls, 1).model_calls, 1);
 });
 
 test("credit errors are exhausted accounts, not throttles", () => {

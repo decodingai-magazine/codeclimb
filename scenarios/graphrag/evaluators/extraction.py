@@ -292,6 +292,7 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool) -> 
         "documents": {
             "with_gold_mentions": sum(1 for u in held if gold_m[u]),
             "without_predictions": [u for u in held if not pred_m[u] and not pred_r[u]],
+            "empty": sum(1 for u in held if not pred_m[u] and not pred_r[u]),
             "predicted_rows_outside_held_out": outside,
         },
         "mentions": {

@@ -75,14 +75,17 @@ def dev_only_names() -> set[str]:
     return {n for n in names if n.lower() not in in_bundle}
 
 
-def check(repo: Path) -> dict:
+def held_out_ids() -> set[str]:
+    """Uris and corpus file names of the dev and test documents, and the dev and test query ids."""
     documents = {r["doc_uri"]: r["path"] for r in log_rows() if r["kind"] == "document"}
-    train_docs = set(held_out("train")[1])
-    outside_docs = set(documents) - train_docs
-    forbidden = {*outside_docs, *(Path(documents[u]).stem for u in outside_docs), *splits()["retrieval"]["dev"], *splits()["retrieval"]["test"]}
+    outside_docs = set(documents) - set(held_out("train")[1])
+    return {*outside_docs, *(Path(documents[u]).stem for u in outside_docs), *splits()["retrieval"]["dev"], *splits()["retrieval"]["test"]}
 
+
+def check(repo: Path) -> dict:
+    train_docs = set(held_out("train")[1])
     errors = manifest_errors(repo, train_docs, set(splits()["retrieval"]["train"]))
-    forbidden_ids, names = pattern(forbidden), pattern(dev_only_names(), re.IGNORECASE)
+    forbidden_ids, names = pattern(held_out_ids()), pattern(dev_only_names(), re.IGNORECASE)
     leaks: set[str] = set()
     found_names: set[str] = set()
     for path, text in repo_texts(repo):

@@ -7,9 +7,9 @@ import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, pa
 import { coderReply, reviewerReply } from "./pi/mock";
 import { applyReview, checkStop, decideRound, type Kept, rotate, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
-import { parseReview, reviewerPrompt } from "./reviewer";
-import { flattenReport, parseScenario, readProtocol } from "./scenario";
-import { beatsParent, guardrailFailures, passesGates, passesThresholds } from "./stats";
+import { parseReview, reviewerPrompt, runReview } from "./reviewer";
+import { flattenReport, maskTerms, parseScenario, readProtocol } from "./scenario";
+import { beatsParent, emptyStages, guardrailFailures, passesGates, passesThresholds } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -433,4 +433,47 @@ test("a reviewer may share the coder's model only at another thinking level", ()
   const cfg = parseConfig(yaml("coder_thinking: medium\nreviewer_thinking: high\n"), ROOT);
   assert.equal(cfg.reviewer_thinking, "high");
   assert.throws(() => parseConfig(yaml("coder_thinking: extreme\nreviewer_thinking: high\n"), ROOT), /coder_thinking must be/);
+});
+
+test("with no run of the parent a branch needs only to have worked: no stage empty, and the reviewer judges absolute scores", async () => {
+  const parent: Kept = { expId: "n-r0-starter", sha: "p", score: 0, metrics: null, metricsPath: null, rescored: true };
+  const code = { ok: true, sha: "s", hypothesis: "h", stop: "done" as const, coder_usd: 0, dev_usd: 0, tokens: 0, t_provision: 1, t_code: 1, t_teardown: 1, infra_errors: 0, resumed: false };
+  const ev = (accuracy: number, bytes: number) => ({
+    ok: true, metrics: { accuracy, schema_violations: 0, "g.output_bytes": bytes }, metricsPath: "/m.json", program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: "i", eval_order: 0,
+  });
+  const branch = (b: number, accuracy: number, bytes: number) => ({ ok: true as const, expId: `e${b}`, branch: b, model: "p/a", code, eval: ev(accuracy, bytes) });
+  const headlined = { ...cfg, scenario: { ...cfg.scenario, headline: { accuracy: 0.05 } } };
+  const d = decideRound({ cfg: headlined, nightId: "n", round: 1, parent, rescore: null, baseline: null, hypotheses: [null, null], branches: [branch(0, 0.9, 0), branch(1, 0.3, 9)] });
+  assert.equal(d.parentRun, null);
+  assert.deepEqual(d.candidates.map((c) => c.expId), ["e1"]); // the higher score wrote nothing for a stage
+  assert.deepEqual(d.summaries[0].guardrails, ["g wrote no output"]);
+  assert.deepEqual(emptyStages({ output_bytes: 0, "e.output_bytes": 4, accuracy: 0 }), ["the run wrote no output"]);
+
+  const input = {
+    model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 1, branches: 1, primaryMetric: "accuracy", thresholds: {}, gates: {}, parentScore: 0, parentMetrics: null, parentRuns: [],
+    objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: [], mechanicalKeep: null, headline: ["accuracy"], diagnostics: [], protocol: "", parentSource: "",
+  };
+  const entry = { round: 1, hypothesis: "h1", deltaPrimary: 0.5, decision: "revert" };
+  const prompt = reviewerPrompt({ ...input, log: [{ ...entry, scores: { accuracy: 0.5 } }, { ...entry, hypothesis: "h2", scores: {} }] });
+  assert.match(prompt, /is the empty starter and wasn't run/);
+  assert.doesNotMatch(prompt, /this round's run|## Noise/);
+  assert.match(prompt, /- r1: h1 → accuracy=0\.5000 /);
+  assert.match(prompt, /- r1: h2 → not scored /);
+});
+
+test("what the reviewer names of the held-out data never reaches a coder: one rewrite, then masked", async () => {
+  const input = {
+    model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 1, branches: 1, primaryMetric: "accuracy", thresholds: {}, gates: {}, parentScore: 0, parentMetrics: null, parentRuns: [],
+    objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: [], mechanicalKeep: null, headline: [], diagnostics: [], protocol: "", parentSource: "",
+  };
+  const scanned: string[] = [];
+  const review = await runReview(input, async (text) => {
+    scanned.push(text);
+    return ["MOCK"];
+  });
+  assert.equal(scanned.length, 2); // the reply, then the rewrite
+  assert.equal(review.feedback, "[hidden] feedback");
+  assert.deepEqual(review.hypotheses, ["[hidden] hypothesis 1"]);
+  assert.equal((await runReview(input)).feedback, "mock feedback");
+  assert.equal(maskTerms("see Foo Bar? and foo bar. a$b", ["foo", "foo bar", "a$b"]), "see [hidden]? and [hidden]. [hidden]");
 });

@@ -24,6 +24,7 @@ import {
   finishNight,
   initNight,
   type Kept,
+  maskFailures,
   markPaused,
   type PausedAt,
   recordRows,
@@ -188,7 +189,7 @@ export const runNight = ccInngest.createFunction(
     let spend = 0;
     let kept: Kept = {
       expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null, metricsPath: null,
-      rescored: true, // round-1 parent = the starter repo, scored 0
+      rescored: true, // round-1 parent = the starter repo, scored 0 and never evaluated
     };
     // Highest re-scored primary kept so far: efficiency keeps may not drift below it.
     let bestPrimary = 0;
@@ -243,11 +244,12 @@ export const runNight = ccInngest.createFunction(
         for (const c of again) coded[c.branch] = c;
       }
 
-      // Then one evaluator, with every coder stopped: the parent and each committed branch in turn.
+      // Then the evaluation, with every coder stopped: each committed branch, and the parent, unless it is
+      // the starter: that empty program scores nothing, so there is nothing to compare the branches with.
       const parentSpec: EvalSpec = {
         evalId: `${nightId}-r${round}-${parent.rescored ? "baseline" : "rescore"}`, expId: parent.expId, split: "dev",
       };
-      const specs: EvalSpec[] = [parentSpec];
+      const specs: EvalSpec[] = parent.expId === init.starterExpId ? [] : [parentSpec];
       for (const c of coded) {
         if (c.ok && c.code.sha && !c.code.check?.errors.length) specs.push({ evalId: `${c.expId}-eval`, expId: c.expId, split: "dev", scoreRunId: c.runId });
       }
@@ -258,7 +260,7 @@ export const runNight = ccInngest.createFunction(
         const o = evals.get(`${c.expId}-eval`);
         return { ok: true, expId: c.expId, branch: c.branch, model: c.model, code: c.code, eval: o?.ok ? o.result : null };
       });
-      const parentEval = evals.get(parentSpec.evalId)!;
+      const parentEval = evals.get(parentSpec.evalId) ?? null;
 
       const mechanical = await step.run(`r${round}-decide`, () =>
         decideRound({
@@ -317,20 +319,21 @@ export const runNight = ccInngest.createFunction(
       roundTokens.push(roundTok);
       tokens += roundTok;
       roundsWithoutKeep = decision.keep ? 0 : roundsWithoutKeep + 1;
+      const parentRun = decision.parentRun;
       for (const s of decision.summaries) {
-        const deltas = Object.fromEntries(
-          [...efficiencyMetrics(cfg), ...Object.keys(cfg.scenario.headline)].flatMap((m) =>
-            s.decision !== "error" && typeof s.metrics[m] === "number" && typeof decision.parentRun?.[m] === "number" ? [[m, s.metrics[m] - decision.parentRun[m]]] : [],
-          ),
-        );
+        const tracked = [...efficiencyMetrics(cfg), ...Object.keys(cfg.scenario.headline)].filter((m) => s.decision !== "error" && typeof s.metrics[m] === "number");
+        const moved = parentRun
+          ? { deltas: Object.fromEntries(tracked.flatMap((m) => (typeof parentRun[m] === "number" ? [[m, s.metrics[m] - parentRun[m]]] : []))) }
+          : { scores: Object.fromEntries(tracked.map((m) => [m, s.metrics[m]])) };
         log.push({
-          round, hypothesis: s.hypothesis, deltaPrimary: s.primary - (decision.parentRun?.[cfg.primary_metric] ?? parent.score), deltas, decision: s.decision,
+          round, hypothesis: s.hypothesis, deltaPrimary: s.primary - (parentRun?.[cfg.primary_metric] ?? parent.score), ...moved, decision: s.decision,
           // An error's tail names the failure; its head is the command, and coders get it whole.
           reason: s.errors?.join("; ").slice(-300) ?? (s.guardrails.join("; ") || review.keep_reason),
         });
       }
       feedback = review.feedback;
-      failures = decision.summaries.flatMap((s) => (s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
+      const unmasked = decision.summaries.flatMap((s) => (s.errors ? [{ expId: s.expId, errors: s.errors }] : []));
+      failures = await step.run(`r${round}-failures`, () => maskFailures(cfg, unmasked));
       hypotheses = review.hypotheses;
 
       if (decision.keep) {
@@ -344,6 +347,7 @@ export const runNight = ccInngest.createFunction(
           await step.run(`r${round}-rescore-record`, () =>
             recordRows(cfg, [evalRow(rowBase, kept, outcome, { kind: "rescore" })]),
           );
+          if (outcome.ok) spend += outcome.result.program_usd;
           if (outcome.ok && outcome.result.ok) {
             kept = { ...kept, score: outcome.result.metrics[cfg.primary_metric], metrics: outcome.result.metrics, metricsPath: outcome.result.metricsPath, rescored: true };
             noteKept();
@@ -357,6 +361,7 @@ export const runNight = ccInngest.createFunction(
 
     // After any stop: score the final kept commit on test once, for the report only.
     const test = await evaluateOne("test", round, { evalId: `${nightId}-test`, expId: kept.expId, split: "test" });
+    if (test.ok) spend += test.result.program_usd;
     return step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
   },
 );

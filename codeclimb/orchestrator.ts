@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFi
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { sweepNight } from "./cleanup";
-import type { CodeResult } from "./coder";
+import type { CodeResult, EvalFailure } from "./coder";
 import { readSpecText } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import type { EvalResult } from "./evaluate";
@@ -16,8 +16,8 @@ import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
 import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
-import { hostCommand, readProtocol, type RepoCheck } from "./scenario";
-import { beatsParent, cutsMetric, guardrailFailures, type Metrics, passesGates } from "./stats";
+import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
+import { beatsParent, cutsMetric, emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
 
 /** What the parent tracks about the commit the next round starts from. */
 export interface Kept {
@@ -131,6 +131,26 @@ export async function checkRepo(cfg: NightConfig, nightId: string, expId: string
     rmSync(repoDir, { recursive: true, force: true });
   }
   return JSON.parse(readFileSync(report, "utf8")) as RepoCheck;
+}
+
+/** Runs the scenario's `scan` on `text`, on the host: the held-out names in it, for what a coder would read. */
+export async function scanText(cfg: NightConfig, text: string): Promise<string[]> {
+  if (!cfg.scenario.scan || !text.trim()) return [];
+  const dir = mkdtempSync(join(tmpdir(), "cc-scan-"));
+  try {
+    const [file, report] = [join(dir, "text"), join(dir, "report.json")];
+    writeFileSync(file, text);
+    await hostCommand(cfg.scenario_dir, cfg.scenario.scan, { text: file, report });
+    return (JSON.parse(readFileSync(report, "utf8")) as Scan).found;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Errors as the next coders may read them. */
+export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): Promise<EvalFailure[]> {
+  const found = await scanText(cfg, failures.flatMap((f) => f.errors).join("\n"));
+  return failures.map((f) => ({ ...f, errors: f.errors.map((e) => maskTerms(e, found)) }));
 }
 
 export type BranchOutcome =
@@ -255,6 +275,7 @@ export function decideRound(args: RowBase & {
   if (args.baseline) rows.push(evalRow(args, parent, args.baseline, { kind: "baseline", parent_id: null }));
 
   // The parent's run in this round's evaluator: the reference for guardrails, cost and latency.
+  // None while the parent is the starter, which is never run: then a branch only has to have worked.
   const parentEval = args.rescore ?? args.baseline ?? null;
   const parentRun = parentEval?.ok && parentEval.result.ok ? parentEval.result : null;
 
@@ -279,7 +300,7 @@ export function decideRound(args: RowBase & {
     const primary = metrics[P] ?? 0;
     const failedCheck = b.code.check?.errors ?? [];
     const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
-    const guardrails = evalOk && parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : errors;
+    const guardrails = !evalOk ? errors : parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : emptyStages(metrics);
     const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
     if (evalOk) scored.push({ expId: b.expId, branch: b.branch, primary, metrics, sha: b.code.sha!, eligible, instance: ev!.evaluator_instance });
     branchRows.push(baseRow(args, {
@@ -433,7 +454,7 @@ export async function reviewRound(args: {
   const file = paths.reviewJson(args.round);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(paths.reviewPrompt(args.round), reviewerPrompt(input)); // before the call, so a failed review leaves it too
-  const review = await runReview(input);
+  const review = await runReview(input, (text) => scanText(args.cfg, text));
   writeFileSync(file, JSON.stringify({ round: args.round, model: args.cfg.reviewer_model, ...review }, null, 2));
   return review;
 }
