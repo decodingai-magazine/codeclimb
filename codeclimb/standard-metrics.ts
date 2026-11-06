@@ -87,9 +87,11 @@ const round9 = (x: number) => Math.round(x * 1e9) / 1e9;
 export function costMetrics(ledger: MeterCall[], nItems: number): Metrics {
   const calls = ledger.filter((c) => !c.rejected);
   const m: Metrics = {};
-  for (const c of calls) m[`cost_${c.op}_usd`] = (m[`cost_${c.op}_usd`] ?? 0) + c.cost_usd;
+  // A replayed call is priced as the call it stands for, so unchanged code shows an unchanged cost.
+  const price = (c: MeterCall) => c.cost_usd + (c.replayed_usd ?? 0);
+  for (const c of calls) m[`cost_${c.op}_usd`] = (m[`cost_${c.op}_usd`] ?? 0) + price(c);
   for (const k of Object.keys(m)) m[k] = round9(m[k]);
-  const total = calls.reduce((a, c) => a + c.cost_usd, 0);
+  const total = calls.reduce((a, c) => a + price(c), 0);
   // Totals last: an op named "per_item" must not shadow them.
   m.cost_usd = round9(total);
   m.cost_per_item_usd = nItems ? round9(total / nItems) : 0;

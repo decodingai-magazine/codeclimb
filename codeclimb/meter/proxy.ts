@@ -11,9 +11,10 @@
 // Status codes follow SDK retry policy: 401 bad token, 403 model not allowed,
 // 402 eval budget spent, 400 unsupported request; only upstream failures are 502.
 import { type CreditStop, isCreditError } from "../credits";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
 import { type Context, context, SpanStatusCode, trace } from "@opentelemetry/api";
 
 export interface ChatMessage {
@@ -110,6 +111,8 @@ export interface MeterCall {
   /** Chat: `length` means `max_tokens` cut the reply off, and a reasoning model may have written none. */
   finish_reason?: string;
   reasoning_tokens?: number;
+  /** It repeated an earlier eval's call and got that answer for free: what that call cost. */
+  replayed_usd?: number;
   /** The status the proxy refused it with: it never went upstream and isn't a model call. */
   rejected?: number;
 }
@@ -133,6 +136,17 @@ interface Ledger {
   onCreditStop?: (stop: CreditStop) => void;
   /** Canned answers instead of the real backends. */
   mock?: boolean;
+  /** Evals in one scope replay each other's calls (`MeterProxy.replays`). */
+  replayScope?: string;
+  /** What this eval has replayed: asked again, the program is retrying a bad answer, so it goes upstream. */
+  replayed: Set<string>;
+}
+
+/** A successful call, for later evals of the night. `ms` is kept so a replay takes as long as the call did. */
+interface Replay {
+  evalId: string;
+  out: unknown;
+  ms: number;
 }
 
 const tracer = trace.getTracer("codeclimb");
@@ -208,6 +222,11 @@ function parseChat(body: Record<string, unknown>): ChatRequest {
 
 export class MeterProxy {
   private readonly ledgers = new Map<string, Ledger>();
+  /**
+   * The last night's calls by request. The same request in a later eval gets the same answer, so code that
+   * didn't change scores the same and costs nothing, and a metric moves only where a change reached.
+   */
+  private replays = { scope: "", calls: new Map<string, Replay>() };
   private server: Server | undefined;
 
   constructor(
@@ -241,12 +260,14 @@ export class MeterProxy {
   }
 
   /** A ledger for one eval. Returns its bearer token. */
-  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void; mock?: boolean }): string {
+  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void; mock?: boolean; replayScope?: string }): string {
     const token = `cc-${randomBytes(24).toString("hex")}`;
     this.ledgers.set(token, {
       evalId: opts.evalId, allowed: new Set(opts.allowedModels), capUsd: opts.capUsd, op: DEFAULT_OP, calls: [], costUsd: 0,
       ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(), onCreditStop: opts.onCreditStop, mock: opts.mock,
+      replayScope: opts.replayScope, replayed: new Set(),
     });
+    if (opts.replayScope && opts.replayScope !== this.replays.scope) this.replays = { scope: opts.replayScope, calls: new Map() };
     return token;
   }
 
@@ -307,8 +328,12 @@ export class MeterProxy {
     ledger: Ledger,
     kind: MeterCall["kind"],
     model: string,
+    request: unknown,
     run: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
+    const key = createHash("sha256").update(JSON.stringify([kind, model, request])).digest("hex");
+    const earlier = this.replays.scope === ledger.replayScope ? this.replays.calls.get(key) : undefined;
+    const replay = earlier && earlier.evalId !== ledger.evalId && !ledger.replayed.has(key) ? earlier : undefined;
     const op = ledger.op;
     const span = tracer.startSpan(
       `gen_ai.${kind}`,
@@ -316,12 +341,13 @@ export class MeterProxy {
       ledger.ctx,
     );
     const t0 = performance.now();
-    const record = (ok: boolean, usage: CallUsage | undefined, error?: string, finishReason?: string) => {
+    const record = (ok: boolean, usage: CallUsage | undefined, error?: string, finishReason?: string, replayed = 0) => {
       const u = usage ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
       ledger.calls.push({
         kind, model, op, ok, input_tokens: u.inputTokens, output_tokens: u.outputTokens, cost_usd: u.costUsd,
         ms: Math.round((performance.now() - t0) * 1000) / 1000, ...(error ? { error } : {}),
         ...(finishReason ? { finish_reason: finishReason } : {}), ...(u.reasoningTokens ? { reasoning_tokens: u.reasoningTokens } : {}),
+        ...(replayed ? { replayed_usd: replayed } : {}),
       });
       ledger.costUsd += u.costUsd;
       span.setAttributes({
@@ -329,8 +355,18 @@ export class MeterProxy {
       });
     };
     try {
+      if (replay) {
+        ledger.replayed.add(key);
+        await delay(replay.ms, undefined, { signal: ledger.abort.signal });
+        const out = replay.out as T;
+        record(true, { ...out.usage, costUsd: 0 }, undefined, out.finishReason, out.usage.costUsd);
+        return out;
+      }
       const out = await run(ledger.abort.signal);
       record(true, out.usage, undefined, out.finishReason);
+      if (ledger.replayScope === this.replays.scope && ledger.replayScope && out.finishReason !== "length") {
+        this.replays.calls.set(key, { evalId: ledger.evalId, out, ms: performance.now() - t0 });
+      }
       return out;
     } catch (e) {
       const { message } = e as Error;
@@ -350,7 +386,7 @@ export class MeterProxy {
   }
 
   private async chat(ledger: Ledger, req: ChatRequest) {
-    const out = await this.metered(ledger, "chat", req.model, (signal) => this.backendsFor(ledger).chat(req, signal));
+    const out = await this.metered(ledger, "chat", req.model, req, (signal) => this.backendsFor(ledger).chat(req, signal));
     return {
       id: `chatcmpl-${randomBytes(8).toString("hex")}`,
       object: "chat.completion",
@@ -364,7 +400,7 @@ export class MeterProxy {
   private async decide(ledger: Ledger, model: string, body: Record<string, unknown>) {
     if (body.state === undefined || !body.questions || typeof body.questions !== "object") throw new HttpError(400, "decisions need state and questions");
     const request = Object.fromEntries(DECISION_FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
-    const out = await this.metered(ledger, "decisions", model, (signal) => this.backendsFor(ledger).decide(model, request, signal));
+    const out = await this.metered(ledger, "decisions", model, request, (signal) => this.backendsFor(ledger).decide(model, request, signal));
     return { model, answers: out.answers, usage: { input_tokens: out.usage.inputTokens, output_tokens: out.usage.outputTokens } };
   }
 
@@ -375,7 +411,7 @@ export class MeterProxy {
       throw new HttpError(400, "documents must be a non-empty array of strings");
     }
     const request = { query, documents: documents as string[], ...(typeof top_n === "number" ? { top_n } : {}) };
-    const out = await this.metered(ledger, "rerank", model, (signal) => this.backendsFor(ledger).rerank(model, request, signal));
+    const out = await this.metered(ledger, "rerank", model, request, (signal) => this.backendsFor(ledger).rerank(model, request, signal));
     return { model, results: out.results, usage: { total_tokens: out.usage.inputTokens } };
   }
 
@@ -384,7 +420,7 @@ export class MeterProxy {
     if (!Array.isArray(texts) || !texts.length || !texts.every((t) => typeof t === "string")) {
       throw new HttpError(400, "input must be a string or a non-empty array of strings");
     }
-    const out = await this.metered(ledger, "embeddings", model, (signal) => this.backendsFor(ledger).embed(model, texts as string[], signal));
+    const out = await this.metered(ledger, "embeddings", model, texts, (signal) => this.backendsFor(ledger).embed(model, texts as string[], signal));
     return {
       object: "list",
       model,

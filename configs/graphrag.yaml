@@ -1,6 +1,6 @@
 scenario: scenarios/graphrag
 sandbox: inngest
-max_rounds: 3
+max_rounds: 6
 deadline: 6h
 timeouts:
   experiment_min: 25

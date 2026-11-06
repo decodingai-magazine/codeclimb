@@ -21,7 +21,7 @@ The main difference: training is measured directly, while a coding task's score 
 
 **For coding:** a program that calls a model is not deterministic. In the graphrag smoke night, identical code moved mentions F1 from 0.6717 to 0.6576, close to the 0.02 margin. A per-night cache of the program's model calls during evaluation would return the same answer for the same request. Unchanged code would score the same, and only what a change touches would move. Repeat calls would also cost nothing.
 
-**Status:** not implemented.
+**Status:** implemented, in the metering proxy: within a night, a later evaluation gets an earlier evaluation's answer to an identical request, free and with the same delay. A second identical request in one evaluation still goes upstream, so a program can retry a bad answer.
 
 ## 2. Reward simplification
 
@@ -35,7 +35,7 @@ The main difference: training is measured directly, while a coding task's score 
 
 **autoresearch:** the agent redirects each run to `run.log` and reads it with `grep`, because a run's output would flood its context.
 
-**For coding:** the coder pays for everything its shell prints, in every later turn. A full run over the train data can print far more than the coder needs. Writing it to a file and reading the part that matters costs a fraction of that. A round 1 coder used about 1M tokens in the smoke night; how much of that was run output hasn't been measured.
+**For coding:** the coder pays for everything its shell prints, in every later turn. A full run over the train data can print far more than the coder needs. Writing it to a file and reading the part that matters costs a fraction of that. In the first full graphrag night, tool output was only 25-29k characters per coder, so most of a coder's tokens were context re-sent each turn, not run output.
 
 **Status:** implemented, as a line in the coder's prompt.
 

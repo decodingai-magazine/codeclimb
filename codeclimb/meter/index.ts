@@ -25,20 +25,41 @@ export function meterEnv(token: string, baseUrl: string): Record<string, string>
 /**
  * The proxy's URL as a metered sandbox sees it. Docker: the relay on the metering network, made
  * sure of first. Inngest: sandboxes sit on the internet, so the proxy must be published at a public
- * URL: CODECLIMB_METER_URL (ending in /v1), else the ngrok tunnel `npm run tunnel` opens to the
- * proxy's port. The per-ledger tokens are what guard it.
+ * URL: CODECLIMB_METER_URL (ending in /v1), else the tunnel `npm run tunnel:cloudflare` or
+ * `npm run tunnel` (ngrok) opens to the proxy's port. The per-ledger tokens are what guard it.
  */
 export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "scenario">): Promise<string> {
   if (cfg.sandbox === "inngest") {
-    const tunnel = process.env.CODECLIMB_METER_URL ? undefined : await ngrokUrl((await meter()).port);
-    const url = process.env.CODECLIMB_METER_URL ?? (tunnel && `${tunnel}/v1`);
-    if (!url) {
-      throw new Error("a metered night on Inngest sandboxes needs the metering proxy at a public URL: run `npm run tunnel`, or set CODECLIMB_METER_URL (…/v1)");
-    }
-    return url.replace(/\/$/, "");
+    return publicMeterUrl(process.env.CODECLIMB_METER_URL, [cloudflareUrl, ngrokUrl], (await meter()).port);
   }
   await ensureMeterPath(cfg.scenario.image, (await meter()).port);
   return RELAY_URL;
+}
+
+type TunnelLookup = (port: number) => Promise<string | undefined>;
+
+/** The proxy's public URL: `override`, else the first tunnel up. */
+export async function publicMeterUrl(override: string | undefined, tunnels: TunnelLookup[], port: number): Promise<string> {
+  if (override) return override.replace(/\/$/, "");
+  for (const lookup of tunnels) {
+    const tunnel = await lookup(port);
+    if (tunnel) return `${tunnel}/v1`;
+  }
+  throw new Error("a metered night on Inngest sandboxes needs the metering proxy at a public URL: run `npm run tunnel:cloudflare` or `npm run tunnel`, or set CODECLIMB_METER_URL (…/v1)");
+}
+
+/**
+ * The https URL of a Cloudflare quick tunnel, from cloudflared's metrics server (`npm run tunnel:cloudflare`),
+ * if one is up. Looked up before ngrok: it runs only if started on purpose, and a blocked ngrok still answers.
+ */
+async function cloudflareUrl(): Promise<string | undefined> {
+  try {
+    const res = await fetch("http://127.0.0.1:20241/quicktunnel", { signal: AbortSignal.timeout(2000) });
+    const { hostname } = (await res.json()) as { hostname: string };
+    return hostname ? `https://${hostname}` : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The https URL of an ngrok tunnel to `port`, from ngrok's local API (`npm run tunnel`), if one is up. */

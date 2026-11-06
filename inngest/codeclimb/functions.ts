@@ -294,8 +294,7 @@ export const runNight = ccInngest.createFunction(
         : { scores: Object.fromEntries(scored.map((m) => [m, s.metrics[m]])) };
       const entry: HypothesisLogEntry = {
         round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score, ...moved, decision: s.decision,
-        // An error's tail names the failure; its head is the command, and coders get it whole.
-        reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ").slice(-300) ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
+        reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ") ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
       };
       log.push(entry);
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));

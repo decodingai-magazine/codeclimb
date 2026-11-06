@@ -174,7 +174,7 @@ export function coderPrompt(
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
-      `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
+      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis. Stop when that finds nothing more.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
     ].join("\n"),
   );

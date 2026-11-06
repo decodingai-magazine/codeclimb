@@ -34,8 +34,8 @@ SEPARATORS = set("-_–,():.'’")
 """Characters that only separate words; with whitespace they split the key into tokens."""
 
 SYMBOL_WORDS = {"@": "at", "^": "pow", "+": "plus", "#": "sharp", "/": "slash", "&": "and", "$": "dollar", "*": "star", "×": "by"}
-"""Every other symbol carries meaning inside a name, so it becomes a word: `pass@k` and `pass^k` are two
-metrics, `C#` is not `C`, `memory/` is not `memory`. A symbol missing here falls back to its Unicode name."""
+"""Every other symbol carries meaning inside a name, so it becomes a word: `a@k` and `a^k` are two
+names, `C#` is not `C`, `memory/` is not `memory`. A symbol missing here falls back to its Unicode name."""
 
 ACRONYM_PLURAL = re.compile(r"\b([A-Z][A-Z0-9]*[A-Z])s\b")
 """An all-caps stem plus a lowercase `s` is a plural (`APIs`, `CLIs`, `KGs`), whatever its length or ending."""

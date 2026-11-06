@@ -143,8 +143,11 @@ export async function maskText(cfg: NightConfig, text: string): Promise<string> 
 }
 
 /** One round of the log as a coder reads it. */
-export function historyLine(cfg: NightConfig, entry: HypothesisLogEntry): Promise<string> {
-  return maskText(cfg, logLine(entry, Object.keys(cfg.scenario.headline).length ? null : cfg.primary_metric));
+export async function historyLine(cfg: NightConfig, entry: HypothesisLogEntry): Promise<string> {
+  // Masked before `logLine` cuts the reason, which could split a name past recognition.
+  const found = await scanText(cfg, `${entry.hypothesis}\n${entry.reason ?? ""}`);
+  const masked = { ...entry, hypothesis: maskTerms(entry.hypothesis, found), reason: entry.reason && maskTerms(entry.reason, found) };
+  return logLine(masked, Object.keys(cfg.scenario.headline).length ? null : cfg.primary_metric);
 }
 
 /** A rejected diff is read-only history: more than this is cut, since a coder pays tokens to read it. */
@@ -234,7 +237,7 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
 }
 
 // A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
-const MAX_DETAILS_CHARS = 200_000;
+const MAX_DETAILS_CHARS = 40_000;
 
 type Candidate = { expId: string; sha: string; score: number; metrics: Metrics };
 

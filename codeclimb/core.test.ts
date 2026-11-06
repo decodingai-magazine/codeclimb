@@ -13,7 +13,7 @@ import { coderReply, reviewerReply } from "./pi/mock";
 import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, repairable, saveRejected, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
-import { flattenReport, maskTerms, parseScenario, readProtocol } from "./scenario";
+import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
 import { emptyStages, guardrailFailures, passesGates, passesThresholds, tinyRegressions } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
@@ -514,7 +514,7 @@ test("repair: the coder is told its commit is in /repo and to fix only this", ()
 test("fail fast: an empty dev stage stops with its log; test runs on", () => {
   const dir = mkdtempSync(join(tmpdir(), "cc-empty-"));
   try {
-    assert.match(emptyStageError("a", "dev", dir, `${"x".repeat(3000)}boom`) ?? "", /^stage a: the run exited clean but wrote no output.*boom$/);
+    assert.match(emptyStageError("a", "dev", dir, `${"x".repeat(3000)}\nboom`) ?? "", /^stage a: the run exited clean but wrote no output.*boom$/);
     assert.ok((emptyStageError("a", "dev", dir, "x".repeat(3000)) ?? "").length < 2200);
     assert.equal(emptyStageError("a", "test", dir, ""), null);
     writeFileSync(join(dir, "timings.jsonl"), "{}\n");
@@ -531,4 +531,20 @@ test("the prompts carry the simplicity, output and near-miss rules", () => {
   assert.match(coder, /Simpler is better/);
   assert.match(coder, /to a file and read it with grep or tail/);
   assert.doesNotMatch(coder, /<failures>/);
+});
+
+test("a cut never leaves half a held-out name for a coder", async () => {
+  const log = `one https://held.out/secret-article attempt\ntwo\nthree`;
+  assert.equal(lastLines(log, 1000), log);
+  assert.equal(lastLines(log, 12), "two\nthree");
+  assert.equal(lastLines("x".repeat(50), 10), "");
+
+  const { dir, cfg: masked } = scanning();
+  try {
+    const error = `failed on Gold Name${" ".repeat(292)}end`; // the name straddles the last 300 characters
+    const line = await historyLine(masked, { round: 1, hypothesis: "h", deltaPrimary: 0, decision: "error", reason: error });
+    assert.doesNotMatch(line, /Name|Gold/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

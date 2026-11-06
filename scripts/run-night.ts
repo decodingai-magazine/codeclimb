@@ -1,5 +1,6 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
-//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--sandbox docker|inngest] [--no-wait] [--mock]
+//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock]     (always on Docker)
+//   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest]
 //   npm run run-night -- stop --night ID
 //   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
@@ -81,11 +82,12 @@ if (positionals[0] === "stop") {
   if (!values.config) throw new Error("usage: run-night --config <yaml>");
   const loaded = loadConfig(resolve(values.config));
   const cfg = values.mock ? mockConfig(loaded) : loaded;
-  if (values.sandbox) {
-    if (values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
-    cfg.sandbox = values.sandbox;
-    checkSandboxLimits(cfg);
-  }
+  if (values.sandbox && values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
+  const wanted = (values.sandbox ?? cfg.sandbox) as NightConfig["sandbox"];
+  // A local night runs on Docker: Inngest sandboxes need Inngest Cloud.
+  cfg.sandbox = process.env.INNGEST_DEV ? "docker" : wanted;
+  if (cfg.sandbox !== wanted) console.log("[run-night] local night: Docker sandboxes instead of inngest");
+  checkSandboxLimits(cfg);
   await checkNightModels(cfg);
   if (cfg.mock) console.log("[run-night] mock: scripted models, metrics mean nothing");
   const nightId = values["night-id"] ?? newNightId();

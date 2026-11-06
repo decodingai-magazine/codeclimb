@@ -1,6 +1,7 @@
 import { isCreditError } from "./credits";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { publicMeterUrl } from "./meter/index";
 import { BackendError, type MeterBackends, type MeterCall, MeterProxy } from "./meter/proxy";
 import { costMetrics } from "./standard-metrics";
 
@@ -133,3 +134,52 @@ test("credit errors are exhausted accounts, not throttles", () => {
     assert.ok(!isCreditError(m), m);
   }
 });
+
+test("the public proxy URL: the override, else the first tunnel up, else a clear error", async () => {
+  const up = (url: string) => async () => url;
+  const down = async () => undefined;
+  assert.equal(await publicMeterUrl("https://x.example/v1/", [up("https://t")], 7422), "https://x.example/v1");
+  assert.equal(await publicMeterUrl(undefined, [up("https://cf"), up("https://ngrok")], 7422), "https://cf/v1");
+  assert.equal(await publicMeterUrl(undefined, [down, up("https://ngrok")], 7422), "https://ngrok/v1");
+  await assert.rejects(publicMeterUrl(undefined, [down, down], 7422), /tunnel:cloudflare/);
+});
+
+test("replay: a later eval of the night gets the same answer for free; a retry goes upstream", async () => {
+  let upstream = 0;
+  const backends = {
+    chat: async () => ({ text: `answer ${++upstream}`, finishReason: "stop" as const, usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.01 } }),
+  } as unknown as MeterBackends;
+  const proxy = new MeterProxy(backends);
+  await proxy.listen();
+  try {
+    const ask = async (token: string, content = "same") => {
+      const res = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, {
+        method: "POST", headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "m", messages: [{ role: "user", content }] }),
+      });
+      return ((await res.json()) as { choices: { message: { content: string } }[] }).choices[0].message.content;
+    };
+    const open = (evalId: string, replayScope = "night") => proxy.open({ evalId, allowedModels: ["m"], capUsd: 1, replayScope });
+
+    const first = open("e1");
+    assert.equal(await ask(first), "answer 1");
+    assert.equal(await ask(first), "answer 2"); // the same eval asks upstream
+
+    const second = open("e2");
+    assert.equal(await ask(second), "answer 2");
+    assert.equal(proxy.spent(second), 0);
+    assert.equal(await ask(second), "answer 3"); // asked twice: the program didn't accept the answer
+    assert.equal(await ask(second, "other"), "answer 4");
+    const calls = proxy.close(second);
+    assert.deepEqual(calls.map((c) => [c.cost_usd, c.replayed_usd]), [[0, 0.01], [0.01, undefined], [0.01, undefined]]);
+    assert.equal(costMetrics(calls, 1).cost_usd, 0.03); // priced as if asked, so it compares across evals
+    proxy.close(first);
+
+    const otherNight = open("e3", "night2");
+    assert.equal(await ask(otherNight), "answer 5");
+    proxy.close(otherNight);
+  } finally {
+    await proxy.stop();
+  }
+});
+

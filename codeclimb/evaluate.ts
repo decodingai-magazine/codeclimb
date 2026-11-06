@@ -19,7 +19,7 @@ import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter
 import type { MeterCall } from "./meter/proxy";
 import { cloneInto, uploadPath } from "./sandbox/repo";
 import type { Sandbox } from "./sandbox/types";
-import { fill, flattenReport, hostCommand } from "./scenario";
+import { fill, flattenReport, hostCommand, lastLines } from "./scenario";
 import { costMetrics, latencyMetrics, type OpLatency, opLatencies, parseTimings, TIMINGS_FILE } from "./standard-metrics";
 import type { Metrics } from "./stats";
 import { programSpans } from "./tracing";
@@ -73,7 +73,7 @@ function outputBytes(dir: string): number {
  */
 export function emptyStageError(stage: string, split: EvalSplit, outputs: string, runLog: string): string | null {
   if (split !== "dev" || outputBytes(outputs)) return null;
-  return `stage ${stage}: the run exited clean but wrote no output. End of its log: ${runLog.slice(-2000)}`;
+  return `stage ${stage}: the run exited clean but wrote no output. End of its log: ${lastLines(runLog, 2000)}`;
 }
 
 /**
@@ -180,7 +180,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
     creditsOut = () => r(null);
   });
   const token = proxy?.open({
-    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval, mock: cfg.mock,
+    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval, mock: cfg.mock, replayScope: req.nightId,
     onCreditStop: (stop) => {
       result.credits = stop;
       result.error = `out of credits on ${stop.model}: ${stop.message}`;
@@ -222,7 +222,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       writeFileSync(join(sdir, "run.log"), runLog);
       if (!run || result.credits) return result; // the program may have swallowed the errors and exited 0
       if (run.timedOut || run.exitCode !== 0) {
-        const log = runLog.toString().slice(-2000);
+        const log = lastLines(runLog.toString(), 2000);
         result.error = `stage ${stage.name}: ${run.timedOut ? `run timed out after ${cfg.timeouts.eval_min} min` : `run exited ${run.exitCode}: ${log}`}`;
         return result;
       }

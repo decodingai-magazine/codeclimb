@@ -14,6 +14,7 @@
     "worker:cloud": "CODECLIMB_ENV=cloud tsx --import @inngest/otel/node scripts/worker.ts",
     "run-night:cloud": "CODECLIMB_ENV=cloud tsx scripts/run-night.ts",
     "tunnel": "ngrok http 127.0.0.1:${CODECLIMB_PROXY_PORT:-7422}",
+    "tunnel:cloudflare": "cloudflared tunnel --url http://127.0.0.1:${CODECLIMB_PROXY_PORT:-7422} --metrics 127.0.0.1:20241",
     "validate-results": "tsx scripts/validate-results.ts",
     "build:image": "docker build -t codeclimb-python -f docker/python.Dockerfile docker",
     "build:image:graphrag": "npm run build:image && docker build -t codeclimb-graphrag -f docker/graphrag.Dockerfile scenarios/graphrag",

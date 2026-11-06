@@ -1,8 +1,8 @@
-"""Pulse's `_normalize`, vendored from scrabble (`src/pulse/normalization/types.py`) so the dataset's
+"""Pulse's `_normalize`, vendored from scrabble (`src/pulse`) so the dataset's
 key no longer needs the scrabble project. Behaviour is unchanged; `scripts/compile.py` builds the
 dataset key (README.md, Identity) on top of it. The copy is codeclimb's: it is not synced back.
 
-    _normalize(" Vector-Databases ") == "vector database"
+    _normalize(" Word-Lists ") == "word list"
 
 Steps: every run of non-alphanumerics (underscore included) becomes a space, each token is
 singularized in its own case, then the key is lowercased. Lowercasing comes last because the plural

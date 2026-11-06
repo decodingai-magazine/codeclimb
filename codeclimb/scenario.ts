@@ -150,13 +150,23 @@ export function fill(cmd: string, values: Record<string, string>): string {
   });
 }
 
+/**
+ * The end of `text`, at most `maxChars`, from a line start. A line cut in two could hold half a held-out
+ * name, which a scan wouldn't find: this text can reach a coder.
+ */
+export function lastLines(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const tail = text.slice(-maxChars);
+  return tail.slice(tail.indexOf("\n") + 1 || tail.length);
+}
+
 /** Runs a host command of the scenario in its directory. Throws with the tail of its output on failure. */
 export async function hostCommand(dir: string, cmd: string, values: Record<string, string>, timeoutMs = 30 * 60_000): Promise<void> {
   try {
     await pexec("bash", ["-c", fill(cmd, values)], { cwd: dir, maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs });
   } catch (e) {
     const err = e as Error & { stderr?: string; stdout?: string };
-    throw new Error(`${fill(cmd, values)} failed: ${(err.stderr || err.stdout || err.message).slice(-2000)}`);
+    throw new Error(`${fill(cmd, values)} failed: ${lastLines(err.stderr || err.stdout || err.message, 2000)}`);
   }
 }
 

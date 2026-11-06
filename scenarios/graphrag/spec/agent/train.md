@@ -18,8 +18,24 @@ third-party evaluator, who runs your frozen system on them:
 | `train/graph.json` | the gold graph of the train articles: `documents`, `entities`, `relationships` (`mentions`, `related_to`) |
 | `train/examples/<stage>.jsonl` | train's gold for each stage, below |
 | `train/inputs/<stage>.jsonl` | exactly what the evaluator hands each stage, for train |
+| `scorer/` | the official scorers, on train alone, below |
 
 `<stage>` is `extraction`, `graph` or `retrieval`. Nothing outside the bundle is yours to read.
+
+## Scoring your work on train
+
+Run your stage on `train/inputs/<stage>.jsonl`, then score its output with the evaluator's own code,
+so your numbers mean what the feedback's numbers mean:
+
+```bash
+export PYTHONPATH=/spec/scorer/vendor
+python /spec/scorer/evaluators/extraction.py score --split train --predictions out.jsonl --out report.json --details
+python /spec/scorer/evaluators/graph.py score --split train --mode gold-history --predictions out.jsonl --out report.json --details
+python /spec/scorer/evaluators/retrieval.py score --split train --predictions out.jsonl --out report.json --details
+```
+
+`--details` adds the per-item errors. Your system can't use this directory: the evaluator doesn't
+have it. Train is few-shot material, so a score here is a check on the code, not a forecast of dev.
 
 ## Few-shot examples
 
