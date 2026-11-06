@@ -14,7 +14,7 @@ parallel:              # every model through round step_after, then min
   decay: step           # step | linear | none (every model, every round)
   step_after: 3
   min: 1
-reviewer_model: github-copilot/claude-sonnet-5
+reviewer_model: github-copilot/claude-haiku-4.5
 # The models the built program may call (through the metering proxy).
 allowed_models: [github-copilot/claude-haiku-4.5]
 primary_metric: accuracy

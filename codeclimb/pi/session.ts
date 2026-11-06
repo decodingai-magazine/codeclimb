@@ -14,6 +14,7 @@ import {
   SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { type MockRole, mockModel, mockProvider } from "./mock";
 import { REPO_DIR } from "./tools";
 
 let runtime: Promise<ModelRuntime> | undefined;
@@ -23,7 +24,10 @@ let runtime: Promise<ModelRuntime> | undefined;
  * CODECLIMB_PI_AUTH_PATH) or the provider's env var; see AUTH_HINTS.
  */
 export function modelRuntime(): Promise<ModelRuntime> {
-  runtime ??= ModelRuntime.create({ authPath: process.env.CODECLIMB_PI_AUTH_PATH });
+  runtime ??= ModelRuntime.create({ authPath: process.env.CODECLIMB_PI_AUTH_PATH }).then((rt) => {
+    rt.registerNativeProvider(mockProvider);
+    return rt;
+  });
   return runtime;
 }
 
@@ -92,6 +96,8 @@ export interface IsolatedSessionOptions {
   tools?: ToolDefinition[];
   /** Persisted (resumable) or in-memory session storage. */
   sessionManager: SessionManager;
+  /** Run on this scripted model instead of `model`. */
+  mock?: MockRole;
   /** Replaces Pi's base prompt. Only the reviewer sets it. */
   systemPrompt?: string;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
@@ -105,7 +111,7 @@ export async function createIsolatedSession(opts: IsolatedSessionOptions): Promi
     cwd: REPO_DIR,
     agentDir,
     modelRuntime: await modelRuntime(),
-    model: await resolveModel(opts.model),
+    model: opts.mock ? mockModel(opts.mock) : await resolveModel(opts.model),
     thinkingLevel: opts.thinkingLevel ?? "medium",
     resourceLoader: isolatedLoader(opts.systemPrompt),
     settingsManager: SettingsManager.inMemory({

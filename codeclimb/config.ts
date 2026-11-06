@@ -2,7 +2,7 @@
 // travels in the night.start event with paths relative to the checkout root, and the
 // worker resolves them against its own checkout (`rootConfig`), so a remote worker works.
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse } from "yaml";
 import { loadScenario, type Scenario } from "./scenario";
 
@@ -55,6 +55,8 @@ export type NightConfig = {
   results_path: string;
   /** Directory relative paths resolve against. */
   base_dir: string;
+  /** Scripted models and canned program calls, for a free end-to-end check; see `mockConfig`. */
+  mock?: boolean;
 };
 
 function req<T>(raw: Record<string, unknown>, key: string, type: string): T {
@@ -170,6 +172,15 @@ function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {
 }
 
 /** The config as the CLI sends it: paths under `base_dir` relative to it, `base_dir` itself ".". */
+/**
+ * The same night on scripted models: real sandboxes, evals and the whole loop, for free. Results go
+ * to `runs/mock/<name>/`, so mock rows stay out of the real reports.
+ */
+export function mockConfig(cfg: NightConfig): NightConfig {
+  const dir = dirname(cfg.results_path);
+  return { ...cfg, mock: true, results_path: join(dirname(dir), "mock", basename(dir), basename(cfg.results_path)) };
+}
+
 export function relativeConfig(cfg: NightConfig): NightConfig {
   const base = cfg.base_dir;
   return mapPaths(cfg, (p) => {

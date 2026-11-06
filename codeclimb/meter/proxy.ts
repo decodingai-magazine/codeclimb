@@ -72,6 +72,16 @@ export interface MeterBackends {
   rerank(model: string, request: RerankRequest, signal: AbortSignal): Promise<RerankResult>;
 }
 
+const NO_USAGE: CallUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+
+/** Free canned answers, for `run-night --mock`. */
+const MOCK_BACKENDS: MeterBackends = {
+  chat: async () => ({ text: "mock", finishReason: "stop", usage: NO_USAGE }),
+  embed: async (_model, input) => ({ vectors: input.map(() => [1, 0, 0, 0]), usage: NO_USAGE }),
+  decide: async () => ({ answers: {}, usage: NO_USAGE }),
+  rerank: async (_model, { documents }) => ({ results: documents.map((_, index) => ({ index, relevance_score: 0 })), usage: NO_USAGE }),
+};
+
 /** An upstream failure. `usage` is what the failed call still cost. */
 export class BackendError extends Error {
   constructor(
@@ -114,6 +124,8 @@ interface Ledger {
   /** Set by the first out-of-credits call; later calls are refused without going upstream. */
   creditStop?: CreditStop;
   onCreditStop?: (stop: CreditStop) => void;
+  /** Canned answers instead of the real backends. */
+  mock?: boolean;
 }
 
 const tracer = trace.getTracer("codeclimb");
@@ -194,6 +206,10 @@ export class MeterProxy {
     private readonly host = "127.0.0.1",
   ) {}
 
+  private backendsFor(ledger: Ledger): MeterBackends {
+    return ledger.mock ? MOCK_BACKENDS : this.backends;
+  }
+
   async listen(port = 0): Promise<number> {
     if (this.server) return this.port;
     const server = createServer((req, res) => void this.handle(req, res));
@@ -216,11 +232,11 @@ export class MeterProxy {
   }
 
   /** A ledger for one eval. Returns its bearer token. */
-  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void }): string {
+  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void; mock?: boolean }): string {
     const token = `cc-${randomBytes(24).toString("hex")}`;
     this.ledgers.set(token, {
       evalId: opts.evalId, allowed: new Set(opts.allowedModels), capUsd: opts.capUsd, op: DEFAULT_OP, calls: [], costUsd: 0,
-      ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(), onCreditStop: opts.onCreditStop,
+      ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(), onCreditStop: opts.onCreditStop, mock: opts.mock,
     });
     return token;
   }
@@ -315,7 +331,7 @@ export class MeterProxy {
   }
 
   private async chat(ledger: Ledger, req: ChatRequest) {
-    const out = await this.metered(ledger, "chat", req.model, (signal) => this.backends.chat(req, signal));
+    const out = await this.metered(ledger, "chat", req.model, (signal) => this.backendsFor(ledger).chat(req, signal));
     return {
       id: `chatcmpl-${randomBytes(8).toString("hex")}`,
       object: "chat.completion",
@@ -329,7 +345,7 @@ export class MeterProxy {
   private async decide(ledger: Ledger, model: string, body: Record<string, unknown>) {
     if (body.state === undefined || !body.questions || typeof body.questions !== "object") throw new HttpError(400, "decisions need state and questions");
     const request = Object.fromEntries(DECISION_FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
-    const out = await this.metered(ledger, "decisions", model, (signal) => this.backends.decide(model, request, signal));
+    const out = await this.metered(ledger, "decisions", model, (signal) => this.backendsFor(ledger).decide(model, request, signal));
     return { model, answers: out.answers, usage: { input_tokens: out.usage.inputTokens, output_tokens: out.usage.outputTokens } };
   }
 
@@ -340,7 +356,7 @@ export class MeterProxy {
       throw new HttpError(400, "documents must be a non-empty array of strings");
     }
     const request = { query, documents: documents as string[], ...(typeof top_n === "number" ? { top_n } : {}) };
-    const out = await this.metered(ledger, "rerank", model, (signal) => this.backends.rerank(model, request, signal));
+    const out = await this.metered(ledger, "rerank", model, (signal) => this.backendsFor(ledger).rerank(model, request, signal));
     return { model, results: out.results, usage: { total_tokens: out.usage.inputTokens } };
   }
 
@@ -349,7 +365,7 @@ export class MeterProxy {
     if (!Array.isArray(texts) || !texts.length || !texts.every((t) => typeof t === "string")) {
       throw new HttpError(400, "input must be a string or a non-empty array of strings");
     }
-    const out = await this.metered(ledger, "embeddings", model, (signal) => this.backends.embed(model, texts as string[], signal));
+    const out = await this.metered(ledger, "embeddings", model, (signal) => this.backendsFor(ledger).embed(model, texts as string[], signal));
     return {
       object: "list",
       model,

@@ -1,12 +1,12 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
-//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--sandbox docker|inngest] [--no-wait]
+//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--sandbox docker|inngest] [--no-wait] [--mock]
 //   npm run run-night -- stop --night ID
 //   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { checkSandboxLimits, loadConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
+import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
 import { nightPaths } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
@@ -20,6 +20,7 @@ const { values, positionals } = parseArgs({
     night: { type: "string" },
     sandbox: { type: "string" },
     "no-wait": { type: "boolean", default: false },
+    mock: { type: "boolean", default: false },
   },
 });
 
@@ -78,13 +79,15 @@ if (positionals[0] === "stop") {
   console.log(`[run-night] sent codeclimb/night.stop for ${values.night}`);
 } else {
   if (!values.config) throw new Error("usage: run-night --config <yaml>");
-  const cfg = loadConfig(resolve(values.config));
+  const loaded = loadConfig(resolve(values.config));
+  const cfg = values.mock ? mockConfig(loaded) : loaded;
   if (values.sandbox) {
     if (values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
     cfg.sandbox = values.sandbox;
     checkSandboxLimits(cfg);
   }
   await checkNightModels(cfg);
+  if (cfg.mock) console.log("[run-night] mock: scripted models, metrics mean nothing");
   const nightId = values["night-id"] ?? newNightId();
   const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg)));
   console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);

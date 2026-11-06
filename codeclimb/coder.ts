@@ -246,6 +246,7 @@ export async function runCoder(
   const token = proxy?.open({
     evalId: `${input.expId}-dev`, allowedModels: cfg.allowed_models, capUsd: Math.max(cfg.budget_usd.dev - devBefore, 0),
     attrs: { "codeclimb.exp_id": input.expId, "codeclimb.ledger": "dev" },
+    mock: cfg.mock,
     onCreditStop: outOfCredits,
   });
   const closeDev = () => {
@@ -258,6 +259,7 @@ export async function runCoder(
 
   const session: AgentSession = await createIsolatedSession({
     model: input.model,
+    mock: cfg.mock ? "coder" : undefined,
     tools: sandboxTools(sandbox, token ? { env: meterEnv(token, meterUrl) } : {}),
     sessionManager: sessionManagerFor(sessionDir, resumed ? sessionFile : undefined),
   });

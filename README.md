@@ -101,6 +101,7 @@ npm run worker                         # terminal 2: connect() worker (orchestra
 npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night and follows results.jsonl
 npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
 npm run run-night -- resume --night <night_id>              # continue a night paused out of credits
+npm run run-night -- --config configs/capitals-smoke.yaml --mock   # scripted models, free: checks the loop end to end
 npm run validate-results -- runs/datenorm-smoke/results.jsonl
 npm test                               # unit tests (keep rule, stops, schema)
 ```
@@ -130,6 +131,16 @@ A night stops on the first of these, checked between rounds (`stop_reason` in `d
 | `plateau` | `plateau_rounds` (default 3, `0` = off) | That many rounds in a row kept nothing |
 
 The test eval gets its own evaluator too. A scenario with `eval_sandboxes: per_candidate` runs one evaluator per candidate, in parallel. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
+
+#### Mock mode
+
+`--mock` runs a night on scripted models, to check that the loop works end to end for free. Metrics mean nothing.
+
+- **Real:** Inngest, sandboxes, Pi sessions and their tools, commits, evals, the metering proxy, keep rules and reports.
+- **Scripted:** the coder appends a line to `MOCK.md` with bash, the reviewer keeps nothing, and a program's model calls get a canned answer at no cost. No provider is called, so `--mock` needs no credentials.
+- **Results** land in `runs/mock/<name>/`, away from real reports.
+
+The `codeclimb-e2e` skill in `.claude/skills/` lists what to run and check.
 
 #### Out of credits: pause and resume
 
@@ -267,9 +278,10 @@ npm run run-night -- --config configs/capitals-smoke.yaml   # one round; the pro
 
 ```bash
 npm run build:image              # the shared codeclimb-python image
-npm run run-night -- --config configs/datenorm-hard-calibrate.yaml   # 1 branch × 1 round: see how far round 1 gets
-npm run run-night -- --config configs/datenorm-hard.yaml             # threshold accuracy 0.90, up to 10 rounds
+npm run build:dataset:hard       # the hidden dataset
 ```
+
+No config ships for it: copy `configs/datenorm.yaml` and point `scenario:` at `scenarios/datenorm-hard`.
 
 ### Multi-stage scenario: `graphrag`
 
@@ -297,16 +309,16 @@ Each night rewrites `report.html` next to `results.jsonl` after every round. It 
 - **Detail and export:** the selected experiment's metrics and diff against its parent, and an export panel. The night's best kept commit is selected by default.
 
 ```bash
-npm run report -- --config configs/datenorm-hard.yaml           # rebuild runs/datenorm-hard/report.html
-npm run report -- --config configs/datenorm-hard.yaml --serve   # http://127.0.0.1:7420 with a working Export button
+npm run report -- --config configs/datenorm.yaml           # rebuild runs/datenorm/report.html
+npm run report -- --config configs/datenorm.yaml --serve   # http://127.0.0.1:7420 with a working Export button
 ```
 
 Opened from disk, the export panel's button copies the matching CLI command instead. The same export from the terminal:
 
 ```bash
-npm run export -- --config configs/datenorm-hard.yaml --exp best --to-dir ../datenorm-solution                  # plain files
-npm run export -- --config configs/datenorm-hard.yaml --exp hard2-r6-e2 --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
-npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
+npm run export -- --config configs/datenorm.yaml --exp best --to-dir ../datenorm-solution                  # plain files
+npm run export -- --config configs/datenorm.yaml --exp <exp_id> --to-dir ../datenorm-repo --with-history # git repo with the kept lineage
+npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
 ```
 
 - `--exp best` is the kept commit of the most recently finished night.
@@ -335,7 +347,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
 | `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `datenorm-smoke.yaml` (2 rounds × 1 experiment), `datenorm.yaml` (a full night, 1 experiment per round), `datenorm-hard.yaml` (up to 10 rounds, 2 experiments through round 3, then 1), `datenorm-hard-calibrate.yaml` (1 experiment × 1 round) and `graphrag-smoke.yaml` (2 rounds × 1 experiment) |
+| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night) and `graphrag.yaml` (4 rounds on Inngest Cloud) |
 
 ### Deviations from the spec in this iteration
 
@@ -355,7 +367,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 ### Known behaviour worth knowing
 
 - **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
-- **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on dev. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round. For a longer climb, use `datenorm-hard`.
+- **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on dev. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round. For a longer climb, use the `datenorm-hard` scenario.
 - **`datenorm-hard` climbs over many rounds.** These nights ran on the old k-fold protocol, before fixed splits. Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 8 min, $0.26) kept a commit in 5 of 6 rounds:
 
   | Round | Kept accuracy | What moved |

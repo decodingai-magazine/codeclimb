@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { coderPrompt, parseApproach } from "./coder";
-import { checkSandboxLimits, efficiencyMetrics, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
+import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
+import { coderReply, reviewerReply } from "./pi/mock";
 import { applyReview, checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt } from "./reviewer";
@@ -348,4 +349,31 @@ test("config paths travel relative and resolve against the worker's checkout", (
   assert.equal(used.scenario_dir, "/srv/codeclimb/scenarios/capitals");
   // Configs from older CLIs carry absolute paths, which stay as they are.
   assert.deepEqual(rootConfig(cfg, "/srv/codeclimb"), cfg);
+});
+
+const textOf = (m: ReturnType<typeof coderReply>) => m.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("");
+
+test("the mock coder makes one change, then closes with its approach", () => {
+  const first = coderReply([{ role: "user", content: "go", timestamp: 0 }]);
+  assert.equal(first.stopReason, "toolUse");
+  assert.deepEqual(first.content.map((c) => c.type), ["toolCall"]);
+  const toolResult = { role: "toolResult" as const, toolCallId: "1", toolName: "bash", content: [], isError: false, timestamp: 0 };
+  const last = coderReply([toolResult]);
+  assert.equal(parseApproach(textOf(last)), "mock change, no real work");
+});
+
+test("the mock reviewer's answer parses for any branch count", () => {
+  for (const n of [0, 1, 3]) {
+    const reply = reviewerReply([{ role: "user", content: `Return JSON with keep, keep_reason, feedback and exactly ${n} hypotheses.`, timestamp: 0 }]);
+    const parsed = parseReview(textOf(reply), n, []);
+    assert.equal(parsed?.keep, null);
+    assert.equal(parsed?.hypotheses.length, n);
+  }
+});
+
+test("a mock config writes results apart from the real ones", () => {
+  const cfg = { results_path: "/x/runs/capitals-smoke/results.jsonl" } as NightConfig;
+  const mock = mockConfig(cfg);
+  assert.equal(mock.mock, true);
+  assert.equal(mock.results_path, "/x/runs/mock/capitals-smoke/results.jsonl");
 });

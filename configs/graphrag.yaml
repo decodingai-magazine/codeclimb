@@ -1,5 +1,5 @@
 # Four rounds of graphrag, two experiments per round through round 3, then one, on Inngest Cloud and Inngest Sandboxes: npm run worker:cloud, npm run tunnel, then
-# npm run run-night:cloud -- --config configs/graphrag-cloud-long.yaml. eval_min × 3 stages stays under the 50-minute cap.
+# npm run run-night:cloud -- --config configs/graphrag.yaml. eval_min × 3 stages stays under the 50-minute cap.
 # All three stages are scored on dev every round; the reviewer picks the keep from the branches that pass
 # the scenario's headline guardrails. `primary_metric` only names the score in charts and logs.
 scenario: scenarios/graphrag

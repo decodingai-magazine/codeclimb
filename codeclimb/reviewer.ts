@@ -34,6 +34,7 @@ export interface HypothesisLogEntry {
 
 export interface ReviewInput {
   model: string;
+  mock?: boolean;
   spec: string;
   round: number;
   branches: number;
@@ -194,6 +195,7 @@ export async function runReview(input: ReviewInput): Promise<ReviewOutput> {
   const t0 = performance.now();
   const session = await createIsolatedSession({
     model: input.model,
+    mock: input.mock ? "reviewer" : undefined,
     sessionManager: SessionManager.inMemory("/repo"),
     systemPrompt: SYSTEM_PROMPT,
     thinkingLevel: "low",

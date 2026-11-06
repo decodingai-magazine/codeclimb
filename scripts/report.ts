@@ -1,7 +1,7 @@
 // Interactive HTML report over every night in a results file, with an export panel.
-//   npm run report -- --config configs/datenorm-hard.yaml          # writes runs/<...>/report.html
-//   npm run report -- --results runs/datenorm-hard/results.jsonl --out /tmp/r.html
-//   npm run report -- --config configs/datenorm-hard.yaml --serve  # http://127.0.0.1:7420, Export button live
+//   npm run report -- --config configs/datenorm.yaml          # writes runs/<...>/report.html
+//   npm run report -- --results runs/datenorm/results.jsonl --out /tmp/r.html
+//   npm run report -- --config configs/datenorm.yaml --serve  # http://127.0.0.1:7420, Export button live
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";

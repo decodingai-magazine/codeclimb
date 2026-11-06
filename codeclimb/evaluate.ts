@@ -174,7 +174,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
     creditsOut = () => r(null);
   });
   const token = proxy?.open({
-    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval,
+    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval, mock: cfg.mock,
     onCreditStop: (stop) => {
       result.credits = stop;
       result.error = `out of credits on ${stop.model}: ${stop.message}`;

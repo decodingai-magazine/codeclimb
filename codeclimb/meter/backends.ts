@@ -25,7 +25,8 @@ function isEmbeddingModel(ref: string): boolean {
 }
 
 /** Fails unless every model a night names is callable: Pi's through Pi, `openrouter/` ones on OpenRouter. */
-export async function checkNightModels(cfg: Pick<NightConfig, "models" | "reviewer_model" | "allowed_models">): Promise<void> {
+export async function checkNightModels(cfg: Pick<NightConfig, "models" | "reviewer_model" | "allowed_models" | "mock">): Promise<void> {
+  if (cfg.mock) return;
   const viaPi = cfg.allowed_models.filter((m) => !isEmbeddingModel(m) && !isOpenRouterModel(m));
   await checkModels([...cfg.models, cfg.reviewer_model, ...viaPi]);
   await checkOpenRouterModels(cfg.allowed_models);
