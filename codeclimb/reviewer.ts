@@ -4,6 +4,7 @@
 // Never sees anything from test.
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { isCreditError, OutOfCredits } from "./credits";
+import type { ThinkingLevel } from "./config";
 import { createIsolatedSession } from "./pi/session";
 import type { Metrics } from "./stats";
 
@@ -34,6 +35,7 @@ export interface HypothesisLogEntry {
 
 export interface ReviewInput {
   model: string;
+  thinkingLevel: ThinkingLevel;
   mock?: boolean;
   spec: string;
   round: number;
@@ -198,7 +200,7 @@ export async function runReview(input: ReviewInput): Promise<ReviewOutput> {
     mock: input.mock ? "reviewer" : undefined,
     sessionManager: SessionManager.inMemory("/repo"),
     systemPrompt: SYSTEM_PROMPT,
-    thinkingLevel: "low",
+    thinkingLevel: input.thinkingLevel,
   });
   let usd = 0;
   let tokens = 0;

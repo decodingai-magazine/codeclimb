@@ -260,6 +260,7 @@ export async function runCoder(
   const session: AgentSession = await createIsolatedSession({
     model: input.model,
     mock: cfg.mock ? "coder" : undefined,
+    thinkingLevel: cfg.coder_thinking,
     tools: sandboxTools(sandbox, token ? { env: meterEnv(token, meterUrl) } : {}),
     sessionManager: sessionManagerFor(sessionDir, resumed ? sessionFile : undefined),
   });

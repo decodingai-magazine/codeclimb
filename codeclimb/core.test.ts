@@ -260,7 +260,7 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
 
 test("the reviewer reads a branch against the kept commit's repeated runs", () => {
   const input = {
-    model: "m", spec: "s", round: 3, branches: 1, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7 },
+    model: "m", thinkingLevel: "low" as const, spec: "s", round: 3, branches: 1, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7 },
     objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: ["b"], mechanicalKeep: null, headline: ["e.f1", "r.x.mean", "gone"], protocol: "",
   };
   const prompt = reviewerPrompt({ ...input, parentRuns: [{ "e.f1": 0.74, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }, { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }] });
@@ -376,4 +376,13 @@ test("a mock config writes results apart from the real ones", () => {
   const mock = mockConfig(cfg);
   assert.equal(mock.mock, true);
   assert.equal(mock.results_path, "/x/runs/mock/capitals-smoke/results.jsonl");
+});
+
+test("a reviewer may share the coder's model only at another thinking level", () => {
+  const yaml = (extra: string) => BASE_YAML.replace("reviewer_model: p/c", "reviewer_model: p/a") + extra;
+  assert.throws(() => parseConfig(yaml("coder_thinking: high\nreviewer_thinking: high\n"), ROOT), /reviewer_model must differ/);
+  assert.throws(() => parseConfig(yaml(""), ROOT), /reviewer_model must differ/);
+  const cfg = parseConfig(yaml("coder_thinking: medium\nreviewer_thinking: high\n"), ROOT);
+  assert.equal(cfg.reviewer_thinking, "high");
+  assert.throws(() => parseConfig(yaml("coder_thinking: extreme\nreviewer_thinking: high\n"), ROOT), /coder_thinking must be/);
 });

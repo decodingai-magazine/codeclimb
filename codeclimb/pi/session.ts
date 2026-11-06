@@ -14,6 +14,7 @@ import {
   SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "../config";
 import { type MockRole, mockModel, mockProvider } from "./mock";
 import { REPO_DIR } from "./tools";
 
@@ -100,7 +101,7 @@ export interface IsolatedSessionOptions {
   mock?: MockRole;
   /** Replaces Pi's base prompt. Only the reviewer sets it. */
   systemPrompt?: string;
-  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+  thinkingLevel: ThinkingLevel;
 }
 
 export async function createIsolatedSession(opts: IsolatedSessionOptions): Promise<AgentSession> {
@@ -112,7 +113,7 @@ export async function createIsolatedSession(opts: IsolatedSessionOptions): Promi
     agentDir,
     modelRuntime: await modelRuntime(),
     model: opts.mock ? mockModel(opts.mock) : await resolveModel(opts.model),
-    thinkingLevel: opts.thinkingLevel ?? "medium",
+    thinkingLevel: opts.thinkingLevel,
     resourceLoader: isolatedLoader(opts.systemPrompt),
     settingsManager: SettingsManager.inMemory({
       compaction: { enabled: true },

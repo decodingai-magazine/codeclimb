@@ -11,11 +11,13 @@ timeouts:
   eval_min: 30
 models:
   - github-copilot/claude-haiku-5.5
+coder_thinking: medium  # off | minimal | low | medium | high
 parallel:              # every model through round step_after, then min
   decay: step           # step | linear | none (every model, every round)
   step_after: 3
   min: 1
 reviewer_model: github-copilot/claude-haiku-4.5
+reviewer_thinking: high
 # The models the program may call, through the metering proxy.
 allowed_models:
   - openrouter/deepseek/deepseek-v4.1-flash

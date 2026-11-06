@@ -18,6 +18,10 @@ export type StandardMetricsConfig = {
   min_efficiency_gain: number;
 };
 
+/** Pi's thinking effort. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high"] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
 export type NightConfig = {
   /** The scenario directory (docs/scenario-contract.md). */
   scenario_dir: string;
@@ -40,6 +44,10 @@ export type NightConfig = {
    */
   parallel: { decay: "none" | "linear" | "step"; min: number; step_after: number };
   reviewer_model: string;
+  /** Pi's effort for the coders. */
+  coder_thinking: ThinkingLevel;
+  /** Pi's effort for the reviewer. */
+  reviewer_thinking: ThinkingLevel;
   /** Models the built program may call through the metering proxy (unused by stdlib-only scenarios). */
   allowed_models: string[];
   primary_metric: string;
@@ -90,6 +98,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
       step_after: par.step_after == null ? 3 : Number(par.step_after),
     },
     reviewer_model: req(raw, "reviewer_model", "string"),
+    coder_thinking: (raw.coder_thinking ?? "medium") as ThinkingLevel,
+    reviewer_thinking: (raw.reviewer_thinking ?? "low") as ThinkingLevel,
     allowed_models: (raw.allowed_models as string[] | undefined) ?? [],
     primary_metric: req(raw, "primary_metric", "string"),
     standard_metrics: {
@@ -112,8 +122,11 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (raw.deadline instanceof Date) cfg.deadline = raw.deadline.toISOString();
   if (!["docker", "inngest"].includes(cfg.sandbox)) throw new Error(`config: sandbox must be docker | inngest`);
   if (cfg.models.length < 1) throw new Error("config: models needs at least one model (one per branch)");
-  if (cfg.models.includes(cfg.reviewer_model)) {
-    throw new Error("config: reviewer_model must be none of the coder models (no coder critiques its own work)");
+  for (const k of ["coder_thinking", "reviewer_thinking"] as const) {
+    if (!THINKING_LEVELS.includes(cfg[k])) throw new Error(`config: ${k} must be ${THINKING_LEVELS.join(" | ")}`);
+  }
+  if (cfg.models.includes(cfg.reviewer_model) && (raw.reviewer_thinking == null || cfg.coder_thinking === cfg.reviewer_thinking)) {
+    throw new Error("config: reviewer_model must differ from the coder models, or set a different reviewer_thinking (no coder critiques its own work)");
   }
   const sched = cfg.parallel;
   if (!["none", "linear", "step"].includes(sched.decay)) throw new Error("config: parallel.decay must be none | linear | step");

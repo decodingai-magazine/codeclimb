@@ -19,7 +19,7 @@ await repo.importDir("scenarios/datenorm/starter", "smoke-r0");
 const backend = new DockerBackend();
 const sandbox = await backend.create({ name: "cc-smoke-pi", baseline: "codeclimb-python", commit: await repo.bundle("smoke-r0") });
 try {
-  const session = await createIsolatedSession({ model, tools: sandboxTools(sandbox), sessionManager: SessionManager.inMemory("/repo") });
+  const session = await createIsolatedSession({ model, thinkingLevel: "medium", tools: sandboxTools(sandbox), sessionManager: SessionManager.inMemory("/repo") });
   const used: string[] = [];
   session.subscribe((e) => {
     if (e.type === "tool_execution_start") used.push(e.toolName);

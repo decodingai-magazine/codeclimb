@@ -393,6 +393,7 @@ export async function reviewRound(args: {
   }
   const review = await runReview({
     model: args.cfg.reviewer_model,
+    thinkingLevel: args.cfg.reviewer_thinking,
     mock: args.cfg.mock,
     spec: readSpecText(nightPaths(args.cfg, args.nightId).bundleDir),
     round: args.round,
