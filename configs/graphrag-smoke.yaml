@@ -15,7 +15,6 @@ models:
 reviewer_model: github-copilot/claude-sonnet-5
 # The models the program may call, through the metering proxy.
 allowed_models:
-  - openrouter/anthropic/claude-haiku-5.5
   - openrouter/deepseek/deepseek-v4.1-flash
   - openrouter/typesafe/jev-1.14
   - openrouter/mongodb/voyage-4-lite
