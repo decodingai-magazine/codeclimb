@@ -21,7 +21,7 @@ reviewer_model: github-copilot/claude-sonnet-5
 allowed_models:
   - openrouter/deepseek/deepseek-v4.1-flash
   - openrouter/typesafe/jev-1.14
-  - openrouter/qwen/qwen3-embedding-8b
+  - openrouter/qwen/qwen3-embedding-4b
   - openrouter/qwen/qwen3-reranker-8b
 primary_metric: extraction.mentions.f1
 thresholds:
