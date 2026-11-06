@@ -116,11 +116,19 @@ main { max-width: 1240px; margin: 0 auto; padding: var(--space-6) var(--space-5)
 .card-head .tools { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 
 /* KPI strip: one bordered row, cells split by hairlines. */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+.kpis { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
 .kpi { background: var(--bg); padding: var(--space-4) var(--space-4) var(--space-3); min-width: 0; }
 .kpi .label { font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); }
 .kpi .value { font-size: var(--text-2xl); font-weight: 500; letter-spacing: -0.03em; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .kpi .note { font-size: var(--text-xs); color: var(--fg-3); overflow-wrap: anywhere; margin-top: 2px; }
+.kpi-menu { position: relative; display: grid; min-width: 0; }
+.kpi-button { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.kpi-button:hover { background: var(--surface-2); }
+.kpi-caret { margin-left: 6px; }
+.kpi-panel { position: absolute; z-index: 20; top: 100%; right: 0; width: min(420px, calc(100vw - 32px)); margin-top: 1px; padding: var(--space-3); background: var(--bg); border: 1px solid var(--border-strong); }
+.kpi-panel table { width: 100%; font-size: var(--text-xs); }
+.kpi-panel .sub-note { display: block; }
+.kpi-panel .note { font-size: var(--text-xs); color: var(--fg-3); margin: var(--space-2) 0 0; }
 .meter { height: 2px; background: var(--surface-3); overflow: hidden; margin: 10px 0 6px; }
 .meter > div { height: 100%; background: var(--fg); transition: width 400ms var(--ease); }
 .meter.over > div { background: var(--accent); }
@@ -260,4 +268,6 @@ footer.foot { max-width: 1240px; margin: 0 auto; padding: 0 var(--space-5) var(-
   .seg { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .seg button { white-space: nowrap; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-menu { position: static; }
+  .kpi-panel { left: 0; right: 0; width: auto; }
 }

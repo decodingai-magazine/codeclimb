@@ -56,20 +56,26 @@ export function ThemeToggle() {
   );
 }
 
-export function Kpi({ label, value, note, children }: {
+export function Kpi({ label, value, note, children, open, onToggle }: {
   label: string;
   value: React.ReactNode;
   note?: React.ReactNode;
   children?: React.ReactNode;
+  /** With `onToggle` the tile is a button that opens a panel of more detail. */
+  open?: boolean;
+  onToggle?: () => void;
 }) {
-  return (
-    <div className="kpi">
-      <div className="label">{label}</div>
+  const body = (
+    <>
+      <div className="label">{label}{onToggle && <span className="kpi-caret" aria-hidden="true">{open ? "▴" : "▾"}</span>}</div>
       <div className="value">{value}</div>
       {children}
       {note != null && <div className="note">{note}</div>}
-    </div>
+    </>
   );
+  return onToggle
+    ? <button type="button" className="kpi kpi-button" aria-expanded={open} onClick={onToggle}>{body}</button>
+    : <div className="kpi">{body}</div>;
 }
 
 /** A progress meter: spend against budget, time against deadline. Turns red past the limit. */

@@ -42,6 +42,22 @@ export function derive(night: ReportNight, primary: string) {
 }
 export type Derived = ReturnType<typeof derive>;
 
+/**
+ * The night's spend by what it paid for, adding up to the Spend tile. A live round's coders count from
+ * their running state; their evaluations count once the round's rows land.
+ */
+export function spendBreakdown(rows: Row[], live: { coder_usd: number; dev_usd: number; decision: string | null }[]) {
+  const running = live.filter((b) => !b.decision);
+  const reviews = new Map(rows.map((r) => [r.round, 0]));
+  for (const r of rows) reviews.set(r.round, Math.max(reviews.get(r.round)!, r.reviewer_usd));
+  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+  const agents = sum([...rows.map((r) => r.coder_usd), ...running.map((b) => b.coder_usd), ...reviews.values()]);
+  const program = sum([...rows.map((r) => (r.dev_usd ?? 0) + r.program_usd), ...running.map((b) => b.dev_usd)]);
+  const experiments = rows.filter((r) => r.kind === "experiment").length + running.length;
+  const each = (usd: number) => (experiments ? usd / experiments : null);
+  return { experiments, agents, program, agentsEach: each(agents), programEach: each(program) };
+}
+
 /** Per-family accuracy metrics (`acc_<family>`) present in any row. */
 export function families(v: Derived): string[] {
   const fams: string[] = [];

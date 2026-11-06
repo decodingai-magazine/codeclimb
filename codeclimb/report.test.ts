@@ -8,6 +8,7 @@ import { exportExperiment, resolveExpId, validateBranch, validateExpId, validate
 import { ExperimentRepo } from "./git";
 import { buildReportData, nightSpend } from "./report/data";
 import { renderReport } from "./report/html";
+import { spendBreakdown } from "../app/nights/[id]/report/derive";
 import type { ResultRow } from "./results";
 
 const row = (over: Partial<ResultRow>): ResultRow => ({
@@ -118,4 +119,18 @@ test("a resumed experiment's bundle also carries its parent, to squash onto", as
   assert.match(heads, /refs\/exp\/n-r1-e0/);
   assert.match(heads, /refs\/exp\/n-r0/);
   assert.equal(ref, "refs/exp/n-r1-e0");
+});
+
+test("the spend breakdown adds up to the night, counting each round's review once", () => {
+  const rows = [
+    row({ night_id: "n", exp_id: "n-r1-e0", round: 1, kind: "experiment", coder_usd: 1, dev_usd: 0.25, program_usd: 0.5, reviewer_usd: 0.5 }),
+    row({ night_id: "n", exp_id: "n-r1-e1", round: 1, kind: "experiment", coder_usd: 2, program_usd: 0.5, reviewer_usd: 0.5 }),
+    row({ night_id: "n", exp_id: "n-r1-e0", round: 1, kind: "test", coder_usd: 0, program_usd: 0.25, reviewer_usd: 0 }),
+  ];
+  const coding = { coder_usd: 1, dev_usd: 0.5, decision: null };
+  const done = { coder_usd: 9, dev_usd: 9, decision: "keep" };
+  const s = spendBreakdown(rows, [coding, done]);
+  assert.deepEqual(s, { experiments: 3, agents: 4.5, program: 2, agentsEach: 1.5, programEach: 2 / 3 });
+  assert.equal(s.agents + s.program - 1.5, nightSpend(rows));
+  assert.equal(spendBreakdown([], []).agentsEach, null);
 });

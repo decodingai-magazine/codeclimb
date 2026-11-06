@@ -10,7 +10,7 @@ import type { ReportData } from "../../../codeclimb/report/data";
 import { Icon, Kpi, Meter, StatusBadge } from "../../ui";
 import { api, duration, f3, type Live, usd } from "../../worker";
 import { ConvergenceChart, ConvergenceTable, FamilyHeatmap, FamilyTable } from "./report/charts";
-import { derive, families } from "./report/derive";
+import { derive, families, type Row, spendBreakdown } from "./report/derive";
 import { DetailCard, ExportCard } from "./report/side";
 import { KindHeatmap, kindAxes, StageTables, stageHeadlines } from "./report/stages";
 import { EvalsTable, ExperimentsTable, Reviews } from "./report/tables";
@@ -30,6 +30,47 @@ function Card({ title, sub, tools, children }: { title: string; sub?: string; to
 
 function ViewToggle({ table, onToggle }: { table: boolean; onToggle: () => void }) {
   return <button type="button" className="link-btn" aria-pressed={table} onClick={onToggle}>{table ? "Chart" : "Table"}</button>;
+}
+
+/** The Spend tile: a click opens what the money went on, totalled and per experiment. */
+function SpendKpi({ live, rows }: { live: Live; rows: Row[] }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  const s = spendBreakdown(rows, live.branches);
+  return (
+    <div className="kpi-menu" ref={root}>
+      <Kpi label="Spend" value={usd(live.spend_usd)} note={`of ${usd(live.budget_usd)} budget`} open={open} onToggle={() => setOpen(!open)}>
+        <Meter value={live.spend_usd} max={live.budget_usd} label="spend against budget" />
+      </Kpi>
+      {open && (
+        <div className="kpi-panel">
+          <table>
+            <thead><tr><th>Spent on</th><th className="num">Total</th><th className="num">Per experiment</th></tr></thead>
+            <tbody>
+              <tr><td>Coding agents<span className="sub-note">coders + reviewer</span></td><td className="num">{usd(s.agents)}</td><td className="num">{usd(s.agentsEach)}</td></tr>
+              <tr><td>Running and evaluating<span className="sub-note">every program run, coders&apos; tests included</span></td><td className="num">{usd(s.program)}</td><td className="num">{usd(s.programEach)}</td></tr>
+            </tbody>
+          </table>
+          <p className="note">{s.experiments} {s.experiments === 1 ? "experiment" : "experiments"}. Evaluations count once their round is recorded.</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function NightPage() {
@@ -156,9 +197,7 @@ export default function NightPage() {
             : <Kpi label="Test" value={f3(v?.score(v.lastTest))} note={v?.lastTest ? "scored once, at the end" : "after the night stops"} />}
           <Kpi label="Round" value={`${live.round} / ${live.max_rounds}`}
             note={v ? `${v.exps.length} experiments · kept in ${v.keptRounds} rounds` : undefined} />
-          <Kpi label="Spend" value={usd(live.spend_usd)} note={`of ${usd(live.budget_usd)} budget`}>
-            <Meter value={live.spend_usd} max={live.budget_usd} label="spend against budget" />
-          </Kpi>
+          <SpendKpi live={live} rows={v?.rows ?? []} />
           <Kpi label="Elapsed" value={duration(elapsed)} note={running ? `deadline ${new Date(live.deadline_at).toLocaleTimeString()}` : "wall time"}>
             <Meter value={elapsed} max={span} label="time against deadline" />
           </Kpi>
