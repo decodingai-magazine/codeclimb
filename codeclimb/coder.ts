@@ -100,6 +100,7 @@ export function coderPrompt(
   minutes: number,
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
   dev?: { models: string[]; budgetUsd: number; openNetwork?: boolean },
+  evalMin?: number,
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
@@ -126,6 +127,9 @@ export function coderPrompt(
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
               `Try the model on a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
           ]
+        : []),
+      ...(evalMin
+        ? [`- The evaluation gives each run of the program ${evalMin} minutes, and one that runs longer scores nothing. Time it on a sample and run slow work, such as model calls, concurrently.`]
         : []),
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes. Stop when the change is implemented and tested.`,
@@ -273,7 +277,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, openNetwork: cfg.sandbox === "inngest" } : undefined),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min),
       );
     } else {
       stop = "timeout";

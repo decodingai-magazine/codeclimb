@@ -315,6 +315,7 @@ test("coder prompt names the dev endpoint only when the program may call models"
   assert.match(dev, /openrouter\/x\/y/);
   assert.match(dev, /\$0\.05/);
   assert.doesNotMatch(coderPrompt("spec", "", null, 10), /OPENAI_BASE_URL/);
+  assert.match(coderPrompt("spec", "", null, 10, undefined, undefined, 16), /each run of the program 16 minutes/);
 });
 
 test("config paths travel relative and resolve against the worker's checkout", () => {
