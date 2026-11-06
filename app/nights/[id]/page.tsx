@@ -4,7 +4,7 @@
 // runs, then the report: convergence, metric families, experiments, extra evals, reviewer
 // feedback, and the selected experiment's detail and export. `/live` is polled every 5 s;
 // the report data is refetched whenever a new result row lands.
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReportData } from "../../../codeclimb/report/data";
 import { Icon, Kpi, Meter, StatusBadge } from "../../ui";
@@ -70,6 +70,42 @@ function SpendKpi({ live, rows }: { live: Live; rows: Row[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Starts a new night from this one's kept commit, with an optional direction for its rounds. */
+function ContinueCard({ id, rounds, onError }: { id: string; rounds: number; onError: (message: string) => void }) {
+  const router = useRouter();
+  const [direction, setDirection] = useState("");
+  const [count, setCount] = useState(rounds);
+  const [starting, setStarting] = useState(false);
+
+  async function start() {
+    setStarting(true);
+    try {
+      const { night_id } = await api<{ night_id: string }>(`nights/${encodeURIComponent(id)}/continue`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction, rounds: count }),
+      });
+      router.push(`/nights/${encodeURIComponent(night_id)}`);
+    } catch (e) {
+      onError((e as Error).message);
+      setStarting(false);
+    }
+  }
+
+  return (
+    <section className="card form">
+      <div className="card-head"><h2>Continue this night</h2><span className="sub">more rounds from its kept commit, with what it learned</span></div>
+      <label className="field">
+        <span>Direction (optional)</span>
+        <textarea className="input" rows={3} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="What should the next rounds work on?" />
+      </label>
+      <label className="field">
+        <span>Rounds</span>
+        <input className="input" type="number" min={1} value={count} onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))} />
+      </label>
+      <button className="btn" type="button" onClick={start} disabled={starting}>{starting ? "Starting…" : "Continue"}</button>
+    </section>
   );
 }
 
@@ -163,6 +199,7 @@ export default function NightPage() {
             <p>
               Started {new Date(live.started_at).toLocaleString()} · {live.sandbox} sandboxes
               {night?.config ? ` · up to ${night.config.max_rounds} rounds · reviewer ${night.config.reviewer_model}` : ""}
+              {live.continued_from && <> · continues <a href={`/nights/${encodeURIComponent(live.continued_from)}`}>{live.continued_from}</a></>}
             </p>
           </div>
           <StatusBadge status={live.status} stopReason={live.stop_reason} />
@@ -176,6 +213,7 @@ export default function NightPage() {
           )}
         </div>
         {error && <p className="notice">{error}</p>}
+        {(live.status === "finished" || live.status === "stopped") && <ContinueCard id={id} rounds={live.max_rounds} onError={setError} />}
         {live.pause && (
           <p className="notice">
             Paused since {new Date(live.pause.at).toLocaleTimeString()}, out of credits. Add credits, then resume.

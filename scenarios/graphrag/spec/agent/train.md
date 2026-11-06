@@ -34,8 +34,13 @@ python /spec/scorer/evaluators/graph.py score --split train --mode gold-history 
 python /spec/scorer/evaluators/retrieval.py score --split train --predictions out.jsonl --out report.json --details
 ```
 
-`--details` adds the per-item errors. Your system can't use this directory: the evaluator doesn't
-have it. Train is few-shot material, so a score here is a check on the code, not a forecast of dev.
+`--details` adds the per-item errors; for extraction its `summary` counts the relation errors by
+cause, so read it first. Your system can't use this directory: the evaluator doesn't have it. Train
+is few-shot material, so a score here is a check on the code, not a forecast of dev.
+
+The evaluation runs your system with `PYTHONHASHSEED=0`: do the same, so a run is comparable with the
+last one. Two runs of the same code can still differ where a model answers anew, by about 0.03 on
+relation F1 on train: read a gain smaller than that as none.
 
 ## Few-shot examples
 
@@ -46,11 +51,11 @@ Sample from `train/examples/` freely:
   `confidence`; a row whose label is a descriptive one the article never writes carries
   `coined: true`; train has none, dev 6 and test 4).
 - **`graph.jsonl`:** the train log with every merge decision it holds (`same_as` rows, 10 of them).
-- **`retrieval.jsonl`:** the 30 train queries with their `kind`, `difficulty`, `origin` (`graph` or
+- **`retrieval.jsonl`:** the 38 train queries with their `kind`, `difficulty`, `origin` (`graph` or
   `text`), `expected` nodes (each with a `role`: `anchor`, `bridge` or `answer`), edges (each with
   the `doc_uri` it was read from) and documents. Every one is answered by
-  the train articles alone, so the mix leans on what 12 articles hold: 12 `single_hop`, 6
-  `temporal`, 4 `comparison`, 4 `intersection`, 2 `unanswerable`, 1 `multi_hop`, 1 `aggregation`.
+  the train articles alone, so the mix leans on what 12 articles hold: 12 `single_hop`, 9
+  `multi_hop`, 6 `temporal`, 4 `comparison`, 4 `intersection`, 2 `unanswerable`, 1 `aggregation`.
   Dev and test hold every kind, three-hop paths included.
 
 **Why train is the earliest part:** gold rows reuse the canonical name from the first document that

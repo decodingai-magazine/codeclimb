@@ -13,8 +13,10 @@ import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
   applyReview,
+  baselineRow,
   checkRepo,
   checkStop,
+  continueNight,
   creditStopOf,
   decideRound,
   endPause,
@@ -122,6 +124,9 @@ export const runNight = ccInngest.createFunction(
       }),
     );
     const init = await step.run("init", () => initNight(cfg, nightId));
+    const start = event.data.continue;
+    const carried = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : null;
+    const direction = carried?.direction ?? "";
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 
     // One evaluator run (and sandbox, `cc-<night>-<id>`) per call.
@@ -164,13 +169,14 @@ export const runNight = ccInngest.createFunction(
     };
 
     let spend = 0;
-    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated.
-    let kept: Kept = { expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null };
-    let feedback = "";
+    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated, or a continued night's commit.
+    let kept: Kept = carried?.kept ?? { expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null };
+    let feedback = carried?.feedback ?? "";
     let failures: EvalFailure[] = [];
-    let hypothesis: string | null = null;
-    const log: HypothesisLogEntry[] = [];
-    const history: string[] = []; // The log as coders read it, held-out names masked.
+    // A direction replaces the hypothesis the earlier night ended with.
+    let hypothesis: string | null = direction ? null : carried?.hypothesis ?? null;
+    const log: HypothesisLogEntry[] = [...(carried?.log ?? [])];
+    const history: string[] = [...(carried?.history ?? [])]; // The log as coders read it, held-out names masked.
     const roundSpends: number[] = [];
     const roundTokens: number[] = [];
     let tokens = 0;
@@ -178,6 +184,18 @@ export const runNight = ccInngest.createFunction(
     let maxEvalUsd = 0;
     let stopReason = "";
     let round = 0;
+
+    // Scored afresh: under today's scorers, and so this night's cache holds the calls round 1 repeats.
+    const baseline = carried?.kept.metrics ? kept : null;
+    if (carried && baseline) {
+      const outcome = await evaluate("baseline", 0, { evalId: `${nightId}-baseline`, expId: baseline.expId, split: "dev" });
+      if (outcome.ok) {
+        spend += outcome.result.program_usd;
+        maxEvalUsd = outcome.result.program_usd;
+        if (outcome.result.ok) kept = { ...baseline, score: outcome.result.metrics[cfg.primary_metric] ?? 0, metrics: outcome.result.metrics };
+      }
+      await step.run("record-baseline", () => recordRows(cfg, [baselineRow({ cfg, nightId, round: 0 }, baseline, carried.from, outcome)]));
+    }
 
     while (!stopReason) {
       round += 1;
@@ -198,7 +216,7 @@ export const runNight = ccInngest.createFunction(
         const code = (resume: number) => {
           const data: ExperimentEvent = {
             nightId, expId, parentExpId, round, model: cfg.model,
-            feedback, history, ...input, config: cfg, ...(resume ? { resume: true } : {}),
+            feedback, history, direction, ...input, config: cfg, ...(resume ? { resume: true } : {}),
           };
           return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, code: out.code, runId: out.runId }),
@@ -253,7 +271,7 @@ export const runNight = ccInngest.createFunction(
             reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
               reviewRound({
                 cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-                summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log],
+                summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log], direction,
               }).catch((e: unknown) => {
                 if (e instanceof OutOfCredits) return { credits: e.stop };
                 throw e;

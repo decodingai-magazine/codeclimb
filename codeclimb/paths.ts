@@ -29,6 +29,13 @@ export function nightPaths(cfg: NightConfig, nightId: string) {
   };
 }
 
+/** A new night's id, from the time: `n<date>-<time>`. */
+export function newNightId(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `n${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
 /** Sandbox names start with the night id (exp and eval ids do), so a sweep finds leftovers by prefix. */
 export const sandboxName = (id: string) => `cc-${id}`;
 export const sandboxPrefix = (nightId: string) => sandboxName(nightId);

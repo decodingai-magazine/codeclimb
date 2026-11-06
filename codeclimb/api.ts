@@ -1,6 +1,6 @@
 // The worker's HTTP API, the app's only backend: the nights on this worker's disk
-// (summaries, live branches, the report data), stop and export. Nights start from
-// the CLI (`npm run run-night`). It also mounts the
+// (summaries, live branches, the report data), stop, continue and export. New nights
+// start from the CLI (`npm run run-night`). It also mounts the
 // metering proxy at /v1. Every request but /v1 needs the bearer token
 // (CODECLIMB_WORKER_TOKEN); without one the API only binds to loopback.
 import { spawn } from "node:child_process";
@@ -9,14 +9,16 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ccInngest } from "../inngest/codeclimb/client";
+import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
-import type { NightConfig } from "./config";
+import { type NightConfig, relativeConfig } from "./config";
+import { checkSource } from "./continuation";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
-import { nightPaths } from "./paths";
+import { newNightId, nightPaths } from "./paths";
 import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
+import { loadScenario } from "./scenario";
 
 const root = () => process.env.CODECLIMB_ROOT ?? process.cwd();
 const NIGHT_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,47}$/;
@@ -40,7 +42,7 @@ function readJson<T>(file: string): T | null {
 // ---------- nights ----------
 
 type PausedStop = { where: string; who: string; model: string; message: string };
-type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig };
+type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig; continued?: { from: string; direction: string } };
 type DoneFile = { stop_reason: string; rounds: number; kept: { exp_id: string; dev_score: number }; spend_usd: number; finished_at: string };
 type CodeState = {
   startedAt: number; coderUsd: number; devUsd?: number; tokens: number; tCode: number; finishedAt?: number; stop?: string;
@@ -90,7 +92,7 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   const pause = readJson<{ at: number; stops: PausedStop[] }>(join(dir, "pause.json"));
   const status = done ? "finished" : stop ? "stopped" : pause ? "paused" : Date.now() - lastActivity(dir) > STALE_MS ? "stale" : "running";
   return {
-    id: night.night_id, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
+    id: night.night_id, continued_from: night.continued?.from ?? null, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
     pause: pause && status === "paused" ? pause : null,
     round, max_rounds: cfg.max_rounds, primary_metric: cfg.primary_metric,
     best: done?.kept.dev_score ?? kept?.metrics[cfg.primary_metric] ?? null, best_exp: done?.kept.exp_id ?? kept?.exp_id ?? null,
@@ -148,6 +150,23 @@ async function stopNight(n: ReturnType<typeof findNight>) {
   markStopped(n.night.night_id, "app");
   await ccInngest.send({ name: "codeclimb/night.stop", data: { night_id: n.night.night_id, reason: "app" } });
   return { stopped: n.night.night_id };
+}
+
+/** A new night from this one's kept commit, on its config with the scenario as it stands now. */
+async function continueFrom(n: ReturnType<typeof findNight>, body: Record<string, unknown>) {
+  const { direction, rounds } = body;
+  if (direction !== undefined && typeof direction !== "string") throw new HttpError(400, "direction must be text");
+  if (rounds !== undefined && !(Number.isInteger(rounds) && (rounds as number) >= 1)) throw new HttpError(400, "rounds must be an integer >= 1");
+  const config = n.night.config;
+  const cfg = { ...config, scenario: loadScenario(config.scenario_dir), ...(rounds ? { max_rounds: rounds as number } : {}) };
+  try {
+    checkSource(cfg, n.night.night_id);
+  } catch (e) {
+    throw new HttpError(409, (e as Error).message);
+  }
+  const nightId = newNightId();
+  await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg), { from: n.night.night_id, ...(direction?.trim() ? { direction } : {}) }));
+  return { night_id: nightId };
 }
 
 function nightGitDir(n: ReturnType<typeof findNight>, expId: string): string {
@@ -261,7 +280,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     // The metering proxy authenticates by its own per-ledger tokens.
     if (path.startsWith("/v1/")) return void (await (await meter()).handle(req, res));
     if (!authorized(req)) throw new HttpError(401, "missing or wrong worker token");
-    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|export)(?:\/([^/]+))?)?$/.exec(path);
+    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|continue|export)(?:\/([^/]+))?)?$/.exec(path);
     if (req.method === "GET" && path === "/api/health") return send(res, 200, { ok: true });
     if (req.method === "GET" && path === "/api/nights") {
       const all = nightFiles().map(summary).sort((a, b) => b.started_at - a.started_at);
@@ -274,6 +293,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n));
       if (req.method === "POST" && m[2] === "stop") return send(res, 200, await stopNight(n));
       if (req.method === "POST" && m[2] === "resume") return send(res, 200, await resumeNight(n));
+      if (req.method === "POST" && m[2] === "continue") return send(res, 200, await continueFrom(n, await readBody(req)));
       if (req.method === "GET" && m[2] === "export" && m[3]) return await exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "repo", res);
       if (req.method === "POST" && m[2] === "export" && m[3]) return send(res, 200, await exportTo(n, decodeURIComponent(m[3]), await readBody(req)));
     }

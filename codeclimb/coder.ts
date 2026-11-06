@@ -44,6 +44,8 @@ export type ExperimentInput = {
   repair?: boolean;
   /** One line per earlier round, held-out names masked: what was tried, what moved, why it went. */
   history?: string[];
+  /** The operator's direction for every round of a continued night, held-out names masked. */
+  direction?: string;
   /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
   config: NightConfig;
@@ -126,12 +128,14 @@ export function coderPrompt(
   history: string[] = [],
   rejectedDiffs: string[] = [],
   repair = false,
+  direction = "",
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
       "If /spec/train exists, it holds the train items with their answers: the only labeled data you may read, and the only source for few-shot examples.",
     `<spec>\n${spec}\n</spec>`,
   ];
+  if (direction) parts.push(`<direction>\nThe person running this loop set this direction for every round. Follow it:\n${direction}\n</direction>`);
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (failures.length) {
     const intro = repair
@@ -163,6 +167,7 @@ export function coderPrompt(
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
               (dev.evalBudgetUsd === undefined ? "" : `The evaluation has its own cap of $${dev.evalBudgetUsd} for one run of every stage. `) +
+              "A call repeated more than 30 seconds later gets the same answer for free, so a rerun differs only where your change reached. " +
               `Start with a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
           ]
         : []),
@@ -174,7 +179,7 @@ export function coderPrompt(
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
-      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis. Stop when that finds nothing more.`,
+      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis. If it shows no clear gain over the code you started from and time and budget remain, try another way to test the hypothesis. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
     ].join("\n"),
   );
@@ -285,6 +290,8 @@ export async function runCoder(
     attrs: { "codeclimb.exp_id": input.expId, "codeclimb.ledger": "dev" },
     mock: cfg.mock,
     onCreditStop: outOfCredits,
+    replayScope: input.nightId,
+    repeatRuns: true,
   });
   const closeDev = () => {
     if (!token) return;
@@ -342,7 +349,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction),
       );
     } else {
       stop = "timeout";

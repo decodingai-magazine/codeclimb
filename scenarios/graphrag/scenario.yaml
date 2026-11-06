@@ -32,17 +32,19 @@ diagnostics:
   - '^graph\.baselines\.history_only\.(precision|recall)$'
   - '^retrieval\.by_kind\.(comparison\.metrics\.edge_recall_at_k|aggregation\.metrics\.r_precision|temporal\.metrics\.r_precision|unanswerable\.metrics\.abstained)\.mean$'
   - '^retrieval\.by_kind\.[^.]+\.metrics\.(subgraph_precision|node_precision|edge_precision|returned_nodes|returned_edges|returned_docs)\.mean$'
+# PYTHONHASHSEED: a set's order stays the same across runs, so a model request built from one repeats
+# exactly and the night's cache can answer it.
 stages:
   - name: extraction
     inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}
     files:
       /eval/root/corpus: corpus
-    run: python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    run: PYTHONHASHSEED=0 python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
     score: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
     details: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details
   - name: graph
     inputs: uv run python evaluators/graph.py inputs --split {split} --mode gold-history --out {inputs}
-    run: python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    run: PYTHONHASHSEED=0 python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
     score: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report}
     details: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report} --details
   - name: retrieval
@@ -50,6 +52,6 @@ stages:
     files:
       /eval/root/corpus: corpus
       /eval/graph.json: gold/graph.json   # the full gold graph (accepted risk, docs/scenario-contract.md Q23)
-    run: python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
+    run: PYTHONHASHSEED=0 python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
     score: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
     details: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details

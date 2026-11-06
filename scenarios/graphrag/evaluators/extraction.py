@@ -262,7 +262,7 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool) -> 
             (pred_m if p.kind == "entity_mention" else pred_r)[p.doc_uri].append(p)
     coined = coined_rows()
 
-    totals, confusion, macro_m, macro_r, per_doc = Counter(), defaultdict(Counter), [], [], {}
+    totals, confusion, macro_m, macro_r, per_doc, groups = Counter(), defaultdict(Counter), [], [], {}, Counter()
     for u in held:
         gm = gold_m[u]
         doc_coined = {i for i, g in enumerate(gm) if (u, g["surface_id"]) in coined}
@@ -282,6 +282,7 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool) -> 
             macro_r.append(f1(ratio(tp, pr), ratio(tp, go)) or 0.0)
         if details:
             per_doc[u] = document_details(gm, pred_m[u], pred_r[u], gold_r[u], s, doc_coined)
+            groups.update(error_groups(s))
 
     p_m = ratio(totals["tp"], totals["predicted"])
     r_m = ratio(totals["tp_strict"], totals["gold_strict"])
@@ -329,11 +330,32 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool) -> 
         "not_measured": ["count", "confidence", "domain", "released", "country", "description (needs a judge)"],
     }
     if details:
-        report["details"] = per_doc
+        report["details"] = {"summary": dict(sorted(groups.items())), **per_doc}
     write_report(out_path, report)
     logger.info(
         f"mentions P={fmt(p_m)} R={fmt(r_m)} F1={fmt(f1(p_m, r_m))}; relations directed F1={fmt(report['relations']['directed']['f1'])} "
         f"over {len(held)} documents -> {out_path}"
+    )
+
+
+def error_groups(s: dict) -> Counter:
+    """The relation errors of one document by what holds them back: a relation counts only between two
+    mentions matched with their type, so a missed end costs every relation that touches it."""
+    gold_pairs, pred_pairs = s["pairs"]
+    found = set(s["typed"].values())
+    missed = gold_pairs - pred_pairs
+    wrong = pred_pairs - gold_pairs
+    ends = Counter((a in found) + (b in found) for a, b in missed)
+    return Counter(
+        {
+            "missed_relations": len(missed),
+            "missed_relations_both_ends_extracted": ends[2],
+            "missed_relations_one_end_extracted": ends[1],
+            "missed_relations_no_end_extracted": ends[0],
+            "missed_relations_predicted_reversed": sum((b, a) in pred_pairs for a, b in missed),
+            "false_positive_relations": len(wrong),
+            "false_positive_relations_both_ends_gold": sum(isinstance(a, int) and isinstance(b, int) for a, b in wrong),
+        }
     )
 
 

@@ -282,7 +282,7 @@ only document, folded into that document's mention (marked `in_log`).
 
 ### `gold/retrieval.jsonl`
 
-230 queries: 200 over the whole corpus, and 30 (`tr-` ids) written over the train documents only
+238 queries: 200 over the whole corpus, and 38 (`tr-` ids) written over the train documents only
 for the agent's bundle (Splits). Each scores retrieval alone: did the engine return the expected nodes, edges and
 documents. No answer is generated or judged. A row names only what a merged graph holds, through
 id-free handles: a document by `doc_uri`, an entity by `(type, name)`, an edge by its two entities,
@@ -374,6 +374,8 @@ test set of the earlier splits unchanged (dev's third third was the earlier trai
   document's, and its query names no entity only dev or test documents mention (`split.py` asserts
   both). Scored on the full graph, so `check` holds them to every rule there too: an aggregation
   anchor is mentioned only in train documents, and a temporal window keeps only train documents.
+  The exception is `multi_hop`: few train paths pass its rules on the full graph, and the agent runs
+  these on the train graph, so `check` judges their hops there. Nothing is decided on their scores.
   The mix is skewed for it: 12 `single_hop`, 6 `temporal`, 4 `comparison`, 4 `intersection`, 2
   `unanswerable`, 1 `multi_hop`, 1 `aggregation`, no three-hop. On the full graph only one path
   through train edges keeps its anchor and answer in separate documents, and only `JSON Schema` is

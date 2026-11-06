@@ -140,13 +140,20 @@ interface Ledger {
   replayScope?: string;
   /** What this eval has replayed: asked again, the program is retrying a bad answer, so it goes upstream. */
   replayed: Set<string>;
+  /** A coder's ledger spans many runs of the program: it replays its own calls too, unless they look like retries. */
+  repeatRuns: boolean;
 }
+
+/** On a coder's ledger, the same call again within this time is a retry of a bad answer, not another run. */
+const RETRY_WINDOW_MS = 30_000;
 
 /** A successful call, for later evals of the night. `ms` is kept so a replay takes as long as the call did. */
 interface Replay {
   evalId: string;
   out: unknown;
   ms: number;
+  /** When it was last answered. */
+  at: number;
 }
 
 const tracer = trace.getTracer("codeclimb");
@@ -260,12 +267,12 @@ export class MeterProxy {
   }
 
   /** A ledger for one eval. Returns its bearer token. */
-  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void; mock?: boolean; replayScope?: string }): string {
+  open(opts: { evalId: string; allowedModels: string[]; capUsd: number; attrs?: Record<string, string>; onCreditStop?: (stop: CreditStop) => void; mock?: boolean; replayScope?: string; repeatRuns?: boolean }): string {
     const token = `cc-${randomBytes(24).toString("hex")}`;
     this.ledgers.set(token, {
       evalId: opts.evalId, allowed: new Set(opts.allowedModels), capUsd: opts.capUsd, op: DEFAULT_OP, calls: [], costUsd: 0,
       ctx: context.active(), attrs: opts.attrs ?? {}, abort: new AbortController(), onCreditStop: opts.onCreditStop, mock: opts.mock,
-      replayScope: opts.replayScope, replayed: new Set(),
+      replayScope: opts.replayScope, replayed: new Set(), repeatRuns: opts.repeatRuns ?? false,
     });
     if (opts.replayScope && opts.replayScope !== this.replays.scope) this.replays = { scope: opts.replayScope, calls: new Map() };
     return token;
@@ -333,7 +340,8 @@ export class MeterProxy {
   ): Promise<T> {
     const key = createHash("sha256").update(JSON.stringify([kind, model, request])).digest("hex");
     const earlier = this.replays.scope === ledger.replayScope ? this.replays.calls.get(key) : undefined;
-    const replay = earlier && earlier.evalId !== ledger.evalId && !ledger.replayed.has(key) ? earlier : undefined;
+    const again = ledger.repeatRuns ? earlier && Date.now() - earlier.at > RETRY_WINDOW_MS : earlier && earlier.evalId !== ledger.evalId && !ledger.replayed.has(key);
+    const replay = again ? earlier : undefined;
     const op = ledger.op;
     const span = tracer.startSpan(
       `gen_ai.${kind}`,
@@ -341,13 +349,13 @@ export class MeterProxy {
       ledger.ctx,
     );
     const t0 = performance.now();
-    const record = (ok: boolean, usage: CallUsage | undefined, error?: string, finishReason?: string, replayed = 0) => {
+    const record = (ok: boolean, usage: CallUsage | undefined, error?: string, finishReason?: string, replayed?: number) => {
       const u = usage ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
       ledger.calls.push({
         kind, model, op, ok, input_tokens: u.inputTokens, output_tokens: u.outputTokens, cost_usd: u.costUsd,
         ms: Math.round((performance.now() - t0) * 1000) / 1000, ...(error ? { error } : {}),
         ...(finishReason ? { finish_reason: finishReason } : {}), ...(u.reasoningTokens ? { reasoning_tokens: u.reasoningTokens } : {}),
-        ...(replayed ? { replayed_usd: replayed } : {}),
+        ...(replayed === undefined ? {} : { replayed_usd: replayed }),
       });
       ledger.costUsd += u.costUsd;
       span.setAttributes({
@@ -357,6 +365,7 @@ export class MeterProxy {
     try {
       if (replay) {
         ledger.replayed.add(key);
+        replay.at = Date.now();
         await delay(replay.ms, undefined, { signal: ledger.abort.signal });
         const out = replay.out as T;
         record(true, { ...out.usage, costUsd: 0 }, undefined, out.finishReason, out.usage.costUsd);
@@ -365,7 +374,7 @@ export class MeterProxy {
       const out = await run(ledger.abort.signal);
       record(true, out.usage, undefined, out.finishReason);
       if (ledger.replayScope === this.replays.scope && ledger.replayScope && out.finishReason !== "length") {
-        this.replays.calls.set(key, { evalId: ledger.evalId, out, ms: performance.now() - t0 });
+        this.replays.calls.set(key, { evalId: ledger.evalId, out, ms: performance.now() - t0, at: Date.now() });
       }
       return out;
     } catch (e) {

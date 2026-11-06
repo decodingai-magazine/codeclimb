@@ -10,6 +10,7 @@ import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
 import { readSpecText } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
+import { carryRejected, keptOf, lastReview, type NightStart, priorLog } from "./continuation";
 import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -169,6 +170,35 @@ export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): P
   return failures.map((f) => ({ ...f, errors: f.errors.map((e) => maskTerms(e, found)) }));
 }
 
+/** What a night takes over from the night it continues. */
+export interface Carried {
+  from: string;
+  /** The operator's direction for every round, held-out names masked; empty without one. */
+  direction: string;
+  kept: Kept;
+  feedback: string;
+  hypothesis: string | null;
+  log: HypothesisLogEntry[];
+  /** `log` as coders read it. */
+  history: string[];
+}
+
+/** Takes over night `start.from`'s checkpoint under this night's id, with what it learned. */
+export async function continueNight(cfg: NightConfig, nightId: string, start: NightStart): Promise<Carried> {
+  const paths = nightPaths(cfg, nightId);
+  const { from } = start;
+  const { expId: source, score, metrics } = keptOf(cfg, from);
+  const expId = `${nightId}-r0-from`;
+  const sha = await new ExperimentRepo(paths.gitDir).alias(source, expId);
+  carryRejected(cfg, from, nightId);
+  const log = priorLog(cfg, from);
+  const history = await Promise.all(log.map((entry) => historyLine(cfg, entry)));
+  const direction = start.direction?.trim() ? await maskText(cfg, start.direction.trim()) : "";
+  const night = JSON.parse(readFileSync(paths.nightJson, "utf8")) as object;
+  writeFileSync(paths.nightJson, JSON.stringify({ ...night, continued: { from, direction, prior: log } }, null, 2));
+  return { from, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, from), log, history };
+}
+
 export type ExperimentOutcome =
   | { ok: true; expId: string; model: string; code: CodeResult; eval: EvalResult | null }
   | { ok: false; expId: string; model: string; error: string };
@@ -234,6 +264,15 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
     ...(r ? { evaluator_instance: r.evaluator_instance } : {}),
     ...extra,
   });
+}
+
+/**
+ * The row of the commit a continued night starts from, scored afresh. It stays the checkpoint if that
+ * evaluation failed, with the scores it came with: a later continuation finds it here either way.
+ */
+export function baselineRow(b: RowBase, kept: Kept, from: string, outcome: EvalOutcome): ResultRow {
+  const scored = outcome.ok && outcome.result.ok;
+  return evalRow(b, kept, outcome, { hypothesis: `continued from ${from}`, decision: "keep", ...(scored ? {} : { metrics: kept.metrics ?? {} }) });
 }
 
 // A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
@@ -352,6 +391,7 @@ export async function reviewRound(args: {
   canKeep: boolean;
   override: boolean;
   log: HypothesisLogEntry[];
+  direction: string;
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
   const { metricsPath, ...summary } = args.summary;
@@ -371,6 +411,7 @@ export async function reviewRound(args: {
     minEfficiencyGain: args.cfg.standard_metrics.min_efficiency_gain,
     result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
     log: args.log,
+    direction: args.direction,
     canKeep: args.canKeep,
     override: args.override,
     headline: Object.keys(args.cfg.scenario.headline),

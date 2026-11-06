@@ -100,6 +100,13 @@ export class ExperimentRepo {
     return (await this.git(["rev-parse", `${expRef(a)}^{tree}`])) === (await this.git(["rev-parse", `${expRef(b)}^{tree}`]));
   }
 
+  /** Points `refs/exp/<newExpId>` at `expId`'s commit, for a night that starts from another's. Returns the commit. */
+  async alias(expId: string, newExpId: string): Promise<string> {
+    const sha = await this.sha(expId);
+    await this.git(["update-ref", expRef(newExpId), sha]);
+    return sha;
+  }
+
   async sha(expId: string): Promise<string> {
     return this.git(["rev-parse", expRef(expId)]);
   }

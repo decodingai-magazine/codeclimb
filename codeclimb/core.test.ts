@@ -211,6 +211,10 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   assert.match(reviewerPrompt(input), /Change from the kept commit: (none|r\.x)/);
   assert.doesNotMatch(reviewerPrompt({ ...input, headline: [] }), /count equally/);
   assert.match(reviewerPrompt(input), /You may keep it\./);
+  const replayed = reviewerPrompt({ ...input, result: { ...input.result, metrics: { ...input.result.metrics, model_calls: 10, model_calls_replayed: 7 } } });
+  assert.match(replayed, /Model calls: 7 of 10 were replayed/);
+  assert.doesNotMatch(reviewerPrompt(input), /were replayed/);
+  assert.match(reviewerPrompt({ ...input, direction: "work on retrieval" }), /direction for every round:\nwork on retrieval/);
   assert.match(reviewerPrompt({ ...input, canKeep: false, result: { ...input.result, guardrails: ["e.f1 fell"] } }), /Failed guardrails[^\n]*e\.f1 fell[\s\S]*keep must be false/);
 
   // Diagnostics sit under the metrics and skip the cells nobody listed.

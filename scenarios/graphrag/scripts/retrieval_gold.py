@@ -1,6 +1,6 @@
 """Seed and check the retrieval gold, `gold/retrieval.jsonl` (README.md, `gold/retrieval.jsonl`).
 
-Two commands, both read `gold/graph.json` and `corpus/` only, never the log:
+Two commands, both read `gold/graph.json` and `corpus/`; `check` also compiles the train graph from the log:
 
     uv run python scripts/retrieval_gold.py seeds --per-kind 4
     uv run python scripts/retrieval_gold.py check
@@ -9,8 +9,9 @@ Two commands, both read `gold/graph.json` and `corpus/` only, never the log:
 a writer needs. `check` validates every row mechanically (names resolve, edges exist, documents
 mention their nodes, the query leaks no non-anchor name, each kind's rule holds) and warns when a
 `single_hop` or `multi_hop` query with a multi-document anchor hands its answer document to BM25
-at rank 1: a writing aid, never stored. The closed-book gate needs a model with no corpus and is
-not wired here.
+at rank 1: a writing aid, never stored. A train `multi_hop` query runs on the train graph, so `check`
+judges its hops there: a node that is specific in train and two nodes that share no train document
+may not be in the full graph. The closed-book gate needs a model with no corpus and is not wired here.
 """
 
 import json
@@ -27,7 +28,7 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compile import normalize  # noqa: E402  (the dataset's key function)
+from compile import compile_graph, normalize, rows_through  # noqa: E402  (`normalize`: the dataset's key function)
 
 HERE = Path(__file__).resolve().parent
 DATASET = HERE.parent
@@ -91,6 +92,13 @@ class Gold:
 
 def load_gold(path: Path = GRAPH) -> Gold:
     return Gold(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_train_gold() -> Gold:
+    """The graph of the train documents, as the agent's bundle has it."""
+    log = [json.loads(line) for line in (DATASET / "gold" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    train = json.loads((DATASET / "gold" / "splits.json").read_text(encoding="utf-8"))["documents"]["train"]
+    return Gold(compile_graph(rows_through(log, set(train))))
 
 
 def names_in(gold: Gold, text: str) -> set[str]:
@@ -678,6 +686,7 @@ def seeds(per_kind: int, rng_seed: int, only: str | None, out: Path | None, grap
 def check(rows_path: Path) -> None:
     """Validate every row of a retrieval rows file; exit 1 on any failure. BM25 rank 1 is a warning."""
     gold = load_gold()
+    train_gold = load_train_gold()
     raw = read_rows(rows_path)
     if not raw:
         raise click.ClickException(f"{rows_path} is empty or missing")
@@ -701,7 +710,7 @@ def check(rows_path: Path) -> None:
     for row in rows:
         if row is None:
             continue
-        fails = check_row(gold, row)
+        fails = check_row(train_gold if row.id.startswith("tr-") and row.kind == "multi_hop" else gold, row)
         if fails:
             failures += 1
             logger.error(f"{row.id} ({row.kind}): " + " | ".join(fails))

@@ -84,9 +84,9 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
 
   const m = costMetrics(calls, 4);
   assert.deepEqual(m, {
-    cost_program_usd: 0.01, cost_query_usd: 0.0121, cost_usd: 0.0221, cost_per_item_usd: 0.005525, model_calls: 4,
+    cost_program_usd: 0.01, cost_query_usd: 0.0121, cost_usd: 0.0221, cost_per_item_usd: 0.005525, model_calls: 4, model_calls_replayed: 0,
   });
-  assert.deepEqual(costMetrics([], 10), { cost_usd: 0, cost_per_item_usd: 0, model_calls: 0 });
+  assert.deepEqual(costMetrics([], 10), { cost_usd: 0, cost_per_item_usd: 0, model_calls: 0, model_calls_replayed: 0 });
 });
 
 test("rerank: metered per call, documents required, allowed models only", async () => {
@@ -179,6 +179,34 @@ test("replay: a later eval of the night gets the same answer for free; a retry g
     assert.equal(await ask(otherNight), "answer 5");
     proxy.close(otherNight);
   } finally {
+    await proxy.stop();
+  }
+});
+
+test("replay: a coder's next run repeats its own calls, a quick retry doesn't", async () => {
+  let upstream = 0;
+  const fake = { chat: async () => ({ text: `answer ${++upstream}`, finishReason: "stop" as const, usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.01 } }) } as unknown as MeterBackends;
+  const proxy = new MeterProxy(fake);
+  await proxy.listen();
+  const now = Date.now;
+  let clock = now();
+  Date.now = () => clock;
+  try {
+    const token = proxy.open({ evalId: "dev", allowedModels: ["m"], capUsd: 1, replayScope: "night", repeatRuns: true });
+    const ask = async () => {
+      const res = await fetch(`http://127.0.0.1:${proxy.port}/v1/chat/completions`, {
+        method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ model: "m", messages: [{ role: "user", content: "same" }] }),
+      });
+      return ((await res.json()) as { choices: { message: { content: string } }[] }).choices[0].message.content;
+    };
+    assert.equal(await ask(), "answer 1");
+    assert.equal(await ask(), "answer 2"); // at once: a retry
+    clock += 60_000;
+    assert.equal(await ask(), "answer 2"); // the next run
+    assert.equal(await ask(), "answer 3"); // a retry of the replayed answer
+    assert.equal(proxy.close(token).filter((c) => c.replayed_usd !== undefined).length, 1);
+  } finally {
+    Date.now = now;
     await proxy.stop();
   }
 });
