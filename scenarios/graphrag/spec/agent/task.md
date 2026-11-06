@@ -186,7 +186,7 @@ Per stage:
 
 | stage | where a model fits |
 |---|---|
-| extraction | embed the query document and show the extractor only the nearest known entities, so a growing history doesn't fill the prompt |
+| extraction | embed the document and show the extractor only the nearest known entities, so a growing history doesn't fill the prompt |
 | graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
 | retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them for `multi_hop` and `intersection` |
 
