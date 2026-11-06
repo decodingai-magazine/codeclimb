@@ -35,7 +35,7 @@ export function ExperimentsTable({ night, v, primary, selected, onSelect }: {
             const inRound = v.exps.filter((e) => e.round === r);
             const parent = inRound[0]?.parent_id ? v.byId.get(inRound[0].parent_id) : undefined;
             const kept = inRound.find((e) => e.decision === "keep");
-            const source = r === 1 ? "coders chose their own approach" : reviewed.has(r - 1) ? `hypotheses from the round ${r - 1} review` : null;
+            const source = r === 1 ? "the coder chose its own approach" : reviewed.has(r - 1) ? `hypothesis from the round ${r - 1} review` : null;
             return [
               <tr className="round-row" key={`round-${r}`}>
                 <td colSpan={7 + objectives.length}>
@@ -65,7 +65,7 @@ export function ExperimentsTable({ night, v, primary, selected, onSelect }: {
                     <td className="hyp"><div className="clip">{e.hypothesis ?? ""}</div></td>
                     <td className="num">{e.decision === "error" ? "–" : f3(v.score(e))}</td>
                     <td className="num"><span className={`delta ${d != null && d > 0 ? "up" : "down"}`}>{d == null ? "–" : signed(d)}</span></td>
-                    <td><DecisionTag decision={e.decision} reason={e.keep_reason} /></td>
+                    <td><DecisionTag decision={e.decision} /></td>
                     {objectives.map((m) => <td key={m} className="num">{e.decision === "error" ? "–" : fnum(e.metrics[m])}</td>)}
                     <td className="num">{usd(e.coder_usd + (e.dev_usd ?? 0))}</td>
                   </tr>
@@ -79,7 +79,7 @@ export function ExperimentsTable({ night, v, primary, selected, onSelect }: {
   );
 }
 
-const EVAL_LABEL: Record<string, string> = { rescore: "re-score", baseline: "parent baseline", noise: "noise", test: "test" };
+const EVAL_LABEL: Record<string, string> = { test: "test" };
 
 export function EvalsTable({ nightId, v, primary }: { nightId: string; v: Derived; primary: string }) {
   const extra = v.rows.filter((r) => r.kind !== "experiment");
@@ -108,14 +108,14 @@ export function EvalsTable({ nightId, v, primary }: { nightId: string; v: Derive
 }
 
 export function Reviews({ night }: { night: ReportNight }) {
-  if (!night.reviews.length) return <div className="empty">No reviewer feedback yet. The reviewer writes it after each round but the last.</div>;
+  if (!night.reviews.length) return <div className="empty">No reviewer feedback yet. The reviewer writes it after each round.</div>;
   return (
     <div className="feedback">
       {night.reviews.map((r) => (
         <div className="fb" key={r.round}>
           <b>After round {r.round}</b>
           <div className="quote">{r.feedback || "(no feedback)"}</div>
-          {r.hypotheses?.length > 0 && <ol>{r.hypotheses.map((x, i) => <li key={i}>{x}</li>)}</ol>}
+          {r.hypothesis && <ol><li>{r.hypothesis}</li></ol>}
         </div>
       ))}
     </div>

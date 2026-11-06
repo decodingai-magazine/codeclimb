@@ -5,13 +5,8 @@ deadline: 3h
 timeouts:
   experiment_min: 10
   eval_min: 3
-models:
-  - github-copilot/claude-haiku-5.5
+model: github-copilot/claude-haiku-5.5
 coder_thinking: medium  # off | minimal | low | medium | high
-parallel:
-  decay: step           # step | linear | none
-  step_after: 3
-  min: 1
 reviewer_model: github-copilot/claude-haiku-4.5
 reviewer_thinking: high
 allowed_models: []

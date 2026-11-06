@@ -14,21 +14,18 @@ import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { writeReport } from "./report/html";
-import { appendRows, readRows, type ResultRow, rowSpend } from "./results";
+import { appendRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
-import { beatsParent, cutsMetric, emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
+import { beatsParent, emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
 
-/** What the parent tracks about the commit the next round starts from. */
+/** The checkpoint: the commit the next round starts from, with the dev scores of its own evaluation. */
 export interface Kept {
   expId: string;
   sha: string;
-  /** Score used by the keep rule: the re-score when `rescored`, else the raw best-of-N score. */
   score: number;
+  /** Null for the starter, which is never run. */
   metrics: Metrics | null;
-  /** metrics.json of the latest dev re-score. */
-  metricsPath: string | null;
-  rescored: boolean;
 }
 
 export interface NightInit {
@@ -112,13 +109,6 @@ export function checkStop(args: {
   return { stop: false, now };
 }
 
-/** `xs` rotated left by `k`: the round's evaluation order, so no candidate always runs first. Replay-stable. */
-export function rotate<T>(xs: T[], k: number): T[] {
-  if (!xs.length) return xs;
-  const i = ((k % xs.length) + xs.length) % xs.length;
-  return [...xs.slice(i), ...xs.slice(0, i)];
-}
-
 /** Runs the scenario's `check` on an experiment's commit, on the host. A rule broken shows in `errors`; a crash throws. */
 export async function checkRepo(cfg: NightConfig, nightId: string, expId: string): Promise<RepoCheck> {
   const paths = nightPaths(cfg, nightId);
@@ -153,9 +143,9 @@ export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): P
   return failures.map((f) => ({ ...f, errors: f.errors.map((e) => maskTerms(e, found)) }));
 }
 
-export type BranchOutcome =
-  | { ok: true; expId: string; branch: number; model: string; code: CodeResult; eval: EvalResult | null }
-  | { ok: false; expId: string; branch: number; model: string; error: string };
+export type ExperimentOutcome =
+  | { ok: true; expId: string; model: string; code: CodeResult; eval: EvalResult | null }
+  | { ok: false; expId: string; model: string; error: string };
 
 export type EvalOutcome = { ok: true; evalId: string; result: EvalResult } | { ok: false; evalId: string; error: string; credits?: CreditStop };
 
@@ -201,7 +191,7 @@ function baseRow(b: RowBase, fields: Partial<ResultRow>): ResultRow {
   };
 }
 
-/** Row for an extra eval (re-score, baseline, test) of an existing commit. */
+/** Row for the test eval of the final commit. */
 export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: EvalOutcome, extra: Partial<ResultRow>): ResultRow {
   const r = outcome.ok ? outcome.result : null;
   const ok = !!r?.ok;
@@ -211,7 +201,7 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
     program_usd: r?.program_usd ?? 0, wall_s: r?.wall_s ?? 0, t_provision: r?.t_provision ?? 0,
     t_eval: r?.t_eval ?? 0, t_teardown: r?.t_teardown ?? 0, infra_errors: (r?.infra_errors ?? 0) + (outcome.ok ? 0 : 1),
     decision: ok ? "keep" : "error",
-    ...(r ? { evaluator_instance: r.evaluator_instance, eval_order: r.eval_order } : {}),
+    ...(r ? { evaluator_instance: r.evaluator_instance } : {}),
     ...extra,
   });
 }
@@ -219,18 +209,15 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
 // A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
 const MAX_DETAILS_CHARS = 200_000;
 
-export type KeepReason = "primary" | "efficiency" | "reviewer";
+export type KeepReason = "primary" | "reviewer";
 
 export interface RoundDecision {
-  rows: ResultRow[];
-  /** The kept commit after this round's re-score, before any new keep. */
-  parentAfter: Pick<Kept, "score" | "metrics" | "metricsPath" | "rescored">;
-  /** The parent's metrics from this round's evaluator (re-score or baseline), what the branches compare against. */
-  parentRun: Metrics | null;
+  row: ResultRow;
+  /** The mechanical keep, which stands when no review came back. */
   keep: { expId: string; sha: string; score: number; metrics: Metrics; reason: KeepReason } | null;
-  /** Branches that passed the gates and guardrails: what the reviewer picks from. */
-  candidates: { expId: string; sha: string; score: number; metrics: Metrics }[];
-  summaries: (Omit<BranchSummary, "diff" | "details"> & { metricsPath: string | null })[];
+  /** What it could be kept as: it passed the gates and guardrails. The reviewer decides; null: it is reverted. */
+  candidate: { expId: string; sha: string; score: number; metrics: Metrics } | null;
+  summary: Omit<BranchSummary, "diff" | "details"> & { metricsPath: string | null };
   spend: number;
 }
 
@@ -240,142 +227,65 @@ function readCodeState(cfg: NightConfig, nightId: string, expId: string): { code
 }
 
 /**
- * The mechanical pass over a round. A branch is a candidate if it passes the gates and the guardrails
- * (no headline regression against the parent's run in this round, no stage gone empty). The reviewer
- * then picks among the candidates (`applyReview`); the rule below stands when no review came back:
- * - Primary: the candidate whose primary gains >= min_gain over the parent's score, ties to the cheaper, then faster.
- * - Efficiency, only when no candidate gains on the primary: one whose primary stays at both the parent's
- *   score and the night's best kept score, and that cuts an optimized metric by > min_efficiency_gain × parent
- *   without raising another one by that much.
- * Latency is compared only between evals on the same evaluator instance. Otherwise the round stays on the parent.
+ * The mechanical pass over a round's one experiment, against the checkpoint's stored dev scores. It is a
+ * candidate if it passes the gates and the guardrails: no headline regression past its margin, no stage
+ * gone empty. Against the starter, which has no scores, only an empty stage stops it. The reviewer then
+ * keeps or reverts a candidate (`applyReview`); when no review comes back the rule is a primary gain of
+ * at least min_gain. Anything else is reverted, and the next round starts from the checkpoint again.
  */
-export function decideRound(args: RowBase & {
-  parent: Kept;
-  /** Highest re-scored primary the night has kept: an efficiency keep may not drift below it. */
-  bestPrimary?: number;
-  branches: BranchOutcome[];
-  rescore: EvalOutcome | null;
-  /** The parent's eval in the round's evaluator when it is already re-scored: recorded, its score unchanged. */
-  baseline?: EvalOutcome | null;
-  hypotheses: (string | null)[];
-}): RoundDecision {
-  const { cfg, parent } = args;
+export function decideRound(args: RowBase & { parent: Kept; experiment: ExperimentOutcome; hypothesis: string | null }): RoundDecision {
+  const { cfg, parent, experiment: x } = args;
   const P = cfg.primary_metric;
-  const rows: ResultRow[] = [];
-  const parentAfter = { score: parent.score, metrics: parent.metrics, metricsPath: parent.metricsPath, rescored: parent.rescored };
-  if (args.rescore) {
-    rows.push(evalRow(args, parent, args.rescore, { kind: "rescore", parent_id: null }));
-    if (args.rescore.ok && args.rescore.result.ok) {
-      parentAfter.score = args.rescore.result.metrics[P];
-      parentAfter.metrics = args.rescore.result.metrics;
-      parentAfter.metricsPath = args.rescore.result.metricsPath;
-      parentAfter.rescored = true;
-    }
+  if (!x.ok) {
+    const st = readCodeState(cfg, args.nightId, x.expId);
+    const row = baseRow(args, {
+      exp_id: x.expId, parent_id: parent.expId, model: x.model, eval_id: `${x.expId}-eval`,
+      hypothesis: args.hypothesis ?? `(failed: ${x.error.slice(0, 200)})`, metrics: { [P]: 0 },
+      coder_usd: st.coderUsd, ...(st.devUsd ? { dev_usd: st.devUsd } : {}), tokens: st.tokens, decision: "error", infra_errors: 1,
+    });
+    const summary = { expId: x.expId, model: x.model, hypothesis: args.hypothesis ?? "(unknown)", decision: "error", primary: 0, metrics: {}, guardrails: [], notes: [], metricsPath: null };
+    return { row, keep: null, candidate: null, summary, spend: rowSpend(row) };
   }
-  if (args.baseline) rows.push(evalRow(args, parent, args.baseline, { kind: "baseline", parent_id: null }));
-
-  // The parent's run in this round's evaluator: the reference for guardrails, cost and latency.
-  // None while the parent is the starter, which is never run: then a branch only has to have worked.
-  const parentEval = args.rescore ?? args.baseline ?? null;
-  const parentRun = parentEval?.ok && parentEval.result.ok ? parentEval.result : null;
-
-  type Scored = { expId: string; branch: number; primary: number; metrics: Metrics; sha: string; eligible: boolean; instance: string };
-  const scored: Scored[] = [];
-  const branchRows: ResultRow[] = [];
-  const summaries: RoundDecision["summaries"] = [];
-  for (const b of args.branches) {
-    if (!b.ok) {
-      const st = readCodeState(cfg, args.nightId, b.expId);
-      branchRows.push(baseRow(args, {
-        exp_id: b.expId, parent_id: parent.expId, model: b.model, eval_id: `${b.expId}-eval`,
-        hypothesis: args.hypotheses[b.branch] ?? `(failed: ${b.error.slice(0, 200)})`, metrics: { [P]: 0 },
-        coder_usd: st.coderUsd, ...(st.devUsd ? { dev_usd: st.devUsd } : {}), tokens: st.tokens, decision: "error", infra_errors: 1,
-      }));
-      summaries.push({ expId: b.expId, model: b.model, hypothesis: args.hypotheses[b.branch] ?? "(unknown)", decision: "error", primary: 0, metrics: {}, guardrails: [], notes: [], metricsPath: null });
-      continue;
-    }
-    const ev = b.eval;
-    const evalOk = !!(b.code.sha && ev?.ok);
-    const metrics = evalOk ? ev!.metrics : { [P]: 0 };
-    const primary = metrics[P] ?? 0;
-    const failedCheck = b.code.check?.errors ?? [];
-    const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
-    const guardrails = !evalOk ? errors : parentRun ? guardrailFailures(metrics, parentRun.metrics, cfg.scenario.headline) : emptyStages(metrics);
-    const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
-    if (evalOk) scored.push({ expId: b.expId, branch: b.branch, primary, metrics, sha: b.code.sha!, eligible, instance: ev!.evaluator_instance });
-    branchRows.push(baseRow(args, {
-      exp_id: b.expId, parent_id: parent.expId, model: b.model, hypothesis: b.code.hypothesis, commit: b.code.sha ?? "",
-      eval_id: `${b.expId}-eval`, metrics, coder_usd: b.code.coder_usd, program_usd: ev?.program_usd ?? 0,
-      ...(b.code.dev_usd ? { dev_usd: b.code.dev_usd } : {}),
-      tokens: b.code.tokens,
-      wall_s: Math.round((b.code.t_provision + b.code.t_code + b.code.t_teardown + (ev?.wall_s ?? 0)) * 100) / 100,
-      decision: evalOk ? "revert" : "error",
-      t_provision: b.code.t_provision + (ev?.t_provision ?? 0), t_code: b.code.t_code, t_eval: ev?.t_eval ?? 0,
-      t_teardown: b.code.t_teardown + (ev?.t_teardown ?? 0),
-      infra_errors: b.code.infra_errors + (ev?.infra_errors ?? 0) + (b.code.sha && !ev && !failedCheck.length ? 1 : 0),
-      ...(ev ? { evaluator_instance: ev.evaluator_instance, eval_order: ev.eval_order } : {}),
-    }));
-    summaries.push({ expId: b.expId, model: b.model, hypothesis: b.code.hypothesis, decision: evalOk ? "revert" : "error", primary, metrics, guardrails, ...(errors.length ? { errors } : {}), notes: b.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null });
-  }
-
-  const objectives = efficiencyMetrics(cfg);
-  type Measured = { metrics: Metrics; instance: string };
-  const comparable = (m: string, a: Measured, b: Measured) =>
-    typeof a.metrics[m] === "number" && typeof b.metrics[m] === "number" && (!m.startsWith("latency_") || a.instance === b.instance);
-  /** `a` is meaningfully lower than `b` on `m`. */
-  const cuts = (m: string, a: Measured, b: Measured) =>
-    comparable(m, a, b) && cutsMetric(a.metrics[m], b.metrics[m], cfg.standard_metrics.min_efficiency_gain);
-  /** The cheaper, then faster of two candidates; `a` (the higher primary) when neither is meaningfully better. */
-  const prefer = (a: Scored, b: Scored) => {
-    for (const m of objectives) {
-      if (cuts(m, b, a)) return b;
-      if (cuts(m, a, b)) return a;
-    }
-    return a;
+  const ev = x.eval;
+  const evalOk = !!(x.code.sha && ev?.ok);
+  const metrics = evalOk ? ev!.metrics : { [P]: 0 };
+  const primary = metrics[P] ?? 0;
+  const failedCheck = x.code.check?.errors ?? [];
+  const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
+  const guardrails = !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
+  const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
+  const candidate = eligible ? { expId: x.expId, sha: x.code.sha!, score: primary, metrics } : null;
+  const keep = candidate && beatsParent(primary, parent.score, cfg.min_gain) ? { ...candidate, reason: "primary" as const } : null;
+  const row = baseRow(args, {
+    exp_id: x.expId, parent_id: parent.expId, model: x.model, hypothesis: x.code.hypothesis, commit: x.code.sha ?? "",
+    eval_id: `${x.expId}-eval`, metrics, coder_usd: x.code.coder_usd, program_usd: ev?.program_usd ?? 0,
+    ...(x.code.dev_usd ? { dev_usd: x.code.dev_usd } : {}),
+    tokens: x.code.tokens,
+    wall_s: Math.round((x.code.t_provision + x.code.t_code + x.code.t_teardown + (ev?.wall_s ?? 0)) * 100) / 100,
+    decision: keep ? "keep" : evalOk ? "revert" : "error",
+    ...(keep ? { keep_reason: keep.reason } : {}),
+    t_provision: x.code.t_provision + (ev?.t_provision ?? 0), t_code: x.code.t_code, t_eval: ev?.t_eval ?? 0,
+    t_teardown: x.code.t_teardown + (ev?.t_teardown ?? 0),
+    infra_errors: x.code.infra_errors + (ev?.infra_errors ?? 0) + (x.code.sha && !ev && !failedCheck.length ? 1 : 0),
+    ...(ev ? { evaluator_instance: ev.evaluator_instance } : {}),
+  });
+  const summary = {
+    expId: x.expId, model: x.model, hypothesis: x.code.hypothesis, decision: row.decision, primary, metrics, guardrails,
+    ...(errors.length ? { errors } : {}), notes: x.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null,
   };
-
-  const eligible = scored.filter((s) => s.eligible).sort((a, b) => b.primary - a.primary || a.branch - b.branch);
-  const gainers = eligible.filter((s) => beatsParent(s.primary, parentAfter.score, cfg.min_gain));
-  let pick: { s: Scored; reason: KeepReason } | null = null;
-  if (gainers.length) {
-    pick = { s: gainers.filter((s) => s.primary === gainers[0].primary).reduce(prefer), reason: "primary" };
-  } else if (objectives.length && parentRun) {
-    const ref = { metrics: parentRun.metrics, instance: parentRun.evaluator_instance };
-    const floor = Math.max(parentAfter.score, args.bestPrimary ?? 0);
-    const efficient = eligible.filter(
-      (s) => s.primary >= floor && objectives.some((m) => cuts(m, s, ref)) && !objectives.some((m) => cuts(m, ref, s)),
-    );
-    if (efficient.length) pick = { s: efficient.reduce(prefer), reason: "efficiency" };
-  }
-
-  let keep: RoundDecision["keep"] = null;
-  if (pick) {
-    const best = pick.s;
-    keep = { expId: best.expId, sha: best.sha, score: best.primary, metrics: best.metrics, reason: pick.reason };
-    const row = branchRows.find((r) => r.exp_id === best.expId)!;
-    row.decision = "keep";
-    row.keep_reason = pick.reason;
-    summaries.find((s) => s.expId === best.expId)!.decision = pick.reason === "efficiency" ? "keep (cheaper/faster)" : "keep";
-  }
-  rows.push(...branchRows);
-  const spend = rows.reduce((a, r) => a + rowSpend(r), 0);
-  const candidates = eligible.map((s) => ({ expId: s.expId, sha: s.sha, score: s.primary, metrics: s.metrics }));
-  return { rows, parentAfter, parentRun: parentRun?.metrics ?? null, keep, candidates, summaries, spend };
+  return { row, keep, candidate, summary, spend: rowSpend(row) };
 }
 
-/** The round with the reviewer's pick (a candidate, or null to keep nothing) in place of the mechanical one. */
-export function applyReview(d: RoundDecision, keepId: string | null): RoundDecision {
-  const pick = d.candidates.find((c) => c.expId === keepId) ?? null;
-  const decided = (expId: string, fallback: string) => (expId === pick?.expId ? "keep" : expId === d.keep?.expId ? "revert" : fallback);
+/** The round with the reviewer's call in place of the mechanical one; it can only keep a candidate. */
+export function applyReview(d: RoundDecision, keep: boolean): RoundDecision {
+  if (!d.candidate) return d;
+  const { keep_reason: _, ...row } = d.row;
+  const decision = keep ? "keep" : "revert";
   return {
     ...d,
-    keep: pick && { ...pick, reason: "reviewer" },
-    rows: d.rows.map((r) => {
-      if (r.kind !== "experiment" || r.exp_id !== pick?.expId && r.exp_id !== d.keep?.expId) return r;
-      const { keep_reason: _, ...rest } = r;
-      return r.exp_id === pick?.expId ? { ...rest, decision: "keep", keep_reason: "reviewer" } : { ...rest, decision: "revert" };
-    }),
-    summaries: d.summaries.map((s) => ({ ...s, decision: decided(s.expId, s.decision) })),
+    keep: keep ? { ...d.candidate, reason: "reviewer" } : null,
+    row: keep ? { ...row, decision, keep_reason: "reviewer" } : { ...row, decision },
+    summary: { ...d.summary, decision },
   };
 }
 
@@ -407,43 +317,31 @@ export async function reviewRound(args: {
   parentExpId: string;
   parentScore: number;
   parentMetrics: Metrics | null;
-  /** This round's run of the parent, not yet in the results file. */
-  parentRun: Metrics | null;
-  summaries: RoundDecision["summaries"];
-  /** The branches it may keep, and what the mechanical rule would keep. */
-  candidates: string[];
-  mechanicalKeep: string | null;
+  summary: RoundDecision["summary"];
+  /** Whether the guardrails let it be kept, and what the mechanical rule would do. */
+  canKeep: boolean;
+  mechanicalKeep: boolean;
   log: HypothesisLogEntry[];
-  /** Branches the next round runs: one hypothesis each. */
-  branches: number;
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
-  const results: BranchSummary[] = [];
-  for (const { metricsPath, ...s } of args.summaries) {
-    const diff = await repo.diff(args.parentExpId, s.expId).catch(() => "(no commit)");
-    results.push({ ...s, diff, details: readDetails(args.cfg, metricsPath) });
-  }
+  const { metricsPath, ...summary } = args.summary;
+  const diff = await repo.diff(args.parentExpId, summary.expId).catch(() => "(no commit)");
   const input: ReviewInput = {
     model: args.cfg.reviewer_model,
     thinkingLevel: args.cfg.reviewer_thinking,
     mock: args.cfg.mock,
     spec: readSpecText(nightPaths(args.cfg, args.nightId).bundleDir),
     round: args.round,
-    branches: args.branches,
     primaryMetric: args.cfg.primary_metric,
     thresholds: args.cfg.thresholds,
     gates: args.cfg.gates,
     parentScore: args.parentScore,
     parentMetrics: args.parentMetrics,
-    parentRuns: [
-      ...readRows(args.cfg.results_path).filter((r) => r.night_id === args.nightId && r.exp_id === args.parentExpId && r.split === "dev" && r.decision !== "error").map((r) => r.metrics),
-      ...(args.parentRun ? [args.parentRun] : []),
-    ],
     objectives: efficiencyMetrics(args.cfg),
     minEfficiencyGain: args.cfg.standard_metrics.min_efficiency_gain,
-    results,
+    result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
     log: args.log,
-    candidates: args.candidates,
+    canKeep: args.canKeep,
     mechanicalKeep: args.mechanicalKeep,
     headline: Object.keys(args.cfg.scenario.headline),
     diagnostics: args.cfg.scenario.diagnostics ?? [],

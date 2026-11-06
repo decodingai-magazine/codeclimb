@@ -29,7 +29,6 @@ export type NightSummary = {
 };
 
 export type Branch = {
-  branch: number;
   exp_id: string;
   model: string;
   phase: string;

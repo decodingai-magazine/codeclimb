@@ -62,10 +62,6 @@
     if (v < 5400) return Math.round(v / 60) + " min";
     return (v / 3600).toFixed(1) + " h";
   };
-  const branchOf = (id) => {
-    const m = /-e(\d+)$/.exec(id);
-    return m ? Number(m[1]) : 0;
-  };
   const shortId = (id, night) => id.replace(night + "-", "");
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -88,7 +84,7 @@
   // ---------- derived per-night views ----------
   function derive(night) {
     const rows = night.rows;
-    const exps = rows.filter((r) => r.kind === "experiment").sort((a, b) => a.round - b.round || branchOf(a.exp_id) - branchOf(b.exp_id));
+    const exps = rows.filter((r) => r.kind === "experiment").sort((a, b) => a.round - b.round);
     const byId = new Map(exps.map((e) => [e.exp_id, e]));
     const rounds = exps.reduce((m, e) => Math.max(m, e.round), 0);
     const lineage = [];
@@ -158,9 +154,9 @@
     const svg = s("svg", { viewBox: "0 0 16 16" }, marker(kind, 8, 8, 5));
     return h("span", null, svg, label);
   }
-  function decisionTag(d, reason) {
+  function decisionTag(d) {
     const svg = s("svg", { viewBox: "0 0 12 12" }, marker(d, 6, 6, 5));
-    return h("span", { class: "dec " + d }, svg, d === "keep" && reason === "efficiency" ? "keep · cheaper/faster" : d);
+    return h("span", { class: "dec " + d }, svg, d);
   }
 
   function niceTicks(lo, hi, n) {
@@ -181,8 +177,6 @@
     const slots = v.rounds + (hasFinal ? 1 : 0);
     const step = pw / Math.max(1, slots);
     const cx = (r) => m.l + step * (r - 0.5);
-    const B = night.config && night.config.models ? night.config.models.length : Math.max(1, ...v.exps.map((e) => branchOf(e.exp_id) + 1));
-    const off = Math.min(14, step / (B + 1));
     const vals = [];
     for (const e of v.exps) if (e.decision !== "error") vals.push(v.score(e));
     if (v.threshold != null) vals.push(v.threshold);
@@ -230,8 +224,7 @@
 
     const marks = [];
     for (const e of v.exps) {
-      const b = branchOf(e.exp_id);
-      const x = cx(e.round) + (b - (B - 1) / 2) * off;
+      const x = cx(e.round);
       const yy = e.decision === "error" ? yBase - 8 : y(v.score(e));
       marks.push({ x, y: yy, e, kind: e.decision });
     }
@@ -313,7 +306,7 @@
     if (state.heat === "all") return v.exps.filter((e) => e.decision !== "error").map((e) => ({ key: e.exp_id, label: shortId(e.exp_id, night.id), sub: e.decision, row: e }));
     const cols = [];
     const seen = new Set();
-    for (const l of v.lineage) if (l.exp && !seen.has(l.exp.exp_id)) { seen.add(l.exp.exp_id); cols.push({ key: l.exp.exp_id, label: "r" + l.round, sub: "e" + branchOf(l.exp.exp_id), row: l.exp }); }
+    for (const l of v.lineage) if (l.exp && !seen.has(l.exp.exp_id)) { seen.add(l.exp.exp_id); cols.push({ key: l.exp.exp_id, label: "r" + l.round, sub: "", row: l.exp }); }
     if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });
     return cols;
   }
@@ -394,7 +387,7 @@
         h("span", { class: "mono", text: parent ? shortId(parent.exp_id, night.id) : "starter" }),
         parent ? " (" + f3(v.score(parent)) + ")" : "",
         "  ·  ", kept ? "kept " + shortId(kept.exp_id, night.id) : "nothing kept",
-        r === 1 ? "  ·  coders chose their own approach" : reviewFor.has(r - 1) ? "  ·  hypotheses from the round " + (r - 1) + " review" : "")));
+        r === 1 ? "  ·  the coder chose its own approach" : reviewFor.has(r - 1) ? "  ·  hypothesis from the round " + (r - 1) + " review" : "")));
       for (const e of inRound) {
         const ps = v.parentScore(e);
         const d = e.decision === "error" || ps == null ? null : v.score(e) - ps;
@@ -404,7 +397,7 @@
           h("td", { class: "hyp" }, h("div", { class: "clip", text: e.hypothesis || "" })),
           h("td", { class: "num", text: e.decision === "error" ? "–" : f3(v.score(e)) }),
           h("td", { class: "num" }, h("span", { class: "delta " + (d > 0 ? "up" : "down"), text: d == null ? "–" : signed(d) })),
-          h("td", null, decisionTag(e.decision, e.keep_reason)),
+          h("td", null, decisionTag(e.decision)),
           objectives.map((m) => h("td", { class: "num", text: e.decision === "error" ? "–" : fnum(e.metrics[m]) })),
           h("td", { class: "num", text: usd(e.coder_usd + (e.dev_usd || 0)) }));
         body.push(tr);
@@ -418,7 +411,7 @@
   function evalsTable(night, v) {
     const extra = v.rows.filter((r) => r.kind !== "experiment");
     if (!extra.length) return null;
-    const label = { rescore: "re-score", baseline: "parent baseline", noise: "noise", test: "test" };
+    const label = { test: "test" };
     return h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, h("th", { class: "num", text: "Round" }), h("th", { text: "Eval" }), h("th", { text: "Commit" }), h("th", { text: "Split" }), h("th", { class: "num", text: P }), h("th", { text: "Result" }), h("th", { class: "num", text: "Wall" }))),
       h("tbody", null, extra.map((r) => h("tr", null,
@@ -433,7 +426,7 @@
     return h("div", { class: "feedback" }, night.reviews.map((r) => h("div", { class: "fb" },
       h("b", { text: "After round " + r.round }),
       h("div", { class: "quote", text: r.feedback || "(no feedback)" }),
-      r.hypotheses && r.hypotheses.length ? h("ol", null, r.hypotheses.map((x) => h("li", { text: x }))) : null)));
+      r.hypothesis ? h("ol", null, h("li", { text: r.hypothesis })) : null)));
   }
 
   // ---------- detail + export ----------
@@ -455,7 +448,7 @@
     return h("section", { class: "card detail", "aria-live": "polite" },
       h("div", { class: "eyebrow", text: isBest ? "Selected · best of the night" : "Selected experiment" }),
       h("h3", { class: "mono", text: e.exp_id }),
-      decisionTag(e.decision, e.keep_reason),
+      decisionTag(e.decision),
       h("dl", { class: "kv" },
         h("dt", { text: P }), h("dd", { text: e.decision === "error" ? "–" : f3(v.score(e)) + (ps == null ? "" : "  (" + signed(v.score(e) - ps) + " vs parent)") }),
         h("dt", { text: "Parent" }), h("dd", { class: "mono", text: parent ? shortId(parent.exp_id, night.id) + " · " + f3(ps) : (e.parent_id || "–") }),
@@ -617,7 +610,7 @@
       h("div", null,
         h("div", { class: "eyebrow", text: "Night" }),
         h("h1", { class: "mono", text: night.id }),
-        h("p", { text: "Started " + started + (night.config ? " · " + night.config.models.length + " branches × up to " + night.config.max_rounds + " rounds · reviewer " + night.config.reviewer_model : "") })),
+        h("p", { text: "Started " + started + (night.config ? " · up to " + night.config.max_rounds + " rounds · reviewer " + night.config.reviewer_model : "") })),
       h("span", { class: "badge" + (stop === "thresholds" ? " hot" : "") }, icon("flag"), stop === "running" ? "running" : "stopped: " + stop));
     const keptExp = v.cur;
     const kpis = h("div", { class: "kpis" },

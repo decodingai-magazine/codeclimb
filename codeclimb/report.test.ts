@@ -83,7 +83,7 @@ test("report data reads every night, saved reviews and done.json; best resolves 
     mkdirSync(join(root, "nights", id, "reviews"), { recursive: true });
     writeFileSync(join(root, "nights", id, "night.json"), JSON.stringify({ startedAt: at }));
   }
-  writeFileSync(join(root, "nights", "b", "reviews", "r1.json"), JSON.stringify({ round: 1, feedback: "f", hypotheses: ["x"], reviewer_usd: 0.05 }));
+  writeFileSync(join(root, "nights", "b", "reviews", "r1.json"), JSON.stringify({ round: 1, feedback: "f", hypothesis: "x", reviewer_usd: 0.05 }));
   writeFileSync(join(root, "nights", "b", "done.json"), JSON.stringify({
     stop_reason: "thresholds", rounds: 1, kept: { exp_id: "b-r1-e0", commit: "c", dev_score: 0.5 }, spend_usd: 0.25, finished_at: "2026-01-01T00:00:00Z",
   }));
@@ -92,7 +92,7 @@ test("report data reads every night, saved reviews and done.json; best resolves 
   assert.deepEqual(data.nights.map((n) => n.id), ["a", "b"]);
   assert.equal(data.nights[0].spend_usd, 0.1); // no done.json: summed from rows
   assert.equal(data.nights[1].spend_usd, 0.25); // done.json wins
-  assert.deepEqual(data.nights[1].reviews, [{ round: 1, model: undefined, feedback: "f", hypotheses: ["x"] }]);
+  assert.deepEqual(data.nights[1].reviews, [{ round: 1, model: undefined, feedback: "f", hypothesis: "x" }]);
   assert.equal(resolveExpId(root, "best"), "b-r1-e0");
 
   // LLM text can't close the data script tag and inject markup.

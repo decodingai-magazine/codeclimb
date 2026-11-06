@@ -35,7 +35,7 @@ export function DetailCard({ night, v, primary, selected, diff }: {
     <section className="card detail" aria-live="polite">
       <div className="eyebrow">{e.exp_id === v.bestId ? "Selected · best of the night" : "Selected experiment"}</div>
       <h3 className="mono">{e.exp_id}</h3>
-      <DecisionTag decision={e.decision} reason={e.keep_reason} />
+      <DecisionTag decision={e.decision} />
       <dl className="kv">
         <dt>{primary}</dt>
         <dd>{e.decision === "error" ? "–" : f3(v.score(e)) + (ps == null ? "" : `  (${signed(v.score(e)! - ps)} vs parent)`)}</dd>

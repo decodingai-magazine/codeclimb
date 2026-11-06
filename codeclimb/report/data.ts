@@ -8,13 +8,13 @@ import { efficiencyMetrics, type NightConfig } from "../config";
 import { ExperimentRepo } from "../git";
 import { readRows, type ResultRow, rowSpend } from "../results";
 
-export type ReportReview = { round: number; model?: string; feedback: string; hypotheses: string[] };
+export type ReportReview = { round: number; model?: string; feedback: string; hypothesis?: string };
 
 export type ReportNight = {
   id: string;
   startedAt: number | null;
   finishedAt: string | null;
-  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "models" | "reviewer_model" | "budget_usd"> & {
+  config: Pick<NightConfig, "primary_metric" | "thresholds" | "gates" | "min_gain" | "max_rounds" | "model" | "reviewer_model" | "budget_usd"> & {
     /** Optimized standard metrics (lower is better); empty for nights before they existed. */
     objectives: string[];
     /** The scenario's headline metrics and stage names; empty for nights before stages. */
@@ -88,7 +88,7 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
       config: c
         ? {
             primary_metric: c.primary_metric, thresholds: c.thresholds, gates: c.gates, min_gain: c.min_gain,
-            max_rounds: c.max_rounds, models: c.models, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
+            max_rounds: c.max_rounds, model: c.model, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
             // Nights before standard metrics have no `standard_metrics`: nothing was optimized besides the primary.
             objectives: c.standard_metrics ? efficiencyMetrics(c) : [],
             headline: Object.keys(c.scenario?.headline ?? {}),
@@ -99,7 +99,7 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
         ? { stop_reason: done.stop_reason, rounds: done.rounds, kept: done.kept, spend_usd: done.spend_usd }
         : null,
       spend_usd: done?.spend_usd ?? nightSpend(nightRows),
-      reviews: reviews.map(({ round, model, feedback, hypotheses }) => ({ round, model, feedback, hypotheses })),
+      reviews: reviews.map(({ round, model, feedback, hypothesis }) => ({ round, model, feedback, hypothesis })),
       rows: nightRows,
     };
   });

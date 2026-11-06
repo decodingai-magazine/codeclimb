@@ -34,15 +34,14 @@ export interface ResultRow {
    * Not in the contract: which extra eval a row is (experiment | rescore | noise | test). `baseline`
    * is the already re-scored parent's run in a round's evaluator: recorded for comparison, its score unchanged.
    */
-  kind: "experiment" | "rescore" | "baseline" | "noise" | "test";
+  kind: "experiment" | "test";
   /** Not in the contract: unique per row (an experiment's own eval, a re-score, a noise run, ...). */
   eval_id: string;
   night_id: string;
   /** Not in the contract: the evaluator incarnation that ran the eval, and the eval's position in it. */
   evaluator_instance?: string;
-  eval_order?: number;
   /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
-  keep_reason?: "primary" | "efficiency" | "reviewer";
+  keep_reason?: "primary" | "reviewer";
   /** Not in the contract: the program's model calls while the coder developed (metered, outside `metrics`). */
   dev_usd?: number;
 }
@@ -88,12 +87,11 @@ export const RESULT_ROW_SCHEMA = {
     t_review: num,
     t_teardown: num,
     infra_errors: { type: "integer", minimum: 0 },
-    kind: { type: "string", enum: ["experiment", "rescore", "baseline", "noise", "test"] },
+    kind: { type: "string", enum: ["experiment", "test"] },
     eval_id: str,
     night_id: str,
     evaluator_instance: str,
-    eval_order: { type: "integer", minimum: 0 },
-    keep_reason: { type: "string", enum: ["primary", "efficiency", "reviewer"] },
+    keep_reason: { type: "string", enum: ["primary", "reviewer"] },
     dev_usd: num,
   },
 } as const;

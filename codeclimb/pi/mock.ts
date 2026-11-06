@@ -17,16 +17,14 @@ export function coderReply(messages: Messages) {
     : fauxAssistantMessage(fauxToolCall("bash", { command: MOCK_CHANGE }), { stopReason: "toolUse" });
 }
 
-/** The JSON `parseReview` wants; the prompt says how many hypotheses. */
-export function reviewerReply(messages: Messages) {
-  const branches = Number(/exactly (\d+) hypotheses/.exec(JSON.stringify(messages.at(-1)))?.[1] ?? 1);
-  const hypotheses = Array.from({ length: branches }, (_, i) => `mock hypothesis ${i + 1}`);
-  return fauxAssistantMessage(JSON.stringify({ keep: null, keep_reason: "mock", feedback: "mock feedback", hypotheses }));
+/** The JSON `parseReview` wants. */
+export function reviewerReply() {
+  return fauxAssistantMessage(JSON.stringify({ keep: false, keep_reason: "mock", feedback: "mock feedback", hypothesis: "mock hypothesis" }));
 }
 
 const respond: FauxResponseFactory = (context, _options, _state, model) => {
   faux.appendResponses([respond]);
-  return model.id === "reviewer" ? reviewerReply(context.messages) : coderReply(context.messages);
+  return model.id === "reviewer" ? reviewerReply() : coderReply(context.messages);
 };
 
 const faux = fauxProvider({ provider: "mock", models: [{ id: "coder" }, { id: "reviewer" }] });

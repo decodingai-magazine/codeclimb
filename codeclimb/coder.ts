@@ -35,13 +35,12 @@ export type ExperimentInput = {
   expId: string;
   parentExpId: string;
   round: number;
-  branch: number;
   model: string;
   /** Reviewer feedback from earlier rounds; empty in round 1. */
   feedback: string;
-  /** The last round's branches that were never scored, with their errors, held-out names masked. */
+  /** The last round's experiment if it was never scored, with its errors, held-out names masked. */
   failures?: EvalFailure[];
-  /** Reviewer's hypothesis for this branch; null in round 1 (the agent picks and reports its own). */
+  /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
   config: NightConfig;
   /** Go on after a pause for credits from the commit `expId` holds, in the same Pi session. */
@@ -119,7 +118,7 @@ export function coderPrompt(
   ];
   if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
   if (failures.length) {
-    parts.push(`<failures>\nThese branches failed before they were scored. Their code is gone, but your code can fail the same way. The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
+    parts.push(`<failures>\nThe last attempt failed before it was scored. Its code is gone, but your code can fail the same way. The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
   }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
   parts.push(

@@ -38,8 +38,6 @@ export type EvalRequest = {
   expId: string;
   split: EvalSplit;
   runId?: string;
-  /** Position in the evaluator's run order. */
-  order?: number;
 };
 
 export interface EvalResult {
@@ -58,7 +56,6 @@ export interface EvalResult {
   credits?: CreditStop;
   /** The evaluator incarnation that ran it: only evals on the same instance are compared on latency. */
   evaluator_instance: string;
-  eval_order: number;
 }
 
 const secs = (t0: number) => Math.round((performance.now() - t0) / 10) / 100;
@@ -156,7 +153,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
   const result: EvalResult = {
     ok: false, metrics: { [cfg.primary_metric]: 0 }, metricsPath: null, program_usd: 0,
     t_provision: 0, t_eval: 0, t_teardown: 0, wall_s: 0, infra_errors: 0,
-    evaluator_instance: await sandbox.instanceId(), eval_order: req.order ?? 0,
+    evaluator_instance: await sandbox.instanceId(),
   };
   const repo = new ExperimentRepo(paths.gitDir);
 

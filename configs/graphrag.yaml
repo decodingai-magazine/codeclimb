@@ -5,14 +5,8 @@ deadline: 6h
 timeouts:
   experiment_min: 25
   eval_min: 16
-models:
-  - anthropic/claude-opus-5-5
-  - anthropic/claude-opus-5-5
+model: anthropic/claude-opus-5-5
 coder_thinking: medium  # off | minimal | low | medium | high
-parallel:
-  decay: step           # step | linear | none
-  step_after: 2
-  min: 1
 reviewer_model: anthropic/claude-opus-5-5
 reviewer_thinking: high
 allowed_models:

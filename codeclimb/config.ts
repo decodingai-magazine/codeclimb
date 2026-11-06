@@ -36,13 +36,8 @@ export type NightConfig = {
   /** ISO timestamp, or a duration from night start like "90m" / "8h". */
   deadline: string;
   timeouts: { experiment_min: number; eval_min: number };
-  /** Coder models, one per branch. A round runs the first `parallelWidth(...)` of them. */
-  models: string[];
-  /**
-   * How many experiments run per round. `step` runs every model through round `step_after`, then `min`;
-   * `linear` starts at `models.length` and decays to `min` by the last round; `none` runs every model each round.
-   */
-  parallel: { decay: "none" | "linear" | "step"; min: number; step_after: number };
+  /** The coder's model. */
+  model: string;
   reviewer_model: string;
   /** Pi's effort for the coders. */
   coder_thinking: ThinkingLevel;
@@ -80,7 +75,6 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const timeouts = req<NightConfig["timeouts"]>(raw, "timeouts", "object");
   const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
-  const par = (raw.parallel as Partial<Record<keyof NightConfig["parallel"], unknown>> | undefined) ?? {};
   const scenarioDir = abs(req(raw, "scenario", "string"));
   const cfg: NightConfig = {
     scenario_dir: scenarioDir,
@@ -91,12 +85,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     plateau_rounds: raw.plateau_rounds == null ? 3 : Number(raw.plateau_rounds),
     deadline: String(req(raw, "deadline", raw.deadline instanceof Date ? "object" : "string")),
     timeouts: { experiment_min: Number(timeouts.experiment_min), eval_min: Number(timeouts.eval_min) },
-    models: req(raw, "models", "array"),
-    parallel: {
-      decay: (par.decay ?? "step") as NightConfig["parallel"]["decay"],
-      min: par.min == null ? 1 : Number(par.min),
-      step_after: par.step_after == null ? 3 : Number(par.step_after),
-    },
+    model: req(raw, "model", "string"),
     reviewer_model: req(raw, "reviewer_model", "string"),
     coder_thinking: (raw.coder_thinking ?? "medium") as ThinkingLevel,
     reviewer_thinking: (raw.reviewer_thinking ?? "low") as ThinkingLevel,
@@ -121,20 +110,13 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   };
   if (raw.deadline instanceof Date) cfg.deadline = raw.deadline.toISOString();
   if (!["docker", "inngest"].includes(cfg.sandbox)) throw new Error(`config: sandbox must be docker | inngest`);
-  if (cfg.models.length < 1) throw new Error("config: models needs at least one model (one per branch)");
   for (const k of ["coder_thinking", "reviewer_thinking"] as const) {
     if (!THINKING_LEVELS.includes(cfg[k])) throw new Error(`config: ${k} must be ${THINKING_LEVELS.join(" | ")}`);
   }
-  if (cfg.models.includes(cfg.reviewer_model) && (raw.reviewer_thinking == null || cfg.coder_thinking === cfg.reviewer_thinking)) {
-    throw new Error("config: reviewer_model must differ from the coder models, or set a different reviewer_thinking (no coder critiques its own work)");
+  if (cfg.model === cfg.reviewer_model && (raw.reviewer_thinking == null || cfg.coder_thinking === cfg.reviewer_thinking)) {
+    throw new Error("config: reviewer_model must differ from the coder's model, or set a different reviewer_thinking (no coder critiques its own work)");
   }
-  const sched = cfg.parallel;
-  if (!["none", "linear", "step"].includes(sched.decay)) throw new Error("config: parallel.decay must be none | linear | step");
-  if (!(Number.isInteger(sched.min) && sched.min >= 1 && sched.min <= cfg.models.length)) {
-    throw new Error(`config: parallel.min must be an integer in 1..${cfg.models.length} (the number of models)`);
-  }
-  if (!(Number.isInteger(sched.step_after) && sched.step_after >= 1)) throw new Error("config: parallel.step_after must be an integer >= 1");
-  for (const k of ["spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
+  for (const k of ["models", "parallel", "spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
     if (k in raw) throw new Error(`config: "${k}" is gone; the scenario's scenario.yaml and fixed splits replace it (docs/scenario-contract.md)`);
   }
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
@@ -220,17 +202,4 @@ export function resolveDeadline(deadline: string, startedAt: number): number {
 export function efficiencyMetrics(cfg: Pick<NightConfig, "standard_metrics">): string[] {
   const st = cfg.standard_metrics;
   return [...(st.cost ? [st.cost_metric] : []), ...(st.latency ? [st.latency_metric] : [])];
-}
-
-/**
- * Experiments for `round` (1-based). `step`: every model through round `step_after`, then `parallel.min`.
- * `linear`: `models.length` in round 1, decaying to `parallel.min` by `max_rounds`. `none`: every model.
- */
-export function parallelWidth(cfg: NightConfig, round: number): number {
-  const max = cfg.models.length;
-  const { decay, min, step_after } = cfg.parallel;
-  if (decay === "none" || cfg.max_rounds <= 1) return max;
-  if (decay === "step") return round <= step_after ? max : min;
-  const t = Math.min(1, Math.max(0, (round - 1) / (cfg.max_rounds - 1)));
-  return Math.max(min, Math.min(max, Math.round(max - (max - min) * t)));
 }

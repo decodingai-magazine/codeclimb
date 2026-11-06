@@ -152,7 +152,6 @@ export default function NightPage() {
   const span = (live.deadline_at - live.started_at) / 1000;
   const running = live.status === "running";
   const kept = v?.cur ?? null;
-  const branches = night?.config?.models.length ?? Math.max(1, live.branches.length);
 
   return (
     <>
@@ -163,7 +162,7 @@ export default function NightPage() {
             <h1 className="mono">{live.id}</h1>
             <p>
               Started {new Date(live.started_at).toLocaleString()} · {live.sandbox} sandboxes
-              {night?.config ? ` · ${night.config.models.length} branches × up to ${night.config.max_rounds} rounds · reviewer ${night.config.reviewer_model}` : ""}
+              {night?.config ? ` · up to ${night.config.max_rounds} rounds · reviewer ${night.config.reviewer_model}` : ""}
             </p>
           </div>
           <StatusBadge status={live.status} stopReason={live.stop_reason} />
@@ -204,12 +203,12 @@ export default function NightPage() {
         </div>
 
         {live.branches.length > 0 && (
-          <Card title={`Round ${live.round} branches`} sub="Refreshed every 5 s while the coders work.">
+          <Card title={`Round ${live.round}`} sub="Refreshed every 5 s while the coder works.">
             <div className="branches">
               {live.branches.map((b) => (
                 <div className="branch" key={b.exp_id}>
                   <div className="branch-head">
-                    <strong>e{b.branch}</strong>
+                    <strong>{b.exp_id.replace(`${id}-`, "")}</strong>
                     <span className={`badge${b.phase === "coding" ? " live" : ""}`}>{b.phase}</span>
                   </div>
                   <div className="model">{b.model}</div>
@@ -251,9 +250,9 @@ export default function NightPage() {
                 }>
                 {convTable
                   ? <ConvergenceTable nightId={id} v={chart!} primary={shownMetric} />
-                  : <ConvergenceChart nightId={id} v={chart!} branches={branches} primary={shownMetric} selected={sel} onSelect={setSelected} />}
+                  : <ConvergenceChart nightId={id} v={chart!} primary={shownMetric} selected={sel} onSelect={setSelected} />}
               </Card>
-              {kindAxes(v.rows.find((r) => r.kind === "baseline")?.metrics ?? v.exps[0]?.metrics).kinds.length > 0 && (
+              {kindAxes(v.exps[0]?.metrics).kinds.length > 0 && (
                 <Card title="Retrieval by Kind" sub="Each metric per query kind: darker means more left to fix."
                   tools={
                     <div className="seg">

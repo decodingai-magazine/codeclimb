@@ -67,7 +67,7 @@ CodeClimb is an optimization loop. Pi coding agents write a program inside sandb
 
 ### Authenticate Pi
 
-Pi runs in the worker on the host, never in a sandbox, so credentials stay on the host. Each model in `models`, `reviewer_model` and `allowed_models` is `<provider>/<id>`, and its provider needs credentials:
+Pi runs in the worker on the host, never in a sandbox, so credentials stay on the host. `model`, `reviewer_model` and `allowed_models` is `<provider>/<id>`, and its provider needs credentials:
 
 | Provider | `<provider>` | Credentials | Example model |
 |---|---|---|---|
@@ -80,7 +80,7 @@ Pi runs in the worker on the host, never in a sandbox, so credentials stay on th
 - `/login` writes `~/.pi/agent/auth.json`. Set `CODECLIMB_PI_AUTH_PATH` to use another file.
 - Put env keys in `.env.local` (gitignored). `npm run worker`, `npm run run-night` and the smoke script load it, and variables already set in the shell win. Zen and Go share one `OPENCODE_API_KEY`.
 - The same model has different ids per provider: Copilot uses dots (`claude-haiku-5.5`), Anthropic and OpenCode use dashes (`claude-haiku-5-5`). `npx pi --list-models <search>` lists the ids of every provider that has credentials.
-- `reviewer_model` is compared to `models` as a string. `anthropic/claude-haiku-5-5` as the reviewer and `github-copilot/claude-haiku-5.5` as a coder pass validation, but they are the same model critiquing its own work.
+- `reviewer_model` is compared to `model` as a string. `anthropic/claude-haiku-5-5` as the reviewer and `github-copilot/claude-haiku-5.5` as a coder pass validation, but they are the same model critiquing its own work.
 - `coder_thinking` (default `medium`) and `reviewer_thinking` (default `low`) set Pi's effort. A reviewer on a coder's exact model needs an explicit, different `reviewer_thinking`.
 - OpenRouter works for any model in Pi's catalog, priced at catalog prices. It suits `allowed_models`: one key, and the config lists which models the program may use.
 - `run-night` checks before it starts that every model exists, has credentials and is on the account's plan. The worker checks again with its own environment and fails the night's `check-models` step if a model is not ready; `run-night` then keeps following, so read the error in the dev server UI and press Ctrl-C. The check finds missing keys, not wrong ones: a bad key fails the first model call as `agent_error`.
@@ -107,31 +107,28 @@ npm run validate-results -- runs/datenorm-smoke/results.jsonl
 npm test                               # unit tests (keep rule, stops, schema)
 ```
 
-A night runs these steps:
+A night is a linear loop: one experiment per round, on `model`, each starting from the checkpoint (the last kept commit). It runs these steps:
 
-1. **Rounds.** Each round starts one `run-experiment` child per branch, all in parallel, via `step.invoke`. Experiments are `r<round>-e<n>`, and experiment `n` uses `models[n]`, and `parallel` sets how many branches a round runs, like a learning-rate schedule for exploration:
-   - `decay: step` (default) runs every model through round `step_after` (default 3), then `min` (default 1). With 2 models and 6 rounds the widths are 2, 2, 2, 1, 1, 1.
-   - `decay: linear` runs every model in round 1 and decays to `min` by `max_rounds`. With 4 models and 10 rounds the widths are 4, 4, 3, 3, 3, 2, 2, 2, 1, 1. `decay: none` runs every model every round.
-   - List the preferred model first: narrow rounds use the first models in `models`.
-2. **Experiment.** Each child gives Pi a fresh sandbox built from the scenario's image plus the kept commit, with the scenario's bundle (spec and train examples) at `/spec`. Pi works until it is done or hits a timeout or `$` cap. The orchestrator then commits `/repo` as one commit.
-3. **Evaluation.** Once every coder has stopped, one `run-evaluator` child evaluates the round's candidates one after another in a single sandbox: the parent and each committed branch, in an order that rotates by round. Before each candidate it kills every leftover process, wipes `/repo`, `/work`, `/tmp` and `/eval`, and clones the candidate. Per stage of `scenario.yaml`, the host writes the dev inputs (`inputs`), the sandbox runs the program on them (`run`), and the host scores the downloaded outputs (`score`). So every candidate of a round is timed on the same machine with nothing else running.
-   A scenario can name a `check`: a host command that reads the branch's files before evaluation. A branch that fails it is not evaluated (graphrag: the few-shot manifest and the dev/test id scan).
-4. **Guardrails.** A branch can be kept only if it passes the gates, loses no headline metric of `scenario.yaml` by more than its margin against the parent's run in this round, and leaves no stage with empty output.
-5. **Review and keep.** A reviewer model, which is none of the coders, reads the spec, the scenario's `protocol`, each branch's metrics, per-item dev errors where the stage has a `details` command, and each diff, plus the kept commit's own repeated dev runs this night as the measure of noise, with each branch's metrics that moved past it. With a scenario `headline`, every headline metric counts equally and `primary_metric` only names the score. It picks one candidate to keep, or none, and writes feedback and one hypothesis per branch of the next round. It reads no test data. If the review fails, the mechanical rule decides: the candidate whose primary metric gains at least `min_gain`. With latency or cost optimized, see [Standard metrics](#standard-metrics-latency-and-cost).
-6. **Test.** After any stop, the final kept commit is scored on test once.
+1. **Experiment.** A `run-experiment` child gives Pi a fresh sandbox built from the scenario's image plus the checkpoint, with the scenario's bundle (spec and train examples) at `/spec`, plus the reviewer's feedback and hypothesis from the last round. Pi works until it is done or hits a timeout or `$` cap, and the orchestrator commits `/repo` as one commit. Experiments are `r<round>-e0`.
+   A scenario can name a `check`: a host command that reads the experiment's files before evaluation. An experiment that fails it is not evaluated (graphrag: the few-shot manifest and the dev/test id scan).
+2. **Evaluation on dev.** A `run-evaluator` child clones the commit into its own sandbox. Per stage of `scenario.yaml`, the host writes the dev inputs (`inputs`), the sandbox runs the program on them (`run`), and the host scores the downloaded outputs (`score`). The checkpoint is not run again: its stored dev scores are the reference.
+3. **Guardrails.** An experiment can be kept only if it passes the gates, loses no headline metric of `scenario.yaml` by more than its margin against the checkpoint's scores, and leaves no stage with empty output. While the checkpoint is the starter, which is never run, only a failed run or an empty stage or gate stops it.
+4. **Review.** A reviewer model reads the spec, the scenario's `protocol`, the experiment's metrics and their change from the checkpoint, per-item dev errors where the stage has a `details` command, and the diff. With a scenario `headline`, every headline metric counts equally and `primary_metric` only names the score. It reads no test data. It runs on every experiment, also one the guardrails forbid: it says why it is worse and writes the feedback and one hypothesis for the next round. If the review fails, the mechanical rule decides: keep on a primary gain of at least `min_gain`.
+5. **Keep or revert.** A kept experiment becomes the checkpoint. A reverted one is dropped, and the next round restarts from the same checkpoint with the reviewer's feedback, so it doesn't go down the same path.
+6. **Test.** After any stop, the final checkpoint is scored on test once.
 
 A night stops on the first of these, checked between rounds (`stop_reason` in `done.json`):
 
 | Stop | Config | When |
 |---|---|---|
-| `thresholds` | `thresholds` | The kept commit's dev re-score passes them |
+| `thresholds` | `thresholds` | The checkpoint's dev scores pass them |
 | `max_rounds` | `max_rounds` | The last round finished |
 | `deadline` | `deadline` | The deadline passed |
 | `budget` | `budget_usd.night` | Spend plus the costliest round so far and the test eval would cross it |
 | `tokens` | `max_tokens` (optional) | Coder and reviewer tokens plus the costliest round so far would cross it |
 | `plateau` | `plateau_rounds` (default 3, `0` = off) | That many rounds in a row kept nothing |
 
-The test eval gets its own evaluator too. A scenario with `eval_sandboxes: per_candidate` runs one evaluator per candidate, in parallel. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
+The test eval gets its own evaluator too. A worker restart onto this code cannot replay a night started by an older worker, so let running nights finish or stop them first.
 
 #### Mock mode
 
@@ -212,14 +209,14 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, with light and dark themes. Nights start only from the CLI (`npm run run-night`); the app watches, stops and exports them. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
-- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's branches every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
+- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's experiment every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/nights`, `GET /api/nights/:id` | Night summaries from `runs/*/nights/*` |
-| `GET /api/nights/:id/live` | Summary plus the current round's branches and the exportable experiments |
+| `GET /api/nights/:id/live` | Summary plus the current round's experiment and the exportable experiments |
 | `GET /api/nights/:id/report` | The night's report data as JSON (`ReportData`), which the app renders |
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
 | `GET /api/nights/:id/export/:exp?format=repo\|source\|bundle` | Download an experiment: a git repo `.tar.gz` (default), the tree only, or a git bundle |
@@ -245,12 +242,9 @@ standard_metrics:
   min_efficiency_gain: 0.10          # relative cut a change needs
 ```
 
-An optimized metric (lower is better) changes the mechanical keep rule in two places, and the reviewer gets the same guidance. Gates you set on any metric apply either way.
+An optimized metric (lower is better) is named to the coder and the reviewer: an experiment that keeps the score and cuts one by more than `min_efficiency_gain` is worth keeping. The reviewer decides; the mechanical rule reads the primary metric alone. Gates you set on any metric apply either way.
 
-- **Tie-break.** Among branches tied on the primary metric that gain on it, the cheaper, then faster one is kept.
-- **Efficiency keep.** When no branch gains on the primary, a branch is kept if its primary stays at both the parent and the night's best kept score, it cuts an optimized metric by more than `min_efficiency_gain × parent`, and it raises no other optimized metric by as much.
-
-Latency is compared only between evals that ran on the same evaluator instance. The coder and reviewer prompts name the optimized metrics, and the hypothesis log shows their change next to the primary's. A metric that is not optimized stays out of the prompts unless a gate names it.
+The coder and reviewer prompts name the optimized metrics, and the hypothesis log shows their change next to the primary's. A metric that is not optimized stays out of the prompts unless a gate names it.
 
 #### Metering proxy
 
@@ -304,7 +298,7 @@ npm run run-night -- --config configs/graphrag-smoke.yaml
 Each night rewrites `report.html` next to `results.jsonl` after every round. It is one self-contained file in the Decoding AI design system and opens offline. It covers every night in the results file:
 
 - **All Nights:** stop reason, rounds, kept accuracy, test, spend and wall time per night.
-- **How the Night Converged:** every branch's score per round, the kept step line, the threshold, and the final test score. Click a point to select that experiment.
+- **How the Night Converged:** each experiment's score per round, the kept step line, the threshold, and the final test score. Click a point to select that experiment.
 - **Metric Families:** a heatmap of the share of items wrong per family, along the kept lineage or across all experiments, with ▲/▼ where a kept commit moved a family.
 - **Experiments:** every experiment grouped by round, with its hypothesis, score, change from its parent, keep or revert, and cost. The extra evaluations and the reviewer's feedback each round follow.
 - **Detail and export:** the selected experiment's metrics and diff against its parent, and an export panel. The night's best kept commit is selected by default.
@@ -361,7 +355,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
   - `program_usd` is 0 and `allowed_models` is unused.
 - **Scenario directory:** a config names `scenario: scenarios/<name>`; its `scenario.yaml` holds the image, the bundle command and the stage commands ([docs/scenario-contract.md](docs/scenario-contract.md)).
 - **Fixed splits:** every scenario has fixed train/dev/test in `gold/splits.json`. Dev is scored every round, test once at the end. Only train reaches a coder (the bundle's `train/examples.jsonl`).
-- **Extra row fields:** `kind` (experiment | rescore | noise | test), `eval_id` (a unique row key) and `night_id`.
+- **Extra row fields:** `kind` (experiment | test), `eval_id` (a unique row key) and `night_id`.
   - Extra eval rows use `decision: keep` when the eval succeeded and `error` when it failed.
 - **Pi's base prompt** includes a `<docs>` block pointing at Pi's own docs on the host. Nothing from AGENTS.md, skills, extensions or `~/.pi` is loaded.
 
@@ -390,7 +384,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 
 | Check | Config change | Result |
 |---|---|---|
-| Thresholds stop | `datenorm-smoke` with threshold 1.0 | Round 1 → re-score → test, `stop_reason: thresholds` |
+| Thresholds stop | `datenorm-smoke` with threshold 1.0 | Round 1 → test, `stop_reason: thresholds` |
 | `max_rounds` + worker crash | `datenorm-smoke`, worker `kill -9` in round 2 | Steps resumed the Pi sessions on the same sandboxes; round 2 → test, `stop_reason: max_rounds` |
 | `$` cap | `budget_usd {experiment: 0.003, night: 0.02}` | Pi aborted per experiment; `stop_reason: budget` after round 1 |
 | Deadline | `deadline: 30s`, threshold 1.01 | `stop_reason: deadline` after round 1 |

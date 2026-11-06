@@ -11,7 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ccInngest } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
-import { type NightConfig, parallelWidth } from "./config";
+import type { NightConfig } from "./config";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
 import { nightPaths } from "./paths";
@@ -100,19 +100,19 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   };
 }
 
-/** Per branch of the current round: model, coding / waiting / evaluated, elapsed, spend. */
+/** The current round's experiment: model, coding / waiting / evaluated, elapsed, spend. */
 function live(n: ReturnType<typeof findNight>) {
   const cfg = n.night.config;
   const s = summary(n);
   const rows = readRows(cfg.results_path).filter((r) => r.night_id === n.night.night_id);
   const running = s.round > 0 && (s.status === "running" || s.status === "paused");
-  const branches = (running ? cfg.models.slice(0, parallelWidth(cfg, s.round)) : []).map((model, b) => {
-    const expId = `${n.night.night_id}-r${s.round}-e${b}`;
+  const branches = (running ? [cfg.model] : []).map((model) => {
+    const expId = `${n.night.night_id}-r${s.round}-e0`;
     const state = readJson<CodeState>(join(n.dir, "exps", expId, "code-state.json"));
     const row = rows.find((r) => r.exp_id === expId && r.kind === "experiment");
     const phase = row ? "evaluated" : !state ? "starting" : state.finishedAt ? "waiting for eval" : "coding";
     return {
-      branch: b, exp_id: expId, model, phase,
+      exp_id: expId, model, phase,
       elapsed_s: state ? Math.round(((state.finishedAt ?? Date.now()) - state.startedAt) / 1000) : 0,
       coder_usd: state?.coderUsd ?? 0, dev_usd: state?.devUsd ?? 0, tokens: state?.tokens ?? 0,
       stop: state?.stop ?? null, score: row?.metrics[cfg.primary_metric] ?? null, decision: row?.decision ?? null,

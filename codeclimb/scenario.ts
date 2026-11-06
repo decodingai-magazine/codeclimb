@@ -40,8 +40,6 @@ export interface Scenario {
   headline: Record<string, number | "ci95">;
   /** Regexes of the metrics the reviewer reads to explain the headlines; they never decide a keep. */
   diagnostics?: string[];
-  /** `shared`: a round's candidates run in turn in one evaluator, so latency compares. `per_candidate`: one sandbox each, in parallel. */
-  eval_sandboxes: "shared" | "per_candidate";
   /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
   protocol: string[];
   /** The image published to the Inngest workspace, for scenarios that need more than its base image. */
@@ -99,13 +97,11 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
   const diagnostics = (raw.diagnostics ?? []) as unknown[];
   if (!Array.isArray(diagnostics) || !diagnostics.every((d) => typeof d === "string")) throw new Error(`${where}: diagnostics must list regexes`);
   for (const d of diagnostics as string[]) new RegExp(d); // a bad pattern fails here, not in a review
-  const evalSandboxes = raw.eval_sandboxes ?? "shared";
-  if (evalSandboxes !== "shared" && evalSandboxes !== "per_candidate") throw new Error(`${where}: eval_sandboxes must be shared or per_candidate`);
   const protocol = (raw.protocol ?? []) as unknown[];
   if (!Array.isArray(protocol) || !protocol.every((p) => typeof p === "string")) throw new Error(`${where}: protocol must list files`);
   return {
     name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
-    headline: headline as Scenario["headline"], eval_sandboxes: evalSandboxes, protocol: protocol as string[],
+    headline: headline as Scenario["headline"], protocol: protocol as string[],
     ...(diagnostics.length ? { diagnostics: diagnostics as string[] } : {}),
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
     ...(raw.scan === undefined ? {} : { scan: str(raw, "scan", where) }),

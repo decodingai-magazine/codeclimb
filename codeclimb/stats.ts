@@ -15,11 +15,6 @@ export function beatsParent(primary: number, parentScore: number, minGain: numbe
   return primary - parentScore >= minGain - 1e-12;
 }
 
-/** A lower-is-better metric dropped from `ref` to `cand` by more than `minRel` × `ref`. */
-export function cutsMetric(cand: number, ref: number, minRel: number): boolean {
-  return ref - cand > minRel * ref + 1e-12;
-}
-
 const emptyStage = (m: string) => `${m.replace(/\.?output_bytes$/, "") || "the run"} wrote no output`;
 
 /** The stages that wrote nothing: what still stops a branch when there is no parent's run to compare with. */
@@ -29,7 +24,7 @@ export function emptyStages(cand: Metrics): string[] {
 
 /**
  * Why a branch may not be kept, whatever its other scores: a headline metric fell further below the
- * parent's run than its margin (or vanished), or a stage that had output now has none.
+ * parent's scores than its margin (or vanished), or a stage that had output now has none.
  */
 export function guardrailFailures(cand: Metrics, parent: Metrics, headline: Record<string, number | "ci95">): string[] {
   const failures: string[] = [];

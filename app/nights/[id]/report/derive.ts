@@ -6,14 +6,13 @@ import type { ResultRow } from "../../../../codeclimb/results";
 export type Row = ResultRow;
 export type LineageStep = { round: number; exp: Row | null; keptThisRound: boolean };
 
-export const branchOf = (id: string) => Number(/-e(\d+)$/.exec(id)?.[1] ?? 0);
 export const shortId = (id: string, night: string) => id.replace(`${night}-`, "");
 
 export function derive(night: ReportNight, primary: string) {
   const rows = night.rows;
   const exps = rows
     .filter((r) => r.kind === "experiment")
-    .sort((a, b) => a.round - b.round || branchOf(a.exp_id) - branchOf(b.exp_id));
+    .sort((a, b) => a.round - b.round);
   const byId = new Map(exps.map((e) => [e.exp_id, e]));
   const rounds = exps.reduce((m, e) => Math.max(m, e.round), 0);
   const lineage: LineageStep[] = [];

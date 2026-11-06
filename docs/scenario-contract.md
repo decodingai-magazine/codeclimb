@@ -20,7 +20,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 | Q3 | The dataset's evaluators run unmodified on the host. On the host `<stage>.py inputs --split dev` builds the stage input; the eval sandbox gets the input, a root holding only `corpus/` and, for retrieval, the gold graph; it runs the agent's stage command; `<stage>.py score` runs on the host. Evaluators run through `uv` with a scenario-local `pyproject`. pulse's `_normalize` is vendored into `scripts/`. |
 | Q4 | Coder sandboxes get the agent bundle from `scripts/export_agent.py` at `/spec`: `spec/agent/`, the train articles, train's gold graph, train examples and inputs per stage. Built at night start; the night fails if its leak check fails. Few-shot examples may come from train only. |
 | Q5 | The reviewer gets the full dev report, per-item errors included (`--details`). Coders get guidance through the reviewer only. Test is never detailed. |
-| Q6 | The reviewer picks the keep (one branch or none, with a reason) among branches that pass mechanical guardrails: no error, no empty predictions, `gates`, and no hard regression (Q19). It reads each headline metric equally, against the kept commit's own repeated dev runs. |
+| Q6 | One experiment per round. The reviewer keeps or reverts it, with a reason, if it passes mechanical guardrails: no error, no empty predictions, `gates`, and no hard regression (Q19). It reads each headline metric equally, against the checkpoint's stored dev scores. It also reviews what it can't keep: its feedback goes to the next round, which restarts from the checkpoint. |
 | Q7 | `thresholds` become floors on named headline metrics across stages (`extraction.mention_f1: 0.8`). A night stops when the kept commit's dev score passes all of them. `plateau`, `max_rounds`, `deadline`, `budget`, `tokens` stay. The 5-run noise measurement is removed; `ci95` and raw counts replace σ. |
 | Q8, Q11 | The program calls models through the metering proxy, which forwards to OpenRouter directly (not through Pi), passing `response_format`, `seed` and embeddings through. The key stays on the host; every call is metered and capped by `allowed_models` and `budget_usd.eval` (2). `timeouts.eval_min`: 30. |
 | Q9, Q22 | After each experiment, before evaluation: a few-shot manifest (`fewshot.json`, train `doc_uri`s and query ids) must name train items only, and the repo must contain no dev/test `doc_uri` or query id. Either failure marks the branch `error`. Dev-only entity names found in the repo are reported to the reviewer, not failed. |
@@ -31,8 +31,8 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 | Q15 | The night page shows a per-stage headline table (one column per headline metric with its `ci95`), a retrieval kind × metric heatmap, a convergence chart with a metric selector, and one test KPI per stage. |
 | Q17 | No sync with scrabble. |
 | Q19 | Hard-regression margins per headline metric, in `scenario.yaml`: extraction F1s 0.02, graph B-cubed recall 0.02, graph B-cubed precision 0 (any drop fails), retrieval its own `ci95`. |
-| Q20 | One evaluation sandbox per candidate, in parallel (Inngest caps a sandbox at 50 min; graphrag has no latency headline). |
-| Q21 | The parent is re-scored on dev every round, so "below the parent" compares runs from the same round. |
+| Q20 | One evaluation sandbox per evaluation (Inngest caps a sandbox at 50 min). |
+| Q21 | The checkpoint is not re-run: "below the parent" compares with the scores of its own evaluation, which saves one dev evaluation per round. Margins are the only protection against a lucky run. |
 | Q23 | Accepted risk: the full gold graph (test included) enters the eval sandbox for retrieval, which has open egress on Inngest. It never reaches a coder or the reviewer. |
 
 ## Facts behind the picks
@@ -42,7 +42,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 
 ## Repository check
 
-`check` in `scenario.yaml` is an optional host command. After a branch commits, `{repo}` holds its files and the command writes `{"errors": [], "notes": []}` to `{report}`. Errors keep the branch from being evaluated (its row is `error`, and the reviewer sees why); notes go to the reviewer. graphrag's `scripts/check_repo.py` implements Q9/Q22. It finds copied ids, not paraphrases or encoded ones: the reviewer still reads the diff.
+`check` in `scenario.yaml` is an optional host command. After an experiment commits, `{repo}` holds its files and the command writes `{"errors": [], "notes": []}` to `{report}`. Errors keep the branch from being evaluated (its row is `error`, and the reviewer sees why); notes go to the reviewer. graphrag's `scripts/check_repo.py` implements Q9/Q22. It finds copied ids, not paraphrases or encoded ones: the reviewer still reads the diff.
 
 ## Text scan
 

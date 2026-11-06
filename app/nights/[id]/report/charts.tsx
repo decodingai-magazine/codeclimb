@@ -4,7 +4,7 @@
 // per-family heatmap of the share of items wrong. Ported from codeclimb/report/client.js.
 import { useRef, useState } from "react";
 import { f3, signed } from "../../../worker";
-import { branchOf, type Derived, families, niceTicks, type Row, shortId } from "./derive";
+import { type Derived, families, niceTicks, type Row, shortId } from "./derive";
 
 type MarkKind = "keep" | "revert" | "error" | "test" | "line" | "thr";
 
@@ -36,11 +36,11 @@ function LegendItem({ kind, label }: { kind: MarkKind; label: string }) {
   );
 }
 
-export function DecisionTag({ decision, reason }: { decision: Row["decision"]; reason?: Row["keep_reason"] }) {
+export function DecisionTag({ decision }: { decision: Row["decision"] }) {
   return (
     <span className={`dec ${decision}`}>
       <svg viewBox="0 0 12 12"><Marker kind={decision} x={6} y={6} r={5} /></svg>
-      {decision === "keep" && reason === "efficiency" ? "keep · cheaper/faster" : decision}
+      {decision}
     </span>
   );
 }
@@ -66,10 +66,9 @@ function Tooltip({ tip, width }: { tip: Tip | null; width: number }) {
 
 type Mark = { x: number; y: number; e: Row; kind: "keep" | "revert" | "error" | "test" };
 
-export function ConvergenceChart({ nightId, v, branches, primary, selected, onSelect }: {
+export function ConvergenceChart({ nightId, v, primary, selected, onSelect }: {
   nightId: string;
   v: Derived;
-  branches: number;
   primary: string;
   selected: string | null;
   onSelect: (id: string) => void;
@@ -82,7 +81,6 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
   const hasFinal = !!v.lastTest;
   const step = pw / Math.max(1, v.rounds + (hasFinal ? 1 : 0));
   const cx = (r: number) => m.l + step * (r - 0.5);
-  const off = Math.min(14, step / (branches + 1));
   const vals: number[] = [];
   for (const e of v.exps) if (e.decision !== "error" && v.score(e) != null) vals.push(v.score(e)!);
   for (const x of [v.threshold, v.score(v.lastTest)]) if (x != null) vals.push(x);
@@ -110,7 +108,7 @@ export function ConvergenceChart({ nightId, v, branches, primary, selected, onSe
   }
 
   const marks: Mark[] = v.exps.map((e) => ({
-    x: cx(e.round) + (branchOf(e.exp_id) - (branches - 1) / 2) * off,
+    x: cx(e.round),
     y: e.decision === "error" || v.score(e) == null ? yBase - 8 : y(v.score(e)!),
     e,
     kind: e.decision,
@@ -259,7 +257,7 @@ function heatColumns(nightId: string, v: Derived, mode: "lineage" | "all"): Heat
   for (const l of v.lineage) {
     if (l.exp && !seen.has(l.exp.exp_id)) {
       seen.add(l.exp.exp_id);
-      cols.push({ key: l.exp.exp_id, label: `r${l.round}`, sub: `e${branchOf(l.exp.exp_id)}`, row: l.exp });
+      cols.push({ key: l.exp.exp_id, label: `r${l.round}`, sub: "", row: l.exp });
     }
   }
   if (v.lastTest) cols.push({ key: "test", label: "test", sub: "", row: v.lastTest, link: v.lastTest.exp_id });
