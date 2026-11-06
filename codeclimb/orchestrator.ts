@@ -348,6 +348,8 @@ export async function reviewRound(args: {
   parentExpId: string;
   parentScore: number;
   parentMetrics: Metrics | null;
+  /** This round's run of the parent, not yet in the results file. */
+  parentRun: Metrics | null;
   summaries: RoundDecision["summaries"];
   /** The branches it may keep, and what the mechanical rule would keep. */
   candidates: string[];
@@ -372,6 +374,10 @@ export async function reviewRound(args: {
     gates: args.cfg.gates,
     parentScore: args.parentScore,
     parentMetrics: args.parentMetrics,
+    parentRuns: [
+      ...readRows(args.cfg.results_path).filter((r) => r.night_id === args.nightId && r.exp_id === args.parentExpId && r.split === "dev" && r.decision !== "error").map((r) => r.metrics),
+      ...(args.parentRun ? [args.parentRun] : []),
+    ],
     objectives: efficiencyMetrics(args.cfg),
     minEfficiencyGain: args.cfg.standard_metrics.min_efficiency_gain,
     results,

@@ -6,7 +6,7 @@ import { coderPrompt, parseApproach } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, parallelWidth, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { applyReview, checkStop, decideRound, type Kept, rotate } from "./orchestrator";
 import { validateRow } from "./results";
-import { parseReview } from "./reviewer";
+import { parseReview, reviewerPrompt } from "./reviewer";
 import { flattenReport, parseScenario, readProtocol } from "./scenario";
 import { beatsParent, guardrailFailures, passesGates, passesThresholds } from "./stats";
 
@@ -255,6 +255,25 @@ test("efficiency: tie-break, efficiency keep and its guards", () => {
   // A primary drop is never an efficiency keep, however fast.
   assert.equal(round([branch(1, ev(0.89, 0.001, 0.1))]).keep, null);
   for (const r of eff.rows) assert.deepEqual(validateRow(r), []);
+});
+
+test("the reviewer reads a branch against the kept commit's repeated runs", () => {
+  const input = {
+    model: "m", spec: "s", round: 3, branches: 1, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7 },
+    objectives: [], minEfficiencyGain: 0.1, results: [], log: [], candidates: ["b"], mechanicalKeep: null, headline: ["e.f1", "r.x.mean", "gone"], protocol: "",
+  };
+  const prompt = reviewerPrompt({ ...input, parentRuns: [{ "e.f1": 0.74, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }, { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 }] });
+  assert.match(prompt, /- e\.f1: 0\.7400, 0\.7000 \(spread 0\.0400\)/);
+  assert.match(prompt, /- r\.x\.mean: 0\.5000, 0\.5000 \(spread 0\), ci95 ±0\.1000/);
+  assert.doesNotMatch(prompt, /- gone/);
+  assert.match(prompt, /headline metrics count equally: e\.f1 only names/);
+  assert.doesNotMatch(reviewerPrompt({ ...input, parentRuns: [] }), /## Noise/);
+  const branch = (metrics: Record<string, number>) => ({ expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics, guardrails: [], notes: [], diff: "", details: "" });
+  const runs = [{ "e.f1": 0.74 }, { "e.f1": 0.7 }]; // spread 0.04: anything in 0.66-0.78 is noise
+  assert.match(reviewerPrompt({ ...input, parentRuns: runs, results: [branch({ "e.f1": 0.77 })] }), /Moved past noise: none/);
+  assert.match(reviewerPrompt({ ...input, parentRuns: runs, results: [branch({ "e.f1": 0.79 })] }), /Moved past noise: e\.f1=0\.7900 \(above 0\.7000–0\.7400\)/);
+  assert.match(reviewerPrompt({ ...input, parentRuns: runs, results: [branch({ "e.f1": 0.6 })] }), /Moved past noise: e\.f1=0\.6000 \(below/);
+  assert.doesNotMatch(reviewerPrompt({ ...input, headline: [], parentRuns: [] }), /count equally/);
 });
 
 test("the reviewer's keep replaces the mechanical one, among candidates only", () => {

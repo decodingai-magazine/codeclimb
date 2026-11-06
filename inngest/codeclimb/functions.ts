@@ -226,7 +226,8 @@ export const runNight = ccInngest.createFunction(
         try {
           const reviewed = await step.run(`r${round}-review`, () =>
             reviewRound({
-              cfg, nightId, round, parentExpId: parent.expId, parentScore: kept.score, parentMetrics: kept.metrics,
+              cfg, nightId, round, parentExpId: parent.expId, parentRun: mechanical.parentRun,
+              parentScore: mechanical.parentRun?.[cfg.primary_metric] ?? kept.score, parentMetrics: mechanical.parentRun ?? kept.metrics,
               summaries: mechanical.summaries, candidates: mechanical.candidates.map((c) => c.expId),
               mechanicalKeep: mechanical.keep?.expId ?? null, log: [...log], branches: nextWidth,
             }),
@@ -258,7 +259,7 @@ export const runNight = ccInngest.createFunction(
             typeof s.metrics[m] === "number" && typeof decision.parentRun?.[m] === "number" ? [[m, s.metrics[m] - decision.parentRun[m]]] : [],
           ),
         );
-        log.push({ round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score, deltas, decision: s.decision });
+        log.push({ round, hypothesis: s.hypothesis, deltaPrimary: s.primary - (decision.parentRun?.[cfg.primary_metric] ?? parent.score), deltas, decision: s.decision });
       }
       feedback = review.feedback;
       hypotheses = review.hypotheses;
