@@ -52,10 +52,23 @@ export interface DecisionResult {
   usage: CallUsage;
 }
 
+export interface RerankRequest {
+  query: string;
+  documents: string[];
+  top_n?: number;
+}
+
+export interface RerankResult {
+  /** Best first; `index` points into the request's documents. */
+  results: { index: number; relevance_score: number }[];
+  usage: CallUsage;
+}
+
 export interface MeterBackends {
   chat(req: ChatRequest, signal: AbortSignal): Promise<ChatResult>;
   embed(model: string, input: string[], signal: AbortSignal): Promise<EmbedResult>;
   decide(model: string, request: Record<string, unknown>, signal: AbortSignal): Promise<DecisionResult>;
+  rerank(model: string, request: RerankRequest, signal: AbortSignal): Promise<RerankResult>;
 }
 
 /** An upstream failure. `usage` is what the failed call still cost. */
@@ -69,7 +82,7 @@ export class BackendError extends Error {
 }
 
 export interface MeterCall {
-  kind: "chat" | "embeddings" | "decisions";
+  kind: "chat" | "embeddings" | "decisions" | "rerank";
   model: string;
   op: string;
   ok: boolean;
@@ -222,7 +235,7 @@ export class MeterProxy {
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       const path = (req.url ?? "").split("?")[0].replace(/\/+$/, "");
-      const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/decisions": "decisions", "/v1/_op": "op" }[path];
+      const route = { "/v1/chat/completions": "chat", "/v1/embeddings": "embeddings", "/v1/decisions": "decisions", "/v1/rerank": "rerank", "/v1/_op": "op" }[path];
       if (!route) throw new HttpError(404, `unknown endpoint ${path}`, "not_found_error");
       if (req.method !== "POST") throw new HttpError(405, "use POST");
       const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
@@ -239,6 +252,7 @@ export class MeterProxy {
       if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `eval budget of $${ledger.capUsd} is spent`, "insufficient_quota");
       if (route === "chat") return send(res, 200, await this.chat(ledger, parseChat(body)));
       if (route === "decisions") return send(res, 200, await this.decide(ledger, model, body));
+      if (route === "rerank") return send(res, 200, await this.rerank(ledger, model, body));
       return send(res, 200, await this.embed(ledger, model, body.input));
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError(500, (e as Error).message, "server_error");
@@ -300,6 +314,17 @@ export class MeterProxy {
     const request = Object.fromEntries(DECISION_FIELDS.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
     const out = await this.metered(ledger, "decisions", model, (signal) => this.backends.decide(model, request, signal));
     return { model, answers: out.answers, usage: { input_tokens: out.usage.inputTokens, output_tokens: out.usage.outputTokens } };
+  }
+
+  private async rerank(ledger: Ledger, model: string, body: Record<string, unknown>) {
+    const { query, documents, top_n } = body;
+    if (typeof query !== "string" || !query) throw new HttpError(400, "rerank needs a query");
+    if (!Array.isArray(documents) || !documents.length || !documents.every((d) => typeof d === "string")) {
+      throw new HttpError(400, "documents must be a non-empty array of strings");
+    }
+    const request = { query, documents: documents as string[], ...(typeof top_n === "number" ? { top_n } : {}) };
+    const out = await this.metered(ledger, "rerank", model, (signal) => this.backends.rerank(model, request, signal));
+    return { model, results: out.results, usage: { total_tokens: out.usage.inputTokens } };
   }
 
   private async embed(ledger: Ledger, model: string, input: unknown) {

@@ -38,6 +38,7 @@ export function routedBackends(openRouter: MeterBackends, other: MeterBackends):
     chat: (req, signal) => pick(req.model).chat(req, signal),
     embed: (ref, input, signal) => pick(ref).embed(ref, input, signal),
     decide: (ref, request, signal) => pick(ref).decide(ref, request, signal),
+    rerank: (ref, request, signal) => pick(ref).rerank(ref, request, signal),
   };
 }
 
@@ -87,6 +88,10 @@ export function piBackends(rt: ModelRuntime): MeterBackends {
 
     async decide(ref) {
       throw new BackendError(`${ref}: decisions need an openrouter/ model`);
+    },
+
+    async rerank(ref) {
+      throw new BackendError(`${ref}: reranking needs an openrouter/ model`);
     },
 
     async embed(ref, input, signal) {

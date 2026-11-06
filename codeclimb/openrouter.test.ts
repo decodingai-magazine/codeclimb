@@ -20,6 +20,9 @@ function answer(req: IncomingMessage, body: Record<string, any>) {
   if (req.url?.endsWith("/embeddings")) {
     return reply(200, { data: [{ index: 1, embedding: [2] }, { index: 0, embedding: [1] }], usage: { prompt_tokens: 2, cost: 0.0001 } });
   }
+  if (req.url?.endsWith("/v1/rerank")) {
+    return reply(200, { results: [{ index: 1, relevance_score: 0.9, document: { text: "b" } }], usage: { total_tokens: 5, cost: 0.0002 } });
+  }
   if (req.url?.endsWith("/alpha/decisions")) {
     return reply(200, { answers: { same: { type: "noul", noul: 0.9 } }, usage: { input_tokens: 40, output_tokens: 5, cost: 0.002 } });
   }
@@ -91,6 +94,12 @@ test("openrouter decisions: alpha endpoint, input/output tokens, reported cost",
   assert.equal(seen.at(-1)!.body.model, "t/jev");
 });
 
+test("openrouter rerank: results without the documents, reported cost", async () => {
+  const out = await or.rerank("openrouter/q/r", { query: "q", documents: ["a", "b"], top_n: 1 }, signal);
+  assert.deepEqual(out, { results: [{ index: 1, relevance_score: 0.9 }], usage: { inputTokens: 5, outputTokens: 0, costUsd: 0.0002 } });
+  assert.match(seen.at(-1)!.url, /\/api\/v1\/rerank$/);
+});
+
 test("model check: the endpoints API decides, and a missing key is named", async () => {
   await checkOpenRouterModels(["openrouter/ok/model", "p/not-openrouter"], base);
   await assert.rejects(checkOpenRouterModels(["openrouter/ok/model", "openrouter/empty/model", "openrouter/gone/model"], base), (e: Error) => {
@@ -110,6 +119,7 @@ test("the proxy routes openrouter models upstream and forwards response_format",
     chat: async () => ({ text: "pi", finishReason: "stop", usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } }),
     embed: async () => ({ vectors: [], usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } }),
     decide: async () => ({ answers: {}, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } }),
+    rerank: async () => ({ results: [{ index: 0, relevance_score: 1 }], usage: { inputTokens: 3, outputTokens: 0, costUsd: 0.001 } }),
   };
   const proxy = new MeterProxy(routedBackends(or, other));
   const port = await proxy.listen();

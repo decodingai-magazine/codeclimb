@@ -25,7 +25,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 | Q8, Q11 | The program calls models through the metering proxy, which forwards to OpenRouter directly (not through Pi), passing `response_format`, `seed` and embeddings through. The key stays on the host; every call is metered and capped by `allowed_models` and `budget_usd.eval` (2). `timeouts.eval_min`: 30. |
 | Q9, Q22 | After each experiment, before evaluation: a few-shot manifest (`fewshot.json`, train `doc_uri`s and query ids) must name train items only, and the repo must contain no dev/test `doc_uri` or query id. Either failure marks the branch `error`. Dev-only entity names found in the repo are reported to the reviewer, not failed. |
 | Q10 | Every scenario has `corpus/`, `gold/` (with `splits.json`), `evaluators/`, `scripts/`, `spec/agent/`, `spec/evaluator/` and a `scenario.yaml` (stages and the agent's command per stage, the `inputs`/`score`/`summary` commands, the bundle export command, headline metrics with margins, Python dependencies). datenorm and capitals move to this layout; the old one is removed. |
-| Q12, Q16 | `allowed_models` is a flat list; the coder decides which model serves which purpose: `openrouter/deepseek/deepseek-v4.1-flash`, `openrouter/typesafe/jev-1.14`, `openrouter/mongodb/voyage-4-lite`, `openrouter/qwen/qwen3-embedding-8b`. |
+| Q12, Q16 | `allowed_models` is a flat list; the coder decides which model serves which purpose: `openrouter/deepseek/deepseek-v4.1-flash`, `openrouter/typesafe/jev-1.14`, `openrouter/qwen/qwen3-embedding-8b`, `openrouter/qwen/qwen3-reranker-8b`. |
 | Q13 | The reviewer reads `spec/evaluator/evaluate.md` and the README's Scoring section as its protocol. |
 | Q14 | The baseline image installs the scenario's fixed `requirements.txt`; no `pip install` at eval time. The starter repo is a stub CLI, `python -m graphrag <stage> --root --inputs --out [--graph]`, writing empty predictions. |
 | Q15 | The night page shows a per-stage headline table (one column per headline metric with its `ci95`), a retrieval kind × metric heatmap, a convergence chart with a metric selector, and one test KPI per stage. |
@@ -38,7 +38,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 ## Facts behind the picks
 
 - `typesafe/jev-1.14`: $0.042/M in, $0/M out, 262k context. A decisions model: chat refuses it, and it takes `{state, questions}` on OpenRouter's alpha `/api/alpha/decisions` endpoint, whose shape may change. The proxy serves it at `POST /v1/decisions`. Absent from `/api/v1/models`; only `/api/v1/models/typesafe/jev-1.14/endpoints` lists it, so the model check uses the endpoints API. Cost comes from each response's `usage.cost`.
-- The metering proxy has no rerank route, so ranking uses embeddings plus a rerank by the decisions or chat model. OpenRouter does list rerank models.
+- Ranking uses embeddings plus `openrouter/qwen/qwen3-reranker-8b`, through the proxy's `POST /v1/rerank`.
 
 ## Repository check
 

@@ -15,6 +15,8 @@ interface Usage {
   completion_tokens?: number;
   input_tokens?: number;
   output_tokens?: number;
+  /** Rerank names only this one. */
+  total_tokens?: number;
   cost?: number;
 }
 
@@ -22,6 +24,7 @@ interface Reply {
   choices?: { finish_reason?: string; message?: { content?: string | null } }[];
   data?: { index: number; embedding: number[] }[];
   answers?: Record<string, unknown>;
+  results?: { index: number; relevance_score: number }[];
   model?: string;
   usage?: Usage;
   error?: { message?: string };
@@ -30,7 +33,7 @@ interface Reply {
 function usageOf(u: Usage | undefined): CallUsage {
   // Without a cost the ledger can't enforce its cap, so the call counts as failed.
   if (typeof u?.cost !== "number") throw new BackendError("OpenRouter's response has no usage.cost");
-  return { inputTokens: u.prompt_tokens ?? u.input_tokens ?? 0, outputTokens: u.completion_tokens ?? u.output_tokens ?? 0, costUsd: u.cost };
+  return { inputTokens: u.prompt_tokens ?? u.input_tokens ?? u.total_tokens ?? 0, outputTokens: u.completion_tokens ?? u.output_tokens ?? 0, costUsd: u.cost };
 }
 
 function requireKey(): string {
@@ -90,6 +93,13 @@ export function openRouterBackends(baseUrl = BASE_URL): MeterBackends {
       const usage = usageOf(reply.usage);
       if (!reply.answers) throw new BackendError("OpenRouter's response has no answers", usage);
       return { answers: reply.answers, usage };
+    },
+
+    async rerank(ref, request, signal) {
+      const reply = await post(baseUrl, "/v1/rerank", { ...request, model: ref.slice(OPENROUTER_PREFIX.length) }, signal);
+      const usage = usageOf(reply.usage);
+      if (!Array.isArray(reply.results)) throw new BackendError("OpenRouter's response has no results", usage);
+      return { results: reply.results.map(({ index, relevance_score }) => ({ index, relevance_score })), usage };
     },
   };
 }

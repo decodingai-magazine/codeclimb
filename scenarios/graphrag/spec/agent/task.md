@@ -172,15 +172,13 @@ costs time and money, so try a change on train and keep what raises a metric the
 
 - **Chat model: read text.** Use it to extract rows, with few-shot examples from train. A second
   pass that hands it the article and its first rows, and asks only what's missing, targets recall.
-- **Embedding models: find candidates cheaply.** Embed names with their descriptions, edges as short
-  sentences, and passages, then compare by cosine similarity. Use one model for both sides of a
-  comparison, and send texts in batches. The two models differ in size and price, so compare them on
-  train rather than assuming either is better.
+- **Embedding model: find candidates cheaply.** Embed names with their descriptions, edges as short
+  sentences, and passages, then compare by cosine similarity. Send texts in batches.
 - **Decision model: answer yes or no with a probability.** Use it where a threshold is the design:
   one question per candidate, and several questions in one call. Set the threshold on train.
-- **Reranking: no reranking model is available.** Take a short candidate list, about 20, from BM25
-  and embeddings, score each candidate against the query with the decision model or the chat model,
-  and sort by that score. Scoring the whole graph is too slow and too costly.
+- **Reranking model: order a short list.** Take about 20 candidates from BM25 and embeddings, write
+  each as text, and rerank them against the query. It orders candidates but doesn't say which to
+  keep: use the decision model for a yes or no. Reranking the whole graph is too slow and too costly.
 
 Per stage:
 

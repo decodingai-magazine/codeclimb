@@ -11,7 +11,12 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   past the cap fails.
   - `POST /chat/completions`: text messages only, no streaming or tools; `response_format`, `seed`,
     `top_p`, `stop` and `reasoning` pass through, and a model that doesn't support one ignores it.
-  - `POST /embeddings`: `openrouter/mongodb/voyage-4-lite` returns 1024 dimensions, `openrouter/qwen/qwen3-embedding-8b` returns 4096.
+  - `POST /embeddings`: `openrouter/qwen/qwen3-embedding-8b` returns 4096 dimensions.
+  - `POST /rerank`: `openrouter/qwen/qwen3-reranker-8b` takes `{"model", "query", "documents"}`, where
+    `documents` is a list of strings, plus an optional `top_n`. It returns
+    `{"results": [{"index": 0, "relevance_score": 0.05}]}`, best first, where `index` points into
+    `documents`. Scores can be tiny and aren't probabilities: sort by them. The `openai` client has
+    no method for it: call `client.post("/rerank", body=…, cast_to=dict)` or plain HTTP.
   - `POST /decisions`: `openrouter/typesafe/jev-1.14` is a decisions model and refuses chat. It takes
     `{"model", "state", "questions"}`, where `questions` maps a name to
     `{"type": "noul", "instructions": "…", "criteria": {"false": "…", "true": "…"}}`, and returns

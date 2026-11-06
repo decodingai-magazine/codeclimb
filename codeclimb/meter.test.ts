@@ -13,6 +13,9 @@ const backends: MeterBackends = {
   async embed(_model, input) {
     return { vectors: input.map((t) => [t.length, 0]), usage: { inputTokens: input.length * 4, outputTokens: 0, costUsd: 0.0001 } };
   },
+  async rerank(_model, request) {
+    return { results: request.documents.map((_, index) => ({ index, relevance_score: 1 / (index + 1) })), usage: { inputTokens: 9, outputTokens: 0, costUsd: 0.0002 } };
+  },
   async decide() {
     return { answers: {}, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } };
   },
@@ -79,4 +82,15 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
     cost_program_usd: 0.01, cost_query_usd: 0.0121, cost_usd: 0.0221, cost_per_item_usd: 0.005525, model_calls: 4,
   });
   assert.deepEqual(costMetrics([], 10), { cost_usd: 0, cost_per_item_usd: 0, model_calls: 0 });
+});
+
+test("rerank: metered per call, documents required, allowed models only", async () => {
+  const t = proxy.open({ evalId: "e-rerank", allowedModels: ["p/rerank"], capUsd: 1 });
+  const ok = await post("/v1/rerank", { model: "p/rerank", query: "q", documents: ["a", "b"] }, t);
+  assert.deepEqual(ok.body.results, [{ index: 0, relevance_score: 1 }, { index: 1, relevance_score: 0.5 }]);
+  assert.equal((await post("/v1/rerank", { model: "p/rerank", query: "q", documents: [] }, t)).status, 400);
+  assert.equal((await post("/v1/rerank", { model: "p/rerank", documents: ["a"] }, t)).status, 400);
+  assert.equal((await post("/v1/rerank", { model: "p/other", query: "q", documents: ["a"] }, t)).status, 403);
+  const calls = proxy.close(t);
+  assert.deepEqual(calls.map((c) => [c.kind, c.model, c.input_tokens, c.cost_usd]), [["rerank", "p/rerank", 9, 0.0002]]);
 });
