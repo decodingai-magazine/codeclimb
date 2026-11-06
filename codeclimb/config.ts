@@ -49,7 +49,6 @@ export type NightConfig = {
   standard_metrics: StandardMetricsConfig;
   thresholds: Record<string, number>;
   gates: Record<string, number>;
-  min_gain: number;
   /**
    * `eval` caps the program's model calls in one eval (default: `experiment`); `dev` caps the calls the
    * coder's runs of the program make while it develops (default: `eval`). Both need `allowed_models`.
@@ -100,7 +99,6 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     },
     thresholds: req(raw, "thresholds", "object"),
     gates: (raw.gates as Record<string, number> | undefined) ?? {},
-    min_gain: req(raw, "min_gain", "number"),
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
       dev: Number(budget.dev ?? budget.eval ?? budget.experiment),
@@ -116,7 +114,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (cfg.model === cfg.reviewer_model && (raw.reviewer_thinking == null || cfg.coder_thinking === cfg.reviewer_thinking)) {
     throw new Error("config: reviewer_model must differ from the coder's model, or set a different reviewer_thinking (no coder critiques its own work)");
   }
-  for (const k of ["models", "parallel", "spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
+  for (const k of ["models", "parallel", "min_gain", "spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
     if (k in raw) throw new Error(`config: "${k}" is gone; the scenario's scenario.yaml and fixed splits replace it (docs/scenario-contract.md)`);
   }
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");

@@ -113,7 +113,7 @@ A night is a linear loop: one experiment per round, on `model`, each starting fr
    A scenario can name a `check`: a host command that reads the experiment's files before evaluation. An experiment that fails it is not evaluated (graphrag: the few-shot manifest and the dev/test id scan).
 2. **Evaluation on dev.** A `run-evaluator` child clones the commit into its own sandbox. Per stage of `scenario.yaml`, the host writes the dev inputs (`inputs`), the sandbox runs the program on them (`run`), and the host scores the downloaded outputs (`score`). The checkpoint is not run again: its stored dev scores are the reference.
 3. **Guardrails.** An experiment can be kept only if it passes the gates, loses no headline metric of `scenario.yaml` by more than its margin against the checkpoint's scores, and leaves no stage with empty output. While the checkpoint is the starter, which is never run, only a failed run or an empty stage or gate stops it.
-4. **Review.** A reviewer model reads the spec, the scenario's `protocol`, the experiment's metrics and their change from the checkpoint, per-item dev errors where the stage has a `details` command, and the diff. With a scenario `headline`, every headline metric counts equally and `primary_metric` only names the score. It reads no test data. It runs on every experiment, also one the guardrails forbid: it says why it is worse and writes the feedback and one hypothesis for the next round. If the review fails, the mechanical rule decides: keep on a primary gain of at least `min_gain`.
+4. **Review.** A reviewer model reads the spec, the scenario's `protocol`, the experiment's metrics and their change from the checkpoint, per-item dev errors where the stage has a `details` command, and the diff. With a scenario `headline`, every headline metric counts equally and `primary_metric` only names the score. It reads no test data. It runs on every experiment, also one the guardrails forbid: it says why it is worse and writes the feedback and one hypothesis for the next round. If the review fails, the experiment is reverted.
 5. **Keep or revert.** A kept experiment becomes the checkpoint. A reverted one is dropped, and the next round restarts from the same checkpoint with the reviewer's feedback, so it doesn't go down the same path.
 6. **Test.** After any stop, the final checkpoint is scored on test once.
 
@@ -242,7 +242,7 @@ standard_metrics:
   min_efficiency_gain: 0.10          # relative cut a change needs
 ```
 
-An optimized metric (lower is better) is named to the coder and the reviewer: an experiment that keeps the score and cuts one by more than `min_efficiency_gain` is worth keeping. The reviewer decides; the mechanical rule reads the primary metric alone. Gates you set on any metric apply either way.
+An optimized metric (lower is better) is named to the coder and the reviewer: an experiment that keeps the score and cuts one by more than `min_efficiency_gain` is worth keeping. The reviewer decides. Gates you set on any metric apply either way.
 
 The coder and reviewer prompts name the optimized metrics, and the hypothesis log shows their change next to the primary's. A metric that is not optimized stays out of the prompts unless a gate names it.
 
@@ -361,7 +361,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 
 ### Known behaviour worth knowing
 
-- **The starter is scored 0, as the spec says.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). A round-1 commit that changes nothing still clears `min_gain` and gets kept. This happens when every experiment hits its `$` cap early. The alternative is one real eval of the starter at night init.
+- **The starter is scored 0 and never run.** The `datenorm` stub answers `null` for everything, so it really scores 0.125 (the `invalid` family). The reviewer judges the first experiments on their absolute scores, so a commit that changes nothing can be kept only if it reads that one as good enough.
 - **Haiku 5.5 solves `datenorm` in round 1,** scoring 0.98–1.0 on dev. `configs/datenorm.yaml` (threshold 0.99) will usually stop after one round. For a longer climb, use the `datenorm-hard` scenario.
 - **`datenorm-hard` climbs over many rounds.** These nights ran on the old k-fold protocol, before fixed splits. Calibration (1 branch × 1 round) scored 0.736. The full night `hard1` (3 branches, `max_rounds: 6`, threshold 0.95, about 8 min, $0.26) kept a commit in 5 of 6 rounds:
 

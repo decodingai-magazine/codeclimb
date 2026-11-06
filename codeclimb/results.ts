@@ -41,7 +41,6 @@ export interface ResultRow {
   /** Not in the contract: the evaluator incarnation that ran the eval, and the eval's position in it. */
   evaluator_instance?: string;
   /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
-  keep_reason?: "primary" | "reviewer";
   /** Not in the contract: the program's model calls while the coder developed (metered, outside `metrics`). */
   dev_usd?: number;
 }
@@ -91,7 +90,6 @@ export const RESULT_ROW_SCHEMA = {
     eval_id: str,
     night_id: str,
     evaluator_instance: str,
-    keep_reason: { type: "string", enum: ["primary", "reviewer"] },
     dev_usd: num,
   },
 } as const;

@@ -17,7 +17,7 @@ import { writeReport } from "./report/html";
 import { appendRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
-import { beatsParent, emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
+import { emptyStages, guardrailFailures, type Metrics, passesGates } from "./stats";
 
 /** The checkpoint: the commit the next round starts from, with the dev scores of its own evaluation. */
 export interface Kept {
@@ -209,14 +209,14 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
 // A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
 const MAX_DETAILS_CHARS = 200_000;
 
-export type KeepReason = "primary" | "reviewer";
+type Candidate = { expId: string; sha: string; score: number; metrics: Metrics };
 
 export interface RoundDecision {
   row: ResultRow;
-  /** The mechanical keep, which stands when no review came back. */
-  keep: { expId: string; sha: string; score: number; metrics: Metrics; reason: KeepReason } | null;
-  /** What it could be kept as: it passed the gates and guardrails. The reviewer decides; null: it is reverted. */
-  candidate: { expId: string; sha: string; score: number; metrics: Metrics } | null;
+  /** The new checkpoint: only the reviewer sets it (`applyReview`), so with no review the round reverts. */
+  keep: Candidate | null;
+  /** What it could be kept as: it passed the gates and guardrails. Null: it is reverted. */
+  candidate: Candidate | null;
   summary: Omit<BranchSummary, "diff" | "details"> & { metricsPath: string | null };
   spend: number;
 }
@@ -227,11 +227,11 @@ function readCodeState(cfg: NightConfig, nightId: string, expId: string): { code
 }
 
 /**
- * The mechanical pass over a round's one experiment, against the checkpoint's stored dev scores. It is a
+ * The guardrails on a round's one experiment, against the checkpoint's stored dev scores. It is a
  * candidate if it passes the gates and the guardrails: no headline regression past its margin, no stage
- * gone empty. Against the starter, which has no scores, only an empty stage stops it. The reviewer then
- * keeps or reverts a candidate (`applyReview`); when no review comes back the rule is a primary gain of
- * at least min_gain. Anything else is reverted, and the next round starts from the checkpoint again.
+ * gone empty. Against the starter, which has no scores, only an empty stage stops it. Only the reviewer
+ * keeps a candidate (`applyReview`). Anything else is reverted, a failed review included, and the next
+ * round starts from the checkpoint again.
  */
 export function decideRound(args: RowBase & { parent: Kept; experiment: ExperimentOutcome; hypothesis: string | null }): RoundDecision {
   const { cfg, parent, experiment: x } = args;
@@ -255,15 +255,13 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
   const guardrails = !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
   const eligible = evalOk && passesGates(metrics, cfg.gates) && !guardrails.length;
   const candidate = eligible ? { expId: x.expId, sha: x.code.sha!, score: primary, metrics } : null;
-  const keep = candidate && beatsParent(primary, parent.score, cfg.min_gain) ? { ...candidate, reason: "primary" as const } : null;
   const row = baseRow(args, {
     exp_id: x.expId, parent_id: parent.expId, model: x.model, hypothesis: x.code.hypothesis, commit: x.code.sha ?? "",
     eval_id: `${x.expId}-eval`, metrics, coder_usd: x.code.coder_usd, program_usd: ev?.program_usd ?? 0,
     ...(x.code.dev_usd ? { dev_usd: x.code.dev_usd } : {}),
     tokens: x.code.tokens,
     wall_s: Math.round((x.code.t_provision + x.code.t_code + x.code.t_teardown + (ev?.wall_s ?? 0)) * 100) / 100,
-    decision: keep ? "keep" : evalOk ? "revert" : "error",
-    ...(keep ? { keep_reason: keep.reason } : {}),
+    decision: evalOk ? "revert" : "error",
     t_provision: x.code.t_provision + (ev?.t_provision ?? 0), t_code: x.code.t_code, t_eval: ev?.t_eval ?? 0,
     t_teardown: x.code.t_teardown + (ev?.t_teardown ?? 0),
     infra_errors: x.code.infra_errors + (ev?.infra_errors ?? 0) + (x.code.sha && !ev && !failedCheck.length ? 1 : 0),
@@ -273,20 +271,13 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
     expId: x.expId, model: x.model, hypothesis: x.code.hypothesis, decision: row.decision, primary, metrics, guardrails,
     ...(errors.length ? { errors } : {}), notes: x.code.check?.notes ?? [], metricsPath: ev?.metricsPath ?? null,
   };
-  return { row, keep, candidate, summary, spend: rowSpend(row) };
+  return { row, keep: null, candidate, summary, spend: rowSpend(row) };
 }
 
-/** The round with the reviewer's call in place of the mechanical one; it can only keep a candidate. */
+/** The round with the reviewer's keep: it can only keep a candidate. */
 export function applyReview(d: RoundDecision, keep: boolean): RoundDecision {
-  if (!d.candidate) return d;
-  const { keep_reason: _, ...row } = d.row;
-  const decision = keep ? "keep" : "revert";
-  return {
-    ...d,
-    keep: keep ? { ...d.candidate, reason: "reviewer" } : null,
-    row: keep ? { ...row, decision, keep_reason: "reviewer" } : { ...row, decision },
-    summary: { ...d.summary, decision },
-  };
+  if (!keep || !d.candidate) return d;
+  return { ...d, keep: d.candidate, row: { ...d.row, decision: "keep" }, summary: { ...d.summary, decision: "keep" } };
 }
 
 /** `details` as text, at most `maxChars`: past that every item keeps an equal share, so no item crowds out the rest. */
@@ -318,9 +309,8 @@ export async function reviewRound(args: {
   parentScore: number;
   parentMetrics: Metrics | null;
   summary: RoundDecision["summary"];
-  /** Whether the guardrails let it be kept, and what the mechanical rule would do. */
+  /** Whether the guardrails let it be kept. */
   canKeep: boolean;
-  mechanicalKeep: boolean;
   log: HypothesisLogEntry[];
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
@@ -342,7 +332,6 @@ export async function reviewRound(args: {
     result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
     log: args.log,
     canKeep: args.canKeep,
-    mechanicalKeep: args.mechanicalKeep,
     headline: Object.keys(args.cfg.scenario.headline),
     diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),

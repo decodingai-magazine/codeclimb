@@ -59,8 +59,6 @@ export interface ReviewInput {
   log: HypothesisLogEntry[];
   /** Gates and guardrails passed: it may be kept. */
   canKeep: boolean;
-  /** What the mechanical rule would do; a hint, not a verdict. */
-  mechanicalKeep: boolean;
   /** The scenario's headline metrics; when set, these decide the keep and no single metric frames the prompt. */
   headline: string[];
   /** Regexes of the metrics that explain the headlines without deciding the keep. */
@@ -185,7 +183,7 @@ export function reviewerPrompt(input: ReviewInput): string {
   }
   lines.push(
     input.canKeep
-      ? `You may keep it.${headlined ? "" : ` The mechanical rule, which reads ${input.primaryMetric} alone, would ${input.mechanicalKeep ? "keep" : "revert"} it.`}`
+      ? "You may keep it."
       : "It can't be kept: keep must be false. Explain why it is worse so the next round avoids that path.",
   );
   lines.push("Return JSON with keep, keep_reason, feedback and hypothesis.");

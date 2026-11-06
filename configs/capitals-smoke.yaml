@@ -15,7 +15,6 @@ thresholds:
   accuracy: 1.0
 gates:
   schema_violations: 0
-min_gain: 0.01
 budget_usd:
   experiment: 0.5
   night: 2.0

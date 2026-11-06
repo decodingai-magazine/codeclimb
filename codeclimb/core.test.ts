@@ -9,7 +9,7 @@ import { applyReview, checkStop, decideRound, type ExperimentOutcome, type Kept,
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, maskTerms, parseScenario, readProtocol } from "./scenario";
-import { beatsParent, emptyStages, guardrailFailures, passesGates, passesThresholds } from "./stats";
+import { emptyStages, guardrailFailures, passesGates, passesThresholds } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -24,16 +24,10 @@ reviewer_model: p/c
 primary_metric: accuracy
 thresholds: { accuracy: 0.9 }
 gates: { schema_violations: 0 }
-min_gain: 0.02
 budget_usd: { experiment: 1, night: 5 }
 results_path: runs/r.jsonl
 `;
 const cfg = parseConfig(BASE_YAML, ROOT);
-
-test("keep rule: gain >= min_gain", () => {
-  assert.equal(beatsParent(0.52, 0.5, 0.02), true);
-  assert.equal(beatsParent(0.519, 0.5, 0.02), false);
-});
 
 test("guardrails: headline margins, ci95, vanished metrics, a stage gone empty", () => {
   const parent = { "e.f1": 0.8, "g.p": 1, "r.x.mean": 0.5, "r.x.ci95_half": 0.1, "r.y.mean": 0.5, "e.output_bytes": 10, "g.output_bytes": 0 };
@@ -137,14 +131,11 @@ const evaluated = (metrics: Record<string, number>) => ({
 const run = (metrics: Record<string, number>): ExperimentOutcome => ({ ok: true, expId: "n-r1-e0", model: "p/a", code: coded("a"), eval: evaluated(metrics) });
 const round = (parent: Kept, experiment: ExperimentOutcome, c = cfg) => decideRound({ cfg: c, nightId: "n", round: 1, parent, experiment, hypothesis: null });
 
-test("one experiment per round: kept on a primary gain, else reverted to the checkpoint", () => {
+test("one experiment per round: a candidate until the reviewer keeps it, else reverted to the checkpoint", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  const kept = round(parent, run({ accuracy: 0.6 }));
-  assert.deepEqual([kept.keep?.expId, kept.keep?.reason, kept.row.decision, kept.row.parent_id], ["n-r1-e0", "primary", "keep", "n-r0"]);
-  assert.deepEqual(validateRow(kept.row), []);
-
-  const small = round(parentAt(0.59, { accuracy: 0.59 }), run({ accuracy: 0.6 }));
-  assert.deepEqual([small.keep, small.candidate?.expId, small.row.decision], [null, "n-r1-e0", "revert"]); // the reviewer may still keep it
+  const d = round(parent, run({ accuracy: 0.6 }));
+  assert.deepEqual([d.keep, d.candidate?.expId, d.row.decision, d.row.parent_id], [null, "n-r1-e0", "revert", "n-r0"]); // a failed review stays here
+  assert.deepEqual(validateRow(d.row), []);
 
   const gated = round(parent, run({ accuracy: 0.9, schema_violations: 2 }));
   assert.deepEqual([gated.keep, gated.candidate, gated.row.decision], [null, null, "revert"]);
@@ -171,15 +162,14 @@ test("worse than the checkpoint's stored scores: guardrails forbid the keep", ()
   assert.match(worse.summary.guardrails[0], /accuracy fell/);
 });
 
-test("the reviewer's call replaces the mechanical one, and only a candidate can be kept", () => {
+test("only the reviewer keeps, and only a candidate", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  const d = round(parent, run({ accuracy: 0.8 }));
+  const d = round(parent, run({ accuracy: 0.51 }));
   const reverted = applyReview(d, false);
-  assert.deepEqual([reverted.keep, reverted.row.decision, reverted.row.keep_reason, reverted.summary.decision], [null, "revert", undefined, "revert"]);
+  assert.deepEqual([reverted.keep, reverted.row.decision, reverted.summary.decision], [null, "revert", "revert"]);
 
-  const small = round(parentAt(0.79, { accuracy: 0.79 }), run({ accuracy: 0.8 }));
-  const kept = applyReview(small, true);
-  assert.deepEqual([kept.keep?.reason, kept.keep?.sha, kept.row.decision, kept.row.keep_reason], ["reviewer", "a", "keep", "reviewer"]);
+  const kept = applyReview(d, true);
+  assert.deepEqual([kept.keep?.sha, kept.row.decision, kept.summary.decision], ["a", "keep", "keep"]);
   assert.deepEqual(validateRow(kept.row), []);
 
   const worse = round(parent, run({ accuracy: 0.8, schema_violations: 1 }));
@@ -202,7 +192,7 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 
 const REVIEW = {
   model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 3, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 } as Record<string, number> | null,
-  objectives: [], minEfficiencyGain: 0.1, log: [], canKeep: true, mechanicalKeep: false, headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
+  objectives: [], minEfficiencyGain: 0.1, log: [], canKeep: true, headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
   result: { expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics: { "e.f1": 0.7 } as Record<string, number>, guardrails: [] as string[], notes: [], diff: "", details: "" },
 };
 
@@ -225,7 +215,7 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
 
   // With headline metrics nothing frames the round as one number.
   const framed = (headline: string[]) => reviewerPrompt({ ...input, headline, result: { ...input.result, metrics: { "e.f1": 0.7 }, primary: 0.7 } });
-  for (const framing of [/Primary metric/, /e\.f1=0\.7000; metrics/, /mechanical rule/]) {
+  for (const framing of [/Primary metric/, /e\.f1=0\.7000; metrics/]) {
     assert.doesNotMatch(framed(["e.f1"]), framing);
     assert.match(framed([]), framing);
   }

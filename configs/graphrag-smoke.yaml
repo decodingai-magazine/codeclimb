@@ -21,7 +21,6 @@ thresholds:
   graph.b_cubed.precision: 0.98
   graph.b_cubed.recall: 0.98
   retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
-min_gain: 0.02
 budget_usd:
   experiment: 2.0
   night: 20.0

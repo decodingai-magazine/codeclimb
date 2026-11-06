@@ -10,11 +10,6 @@ export function passesThresholds(metrics: Metrics, thresholds: Record<string, nu
   return Object.entries(thresholds).every(([k, v]) => typeof metrics[k] === "number" && metrics[k] >= v);
 }
 
-/** Keep a change only if the primary gains >= min_gain over the parent's score (gates checked separately). */
-export function beatsParent(primary: number, parentScore: number, minGain: number): boolean {
-  return primary - parentScore >= minGain - 1e-12;
-}
-
 const emptyStage = (m: string) => `${m.replace(/\.?output_bytes$/, "") || "the run"} wrote no output`;
 
 /** The stages that wrote nothing: what still stops a branch when there is no parent's run to compare with. */

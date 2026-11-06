@@ -220,34 +220,34 @@ export const runNight = ccInngest.createFunction(
         experiment = { ok: false, expId, model: cfg.model, error: coded.error };
       }
 
-      const mechanical = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis }));
+      const decided = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis }));
 
       // Review, even of a reverted experiment: its feedback is what the next round learns from it. After
       // the last round with nothing to keep there is nothing to ask.
       let review: Omit<ReviewOutput, "keep"> = { keep_reason: "", feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
-      let decision = mechanical;
-      if (round < cfg.max_rounds || mechanical.candidate) {
+      let decision = decided;
+      if (round < cfg.max_rounds || decided.candidate) {
         for (let n = 0; ; n += 1) {
           let reviewed;
           try {
             reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
               reviewRound({
                 cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-                summary: mechanical.summary, canKeep: !!mechanical.candidate, mechanicalKeep: !!mechanical.keep, log: [...log],
+                summary: decided.summary, canKeep: !!decided.candidate, log: [...log],
               }).catch((e: unknown) => {
                 if (e instanceof OutOfCredits) return { credits: e.stop };
                 throw e;
               }),
             );
           } catch {
-            break; // A failed review keeps last round's guidance and the mechanical keep instead of killing the night.
+            break; // A failed review reverts and keeps last round's guidance instead of killing the night.
           }
           if ("credits" in reviewed) {
             await pauseForCredits(round, [{ ...reviewed.credits, where: `review of round ${round}` }]);
             continue;
           }
           review = reviewed;
-          decision = applyReview(mechanical, reviewed.keep);
+          decision = applyReview(decided, reviewed.keep);
           break;
         }
       }
