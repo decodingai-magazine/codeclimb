@@ -12,6 +12,10 @@ timeouts:
 models:
   - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
+parallel:              # every model through round step_after, then min
+  decay: step           # step | linear | none (every model, every round)
+  step_after: 3
+  min: 1
 reviewer_model: github-copilot/claude-sonnet-5
 # The models the program may call, through the metering proxy.
 allowed_models:

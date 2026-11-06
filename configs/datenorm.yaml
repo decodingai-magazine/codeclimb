@@ -1,4 +1,4 @@
-# Full night: up to 24 rounds × 2 branches on the datenorm scenario, Docker sandboxes,
+# Full night: up to 24 rounds × 1 experiment on the datenorm scenario, Docker sandboxes,
 # Inngest dev server. Coders: GitHub Copilot Haiku via Pi; reviewer: a different Haiku.
 scenario: scenarios/datenorm
 sandbox: docker
@@ -10,7 +10,6 @@ timeouts:
   experiment_min: 15
   eval_min: 3
 models:
-  - github-copilot/claude-haiku-5.5
   - github-copilot/claude-haiku-5.5
 parallel:              # every model through round step_after, then min
   decay: step           # step | linear | none (every model, every round)

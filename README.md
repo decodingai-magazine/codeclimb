@@ -322,7 +322,7 @@ npm run export -- --config configs/datenorm-hard.yaml --exp best --to-remote git
 | `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
 | `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `datenorm-smoke.yaml` (2 rounds × 2 branches), `datenorm.yaml` (a full night), `datenorm-hard.yaml` (up to 10 rounds × 2 branches) `datenorm-hard-calibrate.yaml` (1 branch × 1 round) and `graphrag-smoke.yaml` (2 rounds × 2 branches) |
+| `configs/` | `datenorm-smoke.yaml` (2 rounds × 1 experiment), `datenorm.yaml` (a full night, 1 experiment per round), `datenorm-hard.yaml` (up to 10 rounds, 2 experiments through round 3, then 1), `datenorm-hard-calibrate.yaml` (1 experiment × 1 round) and `graphrag-smoke.yaml` (2 rounds × 1 experiment) |
 
 ### Deviations from the spec in this iteration
 
