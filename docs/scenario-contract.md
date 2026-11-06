@@ -7,7 +7,7 @@ Agreed design, 2026-11-05. `scenarios/graphrag` is a copy of scrabble's `dataset
 datenorm is one program answering one query at a time, scored per item, with k-fold rotation of `train.jsonl`. graphrag differs on every axis:
 
 - **Splits are fixed and time-ordered** (train, dev, test). Folds leak: a later document's gold reuses earlier documents' canonical names, so time-ordered folds hand earlier folds their answer key.
-- **Three stages, each scored on gold input** (extraction, graph building, retrieval), each with several headline metrics. Retrieval must never be averaged across query kinds.
+- **Three stages, each scored on gold input** (extraction, graph building, retrieval), each with at most three headline metrics; the smaller retrieval kinds are diagnostics. Retrieval must never be averaged across query kinds.
 - **The evaluators are the dataset's own Python CLIs** (`inputs`, `score`, `summary`), not text.
 - **The program is a batch CLI per stage** that calls models (`<cmd> <stage> --root --inputs --out [--graph]`).
 
