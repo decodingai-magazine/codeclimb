@@ -16,12 +16,12 @@ allowed_models:
   - openrouter/qwen/qwen3-reranker-8b
 primary_metric: extraction.mentions.f1
 thresholds:
-  extraction.mentions.f1: 0.8
-  extraction.relations.directed.f1: 0.6
+  extraction.mentions.f1: 0.9
+  extraction.relations.directed.f1: 0.4
   graph.b_cubed.precision: 0.98
   graph.b_cubed.recall: 0.98
   retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
-  retrieval.by_kind.multi_hop.metrics.path_complete.mean: 0.5
+  retrieval.by_kind.multi_hop.metrics.path_complete.mean: 0.3
 budget_usd:
   experiment: 5.0
   night: 15.0

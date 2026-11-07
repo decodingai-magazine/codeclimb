@@ -1,10 +1,10 @@
 scenario: scenarios/graphrag-lite
 sandbox: inngest
-max_rounds: 3
+max_rounds: 6
 deadline: 6h
 timeouts:
   experiment_min: 25
-  eval_min: 10  # 20 documents against graphrag's 56
+  eval_min: 10  # 22 documents against graphrag's 56
 model: anthropic/claude-opus-5-5
 coder_thinking: medium  # off | minimal | low | medium | high
 reviewer_model: anthropic/claude-opus-5-5
