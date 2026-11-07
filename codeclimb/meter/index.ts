@@ -6,7 +6,7 @@ import { docker } from "../sandbox/docker";
 import { modelRuntime } from "../pi/session";
 import { piBackends, routedBackends } from "./backends";
 import { openRouterBackends } from "./openrouter";
-import { MeterProxy } from "./proxy";
+import { MeterProxy, PROBE_HEADER } from "./proxy";
 import { setTimeout as delay } from "node:timers/promises";
 
 export const METER_NETWORK = "cc-meter";
@@ -48,7 +48,7 @@ export async function checkMeterUrl(url: string, tries = 3, waitMs = 5000): Prom
   for (let n = 0; n < tries; n += 1) {
     if (n) await delay(waitMs);
     try {
-      const res = await fetch(`${url}/_op`, { method: "POST", signal: AbortSignal.timeout(15_000) });
+      const res = await fetch(`${url}/_op`, { method: "POST", headers: { [PROBE_HEADER]: "1" }, signal: AbortSignal.timeout(15_000) });
       const body = await res.text();
       if (res.status === 401 && body.includes("authentication_error")) return;
       seen = `${res.status}: ${body.slice(0, 200)}`;

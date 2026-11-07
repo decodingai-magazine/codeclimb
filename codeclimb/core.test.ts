@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, notesFile, openTasks, parseApproach, readNotes, rejectedDiffs, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, rejectedDiffs, sendBack, trainScoreProblem, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { emptyStageError, prepareEnvironment } from "./evaluate";
 import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { appendNotes, checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, NIGHT_NOTE_CHARS, recordNoise, repairable, saveRejected, spreadDetails } from "./orchestrator";
+import { checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
@@ -300,7 +300,7 @@ test("parsers", () => {
   assert.equal(parseApproach("**APPROACH:** `x`"), "x");
   assert.equal(parseApproach("**APPROACH**: y"), "y");
   assert.equal(parseApproach("My approach is fine\nlast line"), "last line");
-  assert.deepEqual(parseReview('noise {"feedback": "f", "hypothesis": " a "} trailing'), { feedback: "f", hypothesis: "a" });
+  assert.deepEqual(parseReview('noise {"feedback": "f", "hypothesis": " a "} trailing'), { feedback: "f", hypothesis: "a", verdict: "" });
   assert.equal(parseReview('{"feedback": "f"}'), null); // no hypothesis
   assert.equal(parseReview('{"feedback": "f", "hypothesis": " "}'), null);
 });
@@ -541,6 +541,20 @@ test("a coder's task list: every task done, or dropped with a note", () => {
   assert.match(WORKFLOW, /\/tmp\/tasks\.json[^]*"status": "todo"[^]*Change only a task's status/);
 });
 
+test("a coder that stops too soon goes back once: open tasks, no train measurement, most of its time and budget left", () => {
+  const done = '[{"task": "a", "status": "done"}]';
+  const score = '{"before": {"f1": 0.5}, "after": {"f1": 0.6}, "command": "x"}';
+  const base = { tasks: done, trainScore: score, hasTrain: true, minutesLeft: 5, minutes: 25, usdLeft: 2, usd: 2.5 };
+  assert.equal(sendBack(base), "");
+  assert.match(sendBack({ ...base, trainScore: null }), /wrote no \/tmp\/train-score\.json/);
+  assert.equal(sendBack({ ...base, trainScore: null, hasTrain: false }), "");
+  assert.match(sendBack({ ...base, trainScore: '{"before": {}, "after": {"f1": 1}}' }), /needs a "before" and an "after"/);
+  assert.match(sendBack({ ...base, minutesLeft: 20 }), /20 of 25 minutes and \$2\.00 of \$2\.50 left/);
+  assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
+  assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
+  assert.match(trainScoreProblem("nope"), /not valid JSON/);
+});
+
 test("the coder hears the score that decides a keep, and that cost and latency don't count", () => {
   const objectives = { primary: "a", metrics: ["latency_total_s"], thresholds: { a: 0.8, b: 0.5 }, weights: { b: 2 } };
   const prompt = coderPrompt("s", "", null, 10, objectives);
@@ -549,26 +563,31 @@ test("the coder hears the score that decides a keep, and that cost and latency d
   assert.match(coderPrompt("s", "", null, 10), /First run the program in \/repo on two or three train items/);
 });
 
-test("a coder's notes outlive its round: newest first, masked, capped, once per experiment", async () => {
+test("each experiment leaves one note, coder and verdict, newest first, masked, shrunk to the budget", async () => {
   const { dir, cfg: masked } = scanning();
   try {
     const { bundleDir } = nightPaths(masked, "n");
     assert.equal(readNotes(bundleDir), "");
-    await appendNotes(masked, "n", "n-r1-e0", "rerank 503s above 8 calls at once");
-    await appendNotes(masked, "n", "n-r2-e0", "ladybug needs a fresh db per run; Gold Name");
-    await appendNotes(masked, "n", "n-r2-e0", "a replayed step");
-    await appendNotes(masked, "n", "n-r3-e0", "  ");
+    await writeNote(masked, "n", "n-r1-e0", { outcome: noteOutcome("keep", "score up"), coder: "rerank 503s above 8 calls at once", reviewer: "the rerank raised recall" });
+    await writeNote(masked, "n", "n-r2-e0", { outcome: noteOutcome("revert", ""), coder: "ladybug needs a fresh db per run; Gold Name" });
+    await writeNote(masked, "n", "n-r2-e0", { outcome: "revert", coder: "a replayed step writes the same file" });
+    await writeNote(masked, "n", "n-r10-e0", { outcome: "error: check failed", reviewer: "Gold Name broke the parser" });
     const notes = readNotes(bundleDir);
-    assert.match(notes, /^## r2-e0\nladybug needs a fresh db per run; \[hidden\]\n\n## r1-e0\nrerank 503s/);
-    assert.doesNotMatch(notes, /replayed|Gold/);
+    assert.match(notes, /^## r10-e0 · error: check failed\n### Reviewer, after the evaluation\n\[hidden\] broke the parser\n\n## r2-e0 · revert\n### Coder, before the evaluation\na replayed step[^]*\n\n## r1-e0 · keep: score up\n### Coder[^]*rerank 503s[^]*### Reviewer[^]*recall$/);
+    assert.doesNotMatch(notes, /Gold/);
+    assert.equal(readdirSync(notesDir(bundleDir)).length, 3);
     assert.equal(rejectedDiffs(bundleDir).length, 0); // the notes are no rejected diff
-    assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", notes), /<notes>[^]*\/spec\/history\/notes\.md[^]*rerank 503s[^]*<\/notes>/);
+    assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", notes), /<notes>[^]*\/spec\/history\/notes\/[^]*rerank 503s[^]*<\/notes>/);
     assert.doesNotMatch(coderPrompt("s", "", null, 10), /<notes>/);
-    for (let i = 4; i < 20; i += 1) await appendNotes(masked, "n", `n-r${i}-e0`, "x".repeat(1500));
-    const capped = readFileSync(notesFile(bundleDir), "utf8");
-    assert.ok(capped.length <= NIGHT_NOTE_CHARS + 1600);
-    assert.match(capped, /^## r19-e0/);
-    assert.doesNotMatch(capped, /## r1-e0/);
+    // Past the budget: the newest stay whole, then the coder part goes, then all but the heading.
+    for (let i = 3; i < 10; i += 1) await writeNote(masked, "n", `n-r${i}-e0`, { outcome: "revert", coder: "c".repeat(400), reviewer: "v".repeat(200) });
+    const shrunk = readNotes(bundleDir, 2_000);
+    assert.ok(shrunk.length <= 2_000);
+    assert.match(shrunk, /^## r10-e0/);
+    assert.match(shrunk, /## r9-e0 · revert\n### Coder/);
+    assert.match(shrunk, /## r[0-9]-e0 · revert\n### Reviewer[^]*v{200}/);
+    assert.match(shrunk, /\n\n## r6-e0 · revert\n\n/); // heading only
+    assert.match(shrunk, /## r1-e0 · keep: score up/); // every outcome stays
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

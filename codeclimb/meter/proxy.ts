@@ -119,6 +119,8 @@ export interface MeterCall {
 
 /** Operation of calls made before the runner names one. */
 export const DEFAULT_OP = "program";
+/** On `checkMeterUrl`'s probe: its expected 401 is no warning. */
+export const PROBE_HEADER = "x-codeclimb-probe";
 
 interface Ledger {
   evalId: string;
@@ -322,7 +324,7 @@ export class MeterProxy {
       return send(res, 200, await this.embed(ledger, model, body.input));
     } catch (e) {
       const err = e instanceof HttpError ? e : new HttpError(500, (e as Error).message, "server_error");
-      if (err.status === 401) console.warn(`[meter] ${req.url}: ${err.message}`);
+      if (err.status === 401 && !req.headers[PROBE_HEADER]) console.warn(`[meter] ${req.url}: ${err.message}`);
       // A refused call spends nothing, so only this line shows that it happened.
       if (ledger && kind && !err.recorded) {
         ledger.calls.push({ kind, model, op: ledger.op, ok: false, input_tokens: 0, output_tokens: 0, cost_usd: 0, ms: 0, error: err.message, rejected: err.status });

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
-import { notesFile, readSpecText } from "./coder";
+import { CODER_PART, notesDir, readSpecText, REVIEWER_PART } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
@@ -219,10 +219,12 @@ export interface Noise {
 
 /** Records the A/A run of `kept`, and returns the noise it measured; null when it failed. */
 export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise | null {
-  appendRows(b.cfg.results_path, [evalRow(b, kept, outcome, { kind: "noise", hypothesis: "the kept commit, scored again without replayed model calls: the evaluation's noise" })]);
-  if (!outcome.ok || !outcome.result.ok) return null;
+  const scored = outcome.ok && outcome.result.ok ? outcome.result.metrics : null;
+  const second = scored ? scoreOf(b.cfg, scored) : undefined;
+  const hypothesis = "the kept commit, scored again without replayed model calls: the evaluation's noise";
+  appendRows(b.cfg.results_path, [evalRow(b, kept, outcome, { kind: "noise", hypothesis, ...(second === undefined ? {} : { score: second }) })]);
+  if (second === undefined) return null;
   const first = scoreOf(b.cfg, kept.metrics);
-  const second = scoreOf(b.cfg, outcome.result.metrics);
   const noise = { margin: Math.abs(second - first), expId: kept.expId, first, second };
   writeFileSync(nightPaths(b.cfg, b.nightId).noiseJson, JSON.stringify(noise, null, 2));
   return noise;
@@ -247,23 +249,29 @@ export async function diffLeaks(cfg: NightConfig, nightId: string, parentExpId: 
   return scanText(cfg, added.join("\n"));
 }
 
-/** The night's notes at most: past this the oldest coders' notes go. */
-export const NIGHT_NOTE_CHARS = 12_000;
+/** A note's heading after the id: the decision and why, cut to a line. */
+export const noteOutcome = (decision: string, reason: string): string => {
+  const why = reason.replace(/\s+/g, " ").trim();
+  return why ? `${decision}: ${why.length > 300 ? `${why.slice(0, 300)}...` : why}` : decision;
+};
 
-/** Adds a coder's notes to the night's, newest first, held-out names masked. A replayed step adds nothing. */
-export async function appendNotes(cfg: NightConfig, nightId: string, expId: string, notes: string): Promise<void> {
-  if (!notes.trim()) return;
-  const file = notesFile(nightPaths(cfg, nightId).bundleDir);
-  const head = `## ${expId.replace(`${nightId}-`, "")}\n`;
-  const old = existsSync(file) ? readFileSync(file, "utf8").trim().split(/\n\n(?=## )/) : [];
-  if (old.some((s) => s.startsWith(head))) return;
-  const sections = [`${head}${await maskText(cfg, notes.trim())}`];
-  for (const s of old) {
-    if (sections.join("\n\n").length + s.length > NIGHT_NOTE_CHARS) break;
-    sections.push(s);
-  }
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${sections.join("\n\n")}\n`);
+/**
+ * One experiment's note, /spec/history/notes/<exp>.md in every later sandbox: the loop's outcome, the
+ * coder's notes from before its evaluation, and the reviewer's verdict after it; held-out names masked.
+ */
+export async function writeNote(
+  cfg: NightConfig,
+  nightId: string,
+  expId: string,
+  note: { outcome: string; coder?: string; reviewer?: string },
+): Promise<void> {
+  const id = expId.replace(`${nightId}-`, "");
+  const parts = [`## ${id} · ${note.outcome.trim()}`];
+  if (note.coder?.trim()) parts.push(`${CODER_PART}\n${note.coder.trim()}`);
+  if (note.reviewer?.trim()) parts.push(`${REVIEWER_PART}\n${note.reviewer.trim()}`);
+  const dir = notesDir(nightPaths(cfg, nightId).bundleDir);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${id}.md`), `${await maskText(cfg, parts.join("\n"))}\n`);
 }
 
 /** A new name for the kept commit, for the round that scores it again. */
@@ -489,6 +497,8 @@ export async function reviewRound(args: {
   summary: RoundDecision["summary"];
   log: HypothesisLogEntry[];
   direction: string;
+  /** What the coder wrote before the evaluation, for the verdict to confirm or contradict. */
+  coderNotes?: string;
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
   const { metricsPath, ...summary } = args.summary;
@@ -510,6 +520,7 @@ export async function reviewRound(args: {
     result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
     log: args.log,
     direction: args.direction,
+    ...(args.coderNotes?.trim() ? { coderNotes: args.coderNotes } : {}),
     headline: args.cfg.scenario.headline,
     diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),

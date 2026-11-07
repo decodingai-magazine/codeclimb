@@ -1,7 +1,8 @@
 // One experiment's coding phase: Pi works in a fresh sandbox (baseline +
 // parent commit) until it says done, hits `timeouts.experiment_min` or
 // `budget_usd.experiment`, or goes quiet past the idle watchdog (→ abort()). A coder
-// that stops with tasks still open in /tmp/tasks.json is sent back once. Then the
+// that stops too soon (tasks still open in /tmp/tasks.json, no train measurement in
+// /tmp/train-score.json, or most of its time and budget left) is sent back once. Then the
 // orchestrator commits /repo and pulls the commit back as a bundle, with the coder's
 // notes for later rounds, before destroying the sandbox.
 //
@@ -84,13 +85,15 @@ export interface CodeResult {
   leaks?: string[];
 }
 
-/** One coder's notes, at most; the night keeps NIGHT_NOTE_CHARS of them, newest first. */
+/** One coder's notes, at most. */
 export const NOTE_CHARS = 3000;
+/** The notes a coder's prompt holds at most: past this, older notes keep only their outcome. */
+export const NIGHT_NOTE_CHARS = 12_000;
 /** No model token or tool event for this long while no tool runs: the session is stuck. */
 const IDLE_MS = 10 * 60_000;
 /** A tool running this long with no output: stuck too. A bash command defaults to a 10-minute cap. */
 const TOOL_STALL_MS = 25 * 60_000;
-/** Time a coder sent back to its open tasks needs left. */
+/** Time a coder sent back needs left. */
 const MIN_FOLLOW_UP_MS = 3 * 60_000;
 
 interface CodeState {
@@ -129,10 +132,41 @@ export function rejectedDiffs(bundleDir: string): string[] {
   return readdirSync(dir).filter((f) => f.endsWith(".diff")).sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((f) => `/spec/history/${f}`);
 }
 
-/** The night's notes from earlier coders, in the bundle: /spec/history/notes.md in the sandbox. */
-export const notesFile = (bundleDir: string) => join(bundleDir, "history", "notes.md");
+/** One note per experiment, `<exp id>.md`: /spec/history/notes/ in the sandbox. */
+export const notesDir = (bundleDir: string) => join(bundleDir, "history", "notes");
 
-export const readNotes = (bundleDir: string): string => (existsSync(notesFile(bundleDir)) ? readFileSync(notesFile(bundleDir), "utf8") : "");
+/** A note's parts: the loop's outcome, then what the coder wrote before the evaluation, then the reviewer's verdict after it. */
+export const CODER_PART = "### Coder, before the evaluation";
+export const REVIEWER_PART = "### Reviewer, after the evaluation";
+
+/**
+ * Every note of the night, newest first, within `budget`: each note's heading (the loop's outcome, what
+ * later rounds need most) first, then the newest grow back to their verdict, then whole.
+ */
+export function readNotes(bundleDir: string, budget = NIGHT_NOTE_CHARS): string {
+  const dir = notesDir(bundleDir);
+  if (!existsSync(dir)) return "";
+  const notes = readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
+    .map((f) => readFileSync(join(dir, f), "utf8").trim());
+  const verdictOnly = (n: string) => n.replace(new RegExp(`\\n${CODER_PART}[^]*?(?=\\n${REVIEWER_PART}|$)`), "");
+  const out: string[] = [];
+  let used = 0;
+  for (const n of notes) {
+    const head = n.split("\n")[0];
+    if (used + head.length + 2 > budget) break;
+    out.push(head);
+    used += head.length + 2;
+  }
+  for (const [i, n] of out.entries()) {
+    const form = [notes[i], verdictOnly(notes[i])].find((f) => used - n.length + f.length <= budget);
+    if (!form) continue;
+    used += form.length - n.length;
+    out[i] = form;
+  }
+  return out.join("\n\n");
+}
 
 /** One task of /tmp/tasks.json. */
 export interface Task {
@@ -154,6 +188,38 @@ export function openTasks(text: string | null): string {
   if (!Array.isArray(tasks)) return "/tmp/tasks.json is not a JSON list of tasks.";
   const open = (tasks as Partial<Task>[]).filter((t) => t.status !== "done" && !(t.status === "dropped" && t.note?.trim()));
   return open.length ? `These tasks in /tmp/tasks.json are not done, or were dropped without a note: ${open.map((t) => JSON.stringify(t.task ?? t)).join("; ")}.` : "";
+}
+
+/** Where a coder records its train measurement: the code it started from, then its change. */
+export const TRAIN_SCORE_FILE = "/tmp/train-score.json";
+
+/** What is wrong with a coder's /tmp/train-score.json; empty when it holds a `before` and an `after` score. */
+export function trainScoreProblem(text: string | null): string {
+  if (text === null) return `You wrote no ${TRAIN_SCORE_FILE}.`;
+  let score: unknown;
+  try {
+    score = JSON.parse(text);
+  } catch {
+    return `${TRAIN_SCORE_FILE} is not valid JSON.`;
+  }
+  const scored = (v: unknown) => !!v && typeof v === "object" && Object.values(v).some((x) => typeof x === "number");
+  const s = score as { before?: unknown; after?: unknown } | null;
+  return s && scored(s.before) && scored(s.after) ? "" : `${TRAIN_SCORE_FILE} needs a "before" and an "after" object of metric scores.`;
+}
+
+/**
+ * Why a coder that stopped goes back for one more turn; empty when it doesn't. Open tasks, a missing
+ * train measurement where train exists, or more than half of both its time and its budget left.
+ */
+export function sendBack(s: { tasks: string | null; trainScore: string | null; hasTrain: boolean; minutesLeft: number; minutes: number; usdLeft: number; usd: number }): string {
+  const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) : ""];
+  if (s.minutesLeft > s.minutes / 2 && s.usdLeft > s.usd / 2) {
+    why.push(
+      `You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left. ` +
+        "Measure on train, read the worst items, and try another way to test the hypothesis; stop only when that finds nothing more, and say why in APPROACH.",
+    );
+  }
+  return why.filter(Boolean).join(" ");
 }
 
 const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
@@ -194,10 +260,14 @@ export function coderPrompt(
   }
   if (notes.trim()) {
     parts.push(
-      `<notes>\nNotes earlier coders of this night left for you, newest first, kept whether or not their round was (/spec/history/notes.md). Trust them less than what you check yourself.\n${notes.trim()}\n</notes>`,
+      `<notes>\nThe night's history: one note per earlier experiment, newest first, kept whether or not its round was (/spec/history/notes/). Each holds the loop's decision, what that coder found before its evaluation, and the reviewer's verdict after it; where the two disagree, the verdict saw the scores. Trust them less than what you check yourself.\n${notes.trim()}\n</notes>`,
     );
   }
-  if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
+  if (hypothesis) {
+    parts.push(
+      `<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\nWhere your train measurements contradict a part of it, keep the variant that scores better and say so in APPROACH and your notes.\n</hypothesis>`,
+    );
+  }
   // A repair has one known failure to fix: research and a plan would only spend its time. Both review.
   parts.push(repair ? `Before you stop, review:\n${CODER_REVIEW}` : `${WORKFLOW}\n4. Review. ${CODER_REVIEW}`);
   parts.push(
@@ -231,7 +301,8 @@ export function coderPrompt(
       "- The evaluation's inputs can be much longer than the ones you test on: leave room in token limits and timeouts.",
       "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
-      "- Before you stop, write to /tmp/notes.md what the next coder should know, kept even if this round is reverted: facts you checked, such as how a library or model endpoint behaves, limits you hit, and what failed and why. At most 20 lines, no plan and no summary of your diff. It stays outside /repo.",
+      "- Before you stop, write to /tmp/notes.md what the next coder should know, kept in the night's history even if this round is reverted: facts you checked in the sandbox, such as how a tool, library or model endpoint behaves, limits you hit, runtimes, train measurements, and what failed and why. You can't see dev or test, so make no claim about them: the reviewer adds what the evaluation showed. At most 20 lines, plain lines with no heading, no plan and no summary of your diff. It stays outside /repo.",
+      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. A coder that stops without it, or with more than half its time and budget left, is sent back once.`,
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis. If it shows no clear gain over the code you started from and time and budget remain, try another way to test the hypothesis. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
@@ -244,12 +315,13 @@ export function coderPrompt(
 export const WORKFLOW = [
   "Work in four steps:",
   "1. Research. First run the program in /repo on two or three train items, or cases you write, so you know it runs and where it stands. " +
+    "If /spec/train exists, score the code you start from on all of it now, the same way you will score your change, and keep the numbers for /tmp/train-score.json. " +
     "Then, before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources. " +
     "The sandbox has internet access but no browser or curl: fetch pages with python3 (urllib), such as a package's docs, its README on GitHub, PyPI, or a paper on the method. " +
     "Spend at most a fifth of your time here, and stop once you know how you will build it.",
   '2. Plan. Write your plan of attack to /tmp/tasks.json, a JSON list in the order you will do the tasks: one task per change, as {"task": "...", "check": "how you will check it", "status": "todo"}. ' +
     "It stays outside /repo, so it isn't committed.",
-  '3. Implement. Work through the tasks in order and test each one. Change only a task\'s status, to "done" once its check passes, or to "dropped" with a "note" saying why; add a task at the end when you find one. ' +
+  '3. Implement. Work through the tasks in order and test each one. Change only a task\'s status, to "done" once its check passes and nothing of it is left, or to "dropped" with a "note" saying why or what is missing; add a task at the end when you find one. ' +
     "Keep going until every task is done or dropped. If time runs short, finish the task at hand so the program still works, drop the rest with a note, and say in APPROACH what is left.",
 ].join("\n");
 
@@ -442,11 +514,22 @@ export async function runCoder(
               weights: cfg.weights,
             }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
       );
-      // A plan with open tasks is not done: one more turn to finish or drop them. A repair writes no plan.
-      const open = input.repair || stop || deadline - Date.now() < MIN_FOLLOW_UP_MS ? "" : openTasks(await readSandbox("/tmp/tasks.json"));
-      if (open) {
+      // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. One
+      // more turn. A repair writes no plan and fixes a failure, so it goes on as it is.
+      const back = input.repair || stop || deadline - Date.now() < MIN_FOLLOW_UP_MS
+        ? ""
+        : sendBack({
+            tasks: await readSandbox("/tmp/tasks.json"),
+            trainScore: await readSandbox(TRAIN_SCORE_FILE),
+            hasTrain: existsSync(join(paths.bundleDir, "train")),
+            minutesLeft: (deadline - Date.now()) / 60_000,
+            minutes: cfg.timeouts.experiment_min,
+            usdLeft: cfg.budget_usd.experiment - state.coderUsd - (state.devUsd ?? 0),
+            usd: cfg.budget_usd.experiment,
+          });
+      if (back) {
         await session.prompt(
-          `${open} Every task must end "done", or "dropped" with a note saying why. Finish the open ones or drop them, do step 4 (Review) again, and end with the APPROACH line.`,
+          `${back} Every task must end "done", or "dropped" with a note saying why. Do step 4 (Review) again, and end with the APPROACH line.`,
         );
       }
     } else {
@@ -482,6 +565,8 @@ export async function runCoder(
   const notes = (await readSandbox("/tmp/notes.md"))?.trim().slice(0, NOTE_CHARS) ?? "";
   const tasks = await readSandbox("/tmp/tasks.json");
   if (tasks !== null) writeFileSync(join(dir, "tasks.json"), tasks);
+  const trainScore = await readSandbox(TRAIN_SCORE_FILE);
+  if (trainScore !== null) writeFileSync(join(dir, "train-score.json"), trainScore);
   const exported = await commitAndExport(sandbox, expRef(input.parentExpId), `${input.expId}: ${hypothesis}\n`);
   const sha = await repo.importBundle(exported.bundle, input.expId);
   const unchanged = (await repo.sameTree(input.parentExpId, input.expId)) ? { unchanged: closing.trim().slice(0, 1000) || "(no closing message)" } : {};

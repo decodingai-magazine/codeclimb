@@ -8,7 +8,7 @@ export type MockRole = "coder" | "reviewer";
 type Messages = Parameters<FauxResponseFactory>[0]["messages"];
 
 export const MOCK_CHANGE =
-  `echo "mock change $(date +%s)" >> MOCK.md && echo '[{"task": "mock", "check": "none", "status": "done"}]' > /tmp/tasks.json && echo "mock note" > /tmp/notes.md`;
+  `echo "mock change $(date +%s)" >> MOCK.md && echo '[{"task": "mock", "check": "none", "status": "done"}]' > /tmp/tasks.json && echo "mock note" > /tmp/notes.md && echo '{"before": {"mock": 0}, "after": {"mock": 0}, "command": "mock"}' > /tmp/train-score.json`;
 export const MOCK_APPROACH = "APPROACH: mock change, no real work";
 
 /** One bash call, then the closing text. A resumed session ends on a tool result or a prompt, and either works. */
@@ -20,7 +20,7 @@ export function coderReply(messages: Messages) {
 
 /** The JSON `parseReview` wants. */
 export function reviewerReply() {
-  return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis" }));
+  return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis", verdict: "mock verdict" }));
 }
 
 const respond: FauxResponseFactory = (context, _options, _state, model) => {

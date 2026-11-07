@@ -13,7 +13,6 @@ import { efficiencyMetrics, evalMinutes, rootConfig, type NightConfig } from "..
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
-  appendNotes,
   checkRepo,
   checkStop,
   continueNight,
@@ -32,7 +31,7 @@ import {
   type Noise,
   type PausedAt,
   recordNoise, recordRows, renameKept, rescoreRow, saveRejected,
-  reviewRound, smokeTest,
+  reviewRound, smokeTest, noteOutcome, writeNote,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import { writeReport } from "../../codeclimb/report/html";
@@ -270,8 +269,6 @@ export const runNight = ccInngest.createFunction(
           coded = await code(r);
         }
         if (!coded.ok) return { ok: false, expId, model: cfg.model, error: coded.error };
-        const notes = coded.code.notes ?? "";
-        if (notes) await step.run(`r${round}-e${n}-notes`, () => appendNotes(cfg, nightId, expId, notes));
         const evaluated = coded.code.sha && !coded.code.check?.errors.length && coded.code.unchanged === undefined
           ? await evaluate(`r${round}-eval${n ? n : ""}`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
           : null;
@@ -296,6 +293,10 @@ export const runNight = ccInngest.createFunction(
           const errors = first.summary.errors ?? [];
           const toFix = await step.run(`r${round}-repair-failures`, () => maskFailures(cfg, [{ expId: first.summary.expId, errors }]));
           await step.run(`r${round}-record-failed`, () => recordRows(cfg, [first.row]));
+          const firstNotes = experiment.ok ? experiment.code.notes : undefined;
+          await step.run(`r${round}-note-failed`, () =>
+            writeNote(cfg, nightId, first.summary.expId, { outcome: noteOutcome(first.summary.decision, errors.join("; ")), coder: firstNotes }),
+          );
           experiment = await attempt(1, first.summary.expId, { failures: toFix, hypothesis: first.summary.hypothesis, repair: true });
           const fixed = experiment;
           decided = await step.run(`r${round}-decide-repair`, () => decideRound({ ...rowBase, parent, experiment: fixed, hypothesis, margin: margin() }));
@@ -305,7 +306,8 @@ export const runNight = ccInngest.createFunction(
 
       // Review, even of a reverted experiment and in the last round: its feedback is what the next round
       // learns from it, and a continued night's next round is the one after this. It decides nothing.
-      let review: ReviewOutput = { feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
+      let review: ReviewOutput = { feedback, hypothesis: hypothesis ?? "", verdict: "", reviewer_usd: 0, t_review: 0, tokens: 0 };
+      const coderNotes = experiment.ok ? experiment.code.notes : undefined;
       const decision = final;
       for (let n = 0; ; n += 1) {
         let reviewed;
@@ -313,7 +315,7 @@ export const runNight = ccInngest.createFunction(
           reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-              summary: final.summary, log: [...log], direction,
+              summary: final.summary, log: [...log], direction, coderNotes,
             }).catch((e: unknown) => {
               if (e instanceof OutOfCredits) return { credits: e.stop };
               throw e;
@@ -356,6 +358,10 @@ export const runNight = ccInngest.createFunction(
         reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ") ?? s.reason,
       };
       log.push(entry);
+      const verdict = review.verdict;
+      await step.run(`r${round}-note`, () =>
+        writeNote(cfg, nightId, s.expId, { outcome: noteOutcome(s.decision, entry.reason ?? ""), coder: coderNotes, reviewer: verdict }),
+      );
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));
       // A rejected commit stays readable to later coders, whatever rejected it.
       if (!decision.keep && experiment.ok && experiment.code.sha && (s.unchanged === undefined || failed)) {

@@ -18,8 +18,9 @@ const DEFAULT_BASH_TIMEOUT_MS = 10 * 60_000;
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-async function access(sandbox: Sandbox, path: string, flags: string): Promise<void> {
-  const r = await sandbox.exec(`test ${flags} ${quote(path)}`, { cwd: "/" });
+/** One `test` per flag, joined by `&&`: dash, the sandbox's `/bin/sh`, rejects `test -r -a -w path`. */
+async function access(sandbox: Sandbox, path: string, flags: string[]): Promise<void> {
+  const r = await sandbox.exec(flags.map((f) => `test ${f} ${quote(path)}`).join(" && "), { cwd: "/" });
   if (r.exitCode !== 0) throw new Error(`ENOENT: no such file or not accessible: ${path}`);
 }
 
@@ -33,7 +34,7 @@ export function sandboxTools(sandbox: Sandbox, opts: { env?: Record<string, stri
   return [
     createReadToolDefinition(REPO_DIR, {
       autoResizeImages: false,
-      operations: { readFile, access: (p) => access(sandbox, p, "-r") },
+      operations: { readFile, access: (p) => access(sandbox, p, ["-r"]) },
     }),
     createWriteToolDefinition(REPO_DIR, {
       operations: {
@@ -44,7 +45,7 @@ export function sandboxTools(sandbox: Sandbox, opts: { env?: Record<string, stri
       },
     }),
     createEditToolDefinition(REPO_DIR, {
-      operations: { readFile, writeFile, access: (p) => access(sandbox, p, "-r -a -w") },
+      operations: { readFile, writeFile, access: (p) => access(sandbox, p, ["-r", "-w"]) },
     }),
     createBashToolDefinition(REPO_DIR, {
       // Never forward the host environment (PI_* vars, keys) into the sandbox.

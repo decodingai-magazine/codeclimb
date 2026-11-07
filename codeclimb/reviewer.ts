@@ -1,6 +1,6 @@
 // Reviewer LLM: the round's dev metrics, per-item dev errors where the scenario has
-// them, the diff, the loop's keep or revert and the hypothesis log → feedback and the
-// next hypothesis. The weighted score decides the keep, not the reviewer. It reviews a
+// them, the diff, the coder's notes, the loop's keep or revert and the hypothesis log →
+// feedback, the next hypothesis and a verdict for the experiment's note. The weighted score decides the keep, not the reviewer. It reviews a
 // reverted experiment too: its feedback is how the next round, restarting from the
 // checkpoint, avoids that path. Never sees anything from test.
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -79,11 +79,15 @@ export interface ReviewInput {
   protocol: string;
   /** The kept commit's source, which the diff applies to. */
   parentSource: string;
+  /** What the coder wrote in /tmp/notes.md, before the evaluation; empty when it wrote nothing. */
+  coderNotes?: string;
 }
 
 export interface ReviewOutput {
   feedback: string;
   hypothesis: string;
+  /** The experiment's outcome for its note in the night's history, which every later coder reads. */
+  verdict: string;
   reviewer_usd: number;
   t_review: number;
   tokens: number;
@@ -91,15 +95,16 @@ export interface ReviewOutput {
 
 const SYSTEM_PROMPT = `You review experiments in an automated research loop. A coding agent changes a program to raise its metrics on hidden evaluation data. The loop is linear: each round starts from the kept commit (the checkpoint) and tests one hypothesis. The loop keeps or reverts each experiment by its score, not by your judgment: every threshold metric counts as its share of its threshold, capped at 1, and the weighted mean of those shares must beat the checkpoint's by more than the evaluation's measured noise. A failed gate, a stage with no output, or held-out names in the diff block a keep whatever the score. A kept experiment becomes the new checkpoint. A reverted one's code is dropped, and the next round restarts from the same checkpoint with your feedback, the log of earlier rounds and read-only diffs of what was rejected.
 
-You receive the program's specification, the checkpoint's source, the experiment's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the loop's decision, and the log of earlier hypotheses with their effect. Find why each metric falls short by reading the errors against the code. Each run is one sample, so a small move may be noise: read it against the ci95 where one is given. An evaluation repeats an earlier one's model calls from a cache, so the prompt says how many it replayed: a call that was replayed adds no noise, and a small move where most calls replayed comes from the change. Before calling a move noise, check the diff: a change to a shared helper is a change to everything that calls it. Write:
+You receive the program's specification, the checkpoint's source, the experiment's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the coder's notes, the loop's decision, and the log of earlier hypotheses with their effect. The experiment's hypothesis is the one the previous review proposed: judge it like any other, and when part of it caused a regression, name that part. Find why each metric falls short by reading the errors against the code. Each run is one sample, so a small move may be noise: read it against the ci95 where one is given. An evaluation repeats an earlier one's model calls from a cache, so the prompt says how many it replayed: a call that was replayed adds no noise, and a small move where most calls replayed comes from the change. Before calling a move noise, check the diff: a change to a shared helper is a change to everything that calls it. Write:
 1. feedback: concise guidance for the next round: what worked, what regressed, which metric families are weakest. When it was reverted, say why it scored worse and which path not to take again. When it was kept, say what in it is fragile: a gain that rests on one metric at another's cost, code that fits dev items rather than the task, or complexity a simpler change would avoid, so the next round can fix it. Base it on the data; do not invent failures you cannot see. Coders also get a failed evaluation's error, so don't retype it.
 2. hypothesis: one concrete, testable change for the next round, in one or two sentences, different from hypotheses that already failed. Coders start from the kept commit, but can read a rejected experiment's diff at /spec/history/r<round>.diff (round 6's is /spec/history/r6.diff), so a hypothesis that reuses rejected work can point at it. Aim it where it raises the weighted score most: the threshold metric furthest below its threshold, times its weight; a metric past its threshold adds nothing more. Where the per-item errors start with a summary of error counts, aim at the largest group one change can reach, and don't propose work on a group those counts show is small. When the prompt gives a direction, every hypothesis follows it. After a revert or a round that barely moved its target, stop refining that path: move to the next metric with the largest weighted shortfall, combine the parts of rejected attempts that helped a metric, or try a clearly different approach.
+3. verdict: the experiment's outcome for the night's history, at most 8 lines. Each experiment keeps one note there, the coder's notes followed by your verdict, and every later coder reads all of them, so write what stays true: which change moved which metric, in which direction and why, as kinds of error; which of the coder's notes the scores confirm, and which they contradict (a claim about dev the coder could not check, a train measurement dev did not bear out); what not to try again. No plan for the next round: that is the hypothesis.
 
-Coders must never see the evaluation data. Coders read the feedback and the hypothesis: in both describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Names in a repository check are hints that the experiment's text matches a dev item, which general knowledge can explain, not proof of a leak.
+Coders must never see the evaluation data. Coders read the feedback, the hypothesis and the verdict: in all three describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Write no counts or sizes from dev either (how many errors of a kind, items per document, how dense the gold is): metric values and their changes are what you may quote. Names in a repository check are hints that the experiment's text matches a dev item, which general knowledge can explain, not proof of a leak.
 
 The specification may leave interpretation choices open on purpose (which year a date without one means, which of two dates counts, how loose matching may be). A family stuck at partial accuracy often means the evaluation uses a different reading: test the alternative readings one round at a time, so the metrics tell which one is right.
 
-Reply with only a JSON object: {"feedback": "...", "hypothesis": "..."}`;
+Reply with only a JSON object: {"feedback": "...", "hypothesis": "...", "verdict": "..."}`;
 
 const fmtNum = (v: number) => (Number.isInteger(v) ? String(v) : Math.abs(v) < 0.01 ? v.toPrecision(3) : v.toFixed(4));
 
@@ -197,6 +202,7 @@ export function reviewerPrompt(input: ReviewInput): string {
       (input.parentMetrics ? `\nChange from the kept commit: ${fmtChange(b.metrics, input.parentMetrics, input)}` : "") +
       (b.unchanged === undefined ? "" : `\nThe coder committed no change, so nothing was evaluated: these are the checkpoint's scores, and the hypothesis above was not tested in this commit. Judge no result from them. What it reported:\n${b.unchanged}`) +
       `\nThe loop's decision: ${b.decision} (${b.reason}).` +
+      (input.coderNotes?.trim() ? `\nThe coder's notes, written before the evaluation:\n${input.coderNotes.trim()}` : "\nThe coder left no notes.") +
       (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
       (b.details ? `\nPer-item errors on dev (may be cut off):\n${b.details}` : "") +
       `\nDiff vs the kept commit:\n\`\`\`diff\n${b.diff}\n\`\`\``,
@@ -207,18 +213,21 @@ export function reviewerPrompt(input: ReviewInput): string {
         input.log.map((l) => logLine(l, headlined ? null : input.primaryMetric)).join("\n"),
     );
   }
-  lines.push("Return JSON with feedback and hypothesis.");
+  lines.push("Return JSON with feedback, hypothesis and verdict.");
   return lines.join("\n\n");
 }
 
-export function parseReview(text: string): Pick<ReviewOutput, "feedback" | "hypothesis"> | null {
+type Reviewed = Pick<ReviewOutput, "feedback" | "hypothesis" | "verdict">;
+
+export function parseReview(text: string): Reviewed | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
   try {
-    const obj = JSON.parse(text.slice(start, end + 1)) as { feedback?: unknown; hypothesis?: unknown };
+    const obj = JSON.parse(text.slice(start, end + 1)) as { feedback?: unknown; hypothesis?: unknown; verdict?: unknown };
     if (typeof obj.feedback !== "string" || typeof obj.hypothesis !== "string" || !obj.hypothesis.trim()) return null;
-    return { feedback: obj.feedback.trim(), hypothesis: obj.hypothesis.trim() };
+    // A missing verdict costs the note its second half, not the review.
+    return { feedback: obj.feedback.trim(), hypothesis: obj.hypothesis.trim(), verdict: typeof obj.verdict === "string" ? obj.verdict.trim() : "" };
   } catch {
     return null;
   }
@@ -257,20 +266,20 @@ export async function runReview(input: ReviewInput, scan: (text: string) => Prom
     const parse = () => parseReview(session.getLastAssistantText() ?? "");
     let parsed = parse();
     if (!parsed) {
-      await session.prompt("Reply again with only the JSON object, with feedback and a hypothesis.");
+      await session.prompt("Reply again with only the JSON object, with feedback, a hypothesis and a verdict.");
       outOfCredits();
       parsed = parse();
     }
     if (!parsed) throw new Error("reviewer returned no parsable JSON twice");
-    const forCoders = (r: Pick<ReviewOutput, "feedback" | "hypothesis">) => `${r.feedback}\n${r.hypothesis}`;
+    const forCoders = (r: Reviewed) => `${r.feedback}\n${r.hypothesis}\n${r.verdict}`;
     let found = await scan(forCoders(parsed));
     if (found.length) {
-      await session.prompt(`Your feedback or hypothesis names evaluation items coders may not see: ${found.join(", ")}. Reply again with the same JSON, describing the error categories without them.`);
+      await session.prompt(`Your feedback, hypothesis or verdict names evaluation items coders may not see: ${found.join(", ")}. Reply again with the same JSON, describing the error categories without them.`);
       outOfCredits();
       parsed = parse() ?? parsed;
       found = await scan(forCoders(parsed));
     }
-    const masked = { feedback: maskTerms(parsed.feedback, found), hypothesis: maskTerms(parsed.hypothesis, found) };
+    const masked = { feedback: maskTerms(parsed.feedback, found), hypothesis: maskTerms(parsed.hypothesis, found), verdict: maskTerms(parsed.verdict, found) };
     return { ...masked, reviewer_usd: usd, tokens, t_review: Math.round((performance.now() - t0) / 10) / 100 };
   } finally {
     session.dispose();

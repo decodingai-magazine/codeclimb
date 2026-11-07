@@ -42,7 +42,8 @@ Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, pass only i
 - `git -C runs/mock/<config-name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`.
 - `nights/<id>/exps/*/code-state.json` has `stop: done`, and `nights/<id>/exps/*/session/` holds a session.
 - `nights/<id>/reviews/r<n>.json` exists for every round and has `feedback: mock feedback`.
-- `nights/<id>/exps/*/tasks.json` holds the mock's done task, and `nights/<id>/bundle/history/notes.md` has a `mock note` section per experiment.
+- `nights/<id>/exps/*/train-score.json` exists, and the session holds one send-back ("You stopped with N of N minutes"): the mock stops at once.
+- `nights/<id>/exps/*/tasks.json` holds the mock's done task, and `nights/<id>/bundle/history/notes/` has one `<round>-e<n>.md` per experiment, with a `mock note` coder part and, where the round was reviewed, a `mock verdict` reviewer part.
 - Every experiment row has a `decision_reason`. `datenorm-smoke`'s starter scores above 0, so round 1 is kept, a `noise` row follows it and `nights/<id>/noise.json` exists; `capitals-smoke` scores 0 and keeps nothing.
 - `report.html` exists next to `results.jsonl`.
 - `done.json` has `spend_usd: 0`.
