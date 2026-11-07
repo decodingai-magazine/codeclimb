@@ -146,15 +146,20 @@ interface Ledger {
   repeatRuns: boolean;
 }
 
-/** On a coder's ledger, the same call again within this time is a retry of a bad answer, not another run. */
-const RETRY_WINDOW_MS = 30_000;
+/**
+ * On a coder's ledger, the same call again within this time of its answer is a retry of a bad answer, not
+ * another run. A program retries at once; a coder's rerun comes later. It was 30 s from the call's start:
+ * a 27 s train run rerun at once had about half its calls inside that, answered anew by a model that is
+ * not deterministic at temperature 0, so identical code scored 0.722 to 0.767 on mention F1.
+ */
+const RETRY_WINDOW_MS = 5_000;
 
 /** A successful call, for later evals of the night. `ms` is kept so a replay takes as long as the call did. */
 interface Replay {
   evalId: string;
   out: unknown;
   ms: number;
-  /** When it was last answered. */
+  /** When it was last answered: when the answer went out, after a replay's delay too. */
   at: number;
 }
 
@@ -367,8 +372,8 @@ export class MeterProxy {
     try {
       if (replay) {
         ledger.replayed.add(key);
-        replay.at = Date.now();
         await delay(replay.ms, undefined, { signal: ledger.abort.signal });
+        replay.at = Date.now();
         const out = replay.out as T;
         record(true, { ...out.usage, costUsd: 0 }, undefined, out.finishReason, out.usage.costUsd);
         return out;

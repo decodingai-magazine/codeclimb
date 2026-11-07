@@ -269,6 +269,10 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   const replayed = reviewerPrompt({ ...input, result: { ...input.result, metrics: { ...input.result.metrics, model_calls: 10, model_calls_replayed: 7 } } });
   assert.match(replayed, /Model calls: 7 of 10 were replayed/);
   assert.doesNotMatch(reviewerPrompt(input), /were replayed/);
+  // The coder's task list and train measurements reach the review, so it doesn't propose what train already refuted.
+  const worked = reviewerPrompt({ ...input, coderWork: 'Tasks (tasks.json):\n[{"task": "gate", "status": "dropped", "note": "cut recall"}]' });
+  assert.match(worked, /The coder's task list and train measurements, before the evaluation:\nTasks \(tasks\.json\):\n.*cut recall/);
+  assert.doesNotMatch(reviewerPrompt(input), /task list and train measurements, before/);
   assert.match(reviewerPrompt({ ...input, direction: "work on retrieval" }), /direction for every round:\nwork on retrieval/);
 
   // Diagnostics sit under the metrics and skip the cells nobody listed.

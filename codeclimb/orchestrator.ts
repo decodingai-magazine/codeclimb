@@ -509,6 +509,15 @@ function readDetails(cfg: NightConfig, metricsPath: string | null): string {
   return parts.join("\n\n");
 }
 
+/** What the coder left in its experiment's dir: the task list and train measurements, for the review. */
+function coderWork(cfg: NightConfig, nightId: string, expId: string): { coderWork?: string } {
+  const dir = nightPaths(cfg, nightId).expDir(expId);
+  const parts = [["Tasks (tasks.json)", "tasks.json"], ["Train measurements (train-score.json)", "train-score.json"]]
+    .filter(([, f]) => existsSync(join(dir, f)))
+    .map(([title, f]) => `${title}:\n${readFileSync(join(dir, f), "utf8").trim().slice(0, 4_000)}`);
+  return parts.length ? { coderWork: parts.join("\n") } : {};
+}
+
 export async function reviewRound(args: {
   cfg: NightConfig;
   nightId: string;
@@ -543,6 +552,7 @@ export async function reviewRound(args: {
     log: args.log,
     direction: args.direction,
     ...(args.coderNotes?.trim() ? { coderNotes: args.coderNotes } : {}),
+    ...coderWork(args.cfg, args.nightId, summary.expId),
     headline: args.cfg.scenario.headline,
     diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),

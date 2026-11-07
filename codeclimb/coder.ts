@@ -335,7 +335,7 @@ export function coderPrompt(
             "- The program can call a model while you develop, as it will during the evaluation: your shell has OPENAI_BASE_URL and " +
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
               `Every call costs money: they share this experiment's $${dev.budgetUsd} with your own tokens, and the endpoint answers 402 once it is spent. ` +
-              "A call repeated more than 30 seconds later gets the same answer for free, so a rerun differs only where your change reached. " +
+              "The model is not deterministic, but a call repeated more than 5 seconds after its answer gets the same answer for free: rerun the same code and it scores the same, and a change moves the score only where it reached. Compare a change with the code before it that way, not with means of separate runs. " +
               "Start with a few cases you write; call models only through this endpoint.",
           ]
         : []),

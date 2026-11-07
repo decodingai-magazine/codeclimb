@@ -216,7 +216,9 @@ test("replay: a coder's next run repeats its own calls, a quick retry doesn't", 
     clock += 60_000;
     assert.equal(await ask(), "answer 2"); // the next run
     assert.equal(await ask(), "answer 3"); // a retry of the replayed answer
-    assert.equal(proxy.close(token).filter((c) => c.replayed_usd !== undefined).length, 1);
+    clock += 10_000;
+    assert.equal(await ask(), "answer 3"); // a rerun soon after: replayed, so identical code scores the same
+    assert.equal(proxy.close(token).filter((c) => c.replayed_usd !== undefined).length, 2);
   } finally {
     Date.now = now;
     await proxy.stop();
