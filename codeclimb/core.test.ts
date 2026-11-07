@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, parseApproach, rejectedDiffs, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, notesFile, openTasks, parseApproach, readNotes, rejectedDiffs, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { emptyStageError, prepareEnvironment } from "./evaluate";
 import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, repairable, saveRejected, spreadDetails } from "./orchestrator";
+import { appendNotes, checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, NIGHT_NOTE_CHARS, recordNoise, repairable, saveRejected, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
-import { emptyStages, guardrailFailures, passesGates, passesThresholds, tinyRegressions } from "./stats";
+import { emptyStages, passesGates, passesThresholds, weightedScore } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -35,17 +35,14 @@ results_path: runs/r.jsonl
 `;
 const cfg = parseConfig(BASE_YAML, ROOT);
 
-test("guardrails: headline margins, ci95, vanished metrics, a stage gone empty", () => {
-  const parent = { "e.f1": 0.8, "g.p": 1, "r.x.mean": 0.5, "r.x.ci95_half": 0.1, "r.y.mean": 0.5, "e.output_bytes": 10, "g.output_bytes": 0 };
-  const headline = { "e.f1": 0.02, "g.p": 0, "r.x.mean": "ci95", "new.metric": 0.1 } as const;
-  assert.deepEqual(guardrailFailures({ ...parent, "e.f1": 0.78, "r.x.mean": 0.4 }, parent, headline), []);
-  const failed = guardrailFailures({ ...parent, "e.f1": 0.77, "g.p": 0.999, "r.x.mean": 0.39, "e.output_bytes": 0 }, parent, headline);
-  assert.equal(failed.length, 4);
-  assert.match(failed[3], /^e wrote no output/);
-  assert.match(guardrailFailures({ "g.p": 1, "r.x.mean": 0.5 }, parent, headline)[0], /e\.f1 is gone/);
-  // A first round: the parent has no headline numbers, so nothing can regress.
-  assert.deepEqual(guardrailFailures({}, {}, headline), []);
-  assert.deepEqual(guardrailFailures({ output_bytes: 0 }, { output_bytes: 5 }, {}), ["the run wrote no output"]);
+test("weighted score: each threshold metric's share of its threshold, capped at 1, weighted", () => {
+  const thresholds = { a: 0.8, b: 0.5 };
+  assert.equal(weightedScore(null, thresholds), 0);
+  assert.equal(weightedScore({ a: 0.4, b: 0.25 }, thresholds), 0.5);
+  assert.equal(weightedScore({ a: 0.9, b: 0.25 }, thresholds), 0.75); // past its threshold, a counts 1
+  assert.equal(weightedScore({ a: 0.8 }, thresholds), 0.5); // a missing metric counts 0
+  assert.equal(weightedScore({ a: 0.8, b: 0 }, thresholds, { a: 3 }), 0.75);
+  assert.equal(weightedScore({ a: 1 }, {}), 0);
 });
 
 test("scenario: headline, sandboxes, protocol, flattened reports", () => {
@@ -54,11 +51,11 @@ test("scenario: headline, sandboxes, protocol, flattened reports", () => {
   assert.equal(parseScenario(base).check, undefined);
   assert.deepEqual(parseScenario(`${base}diagnostics: ["^a$"]\n`).diagnostics, ["^a$"]);
   assert.throws(() => parseScenario(`${base}diagnostics: ["("]\n`), /Invalid regular expression/);
-  const s = parseScenario(`${base}headline: { a.mean: ci95, b: 0.1 }\nprotocol: [x.md]\n`);
-  assert.deepEqual([s.headline, s.protocol, s.stages[0].details], [{ "a.mean": "ci95", b: 0.1 }, ["x.md"], "d"]);
-  assert.deepEqual(parseScenario(base).headline, {});
-  assert.throws(() => parseScenario(`${base}headline: { a: ci95 }\n`), /\.mean/);
-  assert.throws(() => parseScenario(`${base}headline: { a: -1 }\n`), /margin/);
+  const s = parseScenario(`${base}headline: [a.mean, b]\nprotocol: [x.md]\n`);
+  assert.deepEqual([s.headline, s.protocol, s.stages[0].details], [["a.mean", "b"], ["x.md"], "d"]);
+  assert.deepEqual(parseScenario(base).headline, []);
+  assert.throws(() => parseScenario(`${base}headline: { a: 0.1 }\n`), /headline must list metric names/);
+  assert.throws(() => parseScenario(`${base}override_limit: 0.005\n`), /override_limit is gone/);
   assert.deepEqual(
     flattenReport({ a: { mean: 0.5, ci95: [0.4, 0.8], n: 3 }, details: { x: 1 }, per_item: { y: 1 }, skip: null }, "st"),
     { "st.a.mean": 0.5, "st.a.ci95_half": (0.8 - 0.4) / 2, "st.a.n": 3 },
@@ -96,6 +93,12 @@ test("config validation", () => {
   assert.throws(() => checkSandboxLimits({ ...cfg, sandbox: "inngest", timeouts: { experiment_min: 10, eval_min: 55 } }), /eval_min/);
   assert.equal(resolveDeadline("90m", 0), 90 * 60_000);
   assert.equal(resolveDeadline("2026-10-22T06:00:00Z", 0), Date.parse("2026-10-22T06:00:00Z"));
+  assert.deepEqual(cfg.weights, {});
+  assert.deepEqual(parseConfig(`${BASE_YAML}weights: { accuracy: 2 }\n`, ROOT).weights, { accuracy: 2 });
+  assert.throws(() => parseConfig(`${BASE_YAML}weights: { nope: 2 }\n`, ROOT), /weights\.nope names no threshold/);
+  assert.throws(() => parseConfig(`${BASE_YAML}weights: { accuracy: 0 }\n`, ROOT), /weights\.accuracy must be/);
+  assert.throws(() => parseConfig(BASE_YAML.replace("{ accuracy: 0.9 }", "{}"), ROOT), /at least one metric/);
+  assert.throws(() => parseConfig(BASE_YAML.replace("{ accuracy: 0.9 }", "{ accuracy: 0 }"), ROOT), /thresholds\.accuracy must be/);
 });
 
 test("soft stops between rounds", () => {
@@ -135,51 +138,62 @@ const evaluated = (metrics: Record<string, number>) => ({
   ok: true, metrics: { schema_violations: 0, ...metrics }, metricsPath: "/m.json", program_usd: 0, t_provision: 1, t_eval: 1, t_teardown: 1, wall_s: 3, infra_errors: 0, evaluator_instance: "i1",
 });
 const run = (metrics: Record<string, number>): ExperimentOutcome => ({ ok: true, expId: "n-r1-e0", model: "p/a", code: coded("a"), eval: evaluated(metrics) });
-const round = (parent: Kept, experiment: ExperimentOutcome, c = cfg) => decideRound({ cfg: c, nightId: "n", round: 1, parent, experiment, hypothesis: null });
+const round = (parent: Kept, experiment: ExperimentOutcome, c = cfg, margin = 0) => decideRound({ cfg: c, nightId: "n", round: 1, parent, experiment, hypothesis: null, margin });
 
-test("one experiment per round: a candidate until the reviewer keeps it, else reverted to the checkpoint", () => {
+test("one experiment per round: kept when its weighted score beats the checkpoint's, else reverted", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
   const d = round(parent, run({ accuracy: 0.6 }));
-  assert.deepEqual([d.keep, d.candidate?.expId, d.row.decision, d.row.parent_id], [null, "n-r1-e0", "revert", "n-r0"]); // a failed review stays here
+  assert.deepEqual([d.keep?.expId, d.keep?.sha, d.row.decision, d.row.parent_id], ["n-r1-e0", "a", "keep", "n-r0"]);
+  assert.ok(Math.abs(d.row.score! - 0.6 / 0.9) < 1e-12);
+  assert.equal(d.summary.reason, "weighted score 0.6667 > checkpoint 0.5556");
   assert.deepEqual(validateRow(d.row), []);
 
+  const level = round(parent, run({ accuracy: 0.5 }));
+  assert.deepEqual([level.keep, level.row.decision, level.row.decision_reason], [null, "revert", "weighted score 0.5556 <= checkpoint 0.5556"]);
+
   const gated = round(parent, run({ accuracy: 0.9, schema_violations: 2 }));
-  assert.deepEqual([gated.keep, gated.candidate, gated.row.decision], [null, null, "revert"]);
+  assert.deepEqual([gated.keep, gated.row.decision], [null, "revert"]);
+  assert.match(gated.summary.guardrails[0], /a gate failed: schema_violations=2 \(cap 0\)/);
 
   const failed = round(parent, { ok: false, expId: "n-r1-e0", model: "p/a", error: "boom" });
-  assert.deepEqual([failed.row.decision, failed.row.infra_errors, failed.candidate], ["error", 1, null]);
+  assert.deepEqual([failed.row.decision, failed.row.infra_errors, failed.keep], ["error", 1, null]);
   assert.deepEqual(validateRow(failed.row), []);
 
   const long = `${"cmd ".repeat(200)}Traceback: boom`;
   const crashed = round(parent, { ok: true, expId: "n-r1-e0", model: "p/a", code: coded("c"), eval: { ...evaluated({ accuracy: 0 }), ok: false, error: long } });
-  assert.deepEqual([crashed.row.decision, crashed.summary.errors], ["error", [long]]);
+  assert.deepEqual([crashed.row.decision, crashed.summary.errors, crashed.row.score], ["error", [long], undefined]);
 
   const leak = round(parent, { ok: true, expId: "n-r1-e0", model: "p/a", code: { ...coded("e"), check: { errors: ["leak"], notes: ["named"] } }, eval: null });
   assert.deepEqual([leak.row.decision, leak.summary.errors, leak.summary.notes, leak.row.infra_errors], ["error", ["leak"], ["named"], 0]);
 });
 
-test("worse than the checkpoint's stored scores: guardrails forbid the keep", () => {
-  const headlined = { ...cfg, scenario: { ...cfg.scenario, headline: { accuracy: 0.05 } } };
+test("a gain inside the noise margin reverts", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  const within = round(parent, run({ accuracy: 0.46 }), headlined);
-  assert.equal(within.candidate?.expId, "n-r1-e0");
-  const worse = round(parent, run({ accuracy: 0.4 }), headlined);
-  assert.equal(worse.candidate, null);
-  assert.match(worse.summary.guardrails[0], /accuracy fell/);
+  assert.equal(round(parent, run({ accuracy: 0.52 }), cfg, 0.05).keep, null);
+  const past = round(parent, run({ accuracy: 0.6 }), cfg, 0.05);
+  assert.equal(past.keep?.expId, "n-r1-e0");
+  assert.match(past.summary.reason, /\+ noise margin 0\.0500$/);
 });
 
-test("only the reviewer keeps, and only a candidate", () => {
+test("the score caps a metric at its threshold, so a loss elsewhere costs", () => {
+  const two = { ...cfg, thresholds: { accuracy: 0.9, recall: 0.5 } };
+  const parent = parentAt(0.95, { accuracy: 0.95, recall: 0.3 });
+  assert.equal(round(parent, run({ accuracy: 1, recall: 0.3 }), two).keep, null); // past its threshold: no gain
+  assert.equal(round(parent, run({ accuracy: 0.85, recall: 0.5 }), two).keep?.expId, "n-r1-e0");
+  assert.equal(round(parent, run({ accuracy: 0.6, recall: 0.4 }), two).keep, null);
+  assert.equal(round(parent, run({ accuracy: 0.85, recall: 0.32 }), { ...two, weights: { accuracy: 4 } }).keep, null);
+});
+
+test("held-out names in the diff: two block a keep, one is a note", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  const d = round(parent, run({ accuracy: 0.51 }));
-  const reverted = applyReview(d, false);
-  assert.deepEqual([reverted.keep, reverted.row.decision, reverted.summary.decision], [null, "revert", "revert"]);
-
-  const kept = applyReview(d, true);
-  assert.deepEqual([kept.keep?.sha, kept.row.decision, kept.summary.decision], ["a", "keep", "keep"]);
-  assert.deepEqual(validateRow(kept.row), []);
-
-  const worse = round(parent, run({ accuracy: 0.8, schema_violations: 1 }));
-  assert.equal(applyReview(worse, true).keep, null);
+  const leaky = (leaks: string[]) => round(parent, { ok: true, expId: "n-r1-e0", model: "p/a", code: { ...coded("a"), leaks }, eval: evaluated({ accuracy: 0.9 }) });
+  const two = leaky(["Gold Name", "Other Name"]);
+  assert.equal(two.keep, null);
+  assert.deepEqual(two.summary.guardrails, [`the diff's added lines name 2 held-out evaluation items`]);
+  assert.doesNotMatch(JSON.stringify(two.row), /Gold Name/);
+  const one = leaky(["Gold Name"]);
+  assert.equal(one.keep?.expId, "n-r1-e0");
+  assert.deepEqual(one.summary.notes, ["the diff's added lines name 1 held-out item"]);
 });
 
 test("standard metrics: on by default, cost before latency, validated", () => {
@@ -197,9 +211,13 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 });
 
 const REVIEW = {
-  model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 3, primaryMetric: "e.f1", thresholds: {}, gates: {}, parentScore: 0.7, parentMetrics: { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 } as Record<string, number> | null,
-  objectives: [], minEfficiencyGain: 0.1, log: [], canKeep: true, override: false, headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
-  result: { expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics: { "e.f1": 0.7 } as Record<string, number>, guardrails: [] as string[], notes: [], diff: "", details: "" },
+  model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 3, primaryMetric: "e.f1", thresholds: {}, weights: {}, gates: {}, parentScore: 0.7,
+  parentMetrics: { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 } as Record<string, number> | null,
+  objectives: [], minEfficiencyGain: 0.1, log: [], headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
+  result: {
+    expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics: { "e.f1": 0.7 } as Record<string, number>, guardrails: [] as string[], notes: [], diff: "", details: "",
+    score: 0.5, parentScore: 0.6, margin: 0, reason: "weighted score 0.5000 <= checkpoint 0.6000",
+  },
 };
 
 test("the reviewer reads the experiment against the checkpoint's stored scores", () => {
@@ -208,15 +226,17 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   const prompt = reviewerPrompt(withMetrics({ "e.f1": 0.75, "r.x.mean": 0.4, gone: 1 }));
   assert.match(prompt, /Change from the kept commit: e\.f1 \+0\.0500, r\.x\.mean -0\.1000 \(ci95 ±0\.1000\)/);
   assert.match(prompt, /scores from its own evaluation/);
-  assert.match(prompt, /headline metrics count equally: e\.f1, r\.x\.mean, gone\./);
+  assert.match(prompt, /Headline metrics: e\.f1, r\.x\.mean, gone\./);
   assert.match(reviewerPrompt(input), /Change from the kept commit: (none|r\.x)/);
-  assert.doesNotMatch(reviewerPrompt({ ...input, headline: [] }), /count equally/);
-  assert.match(reviewerPrompt(input), /You may keep it\./);
+  assert.doesNotMatch(reviewerPrompt({ ...input, headline: [] }), /Headline metrics/);
+  // The loop decided; the reviewer reads why and decides nothing.
+  assert.match(reviewerPrompt(input), /The loop's decision: revert \(weighted score 0\.5000 <= checkpoint 0\.6000\)\./);
+  assert.doesNotMatch(reviewerPrompt(input), /"keep"/);
+  assert.match(reviewerPrompt({ ...input, thresholds: { "e.f1": 0.8, "r.x.mean": 0.5 }, weights: { "e.f1": 2 } }), /Weights in the score: \{"e\.f1":2,"r\.x\.mean":1\}/);
   const replayed = reviewerPrompt({ ...input, result: { ...input.result, metrics: { ...input.result.metrics, model_calls: 10, model_calls_replayed: 7 } } });
   assert.match(replayed, /Model calls: 7 of 10 were replayed/);
   assert.doesNotMatch(reviewerPrompt(input), /were replayed/);
   assert.match(reviewerPrompt({ ...input, direction: "work on retrieval" }), /direction for every round:\nwork on retrieval/);
-  assert.match(reviewerPrompt({ ...input, canKeep: false, result: { ...input.result, guardrails: ["e.f1 fell"] } }), /Failed guardrails[^\n]*e\.f1 fell[\s\S]*keep must be false/);
 
   // Diagnostics sit under the metrics and skip the cells nobody listed.
   const diagnosed = reviewerPrompt(withMetrics({ "e.f1": 0.7, "e.precision": 0.6, "e.recall": 0.9, "e.tp": 5 }));
@@ -232,8 +252,8 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
 
   // The log says what moved and why it went, and that reverted code is gone.
   const entry = { round: 1, hypothesis: "h1", deltaPrimary: -0.1, decision: "revert", reason: "r.x fell" };
-  const logged = reviewerPrompt({ ...input, log: [{ ...entry, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }] });
-  assert.match(logged, /- r1: h1 → Δe\.f1=-0\.1000, Δr\.x\.mean=\+0\.2000 \(revert: r\.x fell\)/);
+  const logged = reviewerPrompt({ ...input, log: [{ ...entry, deltaScore: -0.02, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }] });
+  assert.match(logged, /- r1: h1 → Δscore=-0\.0200, Δe\.f1=-0\.1000, Δr\.x\.mean=\+0\.2000 \(revert: r\.x fell\)/);
   assert.match(logged, /survives only as a read-only diff at \/spec\/history/);
   assert.match(reviewerPrompt({ ...input, headline: [], log: [entry] }), /- r1: h1 → Δe\.f1=-0\.1000 \(revert/);
   assert.match(reviewerPrompt({ ...input, log: [entry] }), /- r1: h1 → no metric moved/);
@@ -280,11 +300,9 @@ test("parsers", () => {
   assert.equal(parseApproach("**APPROACH:** `x`"), "x");
   assert.equal(parseApproach("**APPROACH**: y"), "y");
   assert.equal(parseApproach("My approach is fine\nlast line"), "last line");
-  const r = parseReview('noise {"keep": true, "keep_reason": " why ", "feedback": "f", "hypothesis": " a "} trailing', true);
-  assert.deepEqual(r, { keep: true, keep_reason: "why", feedback: "f", hypothesis: "a" });
-  assert.equal(parseReview('{"keep": false, "feedback": "f"}', true), null); // no hypothesis
-  assert.equal(parseReview('{"keep": true, "feedback": "f", "hypothesis": "a"}', false), null); // can't be kept
-  assert.equal(parseReview('{"feedback": "f", "hypothesis": "a"}', true), null); // no answer on the keep
+  assert.deepEqual(parseReview('noise {"feedback": "f", "hypothesis": " a "} trailing'), { feedback: "f", hypothesis: "a" });
+  assert.equal(parseReview('{"feedback": "f"}'), null); // no hypothesis
+  assert.equal(parseReview('{"feedback": "f", "hypothesis": " "}'), null);
 });
 
 test("coder prompt names the dev endpoint only when the program may call models", () => {
@@ -322,8 +340,7 @@ test("the mock coder makes one change, then closes with its approach", () => {
 });
 
 test("the mock reviewer's answer parses", () => {
-  const parsed = parseReview(textOf(reviewerReply()), false);
-  assert.deepEqual([parsed?.keep, parsed?.hypothesis], [false, "mock hypothesis"]);
+  assert.equal(parseReview(textOf(reviewerReply()))?.hypothesis, "mock hypothesis");
 });
 
 test("a mock config writes results apart from the real ones", () => {
@@ -342,12 +359,12 @@ test("a reviewer may share the coder's model only at another thinking level", ()
   assert.throws(() => parseConfig(yaml("coder_thinking: extreme\nreviewer_thinking: high\n"), ROOT), /coder_thinking must be/);
 });
 
-test("against the empty starter an experiment only has to have worked, and the reviewer judges absolute scores", () => {
+test("against the empty starter any experiment that worked and scored is kept", () => {
   const starter = parentAt(0, null);
-  const headlined = { ...cfg, scenario: { ...cfg.scenario, headline: { accuracy: 0.05 } } };
-  assert.equal(round(starter, run({ accuracy: 0.3, "g.output_bytes": 9 }), headlined).candidate?.expId, "n-r1-e0");
-  const empty = round(starter, run({ accuracy: 0.9, "g.output_bytes": 0 }), headlined);
-  assert.deepEqual([empty.candidate, empty.summary.guardrails], [null, ["g wrote no output"]]);
+  assert.equal(round(starter, run({ accuracy: 0.3, "g.output_bytes": 9 })).keep?.expId, "n-r1-e0");
+  assert.equal(round(starter, run({ accuracy: 0, "g.output_bytes": 9 })).keep, null); // 0 doesn't beat 0
+  const empty = round(starter, run({ accuracy: 0.9, "g.output_bytes": 0 }));
+  assert.deepEqual([empty.keep, empty.summary.guardrails], [null, ["g wrote no output"]]);
   assert.deepEqual(emptyStages({ output_bytes: 0, "e.output_bytes": 4, accuracy: 0 }), ["the run wrote no output"]);
 
   const input = { ...REVIEW, parentMetrics: null, headline: ["accuracy"] };
@@ -421,72 +438,15 @@ test("a rejected diff is masked, capped and listed for later coders", async () =
   }
 });
 
-test("override: a tiny guardrail failure can be kept with a reason, a large one can't", () => {
-  const scenario = { ...cfg.scenario, headline: { accuracy: 0.02, precision: 0 }, override_limit: 0.005 };
-  const limited = { ...cfg, scenario };
-  const parent = parentAt(0.5, { accuracy: 0.5, precision: 1 });
-
-  const tiny = round(parent, run({ accuracy: 0.6, precision: 0.9984 }), limited);
-  assert.deepEqual([tiny.override, tiny.candidate?.expId, tiny.summary.guardrails.length], [true, "n-r1-e0", 1]);
-  const kept = applyReview(tiny, true);
-  assert.deepEqual([kept.keep?.expId, kept.row.decision, kept.row.override], ["n-r1-e0", "keep", true]);
-  assert.deepEqual(validateRow(kept.row), []);
-  assert.equal(applyReview(tiny, false).keep, null);
-
-  const large = round(parent, run({ accuracy: 0.6, precision: 0.99 }), limited);
-  assert.deepEqual([large.override, large.candidate], [false, null]);
-  assert.equal(applyReview(large, true).keep, null);
-
-  const noLimit = round(parent, run({ accuracy: 0.6, precision: 0.9984 }), { ...cfg, scenario: { ...scenario, override_limit: undefined } });
-  assert.deepEqual([noLimit.override, noLimit.candidate], [false, null]);
-  const passed = round(parent, run({ accuracy: 0.6, precision: 1 }), limited);
-  assert.deepEqual([passed.override, passed.candidate?.expId], [false, "n-r1-e0"]);
-  const gated = round(parent, run({ accuracy: 0.6, precision: 0.9984, schema_violations: 1 }), limited);
-  assert.deepEqual([gated.override, gated.candidate], [false, null]);
-});
-
-test("override: one large failure, a vanished metric or an empty stage rules it out", () => {
-  const headline = { a: 0.02, b: 0 } as const;
-  const parent = { a: 0.5, b: 1, "e.output_bytes": 10 };
-  assert.equal(tinyRegressions({ ...parent, a: 0.479, b: 0.999 }, parent, headline, 0.005), true);
-  assert.equal(tinyRegressions({ ...parent, a: 0.4, b: 0.999 }, parent, headline, 0.005), false);
-  assert.equal(tinyRegressions({ b: 0.999, "e.output_bytes": 10 }, parent, headline, 0.005), false);
-  assert.equal(tinyRegressions({ ...parent, b: 0.999, "e.output_bytes": 0 }, parent, headline, 0.005), false);
-  assert.equal(tinyRegressions(parent, parent, headline, 0.005), false);
-  assert.equal(tinyRegressions({ ...parent, b: 0.999 }, parent, headline, 0), false);
-  const ci = { "r.mean": 0.5, "r.ci95_half": 0.1 };
-  assert.equal(tinyRegressions({ ...ci, "r.mean": 0.397 }, ci, { "r.mean": "ci95" }, 0.005), true);
-  assert.equal(tinyRegressions({ ...ci, "r.mean": 0.39 }, ci, { "r.mean": "ci95" }, 0.005), false);
-});
-
-test("override: the reviewer is told, and must give a reason to keep", () => {
-  const reply = (r: string) => JSON.stringify({ keep: true, keep_reason: r, feedback: "f", hypothesis: "h" });
-  assert.equal(parseReview(reply(" "), true, true), null);
-  assert.equal(parseReview(reply("recall gained 0.1"), true, true)?.keep_reason, "recall gained 0.1");
-  assert.equal(parseReview(reply(""), true)?.keep, true);
-  const result = { ...REVIEW.result, guardrails: ["g fell to 0.9984"] };
-  assert.match(reviewerPrompt({ ...REVIEW, override: true, result }), /Failed guardrails by a tiny margin[^]*only as an override/);
-  assert.match(reviewerPrompt({ ...REVIEW, canKeep: false, result }), /Failed guardrails, can't be kept/);
-});
-
-test("scenario: override_limit is a number >= 0", () => {
-  const base = "name: s\nimage: i\nbundle: b\nstages:\n  - { name: a, inputs: i, run: r, score: s }\n";
-  assert.equal(parseScenario(`${base}override_limit: 0.005\n`).override_limit, 0.005);
-  assert.equal(parseScenario(base).override_limit, undefined);
-  assert.throws(() => parseScenario(`${base}override_limit: -1\n`), /override_limit/);
-  assert.throws(() => parseScenario(`${base}override_limit: tiny\n`), /override_limit/);
-});
-
 test("no code change: nothing evaluated, the parent's scores, no infra error, the coder's report read", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
   const code = { ...coded("c"), unchanged: "Second pass didn't help on train, reverted it." };
   const d = round(parent, { ok: true, expId: "n-r1-e0", model: "p/a", code, eval: null });
   assert.deepEqual([d.row.decision, d.row.unchanged, d.row.infra_errors, d.row.metrics], ["revert", true, 0, { accuracy: 0.5 }]);
-  assert.deepEqual([d.candidate, d.summary.primary, d.summary.guardrails, d.summary.errors], [null, 0.5, [], undefined]);
+  assert.deepEqual([d.keep, d.summary.primary, d.summary.guardrails, d.summary.errors, d.summary.reason], [null, 0.5, [], undefined, "no code change"]);
   assert.deepEqual(validateRow(d.row), []);
-  assert.equal(applyReview(d, true).keep, null);
   assert.equal(round(parentAt(0, null), { ok: true, expId: "n-r1-e0", model: "p/a", code, eval: null }).row.decision, "revert");
-  const prompt = reviewerPrompt({ ...REVIEW, canKeep: false, result: { ...REVIEW.result, unchanged: code.unchanged } });
+  const prompt = reviewerPrompt({ ...REVIEW, result: { ...REVIEW.result, unchanged: code.unchanged } });
   assert.match(prompt, /committed no change[^]*Second pass didn't help/);
   assert.doesNotMatch(reviewerPrompt(REVIEW), /committed no change/);
 });
@@ -564,6 +524,92 @@ test("a cut never leaves half a held-out name for a coder", async () => {
     const error = `failed on Gold Name${" ".repeat(292)}end`; // the name straddles the last 300 characters
     const line = await historyLine(masked, { round: 1, hypothesis: "h", deltaPrimary: 0, decision: "error", reason: error });
     assert.doesNotMatch(line, /Name|Gold/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a coder's task list: every task done, or dropped with a note", () => {
+  assert.equal(openTasks('[{"task": "a", "status": "done"}, {"task": "b", "status": "dropped", "note": "no gain"}]'), "");
+  assert.match(openTasks(null), /wrote no \/tmp\/tasks\.json/);
+  assert.match(openTasks("not json"), /not valid JSON/);
+  assert.match(openTasks('{"task": "a"}'), /not a JSON list/);
+  const open = openTasks('[{"task": "a", "status": "todo"}, {"task": "b", "status": "dropped"}, {"task": "c", "status": "done"}]');
+  assert.match(open, /"a"; "b"/);
+  assert.doesNotMatch(open, /"c"/);
+  // The plan is JSON, and only its status and note change.
+  assert.match(WORKFLOW, /\/tmp\/tasks\.json[^]*"status": "todo"[^]*Change only a task's status/);
+});
+
+test("the coder hears the score that decides a keep, and that cost and latency don't count", () => {
+  const objectives = { primary: "a", metrics: ["latency_total_s"], thresholds: { a: 0.8, b: 0.5 }, weights: { b: 2 } };
+  const prompt = coderPrompt("s", "", null, 10, objectives);
+  assert.match(prompt, /weighted score on the hidden dev split[^\n]*a 0\.8, b 0\.5 \(weight 2\)/);
+  assert.match(prompt, /latency_total_s\), lower is better, for the report: they don't count toward the keep/);
+  assert.match(coderPrompt("s", "", null, 10), /First run the program in \/repo on two or three train items/);
+});
+
+test("a coder's notes outlive its round: newest first, masked, capped, once per experiment", async () => {
+  const { dir, cfg: masked } = scanning();
+  try {
+    const { bundleDir } = nightPaths(masked, "n");
+    assert.equal(readNotes(bundleDir), "");
+    await appendNotes(masked, "n", "n-r1-e0", "rerank 503s above 8 calls at once");
+    await appendNotes(masked, "n", "n-r2-e0", "ladybug needs a fresh db per run; Gold Name");
+    await appendNotes(masked, "n", "n-r2-e0", "a replayed step");
+    await appendNotes(masked, "n", "n-r3-e0", "  ");
+    const notes = readNotes(bundleDir);
+    assert.match(notes, /^## r2-e0\nladybug needs a fresh db per run; \[hidden\]\n\n## r1-e0\nrerank 503s/);
+    assert.doesNotMatch(notes, /replayed|Gold/);
+    assert.equal(rejectedDiffs(bundleDir).length, 0); // the notes are no rejected diff
+    assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", notes), /<notes>[^]*\/spec\/history\/notes\.md[^]*rerank 503s[^]*<\/notes>/);
+    assert.doesNotMatch(coderPrompt("s", "", null, 10), /<notes>/);
+    for (let i = 4; i < 20; i += 1) await appendNotes(masked, "n", `n-r${i}-e0`, "x".repeat(1500));
+    const capped = readFileSync(notesFile(bundleDir), "utf8");
+    assert.ok(capped.length <= NIGHT_NOTE_CHARS + 1600);
+    assert.match(capped, /^## r19-e0/);
+    assert.doesNotMatch(capped, /## r1-e0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the A/A run: the kept commit's score moved by the margin, with nothing replayed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-noise-"));
+  try {
+    const c = { ...cfg, results_path: join(dir, "r.jsonl") };
+    mkdirSync(nightPaths(c, "n").nightDir, { recursive: true });
+    const kept = parentAt(0.5, { accuracy: 0.45 });
+    const ok = { ok: true as const, evalId: "n-r0-noise", result: evaluated({ accuracy: 0.54 }) };
+    const noise = recordNoise({ cfg: c, nightId: "n", round: 2 }, kept, ok)!;
+    assert.ok(Math.abs(noise.margin - 0.1) < 1e-9);
+    assert.deepEqual(JSON.parse(readFileSync(nightPaths(c, "n").noiseJson, "utf8")), noise);
+    const failed = recordNoise({ cfg: c, nightId: "n", round: 3 }, kept, { ok: false, evalId: "n-r0-noise2", error: "boom" });
+    assert.equal(failed, null);
+    const rows = readFileSync(c.results_path, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { kind: string; decision: string });
+    assert.deepEqual(rows.map((r) => [r.kind, r.decision]), [["noise", "keep"], ["noise", "error"]]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("only the lines a commit adds are scanned for held-out names", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-leaks-"));
+  try {
+    const scan = `if grep -q 'Gold Name' {text}; then printf '{"found":["Gold Name"]}'; else printf '{"found":[]}'; fi > {report}`;
+    const c = { ...cfg, results_path: join(dir, "r.jsonl"), scenario: { ...cfg.scenario, scan } };
+    const repo = new ExperimentRepo(nightPaths(c, "n").gitDir);
+    await repo.ensure();
+    const code = join(dir, "code");
+    mkdirSync(code);
+    writeFileSync(join(code, "a.py"), `x = "Gold Name"\n`);
+    await repo.importDir(code, "parent");
+    writeFileSync(join(code, "a.py"), "x = 1\n");
+    await repo.importDir(code, "removes");
+    writeFileSync(join(code, "a.py"), `x = 1\ny = "Gold Name"\n`);
+    await repo.importDir(code, "adds");
+    assert.deepEqual(await diffLeaks(c, "n", "parent", "removes"), []);
+    assert.deepEqual(await diffLeaks(c, "n", "removes", "adds"), ["Gold Name"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

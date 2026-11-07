@@ -47,7 +47,10 @@ export type NightConfig = {
   allowed_models: string[];
   primary_metric: string;
   standard_metrics: StandardMetricsConfig;
+  /** Targets, higher is better. The night stops once the kept commit meets all; their weighted score decides a keep. */
   thresholds: Record<string, number>;
+  /** Weight of each threshold metric in the weighted score; unset metrics weigh 1. */
+  weights: Record<string, number>;
   gates: Record<string, number>;
   /**
    * `eval` caps the program's model calls in one eval (default: `experiment`); `dev` caps the calls the
@@ -98,6 +101,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
       min_efficiency_gain: sm.min_efficiency_gain ?? 0.1,
     },
     thresholds: req(raw, "thresholds", "object"),
+    weights: (raw.weights as Record<string, number> | undefined) ?? {},
     gates: (raw.gates as Record<string, number> | undefined) ?? {},
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
@@ -116,6 +120,14 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   for (const k of ["models", "parallel", "min_gain", "spec_dir", "dataset_dir", "run_cmd", "run_files", "score_cmd", "baseline", "hidden_fields", "overfit_gap", "max_validations"]) {
     if (k in raw) throw new Error(`config: "${k}" is gone; the scenario's scenario.yaml and fixed splits replace it (docs/scenario-contract.md)`);
+  }
+  if (!Object.keys(cfg.thresholds).length) throw new Error("config: thresholds must name at least one metric: their weighted score decides a keep");
+  for (const [k, v] of Object.entries(cfg.thresholds)) {
+    if (!(typeof v === "number" && v > 0)) throw new Error(`config: thresholds.${k} must be a number > 0`);
+  }
+  for (const [k, v] of Object.entries(cfg.weights)) {
+    if (!(k in cfg.thresholds)) throw new Error(`config: weights.${k} names no threshold metric`);
+    if (!(typeof v === "number" && v > 0)) throw new Error(`config: weights.${k} must be a number > 0`);
   }
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
   if (cfg.max_tokens !== null && !(Number.isInteger(cfg.max_tokens) && cfg.max_tokens > 0)) {

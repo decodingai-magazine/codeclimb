@@ -33,14 +33,9 @@ export interface Scenario {
   /** Host: writes the coder's bundle into `{out}`; it becomes /spec, `spec/` holding the agent's spec. */
   bundle: string;
   stages: Stage[];
-  /**
-   * Headline metric → the drop from the parent that fails a branch: a number, or `ci95` for the half-width
-   * of the parent's interval (`<metric>` ending `.mean`, with `.ci95_half` beside it). Empty: no such guardrail.
-   */
-  headline: Record<string, number | "ci95">;
-  /** How far past its margin a headline may fall and the reviewer still keep it, with a reason. Unset: never. */
-  override_limit?: number;
-  /** Regexes of the metrics the reviewer reads to explain the headlines; they never decide a keep. */
+  /** The metrics each round reports and logs, stage by stage. The config's `thresholds` decide a keep. */
+  headline: string[];
+  /** Regexes of the metrics the reviewer reads to explain the headlines. */
   diagnostics?: string[];
   /** What the reviewer reads as its protocol: files of the scenario, `path#Heading` for one `##` section. */
   protocol: string[];
@@ -91,13 +86,9 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     };
   });
   if (new Set(stages.map((s) => s.name)).size !== stages.length) throw new Error(`${where}: stage names must be unique`);
-  const headline = (raw.headline ?? {}) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(headline)) {
-    if (v !== "ci95" && !(typeof v === "number" && v >= 0)) throw new Error(`${where}: headline.${k} must be a margin >= 0 or "ci95"`);
-    if (v === "ci95" && !k.endsWith(".mean")) throw new Error(`${where}: headline.${k}: "ci95" needs a metric ending .mean`);
-  }
-  const overrideLimit = raw.override_limit;
-  if (overrideLimit !== undefined && !(typeof overrideLimit === "number" && overrideLimit >= 0)) throw new Error(`${where}: override_limit must be a number >= 0`);
+  const headline = (raw.headline ?? []) as unknown[];
+  if (!Array.isArray(headline) || !headline.every((h) => typeof h === "string")) throw new Error(`${where}: headline must list metric names`);
+  if ("override_limit" in raw) throw new Error(`${where}: override_limit is gone: the weighted score of the config's thresholds decides a keep`);
   const diagnostics = (raw.diagnostics ?? []) as unknown[];
   if (!Array.isArray(diagnostics) || !diagnostics.every((d) => typeof d === "string")) throw new Error(`${where}: diagnostics must list regexes`);
   for (const d of diagnostics as string[]) new RegExp(d); // a bad pattern fails here, not in a review
@@ -105,9 +96,8 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
   if (!Array.isArray(protocol) || !protocol.every((p) => typeof p === "string")) throw new Error(`${where}: protocol must list files`);
   return {
     name: str(raw, "name", where), image: str(raw, "image", where), bundle: str(raw, "bundle", where), stages,
-    headline: headline as Scenario["headline"], protocol: protocol as string[],
+    headline: headline as string[], protocol: protocol as string[],
     ...(diagnostics.length ? { diagnostics: diagnostics as string[] } : {}),
-    ...(overrideLimit === undefined ? {} : { override_limit: overrideLimit as number }),
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
     ...(raw.scan === undefined ? {} : { scan: str(raw, "scan", where) }),
     ...(raw.inngest_image === undefined ? {} : { inngest_image: str(raw, "inngest_image", where) }),

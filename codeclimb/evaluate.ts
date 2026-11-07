@@ -39,6 +39,8 @@ export type EvalRequest = {
   expId: string;
   split: EvalSplit;
   runId?: string;
+  /** Replay no model call from earlier evals of the night: the A/A run that measures the noise. */
+  noReplay?: boolean;
 };
 
 export interface EvalResult {
@@ -196,7 +198,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
     creditsOut = () => r(null);
   });
   const token = proxy?.open({
-    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval, mock: cfg.mock, replayScope: req.nightId,
+    evalId: req.evalId, allowedModels: cfg.allowed_models, capUsd: cfg.budget_usd.eval, mock: cfg.mock, replayScope: req.noReplay ? undefined : req.nightId,
     onCreditStop: (stop) => {
       result.credits = stop;
       result.error = `out of credits on ${stop.model}: ${stop.message}`;

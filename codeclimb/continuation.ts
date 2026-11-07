@@ -121,24 +121,31 @@ export function reopenNight(cfg: NightConfig, id: string, rounds: number = cfg.m
 
 /** Every round of night `id`, rebuilt from its rows: a night keeps its log only in memory. */
 export function priorLog(cfg: NightConfig, id: string): HypothesisLogEntry[] {
-  const metricNames = [...efficiencyMetrics(cfg), ...Object.keys(cfg.scenario.headline)];
+  const metricNames = [...efficiencyMetrics(cfg), ...cfg.scenario.headline];
   const { reviewJson } = nightPaths(cfg, id);
   const rows = experimentRows(cfg, id);
   // A repaired round has two rows: the last stands.
   const rounds = [...new Map(rows.map((r) => [r.round, r])).values()].sort((a, b) => a.round - b.round);
   let parent: Metrics | null = null;
+  let parentScore = 0;
   return rounds.map((r): HypothesisLogEntry => {
     const before: Metrics | null = parent;
+    const scoreBefore = parentScore;
     const scored = metricNames.filter((m) => r.decision !== "error" && typeof r.metrics[m] === "number");
     const moved = before
       ? { deltas: Object.fromEntries(scored.flatMap((m) => (typeof before[m] === "number" ? [[m, r.metrics[m] - before[m]]] : []))) }
       : { scores: Object.fromEntries(scored.map((m) => [m, r.metrics[m]])) };
     const review = existsSync(reviewJson(r.round)) ? (JSON.parse(readFileSync(reviewJson(r.round), "utf8")) as { keep_reason?: string }) : {};
-    if (r.decision === "keep") parent = r.metrics;
+    if (r.decision === "keep") {
+      parent = r.metrics;
+      parentScore = r.score ?? 0;
+    }
     const P = cfg.primary_metric;
     return {
-      round: r.round, hypothesis: r.hypothesis ?? "(unknown)", deltaPrimary: (r.metrics[P] ?? 0) - (before?.[P] ?? 0), ...moved, decision: r.decision,
-      reason: r.unchanged ? "no code change" : review.keep_reason ?? "",
+      round: r.round, hypothesis: r.hypothesis ?? "(unknown)", deltaPrimary: (r.metrics[P] ?? 0) - (before?.[P] ?? 0),
+      ...(r.score === undefined || r.unchanged ? {} : { deltaScore: r.score - scoreBefore }), ...moved, decision: r.decision,
+      // Nights before the weighted score kept the reviewer's reason.
+      reason: r.unchanged ? "no code change" : r.decision_reason ?? review.keep_reason ?? "",
     };
   });
 }

@@ -19,6 +19,8 @@ export function nightPaths(cfg: NightConfig, nightId: string) {
     pauseJson: join(nightDir, "pause.json"),
     /** Every pause so far, one per line. */
     pausesLog: join(nightDir, "pauses.jsonl"),
+    /** The evaluation's measured noise: the keep margin on the weighted score. */
+    noiseJson: join(nightDir, "noise.json"),
     expDir: (expId: string) => join(nightDir, "exps", expId),
     evalDir: (evalId: string) => join(nightDir, "evals", evalId),
     /** The reviewer's feedback and next-round hypotheses, kept for the report. */

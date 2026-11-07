@@ -34,7 +34,7 @@ export interface ResultRow {
    * Not in the contract: which extra eval a row is (experiment | rescore | noise | test). `baseline`
    * is the already re-scored parent's run in a round's evaluator: recorded for comparison, its score unchanged.
    */
-  kind: "experiment" | "test";
+  kind: "experiment" | "noise" | "test";
   /** Not in the contract: unique per row (an experiment's own eval, a re-score, a noise run, ...). */
   eval_id: string;
   night_id: string;
@@ -42,9 +42,12 @@ export interface ResultRow {
   evaluator_instance?: string;
   /** The coder committed no change: nothing was evaluated, and the metrics are the parent's. */
   unchanged?: boolean;
-  /** Kept by the reviewer despite a guardrail it failed by a tiny margin. */
+  /** Older nights: kept by the reviewer despite a guardrail it failed by a tiny margin. */
   override?: boolean;
-  /** Not in the contract: why a kept experiment was kept (a primary gain, or cost/latency at an unchanged primary). */
+  /** Not in the contract: the weighted score of the threshold metrics that decided the round. */
+  score?: number;
+  /** Not in the contract: why the round was kept or reverted. */
+  decision_reason?: string;
   /** Not in the contract: the program's model calls while the coder developed (metered, outside `metrics`). */
   dev_usd?: number;
 }
@@ -90,11 +93,13 @@ export const RESULT_ROW_SCHEMA = {
     t_review: num,
     t_teardown: num,
     infra_errors: { type: "integer", minimum: 0 },
-    kind: { type: "string", enum: ["experiment", "test"] },
+    kind: { type: "string", enum: ["experiment", "noise", "test"] },
     eval_id: str,
     night_id: str,
     evaluator_instance: str,
     override: { type: "boolean" },
+    score: num,
+    decision_reason: str,
     unchanged: { type: "boolean" },
     dev_usd: num,
   },

@@ -73,13 +73,13 @@ test("the checkpoint is the last keep, or the starter when nothing was kept", ()
 });
 
 test("the log comes back from the rows: deltas against the checkpoint of the time, a repair stands for its round", () => {
-  const cfg = { ...config(), scenario: { ...config().scenario, headline: { accuracy: 0.02 } } };
+  const cfg = { ...config(), scenario: { ...config().scenario, headline: ["accuracy"] } };
   night(cfg, "n1", 1);
   appendRows(cfg.results_path, [
     row("n1", 1, 0, "keep", 0.2),
-    row("n1", 2, 0, "keep", 0.5),
+    row("n1", 2, 0, "keep", 0.5, { score: 0.5 }),
     row("n1", 3, 0, "error", 0),
-    row("n1", 3, 1, "revert", 0.4),
+    row("n1", 3, 1, "revert", 0.4, { score: 0.3, decision_reason: "weighted score 0.3000 <= checkpoint 0.5000" }),
     row("n1", 4, 0, "revert", 0.5, { unchanged: true }),
     row("n1", 4, 0, "keep", 0.9, { kind: "test", split: "test" }),
   ]);
@@ -89,7 +89,10 @@ test("the log comes back from the rows: deltas against the checkpoint of the tim
   assert.deepEqual(log.map((l) => l.round), [1, 2, 3, 4]);
   assert.ok(Math.abs(log[1].deltaPrimary - 0.3) < 1e-9);
   assert.ok(Math.abs(log[2].deltas!.accuracy + 0.1) < 1e-9);
-  assert.equal(log[2].reason, "worse");
+  assert.equal(log[2].reason, "weighted score 0.3000 <= checkpoint 0.5000");
+  assert.ok(Math.abs(log[2].deltaScore! + 0.2) < 1e-9);
+  assert.equal(log[1].reason, "better"); // an older night's row: the reviewer's reason
+  assert.equal(log[3].deltaScore, undefined);
   assert.equal(log[3].reason, "no code change");
   assert.match(logLine(log[2], null), /^- r3: h3\.1 → /);
   assert.deepEqual(lastReview(cfg, "n1"), { feedback: "f2", hypothesis: "next2" });
@@ -145,7 +148,10 @@ test("a continued night picks up its kept commit, learning and rejected diffs, u
   writeFileSync(join(paths.bundleDir, "stale"), "x");
   const { config: reopened } = reopenNight(cfg, "n1", 2);
 
+  writeFileSync(paths.noiseJson, JSON.stringify({ margin: 0.01, expId: "n1-r1-e0", first: 0.5, second: 0.51 }));
+  assert.equal((await continueNight(reopened, "n1", { rescore: true })).noise, null); // new scorers, new noise
   const state = await continueNight(reopened, "n1", { direction: "  look at retrieval ", rescore: false });
+  assert.equal(state.noise?.margin, 0.01);
   assert.deepEqual([state.kept.expId, state.kept.sha, state.round, state.spend], ["n1-r1-e0", sha, 2, 2]);
   assert.deepEqual([state.kept.score, state.feedback, state.hypothesis, state.direction], [0.5, "go on", "try x", "look at retrieval"]);
   assert.equal(state.history.length, 2);

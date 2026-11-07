@@ -91,7 +91,8 @@ export async function buildReportData(resultsPath: string, opts: { title?: strin
             max_rounds: c.max_rounds, model: c.model, reviewer_model: c.reviewer_model, budget_usd: c.budget_usd,
             // Nights before standard metrics have no `standard_metrics`: nothing was optimized besides the primary.
             objectives: c.standard_metrics ? efficiencyMetrics(c) : [],
-            headline: Object.keys(c.scenario?.headline ?? {}),
+            // Nights before the weighted score kept a map of metric to drop margin.
+            headline: Array.isArray(c.scenario?.headline) ? c.scenario.headline : Object.keys(c.scenario?.headline ?? {}),
             stages: c.scenario?.stages?.map((s) => s.name) ?? [],
           }
         : null,

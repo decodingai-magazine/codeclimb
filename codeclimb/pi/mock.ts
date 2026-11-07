@@ -1,13 +1,14 @@
 // Mock mode (`run-night --mock`): real Pi sessions, sandboxes and evals on scripted models, for a free
 // end-to-end check. Metrics mean nothing. The coder appends to MOCK.md through the sandbox's bash tool,
-// so every experiment has a real diff; the reviewer keeps nothing.
+// so every experiment has a real diff, and writes a done task list and a note; every score is 0, so nothing is kept.
 import { type FauxResponseFactory, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 
 export type MockRole = "coder" | "reviewer";
 
 type Messages = Parameters<FauxResponseFactory>[0]["messages"];
 
-export const MOCK_CHANGE = `echo "mock change $(date +%s)" >> MOCK.md`;
+export const MOCK_CHANGE =
+  `echo "mock change $(date +%s)" >> MOCK.md && echo '[{"task": "mock", "check": "none", "status": "done"}]' > /tmp/tasks.json && echo "mock note" > /tmp/notes.md`;
 export const MOCK_APPROACH = "APPROACH: mock change, no real work";
 
 /** One bash call, then the closing text. A resumed session ends on a tool result or a prompt, and either works. */
@@ -19,7 +20,7 @@ export function coderReply(messages: Messages) {
 
 /** The JSON `parseReview` wants. */
 export function reviewerReply() {
-  return fauxAssistantMessage(JSON.stringify({ keep: false, keep_reason: "mock", feedback: "mock feedback", hypothesis: "mock hypothesis" }));
+  return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis" }));
 }
 
 const respond: FauxResponseFactory = (context, _options, _state, model) => {

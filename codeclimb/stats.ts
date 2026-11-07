@@ -1,4 +1,4 @@
-// Keep rule, thresholds, gates and guardrails. Pure functions.
+// Keep rule, thresholds, gates and the weighted score. Pure functions.
 
 export type Metrics = Record<string, number>;
 
@@ -12,42 +12,26 @@ export function passesThresholds(metrics: Metrics, thresholds: Record<string, nu
 
 const emptyStage = (m: string) => `${m.replace(/\.?output_bytes$/, "") || "the run"} wrote no output`;
 
-/** The stages that wrote nothing: what still stops a branch when there is no parent's run to compare with. */
+/** The stages that wrote nothing: an experiment with one can't be kept, whatever it scores. */
 export function emptyStages(cand: Metrics): string[] {
   return Object.keys(cand).filter((m) => /(^|\.)output_bytes$/.test(m) && !cand[m]).map(emptyStage);
 }
 
-/** How far `m` may fall below the parent's score: its margin, or the parent's interval for `ci95`. */
-const allowedDrop = (m: string, parent: Metrics, margin: number | "ci95") => (margin === "ci95" ? (parent[m.replace(/\.mean$/, ".ci95_half")] ?? 0) : margin);
-
 /**
- * Why a branch may not be kept, whatever its other scores: a headline metric fell further below the
- * parent's scores than its margin (or vanished), or a stage that had output now has none.
+ * The score that decides a keep: each threshold metric as its share of its threshold, capped at 1,
+ * averaged with `weights` (1 where unset). A metric past its threshold adds no more; a missing one adds 0.
+ * Null metrics (the starter, never run) score 0.
  */
-export function guardrailFailures(cand: Metrics, parent: Metrics, headline: Record<string, number | "ci95">): string[] {
-  const failures: string[] = [];
-  for (const [m, margin] of Object.entries(headline)) {
-    if (typeof parent[m] !== "number") continue;
-    const allowed = allowedDrop(m, parent, margin);
-    if (typeof cand[m] !== "number") failures.push(`${m} is gone (parent ${parent[m].toFixed(4)})`);
-    else if (cand[m] < parent[m] - allowed - 1e-12) failures.push(`${m} fell to ${cand[m].toFixed(4)} from ${parent[m].toFixed(4)} (margin ${allowed.toFixed(4)})`);
+export function weightedScore(metrics: Metrics | null, thresholds: Record<string, number>, weights: Record<string, number> = {}): number {
+  const keys = Object.keys(thresholds);
+  if (!metrics || !keys.length) return 0;
+  let sum = 0;
+  let total = 0;
+  for (const k of keys) {
+    const w = weights[k] ?? 1;
+    const v = metrics[k];
+    sum += w * (typeof v === "number" ? Math.min(Math.max(v, 0) / thresholds[k], 1) : 0);
+    total += w;
   }
-  for (const m of Object.keys(parent)) {
-    if (/(^|\.)output_bytes$/.test(m) && parent[m] > 0 && !cand[m]) failures.push(emptyStage(m));
-  }
-  return failures;
-}
-
-/**
- * Every guardrail it failed is a headline metric past its margin by at most `limit`, so the reviewer
- * may override them. A metric that vanished or a stage gone empty is never tiny.
- */
-export function tinyRegressions(cand: Metrics, parent: Metrics, headline: Record<string, number | "ci95">, limit: number): boolean {
-  const failures = guardrailFailures(cand, parent, headline);
-  const tiny = Object.entries(headline).filter(([m, margin]) => {
-    if (typeof parent[m] !== "number" || typeof cand[m] !== "number") return false;
-    const past = parent[m] - allowedDrop(m, parent, margin) - cand[m];
-    return past > 1e-12 && past <= limit + 1e-12;
-  });
-  return failures.length > 0 && tiny.length === failures.length;
+  return sum / total;
 }

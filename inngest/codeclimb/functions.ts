@@ -1,6 +1,7 @@
 // CodeClimb on Inngest: a thin parent run per night, a linear loop of one experiment per round.
 // Each round is one child run for the coding phase (`step.invoke`) and one evaluator run, on its
-// own sandbox. A worse experiment is reviewed, then dropped: the next round restarts from the checkpoint.
+// own sandbox. Its weighted score decides the keep; a worse experiment is reviewed, then dropped: the
+// next round restarts from the checkpoint.
 // Children get their own `cancelOn` for the night-stop event: cancelling the
 // parent alone may not cancel invoked children, and cancel never interrupts a
 // running step.
@@ -12,12 +13,13 @@ import { efficiencyMetrics, evalMinutes, rootConfig, type NightConfig } from "..
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
-  applyReview,
+  appendNotes,
   checkRepo,
   checkStop,
   continueNight,
   creditStopOf,
   decideRound,
+  diffLeaks,
   endPause,
   type EvalOutcome,
   type ExperimentOutcome,
@@ -27,9 +29,10 @@ import {
   type Kept,
   historyLine, maskFailures, repairable,
   markPaused,
+  type Noise,
   type PausedAt,
-  recordRows, renameKept, rescoreRow, saveRejected,
-  reviewRound,
+  recordNoise, recordRows, renameKept, rescoreRow, saveRejected,
+  reviewRound, smokeTest,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import { writeReport } from "../../codeclimb/report/html";
@@ -40,6 +43,9 @@ import { ccInngest, nightResume, nightStart, nightStop } from "./client";
 
 /** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
 const PAUSE_TIMEOUT = "3d";
+/** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
+const SMOKE_WAIT = "5m";
+const SMOKE_RETRIES = 6;
 
 type ExperimentEvent = ExperimentInput;
 type EvalSpec = Omit<EvalRequest, "nightId" | "runId" | "order"> & {
@@ -56,10 +62,12 @@ export const runExperiment = ccInngest.createFunction(
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.nightId" }],
   },
   async ({ event, step, attempt, runId }) => {
+    const { config: cfg, nightId, parentExpId, expId } = event.data;
     const code = await step.run("code", () => runCoder(event.data, { attempt, runId }));
-    if (!code.sha || code.credits || !event.data.config.scenario.check) return { code, runId };
-    const check = await step.run("check", () => checkRepo(event.data.config, event.data.nightId, event.data.expId));
-    return { code: { ...code, check }, runId };
+    if (!code.sha || code.credits || code.unchanged !== undefined) return { code, runId };
+    const check = cfg.scenario.check ? await step.run("check", () => checkRepo(cfg, nightId, expId)) : undefined;
+    const leaks = cfg.scenario.scan ? await step.run("leaks", () => diffLeaks(cfg, nightId, parentExpId, expId)) : [];
+    return { code: { ...code, ...(check ? { check } : {}), ...(leaks.length ? { leaks } : {}) }, runId };
   },
 );
 
@@ -82,7 +90,7 @@ export const runEvaluator = ccInngest.createFunction(
       // Native mirror of the metrics on the experiment's run (not used for decisions).
       if (scoreRunId && result.ok) {
         // Sorted: a memoized result's keys may come back in another order, and step ids must replay the same.
-        const headline = Object.keys(cfg.scenario.headline);
+        const { headline } = cfg.scenario;
         const names = headline.length ? [cfg.primary_metric, ...headline] : Object.keys(result.metrics);
         for (const name of [...new Set(names)].sort()) {
           const value = result.metrics[name];
@@ -183,6 +191,9 @@ export const runNight = ccInngest.createFunction(
     let maxEvalUsd = 0;
     let stopReason = "";
     let round = state.round;
+    let noise: Noise | null = state.noise;
+    let noiseTried = false;
+    const margin = () => noise?.margin ?? 0;
 
     // The scorers changed since the kept commit was scored: a round of its own scores it again, or the
     // next round would be compared with scores from another evaluation.
@@ -210,7 +221,34 @@ export const runNight = ccInngest.createFunction(
         round -= 1;
         break;
       }
+      // Before any money goes into the round: the models answer and the proxy is reachable. An outage
+      // would spend the coder's budget on a round that can't be scored.
+      let down: string | null = null;
+      for (let n = 0; n <= SMOKE_RETRIES; n += 1) {
+        if (n) await step.sleep(`r${round}-smoke-wait${n}`, SMOKE_WAIT);
+        down = await step.run(`r${round}-smoke${n ? n : ""}`, () => smokeTest(cfg));
+        if (!down) break;
+      }
+      if (down) {
+        console.log(`[night ${nightId}] stopping: round ${round} smoke test failed ${SMOKE_RETRIES + 1} times: ${down}`);
+        stopReason = "outage";
+        round -= 1;
+        break;
+      }
       const rowBase = { cfg, nightId, round };
+
+      // The first checkpoint with scores, new, continued or rescored, is scored once more with nothing
+      // replayed: how far its weighted score moves is the margin every later experiment must beat. Once.
+      if (kept.metrics && !noise && !noiseTried) {
+        noiseTried = true;
+        const aa = kept;
+        const outcome = await evaluate(`r${round}-noise`, round, { evalId: `${aa.expId}-noise-r${round}`, expId: aa.expId, split: "dev", noReplay: true });
+        if (outcome.ok) {
+          spend += outcome.result.program_usd;
+          maxEvalUsd = Math.max(maxEvalUsd, outcome.result.program_usd);
+        }
+        noise = await step.run(`r${round}-noise-record`, () => recordNoise(rowBase, aa, outcome));
+      }
 
       // One experiment and its evaluation on dev, with the coder stopped.
       const parent = kept;
@@ -232,6 +270,8 @@ export const runNight = ccInngest.createFunction(
           coded = await code(r);
         }
         if (!coded.ok) return { ok: false, expId, model: cfg.model, error: coded.error };
+        const notes = coded.code.notes ?? "";
+        if (notes) await step.run(`r${round}-e${n}-notes`, () => appendNotes(cfg, nightId, expId, notes));
         const evaluated = coded.code.sha && !coded.code.check?.errors.length && coded.code.unchanged === undefined
           ? await evaluate(`r${round}-eval${n ? n : ""}`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
           : null;
@@ -239,7 +279,7 @@ export const runNight = ccInngest.createFunction(
       };
 
       let experiment = await attempt(0, parent.expId, { failures, hypothesis });
-      let decided = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis }));
+      let decided = await step.run(`r${round}-decide`, () => decideRound({ ...rowBase, parent, experiment, hypothesis, margin: margin() }));
 
       // A failed commit says nothing about its idea: one coder fixes it, if the budget allows, and the fix
       // stands for the round. The failed attempt keeps its row and its cost.
@@ -258,36 +298,35 @@ export const runNight = ccInngest.createFunction(
           await step.run(`r${round}-record-failed`, () => recordRows(cfg, [first.row]));
           experiment = await attempt(1, first.summary.expId, { failures: toFix, hypothesis: first.summary.hypothesis, repair: true });
           const fixed = experiment;
-          decided = await step.run(`r${round}-decide-repair`, () => decideRound({ ...rowBase, parent, experiment: fixed, hypothesis }));
+          decided = await step.run(`r${round}-decide-repair`, () => decideRound({ ...rowBase, parent, experiment: fixed, hypothesis, margin: margin() }));
         }
       }
       const final = decided;
 
       // Review, even of a reverted experiment and in the last round: its feedback is what the next round
-      // learns from it, and a continued night's next round is the one after this.
-      let review: Omit<ReviewOutput, "keep"> = { keep_reason: "", feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
-      let decision = final;
+      // learns from it, and a continued night's next round is the one after this. It decides nothing.
+      let review: ReviewOutput = { feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
+      const decision = final;
       for (let n = 0; ; n += 1) {
         let reviewed;
         try {
           reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-              summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log], direction,
+              summary: final.summary, log: [...log], direction,
             }).catch((e: unknown) => {
               if (e instanceof OutOfCredits) return { credits: e.stop };
               throw e;
             }),
           );
         } catch {
-          break; // A failed review reverts and keeps last round's guidance instead of killing the night.
+          break; // A failed review keeps last round's guidance instead of killing the night.
         }
         if ("credits" in reviewed) {
           await pauseForCredits(round, [{ ...reviewed.credits, where: `review of round ${round}` }]);
           continue;
         }
         review = reviewed;
-        decision = applyReview(final, reviewed.keep);
         break;
       }
       const row = { ...decision.row, reviewer_usd: review.reviewer_usd, t_review: review.t_review };
@@ -306,14 +345,15 @@ export const runNight = ccInngest.createFunction(
       tokens += roundTok;
       roundsWithoutKeep = decision.keep ? 0 : roundsWithoutKeep + 1;
       const s = decision.summary;
-      const scored = [...efficiencyMetrics(cfg), ...Object.keys(cfg.scenario.headline)].filter((m) => s.decision !== "error" && typeof s.metrics[m] === "number");
+      const scored = [...efficiencyMetrics(cfg), ...cfg.scenario.headline].filter((m) => s.decision !== "error" && typeof s.metrics[m] === "number");
       const against = parent.metrics;
       const moved = against
         ? { deltas: Object.fromEntries(scored.flatMap((m) => (typeof against[m] === "number" ? [[m, s.metrics[m] - against[m]]] : []))) }
         : { scores: Object.fromEntries(scored.map((m) => [m, s.metrics[m]])) };
       const entry: HypothesisLogEntry = {
-        round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score, ...moved, decision: s.decision,
-        reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ") ?? [...s.guardrails, ...(decision.keep || !s.guardrails.length ? [review.keep_reason] : [])].join("; "),
+        round, hypothesis: s.hypothesis, deltaPrimary: s.primary - parent.score,
+        ...(s.decision === "error" || s.unchanged !== undefined ? {} : { deltaScore: s.score - s.parentScore }), ...moved, decision: s.decision,
+        reason: s.unchanged !== undefined ? `no code change: ${s.unchanged}` : s.errors?.join("; ") ?? s.reason,
       };
       log.push(entry);
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));

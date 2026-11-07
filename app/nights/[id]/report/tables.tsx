@@ -79,7 +79,7 @@ export function ExperimentsTable({ night, v, primary, selected, onSelect }: {
   );
 }
 
-const EVAL_LABEL: Record<string, string> = { test: "test" };
+const EVAL_LABEL: Record<string, string> = { test: "test", noise: "noise (A/A)" };
 
 export function EvalsTable({ nightId, v, primary }: { nightId: string; v: Derived; primary: string }) {
   const extra = v.rows.filter((r) => r.kind !== "experiment");
