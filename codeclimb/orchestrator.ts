@@ -208,9 +208,8 @@ export async function continueNight(cfg: NightConfig, nightId: string, start: Ni
 /**
  * The evaluation's noise, from an A/A run: the kept commit scored again with no replayed model calls.
  * Its threshold metrics moved by `margin` with no code change (`weightedMove`: each metric's move counts,
- * so two that move apart don't cancel), so an experiment must beat the checkpoint's score by more than
- * that, and by at least MIN_NOISE_MARGIN. One pair is one sample of the noise, and replay makes a real
- * experiment's noise smaller.
+ * so two that move apart don't cancel). It is the base of the margin an experiment must beat, which
+ * `noiseMargin` scales by the experiment's replayed calls.
  */
 export interface Noise {
   margin: number;
@@ -219,8 +218,20 @@ export interface Noise {
   second: number;
 }
 
-/** One A/A pair can come out quiet by chance: no margin is smaller than this. */
-export const MIN_NOISE_MARGIN = 0.005;
+/**
+ * The margin an experiment's score must beat the checkpoint's by. `base` is the A/A move (or the
+ * config's `fixed`; 0 before either exists). The A/A run is fully fresh: its two scores differ by every
+ * call's noise. An experiment replays the checkpoint's answers for every unchanged call, so only its
+ * fresh share `f` of calls differs: the variance scales with `f`, the margin with sqrt(f). Example: an
+ * A/A move of 0.022 and 9 of 83 calls fresh give 0.022 * sqrt(9/83) = 0.0072. `min` floors it.
+ */
+export function noiseMargin(cfg: NightConfig, base: number, metrics: Metrics | null): { margin: number; fresh: number | null } {
+  const nm = cfg.noise_margin;
+  const b = nm.fixed ?? base;
+  const calls = metrics?.model_calls ?? 0;
+  const fresh = nm.scale_by_replay && calls > 0 ? (calls - (metrics?.model_calls_replayed ?? 0)) / calls : null;
+  return { margin: Math.max(b * Math.sqrt(fresh ?? 1), nm.min), fresh };
+}
 
 /** Records the A/A run of `kept`, and returns the noise it measured; null when it failed. */
 export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise | null {
@@ -231,7 +242,7 @@ export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise
   if (second === undefined) return null;
   const first = scoreOf(b.cfg, kept.metrics);
   const move = weightedMove(kept.metrics, scored, b.cfg.thresholds, b.cfg.weights);
-  const noise = { margin: Math.max(move, MIN_NOISE_MARGIN), expId: kept.expId, first, second };
+  const noise = { margin: move, expId: kept.expId, first, second };
   writeFileSync(nightPaths(b.cfg, b.nightId).noiseJson, JSON.stringify(noise, null, 2));
   return noise;
 }
@@ -390,13 +401,15 @@ function readCodeState(cfg: NightConfig, nightId: string, expId: string): { code
 
 /**
  * A round's one experiment against the checkpoint's stored dev scores. It is kept when its weighted score
- * (`scoreOf`) beats the checkpoint's by more than `margin`, the evaluation's measured noise, and nothing
+ * (`scoreOf`) beats the checkpoint's by more than the noise margin (`noiseMargin` of `margin`, the A/A
+ * move, scaled by the experiment's replayed calls), and nothing
  * blocks it: a failed gate, a stage gone empty, or a diff that names held-out items. Anything else
  * reverts, and the next round starts from the checkpoint again. An experiment that changed no code was
  * not evaluated: it reverts with the parent's scores, and the review reads what the coder reported.
  */
 export function decideRound(args: RowBase & { parent: Kept; experiment: ExperimentOutcome; hypothesis: string | null; margin: number }): RoundDecision {
-  const { cfg, parent, experiment: x, margin } = args;
+  const { cfg, parent, experiment: x } = args;
+  let margin = noiseMargin(cfg, args.margin, null).margin;
   const P = cfg.primary_metric;
   const parentScore = scoreOf(cfg, parent.metrics);
   if (!x.ok) {
@@ -428,6 +441,9 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
     ...emptyStages(metrics),
     ...(leaks.length >= LEAK_LIMIT ? [`the diff's added lines name ${leaks.length} held-out evaluation items`] : []),
   ];
+  const scaled = noiseMargin(cfg, args.margin, evalOk && !unchanged ? metrics : null);
+  margin = scaled.margin;
+  const fresh = scaled.fresh === null ? "" : ` (${metrics.model_calls - (metrics.model_calls_replayed ?? 0)} of ${metrics.model_calls} model calls fresh, A/A ${fmtScore(cfg.noise_margin.fixed ?? args.margin)})`;
   const beats = score > parentScore + margin + 1e-12;
   const kept = evalOk && !unchanged && !guardrails.length && beats;
   const reason = unchanged
@@ -436,7 +452,7 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
       ? "not scored"
       : guardrails.length
         ? `blocked: ${guardrails.join("; ")}`
-        : `weighted score ${fmtScore(score)} ${beats ? ">" : "<="} checkpoint ${fmtScore(parentScore)}${margin ? ` + noise margin ${fmtScore(margin)}` : ""}`;
+        : `weighted score ${fmtScore(score)} ${beats ? ">" : "<="} checkpoint ${fmtScore(parentScore)}${margin ? ` + noise margin ${fmtScore(margin)}${fresh}` : ""}`;
   const row = baseRow(args, {
     exp_id: x.expId, parent_id: parent.expId, model: x.model, hypothesis: x.code.hypothesis, commit: x.code.sha ?? "",
     eval_id: `${x.expId}-eval`, metrics, coder_usd: x.code.coder_usd, program_usd: ev?.program_usd ?? 0,

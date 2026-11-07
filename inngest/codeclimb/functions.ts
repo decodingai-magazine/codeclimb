@@ -193,7 +193,8 @@ export const runNight = ccInngest.createFunction(
     let round = state.round;
     let noise: Noise | null = state.noise;
     let noiseTried = false;
-    const margin = () => noise?.margin ?? 0;
+    // The A/A move, scaled per experiment by `decideRound`; a fixed margin in the config replaces it.
+    const margin = () => cfg.noise_margin.fixed ?? noise?.margin ?? 0;
 
     // The scorers changed since the kept commit was scored: a round of its own scores it again, or the
     // next round would be compared with scores from another evaluation.
@@ -239,7 +240,7 @@ export const runNight = ccInngest.createFunction(
 
       // The first checkpoint with scores, new, continued or rescored, is scored once more with nothing
       // replayed: how far its weighted score moves is the margin every later experiment must beat. Once.
-      if (kept.metrics && !noise && !noiseTried) {
+      if (kept.metrics && !noise && !noiseTried && cfg.noise_margin.fixed === null) {
         noiseTried = true;
         const aa = kept;
         const outcome = await evaluate(`r${round}-noise`, round, { evalId: `${aa.expId}-noise-r${round}`, expId: aa.expId, split: "dev", noReplay: true });

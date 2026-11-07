@@ -58,6 +58,13 @@ export type NightConfig = {
    * including the program's model calls in each eval.
    */
   budget_usd: { experiment: number; night: number };
+  /**
+   * How much an experiment's weighted score must beat the checkpoint's by. The base is the A/A run's
+   * measured move, or `fixed` (which skips that run). With `scale_by_replay`, the base shrinks by the
+   * square root of the share of the experiment's model calls that were not replayed: a replayed call
+   * repeats the checkpoint's answer and adds no noise. `min` floors the result.
+   */
+  noise_margin: { min: number; fixed: number | null; scale_by_replay: boolean };
   results_path: string;
   /** Directory relative paths resolve against. */
   base_dir: string;
@@ -78,6 +85,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const timeouts = req<NightConfig["timeouts"]>(raw, "timeouts", "object");
   const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
+  const nm = (raw.noise_margin as Partial<NightConfig["noise_margin"]> | undefined) ?? {};
   for (const k of ["eval", "dev"]) {
     if (k in budget) throw new Error(`config: budget_usd.${k} is gone; budget_usd.experiment covers an experiment's development calls, and budget_usd.night every evaluation`);
   }
@@ -110,6 +118,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night),
     },
+    noise_margin: { min: nm.min ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
     results_path: abs(req(raw, "results_path", "string")),
     base_dir: baseDir,
   };
@@ -139,6 +148,10 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (!(Number.isInteger(cfg.plateau_rounds) && cfg.plateau_rounds >= 0)) {
     throw new Error("config: plateau_rounds must be an integer >= 0 (0 = never stop on a plateau)");
   }
+  const n = cfg.noise_margin;
+  if (!(typeof n.min === "number" && n.min >= 0)) throw new Error("config: noise_margin.min must be a number >= 0");
+  if (n.fixed !== null && !(typeof n.fixed === "number" && n.fixed >= 0)) throw new Error("config: noise_margin.fixed must be a number >= 0, or omitted to measure it");
+  if (typeof n.scale_by_replay !== "boolean") throw new Error("config: noise_margin.scale_by_replay must be true or false");
   const st = cfg.standard_metrics;
   if (typeof st.latency !== "boolean" || typeof st.cost !== "boolean") {
     throw new Error("config: standard_metrics.latency and standard_metrics.cost must be true or false");
