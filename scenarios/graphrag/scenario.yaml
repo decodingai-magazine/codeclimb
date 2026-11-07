@@ -1,0 +1,53 @@
+# graphrag: extraction, graph building and retrieval, each scored on gold input (README.md, Scoring).
+# Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
+name: graphrag
+image: codeclimb-graphrag          # npm run build:image:graphrag
+inngest_image: codeclimb-graphrag:v2   # the same image, linux/amd64, published to the Inngest workspace
+bundle: uv run python scripts/export_agent.py --out {out}
+protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
+check: uv run python scripts/check_repo.py --repo {repo} --out {report}
+scan: uv run python scripts/scan_text.py --text {text} --out {report}
+# The metrics every round reports, per stage. The night config's thresholds decide a keep.
+headline:
+  - extraction.mentions.f1
+  - extraction.relations.directed.f1
+  - graph.b_cubed.recall
+  - graph.b_cubed.precision
+  - retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean
+  - retrieval.by_kind.multi_hop.metrics.path_complete.mean
+  - retrieval.by_kind.intersection.metrics.answer_mrr.mean
+# What the reviewer reads to explain the headlines: precision against recall, what a do-nothing graph
+# scores, how much each query returned, and the small retrieval kinds, too noisy to decide a keep.
+# The confusion-matrix cells and sample sizes stay out.
+diagnostics:
+  - '^extraction\.mentions\.(precision|recall)$'
+  - '^extraction\.relations\.directed\.(precision|recall)$'
+  - '^extraction\.relations\.unresolved_ends$'
+  - '^extraction\.documents\.empty$'
+  - '^extraction\.type_accuracy\.accuracy$'
+  - '^graph\.baselines\.history_only\.(precision|recall)$'
+  - '^retrieval\.by_kind\.(comparison\.metrics\.edge_recall_at_k|aggregation\.metrics\.r_precision|temporal\.metrics\.r_precision|unanswerable\.metrics\.abstained)\.mean$'
+  - '^retrieval\.by_kind\.[^.]+\.metrics\.(subgraph_precision|node_precision|edge_precision|returned_nodes|returned_edges|returned_docs)\.mean$'
+# PYTHONHASHSEED: a set's order stays the same across runs, so a model request built from one repeats
+# exactly and the night's cache can answer it.
+stages:
+  - name: extraction
+    inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+    run: PYTHONHASHSEED=0 python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details
+  - name: graph
+    inputs: uv run python evaluators/graph.py inputs --split {split} --mode gold-history --out {inputs}
+    run: PYTHONHASHSEED=0 python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report} --details
+  - name: retrieval
+    inputs: uv run python evaluators/retrieval.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+      /eval/graph.json: gold/graph.json   # the full gold graph (accepted risk, docs/scenario-contract.md Q23)
+    run: PYTHONHASHSEED=0 python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
+    score: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details

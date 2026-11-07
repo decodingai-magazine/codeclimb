@@ -1,0 +1,14 @@
+# capitals: name a country's capital; the program calls a model through the metering proxy.
+# The scenario contract: docs/scenario-contract.md. Commands run on the worker host from this directory,
+# except `run`, which runs in the eval sandbox. Placeholders: {split} train|dev|test, {inputs} the stage's
+# input file, {out} its output directory, {report} the score report, {out} for `bundle` the bundle directory.
+name: capitals
+image: codeclimb-python          # npm run build:image
+bundle: python3 scripts/export_agent.py --out {out}
+stages:
+  - name: answer
+    inputs: python3 evaluators/evaluate.py inputs --split {split} --out {inputs}
+    files:
+      /eval/run.py: evaluators/run.py
+    run: python3 /eval/run.py --queries {inputs} --repo /repo --out {out}
+    score: python3 evaluators/evaluate.py score --split {split} --predictions {out} --out {report}
