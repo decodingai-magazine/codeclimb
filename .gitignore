@@ -24,8 +24,6 @@ runs/
 __pycache__/
 .venv/
 
-# graphrag's articles and gold answers stay local: this repo is public
-scenarios/graphrag/corpus/
-scenarios/graphrag/gold/
-scenarios/graphrag-lite/corpus/
-scenarios/graphrag-lite/gold/
+# the graphrag datasets stay local, whole (articles, gold, spec, evaluators): this repo is public
+scenarios/graphrag/
+scenarios/graphrag-lite/
