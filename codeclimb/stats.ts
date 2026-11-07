@@ -22,6 +22,24 @@ export function emptyStages(cand: Metrics): string[] {
  * averaged with `weights` (1 where unset). A metric past its threshold adds no more; a missing one adds 0.
  * Null metrics (the starter, never run) score 0.
  */
+/**
+ * How far two runs' threshold metrics moved apart, each by its weighted share of its threshold: the sum
+ * of every metric's move, so moves in opposite directions add up instead of cancelling.
+ */
+export function weightedMove(a: Metrics | null, b: Metrics | null, thresholds: Record<string, number>, weights: Record<string, number> = {}): number {
+  const keys = Object.keys(thresholds);
+  if (!keys.length) return 0;
+  const share = (m: Metrics | null, k: string) => (typeof m?.[k] === "number" ? Math.min(Math.max(m[k], 0) / thresholds[k], 1) : 0);
+  let sum = 0;
+  let total = 0;
+  for (const k of keys) {
+    const w = weights[k] ?? 1;
+    sum += w * Math.abs(share(a, k) - share(b, k));
+    total += w;
+  }
+  return sum / total;
+}
+
 export function weightedScore(metrics: Metrics | null, thresholds: Record<string, number>, weights: Record<string, number> = {}): number {
   const keys = Object.keys(thresholds);
   if (!metrics || !keys.length) return 0;

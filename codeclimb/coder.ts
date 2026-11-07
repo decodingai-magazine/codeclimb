@@ -2,7 +2,7 @@
 // parent commit) until it says done, hits `timeouts.experiment_min` or
 // `budget_usd.experiment`, or goes quiet past the idle watchdog (→ abort()). A coder
 // that stops too soon (tasks still open in /tmp/tasks.json, no train measurement in
-// /tmp/train-score.json, or most of its time and budget left) is sent back once. Then the
+// /tmp/train-score.json, or most of its time and budget left) is sent back, twice at most. Then the
 // orchestrator commits /repo and pulls the commit back as a bundle, with the coder's
 // notes for later rounds, before destroying the sandbox.
 //
@@ -209,17 +209,32 @@ export function trainScoreProblem(text: string | null): string {
   return s && scored(s.before) && scored(s.after) ? "" : `${TRAIN_SCORE_FILE} needs a "before" and an "after" object of metric scores.`;
 }
 
+/** How many times a coder that stops too soon is sent back. */
+export const MAX_SEND_BACKS = 2;
+
 /**
  * Why a coder that stopped goes back for one more turn; empty when it doesn't. Open tasks, a missing
- * train measurement where train exists, or more than half of both its time and its budget left.
+ * train measurement where train exists, or more than half of both its time and its budget left. For the
+ * last, the next step is named: another way to raise `target`, the metric with the largest weighted
+ * shortfall, since "keep going" alone sent coders back to stopping a minute later.
  */
-export function sendBack(s: { tasks: string | null; trainScore: string | null; hasTrain: boolean; minutesLeft: number; minutes: number; usdLeft: number; usd: number }): string {
+export function sendBack(s: {
+  tasks: string | null;
+  trainScore: string | null;
+  hasTrain: boolean;
+  minutesLeft: number;
+  minutes: number;
+  usdLeft: number;
+  usd: number;
+  /** The threshold metric with the largest weighted shortfall, if any is short. */
+  target?: string;
+}): string {
   const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) : ""];
   if (s.minutesLeft > s.minutes / 2 && s.usdLeft > s.usd / 2) {
-    why.push(
-      `You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left. ` +
-        "Measure on train, read the worst items, and try another way to test the hypothesis; stop only when that finds nothing more, and say why in APPROACH.",
-    );
+    const next = s.target
+      ? `Next: add a task that tries a clearly different way to raise ${s.target}, the metric furthest below its threshold, measure it on train against your current code, and keep the better.`
+      : "Next: read the worst train items and add a task that fixes the largest kind of error you find, measured on train against your current code.";
+    why.push(`You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left. ${next} Stop only when that finds nothing more, and say why in APPROACH.`);
   }
   return why.filter(Boolean).join(" ");
 }
@@ -332,7 +347,8 @@ export function coderPrompt(
       "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Before you stop, write to /tmp/notes.md what the next coder should know, kept in the night's history even if this round is reverted: facts you checked in the sandbox, such as how a tool, library or model endpoint behaves, limits you hit, runtimes, train measurements, and what failed and why. You can't see dev or test, so make no claim about them: the reviewer adds what the evaluation showed. At most 20 lines, plain lines with no heading, no plan and no summary of your diff. It stays outside /repo.",
-      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. A coder that stops without it, or with more than half its time and budget left, is sent back once.`,
+      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. A coder that stops without it, or with more than half its time and budget left, is sent back, twice at most.`,
+      "- Train items your few-shot examples come from score high by construction, so a train gain over them says little about the hidden split. Score on train items no example is drawn from: leave each one's examples out while scoring it (leave one out), or hold out a few items the examples never use, and say which in the command.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
       `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis and the targets. If a target shows no clear gain over the code you started from and time and budget remain, try another way to raise it. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
@@ -345,7 +361,7 @@ export function coderPrompt(
 export const WORKFLOW = [
   "Work in four steps:",
   "1. Research. First run the program in /repo on two or three train items, or cases you write, so you know it runs and where it stands. " +
-    "If /spec/train exists, score the code you start from on all of it now, the same way you will score your change, and keep the numbers for /tmp/train-score.json. " +
+    "If /spec/train exists, score the code you start from on it now, the same way you will score your change and on items no few-shot example comes from, and keep the numbers for /tmp/train-score.json. " +
     "Then, before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources. " +
     "The sandbox has internet access but no browser or curl: fetch pages with python3 (urllib), such as a package's docs, its README on GitHub, PyPI, or a paper on the method. " +
     "Spend at most a fifth of your time here, and stop once you know how you will build it.",
@@ -545,20 +561,23 @@ export async function runCoder(
               standing: input.standing,
             }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
       );
-      // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. One
-      // more turn. A repair writes no plan and fixes a failure, so it goes on as it is.
-      const back = input.repair || stop || deadline - Date.now() < MIN_FOLLOW_UP_MS
-        ? ""
-        : sendBack({
-            tasks: await readSandbox("/tmp/tasks.json"),
-            trainScore: await readSandbox(TRAIN_SCORE_FILE),
-            hasTrain: existsSync(join(paths.bundleDir, "train")),
-            minutesLeft: (deadline - Date.now()) / 60_000,
-            minutes: cfg.timeouts.experiment_min,
-            usdLeft: cfg.budget_usd.experiment - state.coderUsd - (state.devUsd ?? 0),
-            usd: cfg.budget_usd.experiment,
-          });
-      if (back) {
+      // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. Up to
+      // MAX_SEND_BACKS more turns. A repair writes no plan and fixes a failure, so it goes on as it is.
+      const target = Object.keys(cfg.thresholds ?? {}).length
+        ? unmet(cfg.thresholds, input.standing, cfg.weights)[0]?.split(":")[0]
+        : undefined;
+      for (let n = 0; n < MAX_SEND_BACKS && !input.repair && !stop && deadline - Date.now() >= MIN_FOLLOW_UP_MS; n += 1) {
+        const back = sendBack({
+          tasks: await readSandbox("/tmp/tasks.json"),
+          trainScore: await readSandbox(TRAIN_SCORE_FILE),
+          hasTrain: existsSync(join(paths.bundleDir, "train")),
+          minutesLeft: (deadline - Date.now()) / 60_000,
+          minutes: cfg.timeouts.experiment_min,
+          usdLeft: cfg.budget_usd.experiment - state.coderUsd - (state.devUsd ?? 0),
+          usd: cfg.budget_usd.experiment,
+          target,
+        });
+        if (!back) break;
         await session.prompt(
           `${back} Every task must end "done", or "dropped" with a note saying why. Do step 4 (Review) again, and end with the APPROACH line.`,
         );

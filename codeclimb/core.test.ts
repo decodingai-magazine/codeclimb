@@ -11,11 +11,11 @@ import { nightPaths } from "./paths";
 import { emptyStageError, prepareEnvironment } from "./evaluate";
 import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
+import { checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, MIN_NOISE_MARGIN, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
-import { emptyStages, passesGates, passesThresholds, weightedScore } from "./stats";
+import { emptyStages, passesGates, passesThresholds, weightedMove, weightedScore } from "./stats";
 
 // Config paths resolve against the repo root, where the real capitals scenario lives.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -550,6 +550,9 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.equal(sendBack({ ...base, trainScore: null, hasTrain: false }), "");
   assert.match(sendBack({ ...base, trainScore: '{"before": {}, "after": {"f1": 1}}' }), /needs a "before" and an "after"/);
   assert.match(sendBack({ ...base, minutesLeft: 20 }), /20 of 25 minutes and \$2\.00 of \$2\.50 left/);
+  assert.match(sendBack({ ...base, minutesLeft: 20 }), /Next: read the worst train items/);
+  assert.match(sendBack({ ...base, minutesLeft: 20, target: "f1" }), /Next: add a task that tries a clearly different way to raise f1, the metric furthest below/);
+  assert.match(coderPrompt("s", "", null, 10), /leave one out/);
   assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
   assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
   assert.match(trainScoreProblem("nope"), /not valid JSON/);
@@ -616,10 +619,15 @@ test("the A/A run: the kept commit's score moved by the margin, with nothing rep
     const noise = recordNoise({ cfg: c, nightId: "n", round: 2 }, kept, ok)!;
     assert.ok(Math.abs(noise.margin - 0.1) < 1e-9);
     assert.deepEqual(JSON.parse(readFileSync(nightPaths(c, "n").noiseJson, "utf8")), noise);
+    // Two metrics that move apart add up rather than cancel; a quiet pair still gets the floor.
+    assert.ok(Math.abs(weightedMove({ a: 0.6, b: 0.3 }, { a: 0.62, b: 0.28 }, { a: 1, b: 1 }) - 0.02) < 1e-9);
+    assert.ok(Math.abs(weightedScore({ a: 0.6, b: 0.3 }, { a: 1, b: 1 }) - weightedScore({ a: 0.62, b: 0.28 }, { a: 1, b: 1 })) < 1e-9); // the score alone sees no noise
+    const same = { ok: true as const, evalId: "n-r0-noise3", result: evaluated({ accuracy: 0.45 }) };
+    assert.equal(recordNoise({ cfg: c, nightId: "n", round: 4 }, kept, same)!.margin, MIN_NOISE_MARGIN);
     const failed = recordNoise({ cfg: c, nightId: "n", round: 3 }, kept, { ok: false, evalId: "n-r0-noise2", error: "boom" });
     assert.equal(failed, null);
     const rows = readFileSync(c.results_path, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { kind: string; decision: string });
-    assert.deepEqual(rows.map((r) => [r.kind, r.decision]), [["noise", "keep"], ["noise", "error"]]);
+    assert.deepEqual(rows.map((r) => [r.kind, r.decision]), [["noise", "keep"], ["noise", "keep"], ["noise", "error"]]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

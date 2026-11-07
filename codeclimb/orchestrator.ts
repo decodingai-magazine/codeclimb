@@ -19,7 +19,7 @@ import { writeReport } from "./report/html";
 import { appendRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, logLine, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
-import { emptyStages, type Metrics, passesGates, weightedScore } from "./stats";
+import { emptyStages, type Metrics, passesGates, weightedMove, weightedScore } from "./stats";
 
 /** The checkpoint: the commit the next round starts from, with the dev scores of its own evaluation. */
 export interface Kept {
@@ -207,8 +207,10 @@ export async function continueNight(cfg: NightConfig, nightId: string, start: Ni
 
 /**
  * The evaluation's noise, from an A/A run: the kept commit scored again with no replayed model calls.
- * Its weighted score moved by `margin` with no code change, so an experiment must beat the checkpoint by
- * more than that. One pair is one sample of the noise, and replay makes a real experiment's noise smaller.
+ * Its threshold metrics moved by `margin` with no code change (`weightedMove`: each metric's move counts,
+ * so two that move apart don't cancel), so an experiment must beat the checkpoint's score by more than
+ * that, and by at least MIN_NOISE_MARGIN. One pair is one sample of the noise, and replay makes a real
+ * experiment's noise smaller.
  */
 export interface Noise {
   margin: number;
@@ -216,6 +218,9 @@ export interface Noise {
   first: number;
   second: number;
 }
+
+/** One A/A pair can come out quiet by chance: no margin is smaller than this. */
+export const MIN_NOISE_MARGIN = 0.005;
 
 /** Records the A/A run of `kept`, and returns the noise it measured; null when it failed. */
 export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise | null {
@@ -225,7 +230,8 @@ export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise
   appendRows(b.cfg.results_path, [evalRow(b, kept, outcome, { kind: "noise", hypothesis, ...(second === undefined ? {} : { score: second }) })]);
   if (second === undefined) return null;
   const first = scoreOf(b.cfg, kept.metrics);
-  const noise = { margin: Math.abs(second - first), expId: kept.expId, first, second };
+  const move = weightedMove(kept.metrics, scored, b.cfg.thresholds, b.cfg.weights);
+  const noise = { margin: Math.max(move, MIN_NOISE_MARGIN), expId: kept.expId, first, second };
   writeFileSync(nightPaths(b.cfg, b.nightId).noiseJson, JSON.stringify(noise, null, 2));
   return noise;
 }
