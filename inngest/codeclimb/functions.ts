@@ -251,12 +251,14 @@ export const runNight = ccInngest.createFunction(
 
       // One experiment and its evaluation on dev, with the coder stopped.
       const parent = kept;
+      // What the coder aims at: every threshold metric the kept commit has not reached.
+      const standing = Object.fromEntries(Object.keys(cfg.thresholds ?? {}).map((m) => [m, typeof parent.metrics?.[m] === "number" ? parent.metrics[m] : null]));
       const attempt = async (n: number, parentExpId: string, input: Pick<ExperimentEvent, "failures" | "hypothesis" | "repair">): Promise<ExperimentOutcome> => {
         const expId = `${nightId}-r${round}-e${n}`;
         const code = (resume: number) => {
           const data: ExperimentEvent = {
             nightId, expId, parentExpId, round, model: cfg.model,
-            feedback, history, direction, ...input, config: cfg, ...(resume ? { resume: true } : {}),
+            feedback, history, direction, standing, ...input, config: cfg, ...(resume ? { resume: true } : {}),
           };
           return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, code: out.code, runId: out.runId }),

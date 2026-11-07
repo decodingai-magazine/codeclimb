@@ -51,6 +51,8 @@ export type ExperimentInput = {
   direction?: string;
   /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;
+  /** The kept commit's dev score on each threshold metric; null where it has none (the starter is never scored). */
+  standing?: Record<string, number | null>;
   config: NightConfig;
   /** Go on after a pause for credits from the commit `expId` holds, in the same Pi session. */
   resume?: boolean;
@@ -222,6 +224,18 @@ export function sendBack(s: { tasks: string | null; trainScore: string | null; h
   return why.filter(Boolean).join(" ");
 }
 
+/**
+ * The threshold metrics `standing` has not reached, largest weighted shortfall first, as prompt lines.
+ * With no standing (the starter, never scored) every one is unmet.
+ */
+export function unmet(thresholds: Record<string, number>, standing?: Record<string, number | null>, weights: Record<string, number> = {}): string[] {
+  const share = (m: string) => Math.min((standing?.[m] ?? 0) / thresholds[m], 1);
+  return Object.keys(thresholds)
+    .filter((m) => share(m) < 1)
+    .sort((a, b) => (weights[b] ?? 1) * (1 - share(b)) - (weights[a] ?? 1) * (1 - share(a)))
+    .map((m) => `${m}: ${typeof standing?.[m] === "number" ? (standing[m] as number).toFixed(3) : "not scored yet"}, threshold ${thresholds[m]}${weights[m] ? ` (weight ${weights[m]})` : ""}`);
+}
+
 const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
 
 export function coderPrompt(
@@ -229,7 +243,14 @@ export function coderPrompt(
   feedback: string,
   hypothesis: string | null,
   minutes: number,
-  objectives: { primary: string; metrics: string[]; thresholds?: Record<string, number>; weights?: Record<string, number> } = { primary: "", metrics: [] },
+  objectives: {
+    primary: string;
+    metrics: string[];
+    thresholds?: Record<string, number>;
+    weights?: Record<string, number>;
+    /** The kept commit's dev score per threshold metric, null where unscored. */
+    standing?: Record<string, number | null>;
+  } = { primary: "", metrics: [] },
   dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number },
   evalMin?: number,
   failures: EvalFailure[] = [],
@@ -263,9 +284,18 @@ export function coderPrompt(
       `<notes>\nThe night's history: one note per earlier experiment, newest first, kept whether or not its round was (/spec/history/notes/). Each holds the loop's decision, what that coder found before its evaluation, and the reviewer's verdict after it; where the two disagree, the verdict saw the scores. Trust them less than what you check yourself.\n${notes.trim()}\n</notes>`,
     );
   }
+  const below = repair ? [] : unmet(objectives.thresholds ?? {}, objectives.standing, objectives.weights);
+  if (below.length) {
+    parts.push(
+      `<targets>\nThe threshold metrics the kept commit has not reached, largest weighted shortfall first:\n${below.map((t) => `- ${t}`).join("\n")}\n` +
+        "Raise all of them in this attempt, not only one: each round costs a full evaluation, so a round that moves one metric leaves the others for later rounds. " +
+        "Plan at least one task per metric, most weighted shortfall first, and keep each task's change to its own part of the program where you can, so a gain in one doesn't cost another. " +
+        "Spend nothing on a metric past its threshold, but check it doesn't fall.\n</targets>",
+    );
+  }
   if (hypothesis) {
     parts.push(
-      `<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\nWhere your train measurements contradict a part of it, keep the variant that scores better and say so in APPROACH and your notes.\n</hypothesis>`,
+      `<hypothesis>\nTest this hypothesis in this attempt${below.length > 1 ? ", within the targets above: where it names fewer metrics than the targets, add tasks for the rest" : ""}:\n${hypothesis}\nWhere your train measurements contradict a part of it, keep the variant that scores better and say so in APPROACH and your notes.\n</hypothesis>`,
     );
   }
   // A repair has one known failure to fix: research and a plan would only spend its time. Both review.
@@ -305,7 +335,7 @@ export function coderPrompt(
       `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. A coder that stops without it, or with more than half its time and budget left, is sent back once.`,
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
-      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis. If it shows no clear gain over the code you started from and time and budget remain, try another way to test the hypothesis. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
+      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis and the targets. If a target shows no clear gain over the code you started from and time and budget remain, try another way to raise it. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
     ].join("\n"),
   );
@@ -512,6 +542,7 @@ export async function runCoder(
               metrics: efficiencyMetrics(cfg),
               thresholds: cfg.thresholds,
               weights: cfg.weights,
+              standing: input.standing,
             }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
       );
       // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. One

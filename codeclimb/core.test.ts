@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, rejectedDiffs, sendBack, trainScoreProblem, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -553,6 +553,19 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
   assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
   assert.match(trainScoreProblem("nope"), /not valid JSON/);
+});
+
+test("one attempt aims at every threshold metric still short, largest weighted shortfall first", () => {
+  const thresholds = { a: 0.9, b: 0.4, c: 0.5 };
+  assert.deepEqual(unmet(thresholds, { a: 0.72, b: 0.3, c: 0.6 }, { b: 2 }), ["b: 0.300, threshold 0.4 (weight 2)", "a: 0.720, threshold 0.9"]);
+  assert.equal(unmet(thresholds).length, 3); // the starter: nothing scored, all unmet
+  const objectives = { primary: "a", metrics: [], thresholds, standing: { a: 0.72, b: 0.3, c: 0.6 } };
+  const prompt = coderPrompt("s", "", "fix b", 10, objectives);
+  assert.match(prompt, /<targets>\n[^]*- b: 0\.300[^]*- a: 0\.720[^]*Raise all of them[^]*at least one task per metric[^]*<\/targets>/);
+  assert.doesNotMatch(prompt.match(/<targets>[^]*<\/targets>/)![0], /- c:/);
+  assert.match(prompt, /<hypothesis>\nTest this hypothesis in this attempt, within the targets above[^]*fix b/);
+  assert.doesNotMatch(coderPrompt("s", "", "fix b", 10, { ...objectives, standing: { a: 1, b: 1, c: 1 } }), /<targets>/);
+  assert.doesNotMatch(coderPrompt("s", "", null, 10, objectives, undefined, undefined, [{ expId: "e", errors: ["x"] }], [], [], true), /<targets>/); // a repair fixes its failure only
 });
 
 test("the coder hears the score that decides a keep, and that cost and latency don't count", () => {
