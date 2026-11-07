@@ -1,9 +1,15 @@
 # Task: a GraphRAG system over a corpus of articles
 
-Build a system that reads articles, turns them into a knowledge graph that
-follows `ontology.md`, and retrieves from that graph the nodes, edges and documents a query needs.
-Nothing generates or judges a written answer: retrieval returns evidence, and the evidence is
-scored. How you chunk, embed, store, resolve and rank is yours to design.
+Build a good GraphRAG system: one that scores well on these evaluations, on this data. It reads
+articles, turns them into a knowledge graph that follows `ontology.md`, and retrieves from that
+graph the nodes, edges and documents a query needs. Nothing generates or judges a written answer:
+retrieval returns evidence, and the evidence is scored.
+
+**The score is the goal; the rest is suggestions.** Only the evaluation is fixed: its commands, its
+prediction schema, the models and caps it allows, and keeping dev and test out of your system.
+Everything else in this spec about how to build it is a suggestion based on what's available, and
+it is loose on purpose. You aren't bound to it: try different ways to extract, merge and retrieve,
+install what you need (`runtime.md`), and keep what the metrics back.
 
 **What you have:** your bundle (`train.md`): this spec, the 12 earliest articles (**train**), and
 their gold, which you may read in full and sample as few-shot examples. The other 44 articles are
@@ -44,7 +50,8 @@ between two of them:
 - **Scored fields:** `kind`, `doc_uri`, `name`, `type` and `aliases` on a mention; `source_name` and
   `target_name` on a relation. `semantic_type` counts only in the `labeled` variant. `description`,
   `properties`, `count`, `confidence` and the document's `domain` are part of the ontology but not
-  scored; the gold has them for every entity, and your own retrieval text may use them.
+  scored; the gold has them for every entity. Extract `description` and `properties` for every
+  entity anyway if you can: they give your merging and retrieval something to compare.
 - **No frequency floor.** Every gold row counts, including entities named once, so a row you leave
   out for being rare is a missed row.
 - **A wrong type is a miss and a false positive.** Mentions match only on equal type. Type accuracy
@@ -85,6 +92,9 @@ matters; the strings are yours.
 - **The official mode is `gold-history`** (the history's merges given). `end-to-end` gives none and
   is a diagnostic: its gap to `gold-history` is the error your own history carries in.
 
+- **Explore how to merge.** Normalized keys, alias claims, embeddings of names and descriptions,
+  and the decision model on candidate pairs each catch different merges (Where models help). Try
+  more than one, alone and combined.
 - **A wrong merge is worse than a wrong split.** **Why:** a later merge heals a split; nothing heals
   a merge that destroyed a distinction (`tool calls` folded into `tool calling` loses the request
   apart from the practice).
@@ -112,8 +122,9 @@ matters; the strings are yours.
 
 ### 3. Retrieval
 
-**What:** load the gold graph you're given into your store, alongside the corpus, and for each
-query return one envelope. Retrieval is always scored on the gold graph (in your bundle,
+**What:** load the gold graph you're given into a store, alongside the corpus, and for each query
+return one envelope. A suggestion: Ladybug (`runtime.md`), an embedded graph database, queried with
+real Cypher rather than by walking the JSON. Retrieval is always scored on the gold graph (in your bundle,
 `train/graph.json`; when evaluated, the full one over all 56 articles), so its numbers measure
 retrieval alone and compare across systems. Use the graph's `documents`, `entities` and
 `relationships` (`mentions`, `related_to`) as given; never feed it to extraction or graph building.
@@ -195,7 +206,7 @@ Per stage:
 |---|---|
 | extraction | embed the document and show the extractor only the nearest known entities, so a growing history doesn't fill the prompt |
 | graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
-| retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them for `multi_hop` and `intersection` |
+| retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them, with Cypher paths for example, for `multi_hop` and `intersection` |
 
 **Run calls concurrently.** One call per document or candidate in sequence can overrun a stage's
 time limit, and a stage that overruns fails the whole submission (`runtime.md`, Evaluation).

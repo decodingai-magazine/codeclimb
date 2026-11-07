@@ -8,7 +8,8 @@ import { coderPrompt, parseApproach, rejectedDiffs } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
-import { emptyStageError } from "./evaluate";
+import { emptyStageError, prepareEnvironment } from "./evaluate";
+import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
 import { applyReview, checkStop, decideRound, type ExperimentOutcome, historyLine, type Kept, repairable, saveRejected, spreadDetails } from "./orchestrator";
 import { validateRow } from "./results";
@@ -238,6 +239,17 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   assert.match(reviewerPrompt({ ...input, log: [entry] }), /- r1: h1 → no metric moved/);
 
   assert.match(reviewerPrompt({ ...input, parentSource: "### a.py" }), /## Kept commit source\n.*\n### a\.py/);
+});
+
+test("a commit's uv environment: built in the repo, and a failure says why", async () => {
+  const seen: { cmd: string; env?: unknown; cwd?: string }[] = [];
+  const sandbox = (exitCode: number, timedOut = false) =>
+    ({ exec: async (cmd: string, o: { env?: unknown; cwd?: string }) => (seen.push({ cmd, env: o.env, cwd: o.cwd }), { exitCode, stdout: "", stderr: "lockfile needs to be updated", timedOut }) }) as unknown as Sandbox;
+  assert.equal(await prepareEnvironment(sandbox(0)), null);
+  assert.equal(seen[0].cwd, "/repo");
+  assert.equal(seen[0].env, undefined); // a package's setup never sees the metered token
+  assert.match((await prepareEnvironment(sandbox(1)))!, /uv exited 1: lockfile needs to be updated/);
+  assert.match((await prepareEnvironment(sandbox(-1, true)))!, /timed out after 3 min/);
 });
 
 test("over the cap every detail item keeps a share", () => {

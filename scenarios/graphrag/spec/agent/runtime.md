@@ -4,8 +4,35 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
 
 - **Command.** `python -m graphrag <stage> --root <dir> --inputs <file> --out <file> [--graph <file>]`,
   run from the repository root. Keep that entry point; everything behind it is yours.
-- **Python 3.14** with these packages installed, and nothing else: `numpy`, `networkx`, `openai`,
-  `pydantic`, `rank-bm25` (pinned versions). The evaluator can't install packages.
+- **Python 3.14** with `numpy`, `networkx`, `openai`, `pydantic`, `ladybug` and `rank-bm25`
+  installed (pinned versions), plus `uv`. That's a starting point, not a limit: the sandbox has
+  internet access.
+- **Other packages.** Add what you need with uv, when you need it:
+
+  ```bash
+  uv init --bare                      # if there's no pyproject.toml
+  uv venv --system-site-packages      # keeps the packages above importable
+  uv add <package>
+  .venv/bin/python -m graphrag …
+  ```
+
+  Commit `pyproject.toml` and `uv.lock`. The evaluator builds the same environment from `uv.lock`
+  before the first stage and runs every stage in it. A failed build fails the submission, and the
+  time it takes isn't scored.
+- **Ladybug, if you want a graph store.** `ladybug` is a graph database in one file, as SQLite is
+  for tables: it runs inside your process, with no server. Define node and relationship tables,
+  load the rows, and query with Cypher. Build it in a temporary directory, because nothing persists
+  between stages. The full graph loads in seconds, row by row.
+
+  ```python
+  import ladybug as lb
+  conn = lb.Connection(lb.Database("/tmp/graph.lbug"))
+  conn.execute("CREATE NODE TABLE Entity(id STRING PRIMARY KEY, name STRING)")
+  conn.execute("CREATE REL TABLE Rel(FROM Entity TO Entity, semantic_type STRING)")
+  rows = conn.execute("MATCH (a:Entity {name: $name})-[:Rel*1..3]->(b) RETURN b.name", {"name": "Pydantic"})
+  while rows.has_next():
+      print(rows.get_next())
+  ```
 - **Models.** Call models only through the OpenAI-compatible endpoint in `OPENAI_BASE_URL` with
   `OPENAI_API_KEY`, and only the models the prompt lists. Every call is metered and capped; a call
   past the cap fails. The prompt names the caps. The evaluation's cap covers all three stages

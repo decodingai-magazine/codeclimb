@@ -27,6 +27,7 @@ import { programSpans } from "./tracing";
 const pexec = promisify(execFile);
 /** A candidate's time on the evaluator beyond the stages' `run`: reset, clone, uploads, the outputs' download. */
 const EVAL_OVERHEAD_MS = 5 * 60_000;
+const PREPARE_TIMEOUT_MS = 3 * 60_000;
 
 /** Dev scores every round's candidates; test scores the final kept commit once. */
 export type EvalSplit = "dev" | "test";
@@ -92,7 +93,7 @@ export async function openEvaluator(cfg: NightConfig, nightId: string, evaluator
   const needMs = evalMinutes(cfg) * 60_000 + EVAL_OVERHEAD_MS;
   if (live && !(backend.maxActiveMs && ((await live.ageMs?.()) ?? 0) + needMs > backend.maxActiveMs)) return live;
   return backend.create({
-    name, baseline: cfg.scenario.image, inngestImage: cfg.scenario.inngest_image, network: isMetered(cfg) ? METER_NETWORK : "none",
+    name, baseline: cfg.scenario.image, inngestImage: cfg.scenario.inngest_image, network: isMetered(cfg) ? METER_NETWORK : "bridge",
     labels: { "cc.night": nightId, ...(runId ? { "cc.run": runId } : {}) },
   });
 }
@@ -144,6 +145,19 @@ async function resetFor(sandbox: Sandbox, commit: { bundle: Buffer; ref: string 
   await cloneInto(sandbox, commit);
 }
 
+// `--inexact` and the system packages: what the image ships stays importable, listed in uv.lock or not.
+const PREPARE_ENV = "[ ! -f uv.lock ] || { uv venv -q --system-site-packages --allow-existing .venv && uv sync -q --frozen --inexact --no-dev; }";
+
+/**
+ * The coder's uv environment, rebuilt from the commit's `uv.lock`, if it has one; the stages run in it.
+ * No metered token and no stage's clock: a package's setup sees neither. Returns why it failed.
+ */
+export async function prepareEnvironment(sandbox: Sandbox): Promise<string | null> {
+  const r = await sandbox.exec(PREPARE_ENV, { cwd: "/repo", timeoutMs: PREPARE_TIMEOUT_MS });
+  if (r.exitCode === 0 && !r.timedOut) return null;
+  return `uv.lock: ${r.timedOut ? `building the environment timed out after ${PREPARE_TIMEOUT_MS / 60_000} min` : `uv exited ${r.exitCode}: ${lastLines(r.stderr, 2000)}`}`;
+}
+
 const lines = (path: string) => readFileSync(path, "utf8").split("\n").filter((l) => l.trim()).length;
 
 /**
@@ -168,6 +182,8 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
 
   let t0 = performance.now();
   await resetFor(sandbox, await repo.bundle(req.expId));
+  result.error = (await prepareEnvironment(sandbox)) ?? undefined;
+  if (result.error) return result;
   result.t_provision = secs(t0);
   const metrics: Metrics = {};
   let ops: OpLatency[] = [];
@@ -211,7 +227,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       const runStartMs = Date.now();
       t0 = performance.now();
       const exec = sandbox.exec(
-        `mkdir -p ${box}/out && (${fill(stage.run, { inputs: `${box}/inputs.jsonl`, out: `${box}/out` })}) > ${box}/run.log 2>&1`,
+        `export PATH=/repo/.venv/bin:$PATH; mkdir -p ${box}/out && (${fill(stage.run, { inputs: `${box}/inputs.jsonl`, out: `${box}/out` })}) > ${box}/run.log 2>&1`,
         { cwd: "/repo", timeoutMs: cfg.timeouts.eval_min * 60_000, ...(env ? { env } : {}) },
       );
       exec.catch(() => undefined); // abandoned on running out of credits; the evaluator's close ends it

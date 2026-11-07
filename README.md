@@ -97,7 +97,7 @@ Prerequisites:
 - The Inngest dev server is running (`npm run dev:inngest`).
 
 ```bash
-npm run build:image                    # docker image codeclimb-python (python 3.14 + git), shared by every scenario
+npm run build:image                    # docker image codeclimb-python (python 3.14, git, uv), shared by every scenario
 npm run worker                         # terminal 2: connect() worker (orchestrator + Pi)
 npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night and follows results.jsonl
 npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
@@ -192,7 +192,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 
 - **Setup.** Each coder sandbox gets `/spec` uploaded from the night's bundle and the git defaults the Docker image bakes in, so the scenario's `image` is ignored.
 - **One hour per sandbox.** Inngest pauses a sandbox after one hour of active runtime, and the limit can't be raised. Coders get a new sandbox per experiment, and `timeouts.experiment_min` and `timeouts.eval_min` may be at most 50 on `inngest`. A round's evaluator is replaced by a new one before a candidate that might not finish in its hour, and latency is compared only between candidates on the same evaluator.
-- **Network.** Egress is open (the beta has no allowlist). Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
+- **Network.** Egress is open (the beta has no allowlist), as on Docker. Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
 - **Metering.** Sandboxes can't reach `localhost`, so with `allowed_models` the proxy needs a public URL. Cloud mode pins it to port 7422 (`CODECLIMB_PROXY_PORT`), and a tunnel publishes it: `npm run tunnel:cloudflare` (a Cloudflare quick tunnel: free, no account, needs `brew install cloudflared`) or `npm run tunnel` (ngrok: needs an account, and its plan caps bandwidth). The worker finds either through its local API, Cloudflare first. `CODECLIMB_METER_URL` (ending in `/v1`) overrides that with any other tunnel. Docker sandboxes need no tunnel. Only `/v1` is published, and each call needs its evaluation's token, which carries a budget cap. The worker checks that the URL reaches the proxy before a coder or an evaluation starts and after each stage's run. If it doesn't, the evaluation fails with that error: an outage never becomes a score.
 
   ```bash
@@ -250,7 +250,7 @@ The coder and reviewer prompts name the optimized metrics, and the hypothesis lo
 
 A program may call models only when `allowed_models` lists some, and only through the metering proxy in the worker. Provider keys never enter a sandbox: a sandbox gets a proxy token for its own ledger, valid for the models in `allowed_models` only, and revoked when its run ends.
 
-- **Network.** Metered evaluators join `cc-meter`, an internal Docker network with no route anywhere. Its only other member is `cc-meter-relay`, a small Python TCP relay that also sits on the default bridge and forwards to the proxy on the host. With `allowed_models`, coder sandboxes join it too; without it, they stay on `--network none`. The relay runs on the scenario's baseline image, so that image needs `python3`. The worker leaves `cc-meter-relay` and `cc-meter` in place between nights and recreates the relay when its proxy port changes.
+- **Network.** Sandboxes have internet access. They hold no provider key, so the proxy stays their only way to the models. Metered sandboxes join `cc-meter`, a Docker network with `cc-meter-relay`, a small Python TCP relay that also sits on the default bridge and forwards to the proxy on the host. Without `allowed_models`, they run on the default bridge. The relay runs on the scenario's baseline image, so that image needs `python3`. The worker leaves `cc-meter-relay` and `cc-meter` in place between nights and recreates the relay when its proxy port changes.
 - **Program side.** The runner's environment has `OPENAI_BASE_URL` and `OPENAI_API_KEY` (and `CODECLIMB_LLM_BASE_URL` / `CODECLIMB_LLM_API_KEY`). The key is a token valid for this eval only and revoked when its run ends. The program uses `POST $OPENAI_BASE_URL/chat/completions` with a model from `allowed_models`, such as `github-copilot/claude-haiku-4.5`, or `/embeddings`. Chat goes through Pi, with the same credentials and catalog prices as the coders. The runner calls `POST $CODECLIMB_LLM_BASE_URL/_op` with `{"op": "query"}` to attribute later calls to an operation.
 - **Coder side.** While Pi develops, its shell commands get the same `OPENAI_BASE_URL` and `OPENAI_API_KEY`, keyed to the experiment's own ledger, so the coder can run its program against the real model. The coder prompt names the models and the budget. That spend is the row's `dev_usd`, never `cost_usd`: only the evaluation measures the program's cost. Each Pi attempt opens a new token; spend carries over across a restart. Calls are logged to `nights/<id>/exps/<exp_id>/meter-dev.jsonl`.
 - **Limits.** `budget_usd.eval` caps one eval's model spend (default: `budget_usd.experiment`). `budget_usd.dev` caps one experiment's development calls (default: `budget_usd.eval`), and `coder_usd + dev_usd` stops the coder at `budget_usd.experiment`. A cap is checked before each call, so the call that crosses it still runs. Errors: `401` bad or revoked token, `403` model not allowed, `402` budget spent, `400` unsupported request, `502` upstream failure (what a failed call cost is still charged).
@@ -366,7 +366,8 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
   - `coder_usd` is Pi's `message_end` cost at list prices. Copilot bills by subscription, so this is a comparable dollar figure, not an actual charge.
 - **Local or Cloud:** the dev server or Inngest Cloud, a `connect()` worker on the laptop, and Docker or Inngest sandboxes (see [Run on Inngest Cloud](#run-on-inngest-cloud)).
 - **No metering proxy:** `datenorm` is standard-library Python with no model calls.
-  - Docker sandboxes run with `--network none`, which is stricter than the spec's egress allowlist. Inngest sandboxes have open egress, which is looser.
+  - Docker and Inngest sandboxes have open egress, which is looser than the spec's egress allowlist.
+  - Packages: images ship uv. A coder adds packages with `uv add`, and the evaluator rebuilds that environment from the commit's `uv.lock` before the first stage, outside any stage's clock and without the metered token. A failed build fails the evaluation, and a coder gets one repair.
   - `program_usd` is 0 and `allowed_models` is unused.
 - **Scenario directory:** a config names `scenario: scenarios/<name>`; its `scenario.yaml` holds the image, the bundle command and the stage commands ([docs/scenario-contract.md](docs/scenario-contract.md)).
 - **Fixed splits:** every scenario has fixed train/dev/test in `gold/splits.json`. Dev is scored every round, test once at the end. Only train reaches a coder (the bundle's `train/examples.jsonl`).

@@ -2,7 +2,7 @@
 # Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
 name: graphrag
 image: codeclimb-graphrag          # npm run build:image:graphrag
-inngest_image: codeclimb-graphrag:v1   # the same image, linux/amd64, published to the Inngest workspace
+inngest_image: codeclimb-graphrag:v2   # the same image, linux/amd64, published to the Inngest workspace
 bundle: uv run python scripts/export_agent.py --out {out}
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
 check: uv run python scripts/check_repo.py --repo {repo} --out {report}

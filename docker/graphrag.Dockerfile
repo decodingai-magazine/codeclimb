@@ -2,4 +2,4 @@
 # scenarios/graphrag; only requirements.txt is copied into the image.
 FROM codeclimb-python
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN uv pip install --system --no-cache -r /tmp/requirements.txt && rm /tmp/requirements.txt

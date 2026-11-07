@@ -1,7 +1,6 @@
-// The worker's metering proxy and, for Docker, the path to it: an internal
-// network (no route anywhere) shared by metered evaluators and one relay
-// container that also sits on the default bridge and forwards TCP to the proxy
-// on the host. A metered evaluator can reach the proxy and nothing else.
+// The worker's metering proxy and, for Docker, the path to it: a network shared
+// by metered sandboxes and one relay container that forwards TCP to the proxy on
+// the host. It has internet access: only the token gets a program to a model.
 import type { NightConfig } from "../config";
 import { docker } from "../sandbox/docker";
 import { modelRuntime } from "../pi/session";
@@ -159,7 +158,7 @@ export function ensureMeterPath(image: string, port: number): Promise<void> {
 
 async function ensureOnce(image: string, port: number): Promise<void> {
   if ((await docker(["network", "inspect", METER_NETWORK])).code !== 0) {
-    const r = await docker(["network", "create", "--internal", "--label", "cc.meter=1", METER_NETWORK]);
+    const r = await docker(["network", "create", "--label", "cc.meter=1", METER_NETWORK]);
     if (r.code !== 0 && !/already exists/.test(r.stderr.toString())) throw new Error(`cannot create ${METER_NETWORK}: ${r.stderr.toString().trim()}`);
   }
   if ((await relayState()) === `true ${port}`) return;

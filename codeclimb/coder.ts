@@ -122,7 +122,7 @@ export function coderPrompt(
   hypothesis: string | null,
   minutes: number,
   objectives: { primary: string; metrics: string[] } = { primary: "", metrics: [] },
-  dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number; openNetwork?: boolean },
+  dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number },
   evalMin?: number,
   failures: EvalFailure[] = [],
   history: string[] = [],
@@ -168,13 +168,14 @@ export function coderPrompt(
               `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
               (dev.evalBudgetUsd === undefined ? "" : `The evaluation has its own cap of $${dev.evalBudgetUsd} for one run of every stage. `) +
               "A call repeated more than 30 seconds later gets the same answer for free, so a rerun differs only where your change reached. " +
-              `Start with a few cases you write; ${dev.openNetwork ? "call models only through this endpoint" : "there is no other network access"}.`,
+              "Start with a few cases you write; call models only through this endpoint.",
           ]
         : []),
       ...(evalMin
         ? [`- The evaluation gives each run of the program ${evalMin} minutes, and one that runs longer scores nothing. Time it on a sample and run slow work, such as model calls, concurrently.`]
         : []),
       "- The evaluation's inputs can be much longer than the ones you test on: leave room in token limits and timeouts.",
+      "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
       "- Before you stop, run every stage from start to finish on all of /spec/train if it exists and the model budget allows, else on your own cases, and read the output. An item that came back empty is a failure, not a result: when the program catches a failed item and goes on, it must report it on stderr. Fix what you find.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
@@ -273,7 +274,7 @@ export async function runCoder(
       commit: input.resume ? await repo.bundle(input.expId, input.parentExpId) : await repo.bundle(input.parentExpId),
       specDir: paths.bundleDir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
-      network: metered ? METER_NETWORK : "none",
+      network: metered ? METER_NETWORK : "bridge",
     });
     state.tProvision += secs(performance.now() - t0);
     save();
@@ -349,7 +350,7 @@ export async function runCoder(
           : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval, openNetwork: cfg.sandbox === "inngest" } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction),
       );
     } else {
       stop = "timeout";
