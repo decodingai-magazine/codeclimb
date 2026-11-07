@@ -150,8 +150,8 @@ export function coderPrompt(
     parts.push(`<history>\nEvery earlier round. Don't repeat what failed. Each Δ is against the kept commit of that round; only kept rounds are in your /repo.\n${history.join("\n")}${diffs}\n</history>`);
   }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
-  // A repair has one known failure to fix: research and a plan would only spend its time.
-  if (!repair) parts.push(WORKFLOW);
+  // A repair has one known failure to fix: research and a plan would only spend its time. Both review.
+  parts.push(repair ? `Before you stop, review:\n${CODER_REVIEW}` : `${WORKFLOW}\n4. Review. ${CODER_REVIEW}`);
   parts.push(
     [
       "How to work:",
@@ -178,7 +178,6 @@ export function coderPrompt(
         : []),
       "- The evaluation's inputs can be much longer than the ones you test on: leave room in token limits and timeouts.",
       "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
-      "- Before you stop, run every stage from start to finish on all of /spec/train if it exists and the model budget allows, else on your own cases, and read the output. An item that came back empty is a failure, not a result: when the program catches a failed item and goes on, it must report it on stderr. Fix what you find.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
@@ -190,7 +189,7 @@ export function coderPrompt(
 }
 
 export const WORKFLOW = [
-  "Work in three steps:",
+  "Work in four steps:",
   "1. Research. Before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources. " +
     "The sandbox has internet access but no browser or curl: fetch pages with python3 (urllib), such as a package's docs, its README on GitHub, PyPI, or a paper on the method. " +
     "Spend at most a fifth of your time here, and stop once you know how you will build it.",
@@ -198,6 +197,17 @@ export const WORKFLOW = [
   "3. Implement. Work through the tasks in order: test each one, mark it done in /tmp/tasks.md, and add a task when you find one. " +
     "Keep going until every task is done. If time runs short, finish the task at hand so the program still works, and say in APPROACH what is left.",
 ].join("\n");
+
+/** The last step: the coder checks its own work before the evaluator does. */
+export const CODER_REVIEW =
+  "When you think you are done, check that the code is ready for the evaluator, which runs it next on data you never see. " +
+  "A commit that crashes, overruns its time or writes a row the spec doesn't allow scores nothing, and the round has to be run again. " +
+  "Keep the last few minutes for this. " +
+  "Read your whole diff (`git diff`) as a reviewer would: bugs, leftover debug code, dead code, paths into /spec, and packages missing from pyproject.toml and uv.lock. " +
+  "The evaluator gets only what is in /repo and not ignored by git. " +
+  "Then run every stage from start to finish on all of /spec/train if it exists and the model budget allows, else on your own cases, and read the output. " +
+  "An item that came back empty is a failure, not a result: when the program catches a failed item and goes on, it must report it on stderr. " +
+  "Fix what you find and review again. Stop only when you would hand the code to the evaluator as it is.";
 
 const RESUME_PROMPT =
   "The harness restarted while you were working. /repo still has your changes, and /tmp/tasks.md your plan if you wrote one. Continue the task where you left off; " +
