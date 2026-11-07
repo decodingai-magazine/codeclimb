@@ -150,6 +150,8 @@ export function coderPrompt(
     parts.push(`<history>\nEvery earlier round. Don't repeat what failed. Each Δ is against the kept commit of that round; only kept rounds are in your /repo.\n${history.join("\n")}${diffs}\n</history>`);
   }
   if (hypothesis) parts.push(`<hypothesis>\nTest this hypothesis in this attempt:\n${hypothesis}\n</hypothesis>`);
+  // A repair has one known failure to fix: research and a plan would only spend its time.
+  if (!repair) parts.push(WORKFLOW);
   parts.push(
     [
       "How to work:",
@@ -187,8 +189,18 @@ export function coderPrompt(
   return parts.join("\n\n");
 }
 
+export const WORKFLOW = [
+  "Work in three steps:",
+  "1. Research. Before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources. " +
+    "The sandbox has internet access but no browser or curl: fetch pages with python3 (urllib), such as a package's docs, its README on GitHub, PyPI, or a paper on the method. " +
+    "Spend at most a fifth of your time here, and stop once you know how you will build it.",
+  "2. Plan. Write your plan of attack to /tmp/tasks.md: one task per change, each with how you will check it, in the order you will do them. It stays outside /repo, so it isn't committed.",
+  "3. Implement. Work through the tasks in order: test each one, mark it done in /tmp/tasks.md, and add a task when you find one. " +
+    "Keep going until every task is done. If time runs short, finish the task at hand so the program still works, and say in APPROACH what is left.",
+].join("\n");
+
 const RESUME_PROMPT =
-  "The harness restarted while you were working. /repo still has your changes. Continue the task where you left off; " +
+  "The harness restarted while you were working. /repo still has your changes, and /tmp/tasks.md your plan if you wrote one. Continue the task where you left off; " +
   "when done, end with one line: `APPROACH: <one-sentence summary>`.";
 
 export function parseApproach(text: string): string {

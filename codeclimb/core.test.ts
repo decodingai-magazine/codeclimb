@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, parseApproach, rejectedDiffs } from "./coder";
+import { coderPrompt, parseApproach, rejectedDiffs, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -264,6 +264,9 @@ test("the coders read a failed evaluation's error unedited", () => {
   const prompt = coderPrompt("s", "", null, 10, undefined, undefined, undefined, [{ expId: "n-r1-e1", errors: [error] }]);
   assert.ok(prompt.includes(`- n-r1-e1: ${error}`));
   assert.doesNotMatch(coderPrompt("s", "", null, 10), /<failures>/);
+  // A repair skips research and planning; every other attempt follows the three steps.
+  assert.ok(coderPrompt("s", "", null, 10).includes(WORKFLOW));
+  assert.ok(!coderPrompt("s", "", null, 10, undefined, undefined, undefined, [{ expId: "n-r1-e1", errors: [error] }], [], [], true).includes("1. Research."));
 });
 
 test("results schema rejects bad rows", () => {
