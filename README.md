@@ -193,7 +193,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 - **Setup.** Each coder sandbox gets `/spec` uploaded from the night's bundle and the git defaults the Docker image bakes in, so the scenario's `image` is ignored.
 - **One hour per sandbox.** Inngest pauses a sandbox after one hour of active runtime, and the limit can't be raised. Coders get a new sandbox per experiment, and `timeouts.experiment_min` and `timeouts.eval_min` may be at most 50 on `inngest`. A round's evaluator is replaced by a new one before a candidate that might not finish in its hour, and latency is compared only between candidates on the same evaluator.
 - **Network.** Egress is open (the beta has no allowlist). Gold and provider keys still never enter a sandbox. With `allowed_models`, the coder prompt says to call models only through the endpoint.
-- **Metering.** Sandboxes can't reach `localhost`, so with `allowed_models` the proxy needs a public URL. Cloud mode pins it to port 7422 (`CODECLIMB_PROXY_PORT`), and a tunnel publishes it: `npm run tunnel:cloudflare` (a Cloudflare quick tunnel: free, no account, needs `brew install cloudflared`) or `npm run tunnel` (ngrok: needs an account, and its plan caps bandwidth). The worker finds either through its local API, Cloudflare first. `CODECLIMB_METER_URL` (ending in `/v1`) overrides that with any other tunnel. Docker sandboxes need no tunnel. Only `/v1` is published, and each call needs its evaluation's token, which carries a budget cap.
+- **Metering.** Sandboxes can't reach `localhost`, so with `allowed_models` the proxy needs a public URL. Cloud mode pins it to port 7422 (`CODECLIMB_PROXY_PORT`), and a tunnel publishes it: `npm run tunnel:cloudflare` (a Cloudflare quick tunnel: free, no account, needs `brew install cloudflared`) or `npm run tunnel` (ngrok: needs an account, and its plan caps bandwidth). The worker finds either through its local API, Cloudflare first. `CODECLIMB_METER_URL` (ending in `/v1`) overrides that with any other tunnel. Docker sandboxes need no tunnel. Only `/v1` is published, and each call needs its evaluation's token, which carries a budget cap. The worker checks that the URL reaches the proxy before a coder or an evaluation starts and after each stage's run. If it doesn't, the evaluation fails with that error: an outage never becomes a score.
 
   ```bash
   npm run tunnel:cloudflare                                                        # terminal 1: or `npm run tunnel` for ngrok
@@ -280,15 +280,17 @@ No config ships for it: copy `configs/datenorm.yaml` and point `scenario:` at `s
 
 ### Continuing a night
 
-A new night can go on from an earlier one instead of the starter:
+A night that ended can run more rounds, under the same id:
 
 ```bash
 npm run run-night:cloud -- continue --config configs/graphrag.yaml --direction "Work on multi-hop retrieval" --rounds 3
 ```
 
-`--from <night>` picks the night; the default is the newest that ended under the config's `results_path`. The night page in the app has the same form. Budgets and rounds come from the config, the same for a new night, unless `--rounds` is set; the app reuses the earlier night's config with the scenario as it stands now.
+`--night <id>` picks the night; the default is the newest that ended under the config's `results_path`. The night page in the app has the same form. `--rounds` adds to the rounds so far (default: the config's `max_rounds`), and the budget of one run is added to what the night has spent, so a continuation is never short of budget. The bundle is rebuilt from the scenario as it stands.
 
-The night starts from the earlier night's kept commit, and takes over its last feedback and hypothesis, its log of rounds and its rejected diffs. That commit is scored on dev again before round 1: today's scorers apply, and this night's cache holds the calls round 1 repeats. A direction goes to every coder and reviewer of the night, and replaces the earlier night's last hypothesis. Rounds count from 1 again; an earlier round appears in the log as `<night>-r<round>`, and its rejected diff as `/spec/history/<night>-r<round>.diff`.
+Rounds number on from the last one and start from the kept commit, with the last feedback and hypothesis, the log of rounds and the rejected diffs. A direction goes to every new coder and reviewer, and replaces the hypothesis the night had got to. Each run ends with its own test eval, so test is scored once per run: every test row seen before a further run is a look at test, so keep them few.
+
+If `scenario.yaml`, the evaluators or the gold changed since the last run, one extra round scores the kept commit again first, so the next round isn't compared with scores from another evaluation.
 
 ### Multi-stage scenario: `graphrag`
 

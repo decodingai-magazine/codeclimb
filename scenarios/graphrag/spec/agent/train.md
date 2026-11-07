@@ -5,8 +5,8 @@ third-party evaluator, who runs your frozen system on them:
 
 | part | documents | you get |
 |---|---|---|
-| train | the first 12 (2025-09-25 to 2025-11-26): 192 mentions, 211 relations, 10 merge decisions, 30 retrieval queries | the documents and all their gold, in this bundle |
-| dev | the next 25 (2025-12-02 to 2026-05-12): 90 retrieval queries | the evaluator's report after each submission, errors included |
+| train | the first 12 (2025-09-25 to 2025-11-26): 192 mentions, 211 relations, 10 merge decisions, 38 retrieval queries | the documents and all their gold, in this bundle |
+| dev | the next 25 (2025-12-02 to 2026-05-12): 90 retrieval queries | after each submission, the reviewer's feedback and how each metric moved; never its items |
 | test | the last 19 (from 2026-05-19) | nothing until the end: it is scored once, totals only |
 
 ## The bundle
@@ -156,11 +156,17 @@ evaluator then drops the metrics that read order.
 
 ## Feedback
 
-After each submission the evaluator sends the dev report for every stage: each primary metric
-(`task.md`, What you're optimizing) with a bootstrap interval for retrieval, retrieval per `kind`,
-`difficulty` and `origin`, and the per-item errors (missed and false rows, wrong merges, per-query
-metrics). Use it to decide what to change; every change is a new submission, scored fresh. A
-dev report is feedback, never an example: every few-shot example stays from `train/examples/`.
+A reviewer reads the dev report for every stage, per-item errors included, and sends back why the
+submission was kept or dropped, what to try next, and how each primary metric (`task.md`, What
+you're optimizing) moved. It describes kinds of error and never names a dev item, so train is
+where you look at items. Use the feedback to decide what to change; every change is a new
+submission, scored fresh. Feedback is never an example: every few-shot example stays from
+`train/examples/`.
+
+- **Train is the small end.** Held-out documents come with up to about 800 known entities, against
+  about 120 on train, and retrieval's graph holds about 800 entities. Train's multi-hop queries
+  all take 2 hops; held-out ones go to 3 and more. Check cost, latency and recall at that scale,
+  and don't tune to train's size.
 
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.

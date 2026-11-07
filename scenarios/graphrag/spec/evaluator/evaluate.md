@@ -10,7 +10,7 @@ You run the same protocol on two parts; only the part and what goes back differ:
 
 | part | when | what the agent gets back |
 |---|---|---|
-| dev | after each submission | the full dev report: totals and per-item errors |
+| dev | after each submission | your feedback and each metric's change; you read the full dev report, totals and per-item errors |
 | test | once, on the final submission | nothing per item; test totals go into the final verdict |
 
 Retrieval always runs on `gold/graph.json`: the engine loads the gold graph, so retrieval numbers
@@ -46,13 +46,13 @@ Run from this directory; `uv run` uses its `pyproject.toml`.
 
    `summary.py` needs `dev.jsonl` and scores `train.jsonl` and `test.jsonl` when present. Add
    `--mode` for graph and `--unranked` when the submission says its lists carry no order.
-4. **On dev, send the report back.** The summary plus each stage's per-item errors:
+4. **On dev, read the report and write feedback.** The summary plus each stage's per-item errors:
 
    ```bash
    uv run python evaluators/<stage>.py score --split dev --predictions runs/<commit>/<stage>/dev.jsonl --out runs/<commit>/<stage>.dev-details.json --details
    ```
 
-   Send nothing else: no gold file, no test number.
+   Describe kinds of error. Send no dev item, gold file or test number.
 5. **On test, never pass `--details`** (the CLIs refuse). Test totals are the result; the errors
    behind them stay unread, so test stays usable for the next system.
 

@@ -8,6 +8,7 @@ import { modelRuntime } from "../pi/session";
 import { piBackends, routedBackends } from "./backends";
 import { openRouterBackends } from "./openrouter";
 import { MeterProxy } from "./proxy";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const METER_NETWORK = "cc-meter";
 const RELAY = "cc-meter-relay";
@@ -30,10 +31,33 @@ export function meterEnv(token: string, baseUrl: string): Record<string, string>
  */
 export async function meterBaseUrl(cfg: Pick<NightConfig, "sandbox" | "scenario">): Promise<string> {
   if (cfg.sandbox === "inngest") {
-    return publicMeterUrl(process.env.CODECLIMB_METER_URL, [cloudflareUrl, ngrokUrl], (await meter()).port);
+    const url = await publicMeterUrl(process.env.CODECLIMB_METER_URL, [cloudflareUrl, ngrokUrl], (await meter()).port);
+    await checkMeterUrl(url);
+    return url;
   }
   await ensureMeterPath(cfg.scenario.image, (await meter()).port);
   return RELAY_URL;
+}
+
+/**
+ * Throws unless `url` ends at the proxy, which refuses a call with no token in its own words. A tunnel past
+ * its limit still answers, with an error of its own that never reaches the proxy, and a program that
+ * swallows errors would then score as a bad program. A blip gets more tries: this can follow a long run.
+ */
+export async function checkMeterUrl(url: string, tries = 3, waitMs = 5000): Promise<void> {
+  let seen = "";
+  for (let n = 0; n < tries; n += 1) {
+    if (n) await delay(waitMs);
+    try {
+      const res = await fetch(`${url}/_op`, { method: "POST", signal: AbortSignal.timeout(15_000) });
+      const body = await res.text();
+      if (res.status === 401 && body.includes("authentication_error")) return;
+      seen = `${res.status}: ${body.slice(0, 200)}`;
+    } catch (e) {
+      seen = (e as Error).message;
+    }
+  }
+  throw new Error(`the metering proxy isn't reachable at ${url}, so model calls fail for reasons outside the program (${seen})`);
 }
 
 type TunnelLookup = (port: number) => Promise<string | undefined>;

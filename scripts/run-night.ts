@@ -1,8 +1,8 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
 //   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock]     (always on Docker)
 //   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest]
-//   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--from ID] [--direction TEXT] [--rounds N]
-//     goes on from a night's kept commit; default: the newest night that ended
+//   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--night ID] [--direction TEXT] [--rounds N]
+//     more rounds on a night, from its kept commit; default: the newest night that ended
 //   npm run run-night -- stop --night ID
 //   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
-import { checkSource, latestNight } from "../codeclimb/continuation";
+import { latestNight, reopenNight } from "../codeclimb/continuation";
 import { newNightId, nightPaths } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
@@ -23,7 +23,6 @@ const { values, positionals } = parseArgs({
     "night-id": { type: "string" },
     night: { type: "string" },
     sandbox: { type: "string" },
-    from: { type: "string" },
     direction: { type: "string" },
     rounds: { type: "string" },
     "no-wait": { type: "boolean", default: false },
@@ -82,7 +81,7 @@ if (positionals[0] === "stop") {
   const continuing = positionals[0] === "continue";
   if (positionals.length && !continuing) throw new Error(`unknown command ${positionals[0]}`);
   if (!values.config) throw new Error("usage: run-night [continue] --config <yaml>");
-  if (!continuing && (values.from || values.direction)) throw new Error("--from and --direction need the continue command");
+  if (!continuing && values.direction) throw new Error("--direction needs the continue command");
   const loaded = loadConfig(resolve(values.config));
   const cfg = values.mock ? mockConfig(loaded) : loaded;
   if (values.sandbox && values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
@@ -94,14 +93,13 @@ if (positionals[0] === "stop") {
     cfg.max_rounds = Number(values.rounds);
     if (!(Number.isInteger(cfg.max_rounds) && cfg.max_rounds >= 1)) throw new Error("--rounds must be an integer >= 1");
   }
-  const from = continuing ? (values.from ?? latestNight(cfg)) : null;
-  if (from) checkSource(cfg, from);
   checkSandboxLimits(cfg);
   await checkNightModels(cfg);
   if (cfg.mock) console.log("[run-night] mock: scripted models, metrics mean nothing");
-  const nightId = values["night-id"] ?? newNightId();
-  const start = from ? { from, ...(values.direction ? { direction: values.direction } : {}) } : undefined;
-  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg), start));
-  console.log(`[run-night] started night ${nightId}${from ? `, continuing ${from}` : ""} (event ${ids[0]}); results → ${cfg.results_path}`);
-  if (!values["no-wait"]) await follow(cfg, nightId);
+  const nightId = continuing ? (values.night ?? latestNight(cfg)) : (values["night-id"] ?? newNightId());
+  const reopened = continuing ? reopenNight(cfg, nightId) : null;
+  const start = reopened ? { rescore: reopened.rescore, ...(values.direction ? { direction: values.direction } : {}) } : undefined;
+  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(reopened?.config ?? cfg), start));
+  console.log(`[run-night] ${continuing ? "continued" : "started"} night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
+  if (!values["no-wait"]) await follow(reopened?.config ?? cfg, nightId);
 }

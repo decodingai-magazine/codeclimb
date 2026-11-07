@@ -244,7 +244,7 @@ test("over the cap every detail item keeps a share", () => {
   const details = { a: "x".repeat(1000), b: "y".repeat(1000), c: "z" };
   assert.equal(spreadDetails({ a: 1 }, 100), '{"a":1}');
   const spread = spreadDetails(details, 300);
-  assert.match(spread, /^a: "x{99}\nb: "y{99}\nc: "z"$/);
+  assert.match(spread, /^a: "x{147}\nb: "y{147}\nc: "z"$/); // the short item's unused share goes to the long ones
 });
 
 test("the coders read a failed evaluation's error unedited", () => {

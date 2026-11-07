@@ -20,7 +20,7 @@ export const nightStart = eventType("codeclimb/night.start", {
  * night whose start failed before `init` needs a new id.
  */
 export function nightStartEvent(nightId: string, config: NightConfig, start?: NightStart) {
-  return { id: `night-start-${nightId}`, name: nightStart.name, data: { night_id: nightId, config, ...(start ? { continue: start } : {}) } };
+  return { id: start ? `night-continue-${nightId}-${Date.now()}` : `night-start-${nightId}`, name: nightStart.name, data: { night_id: nightId, config, ...(start ? { continue: start } : {}) } };
 }
 
 /** Goes on from a pause for credits: `run-night resume`, or the app's Resume. */

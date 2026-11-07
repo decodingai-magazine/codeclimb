@@ -6,9 +6,9 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { coderPrompt } from "./coder";
 import { type NightConfig, parseConfig } from "./config";
-import { carryRejected, checkSource, keptOf, lastReview, latestNight, priorLog } from "./continuation";
+import { checkSource, keptOf, lastReview, lastRound, latestNight, priorLog, reopenNight, scoringHashes } from "./continuation";
 import { ExperimentRepo } from "./git";
-import { baselineRow, continueNight } from "./orchestrator";
+import { continueNight, renameKept, rescoreRow } from "./orchestrator";
 import { nightPaths } from "./paths";
 import { appendRows, type ResultRow } from "./results";
 import { logLine } from "./reviewer";
@@ -43,10 +43,10 @@ const row = (night: string, round: number, e: number, decision: ResultRow["decis
   t_code: 0, t_eval: 0, t_review: 0, t_teardown: 0, infra_errors: 0, kind: "experiment", eval_id: "", night_id: night, ...extra,
 });
 
-function night(cfg: NightConfig, id: string, startedAt: number, opts: { ended?: boolean; continued?: object } = {}): void {
+function night(cfg: NightConfig, id: string, startedAt: number, opts: { ended?: boolean } = {}): void {
   const p = nightPaths(cfg, id);
   mkdirSync(join(p.nightDir, "reviews"), { recursive: true });
-  writeFileSync(p.nightJson, JSON.stringify({ night_id: id, startedAt, config: cfg, ...(opts.continued ? { continued: opts.continued } : {}) }));
+  writeFileSync(p.nightJson, JSON.stringify({ night_id: id, startedAt, config: cfg, metric_script_sha256: scoringHashes(cfg) }));
   if (opts.ended !== false) writeFileSync(p.doneJson, "{}");
 }
 
@@ -74,62 +74,91 @@ test("the checkpoint is the last keep, or the starter when nothing was kept", ()
 
 test("the log comes back from the rows: deltas against the checkpoint of the time, a repair stands for its round", () => {
   const cfg = { ...config(), scenario: { ...config().scenario, headline: { accuracy: 0.02 } } };
-  night(cfg, "n1", 1, { continued: { from: "n0", direction: "", prior: [{ round: 1, label: "n0-r1", hypothesis: "old", deltaPrimary: 0.1, decision: "keep" }] } });
+  night(cfg, "n1", 1);
   appendRows(cfg.results_path, [
-    row("n1", 0, 0, "keep", 0.2),
-    row("n1", 1, 0, "keep", 0.5),
-    row("n1", 2, 0, "error", 0),
-    row("n1", 2, 1, "revert", 0.4),
-    row("n1", 3, 0, "revert", 0.5, { unchanged: true }),
+    row("n1", 1, 0, "keep", 0.2),
+    row("n1", 2, 0, "keep", 0.5),
+    row("n1", 3, 0, "error", 0),
+    row("n1", 3, 1, "revert", 0.4),
+    row("n1", 4, 0, "revert", 0.5, { unchanged: true }),
+    row("n1", 4, 0, "keep", 0.9, { kind: "test", split: "test" }),
   ]);
-  writeFileSync(nightPaths(cfg, "n1").reviewJson(1), JSON.stringify({ keep_reason: "better", feedback: "f1", hypothesis: "next1" }));
-  writeFileSync(nightPaths(cfg, "n1").reviewJson(2), JSON.stringify({ keep_reason: "worse", feedback: "f2", hypothesis: "next2" }));
+  writeFileSync(nightPaths(cfg, "n1").reviewJson(2), JSON.stringify({ keep_reason: "better", feedback: "f1", hypothesis: "next1" }));
+  writeFileSync(nightPaths(cfg, "n1").reviewJson(3), JSON.stringify({ keep_reason: "worse", feedback: "f2", hypothesis: "next2" }));
   const log = priorLog(cfg, "n1");
-  assert.deepEqual(log.map((l) => l.label), ["n0-r1", "n1-r1", "n1-r2", "n1-r3"]);
+  assert.deepEqual(log.map((l) => l.round), [1, 2, 3, 4]);
   assert.ok(Math.abs(log[1].deltaPrimary - 0.3) < 1e-9);
   assert.ok(Math.abs(log[2].deltas!.accuracy + 0.1) < 1e-9);
   assert.equal(log[2].reason, "worse");
   assert.equal(log[3].reason, "no code change");
-  assert.match(logLine(log[2], null), /^- n1-r2: h2\.1 → /);
+  assert.match(logLine(log[2], null), /^- r3: h3\.1 → /);
   assert.deepEqual(lastReview(cfg, "n1"), { feedback: "f2", hypothesis: "next2" });
+  assert.equal(lastRound(cfg, "n1"), 4);
 });
 
-test("a continued night starts from the earlier night's kept commit, with its learning and rejected diffs", async () => {
+test("reopening adds rounds and a run's budget, keeps the end files beside the night, and allows one continue at a time", () => {
   const cfg = config();
   night(cfg, "n1", 1);
-  const repo = new ExperimentRepo(nightPaths(cfg, "n1").gitDir);
+  appendRows(cfg.results_path, [row("n1", 1, 0, "keep", 0.5, { coder_usd: 2 }), row("n1", 3, 0, "revert", 0.4, { coder_usd: 1 })]);
+  const p = nightPaths(cfg, "n1");
+  const first = reopenNight(cfg, "n1", 2);
+  assert.deepEqual([first.config.max_rounds, first.config.budget_usd.night, first.rescore], [5, 8, false]);
+  assert.ok(!existsSync(p.doneJson) && existsSync(join(p.nightDir, "done-r3.json")));
+  assert.throws(() => reopenNight(cfg, "n1", 2), /hasn't ended/);
+  const saved = JSON.parse(readFileSync(p.nightJson, "utf8")) as { startedAt: number; config: NightConfig };
+  assert.deepEqual([saved.startedAt, saved.config.max_rounds], [1, 5]);
+  // A second continuation adds one run's budget again, not the budget so far.
+  writeFileSync(p.stopJson, "{}");
+  const second = reopenNight(saved.config, "n1", 1);
+  assert.deepEqual([second.config.max_rounds, second.config.budget_usd.night], [4, 8]);
+  assert.ok(!existsSync(p.stopJson) && existsSync(join(p.nightDir, "stop-r3.json")));
+});
+
+test("changed scorers add a round that scores the kept commit again; with no scores to redo, none", () => {
+  const cfg = config();
+  night(cfg, "n1", 1);
+  night(cfg, "n2", 1);
+  const stale = (id: string) => {
+    const file = nightPaths(cfg, id).nightJson;
+    const n = JSON.parse(readFileSync(file, "utf8")) as { metric_script_sha256: object };
+    writeFileSync(file, JSON.stringify({ ...n, metric_script_sha256: { ...n.metric_script_sha256, "gone.jsonl": "x" } }));
+  };
+  stale("n1");
+  stale("n2");
+  appendRows(cfg.results_path, [row("n1", 2, 0, "keep", 0.5)]);
+  const { config: c, rescore } = reopenNight(cfg, "n1", 2);
+  assert.deepEqual([rescore, c.max_rounds], [true, 5]);
+  assert.equal(reopenNight(cfg, "n2", 2).rescore, false);
+});
+
+test("a continued night picks up its kept commit, learning and rejected diffs, under its own id", async () => {
+  const cfg = config();
+  night(cfg, "n1", 1);
+  const paths = nightPaths(cfg, "n1");
+  const repo = new ExperimentRepo(paths.gitDir);
   await repo.ensure();
   const sha = await repo.importDir(join(cfg.scenario_dir, "starter"), "n1-r1-e0");
-  appendRows(cfg.results_path, [row("n1", 1, 0, "keep", 0.5, { commit: sha }), row("n1", 2, 0, "revert", 0.4)]);
-  writeFileSync(nightPaths(cfg, "n1").reviewJson(2), JSON.stringify({ keep_reason: "worse", feedback: "go on", hypothesis: "try x" }));
-  const history = join(nightPaths(cfg, "n1").bundleDir, "history");
-  mkdirSync(history, { recursive: true });
-  writeFileSync(join(history, "r2.diff"), "diff");
-  writeFileSync(join(history, "n0-r1.diff"), "older diff");
-  night(cfg, "n2", 2, { ended: false });
+  appendRows(cfg.results_path, [row("n1", 1, 0, "keep", 0.5, { commit: sha, coder_usd: 2 }), row("n1", 2, 0, "revert", 0.4)]);
+  writeFileSync(paths.reviewJson(2), JSON.stringify({ keep_reason: "worse", feedback: "go on", hypothesis: "try x" }));
+  mkdirSync(join(paths.bundleDir, "history"), { recursive: true });
+  writeFileSync(join(paths.bundleDir, "history", "r2.diff"), "diff");
+  writeFileSync(join(paths.bundleDir, "stale"), "x");
+  const { config: reopened } = reopenNight(cfg, "n1", 2);
 
-  const carried = await continueNight(cfg, "n2", { from: "n1", direction: "  look at retrieval " });
-  assert.equal(carried.kept.expId, "n2-r0-from");
-  assert.equal(carried.kept.sha, sha);
-  assert.equal(await repo.sha("n2-r0-from"), sha);
-  assert.deepEqual([carried.kept.score, carried.feedback, carried.hypothesis, carried.direction], [0.5, "go on", "try x", "look at retrieval"]);
-  assert.equal(carried.history.length, 2);
-  assert.match(carried.history[1], /^- n1-r2: /);
-  const bundle = join(nightPaths(cfg, "n2").bundleDir, "history");
-  assert.ok(existsSync(join(bundle, "n1-r2.diff")) && existsSync(join(bundle, "n0-r1.diff")));
-  const saved = JSON.parse(readFileSync(nightPaths(cfg, "n2").nightJson, "utf8")) as { continued: { from: string; prior: unknown[] } };
-  assert.equal(saved.continued.from, "n1");
-  assert.equal(saved.continued.prior.length, 2);
-  // The new checkpoint stays findable for the next continuation, even if scoring it failed.
-  const failed = baselineRow({ cfg, nightId: "n2", round: 0 }, carried.kept, "n1", { ok: false, evalId: "e", error: "boom" });
-  assert.deepEqual([failed.decision, failed.exp_id, failed.commit, failed.metrics.accuracy], ["keep", "n2-r0-from", sha, 0.5]);
-});
+  const state = await continueNight(reopened, "n1", { direction: "  look at retrieval ", rescore: false });
+  assert.deepEqual([state.kept.expId, state.kept.sha, state.round, state.spend], ["n1-r1-e0", sha, 2, 2]);
+  assert.deepEqual([state.kept.score, state.feedback, state.hypothesis, state.direction], [0.5, "go on", "try x", "look at retrieval"]);
+  assert.equal(state.history.length, 2);
+  assert.match(state.history[1], /^- r2: /);
+  assert.ok(existsSync(join(paths.bundleDir, "history", "r2.diff")), "rejected diffs stay");
+  assert.ok(!existsSync(join(paths.bundleDir, "stale")), "the bundle is rebuilt");
+  assert.ok(existsSync(join(paths.bundleDir, "spec")));
 
-test("nothing to carry: no rejected diffs is no history directory", () => {
-  const cfg = config();
-  night(cfg, "n1", 1);
-  carryRejected(cfg, "n1", "n2");
-  assert.ok(!existsSync(join(nightPaths(cfg, "n2").bundleDir, "history")));
+  // The rescored commit stays findable for the next continuation, even if scoring it failed.
+  const rescored = await renameKept(reopened, "n1", state.kept, "n1-r3-e0");
+  assert.equal(await repo.sha("n1-r3-e0"), sha);
+  const failed = rescoreRow({ cfg: reopened, nightId: "n1", round: 3 }, rescored, { ok: false, evalId: "e", error: "boom" });
+  assert.deepEqual([failed.decision, failed.exp_id, failed.commit, failed.metrics.accuracy], ["keep", "n1-r3-e0", sha, 0.5]);
 });
 
 test("a direction reaches the coder ahead of the feedback", () => {

@@ -12,7 +12,10 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   together. A request body can be at most 16 MB.
   - **Errors.** The endpoint doesn't retry. Retry a 429 or 502 with backoff, and catch it: one
     unhandled failure ends the run. A 402 means the money is spent, so stop calling and write the
-    rows you have. A 400 or 403 is a bad request and won't pass on retry.
+    rows you have. A 400 or 403 is a bad request and won't pass on retry. Bound the calls a query
+    can make: a burst of reranks overloads the provider, and those calls fail after every retry.
+    When calls still fail, log it and write what you have. A fallback that hides the failure
+    looks like a bad result, and nobody can tell why it scored low.
   - `POST /chat/completions`: text messages only, no streaming or tools; `response_format`, `seed`,
     `top_p`, `stop` and `reasoning` pass through, and a model that doesn't support one ignores it.
     `max_tokens` counts a model's reasoning too: when reasoning uses it up, the reply has empty

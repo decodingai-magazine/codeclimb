@@ -1,7 +1,9 @@
 import { isCreditError } from "./credits";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { publicMeterUrl } from "./meter/index";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { checkMeterUrl, publicMeterUrl } from "./meter/index";
 import { BackendError, type MeterBackends, type MeterCall, MeterProxy } from "./meter/proxy";
 import { costMetrics } from "./standard-metrics";
 
@@ -84,9 +86,9 @@ test("metering proxy: OpenAI responses, cost per operation, cap and revocation",
 
   const m = costMetrics(calls, 4);
   assert.deepEqual(m, {
-    cost_program_usd: 0.01, cost_query_usd: 0.0121, cost_usd: 0.0221, cost_per_item_usd: 0.005525, model_calls: 4, model_calls_replayed: 0,
+    cost_program_usd: 0.01, cost_query_usd: 0.0121, cost_usd: 0.0221, cost_per_item_usd: 0.005525, model_calls: 4, model_calls_replayed: 0, model_calls_failed: 1,
   });
-  assert.deepEqual(costMetrics([], 10), { cost_usd: 0, cost_per_item_usd: 0, model_calls: 0, model_calls_replayed: 0 });
+  assert.deepEqual(costMetrics([], 10), { cost_usd: 0, cost_per_item_usd: 0, model_calls: 0, model_calls_replayed: 0, model_calls_failed: 0 });
 });
 
 test("rerank: metered per call, documents required, allowed models only", async () => {
@@ -142,6 +144,16 @@ test("the public proxy URL: the override, else the first tunnel up, else a clear
   assert.equal(await publicMeterUrl(undefined, [up("https://cf"), up("https://ngrok")], 7422), "https://cf/v1");
   assert.equal(await publicMeterUrl(undefined, [down, up("https://ngrok")], 7422), "https://ngrok/v1");
   await assert.rejects(publicMeterUrl(undefined, [down, down], 7422), /tunnel:cloudflare/);
+});
+
+test("the path to the proxy: the proxy's own refusal passes, a tunnel's error page doesn't", async () => {
+  await checkMeterUrl(`http://127.0.0.1:${port}/v1`);
+  const edge = createServer((_, res) => res.writeHead(403, { "content-type": "text/html" }).end("ERR_NGROK_725"));
+  await new Promise<void>((r) => edge.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(edge.address() as AddressInfo).port}/v1`;
+  await assert.rejects(checkMeterUrl(url, 2, 0), /metering proxy isn't reachable.*403: ERR_NGROK_725/);
+  edge.close();
+  await assert.rejects(checkMeterUrl(url, 1, 0), /metering proxy isn't reachable/);
 });
 
 test("replay: a later eval of the night gets the same answer for free; a retry goes upstream", async () => {

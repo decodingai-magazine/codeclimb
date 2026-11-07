@@ -9,8 +9,6 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type NightSummary = {
   id: string;
-  /** The night this one continues. */
-  continued_from: string | null;
   scenario: string;
   sandbox: string;
   status: "running" | "paused" | "finished" | "stopped" | "stale";

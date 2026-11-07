@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
 import { type NightConfig, relativeConfig } from "./config";
-import { checkSource } from "./continuation";
+import { reopenNight } from "./continuation";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
-import { newNightId, nightPaths } from "./paths";
+import { nightPaths } from "./paths";
 import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
 import { loadScenario } from "./scenario";
@@ -42,7 +42,7 @@ function readJson<T>(file: string): T | null {
 // ---------- nights ----------
 
 type PausedStop = { where: string; who: string; model: string; message: string };
-type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig; continued?: { from: string; direction: string } };
+type NightFile = { night_id: string; startedAt: number; deadlineMs: number; config: NightConfig };
 type DoneFile = { stop_reason: string; rounds: number; kept: { exp_id: string; dev_score: number }; spend_usd: number; finished_at: string };
 type CodeState = {
   startedAt: number; coderUsd: number; devUsd?: number; tokens: number; tCode: number; finishedAt?: number; stop?: string;
@@ -92,7 +92,7 @@ function summary({ scenario, dir, night }: ReturnType<typeof findNight>) {
   const pause = readJson<{ at: number; stops: PausedStop[] }>(join(dir, "pause.json"));
   const status = done ? "finished" : stop ? "stopped" : pause ? "paused" : Date.now() - lastActivity(dir) > STALE_MS ? "stale" : "running";
   return {
-    id: night.night_id, continued_from: night.continued?.from ?? null, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
+    id: night.night_id, scenario, sandbox: cfg.sandbox, status, stop_reason: done?.stop_reason ?? (stop ? "stopped" : null),
     pause: pause && status === "paused" ? pause : null,
     round, max_rounds: cfg.max_rounds, primary_metric: cfg.primary_metric,
     best: done?.kept.dev_score ?? kept?.metrics[cfg.primary_metric] ?? null, best_exp: done?.kept.exp_id ?? kept?.exp_id ?? null,
@@ -152,21 +152,20 @@ async function stopNight(n: ReturnType<typeof findNight>) {
   return { stopped: n.night.night_id };
 }
 
-/** A new night from this one's kept commit, on its config with the scenario as it stands now. */
+/** More rounds on this night, on its config with the scenario as it stands now. */
 async function continueFrom(n: ReturnType<typeof findNight>, body: Record<string, unknown>) {
   const { direction, rounds } = body;
   if (direction !== undefined && typeof direction !== "string") throw new HttpError(400, "direction must be text");
-  if (rounds !== undefined && !(Number.isInteger(rounds) && (rounds as number) >= 1)) throw new HttpError(400, "rounds must be an integer >= 1");
-  const config = n.night.config;
-  const cfg = { ...config, scenario: loadScenario(config.scenario_dir), ...(rounds ? { max_rounds: rounds as number } : {}) };
+  if (!(Number.isInteger(rounds) && (rounds as number) >= 1)) throw new HttpError(400, "rounds must be an integer >= 1");
+  const id = n.night.night_id;
+  let reopened;
   try {
-    checkSource(cfg, n.night.night_id);
+    reopened = reopenNight({ ...n.night.config, scenario: loadScenario(n.night.config.scenario_dir) }, id, rounds as number);
   } catch (e) {
     throw new HttpError(409, (e as Error).message);
   }
-  const nightId = newNightId();
-  await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg), { from: n.night.night_id, ...(direction?.trim() ? { direction } : {}) }));
-  return { night_id: nightId };
+  await ccInngest.send(nightStartEvent(id, relativeConfig(reopened.config), { rescore: reopened.rescore, ...(direction?.trim() ? { direction } : {}) }));
+  return { night_id: id };
 }
 
 function nightGitDir(n: ReturnType<typeof findNight>, expId: string): string {

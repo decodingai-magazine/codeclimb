@@ -41,7 +41,7 @@ Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, pass only i
 - `results.jsonl` has a row for every experiment of every round, plus a `test` row.
 - `git -C runs/mock/<config-name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`.
 - `nights/<id>/exps/*/code-state.json` has `stop: done`, and `nights/<id>/exps/*/session/` holds a session.
-- `nights/<id>/reviews/r1.json` has `feedback: mock feedback`. In a final round with no candidate, no review is expected.
+- `nights/<id>/reviews/r<n>.json` exists for every round and has `feedback: mock feedback`.
 - `report.html` exists next to `results.jsonl`.
 - `done.json` has `spend_usd: 0`.
 - For `capitals-smoke`: `nights/<id>/evals/*/meter.jsonl` lists the program's calls, with no `error`.

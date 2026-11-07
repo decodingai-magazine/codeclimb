@@ -13,7 +13,6 @@ import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import {
   applyReview,
-  baselineRow,
   checkRepo,
   checkStop,
   continueNight,
@@ -23,12 +22,13 @@ import {
   type EvalOutcome,
   type ExperimentOutcome,
   finishNight,
+  freshNight,
   initNight,
   type Kept,
   historyLine, maskFailures, repairable,
   markPaused,
   type PausedAt,
-  recordRows, saveRejected,
+  recordRows, renameKept, rescoreRow, saveRejected,
   reviewRound,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
@@ -123,10 +123,9 @@ export const runNight = ccInngest.createFunction(
         throw new NonRetriableError(e.message);
       }),
     );
-    const init = await step.run("init", () => initNight(cfg, nightId));
     const start = event.data.continue;
-    const carried = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : null;
-    const direction = carried?.direction ?? "";
+    const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : freshNight(await step.run("init", () => initNight(cfg, nightId)));
+    const { direction } = state;
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 
     // One evaluator run (and sandbox, `cc-<night>-<id>`) per call.
@@ -146,7 +145,7 @@ export const runNight = ccInngest.createFunction(
     // Only the parent waits: a child waiting would run into its `step.invoke` timeout. What finished stays
     // memoized, so after the resume only what stopped runs again, under new step ids.
     let pauses = 0;
-    let deadlineMs = init.deadlineMs;
+    let deadlineMs = state.deadlineMs;
     const pauseForCredits = async (round: number, stops: PausedAt[]) => {
       pauses += 1;
       const pausedAt = await step.run(`pause-${pauses}`, () => markPaused(cfg, nightId, round, stops));
@@ -168,33 +167,37 @@ export const runNight = ccInngest.createFunction(
       }
     };
 
-    let spend = 0;
-    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated, or a continued night's commit.
-    let kept: Kept = carried?.kept ?? { expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null };
-    let feedback = carried?.feedback ?? "";
+    let spend = state.spend;
+    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated.
+    let kept: Kept = state.kept;
+    let feedback = state.feedback;
     let failures: EvalFailure[] = [];
-    // A direction replaces the hypothesis the earlier night ended with.
-    let hypothesis: string | null = direction ? null : carried?.hypothesis ?? null;
-    const log: HypothesisLogEntry[] = [...(carried?.log ?? [])];
-    const history: string[] = [...(carried?.history ?? [])]; // The log as coders read it, held-out names masked.
+    // A direction replaces the hypothesis the night had got to.
+    let hypothesis: string | null = direction ? null : state.hypothesis;
+    const log: HypothesisLogEntry[] = [...state.log];
+    const history: string[] = [...state.history]; // The log as coders read it, held-out names masked.
     const roundSpends: number[] = [];
     const roundTokens: number[] = [];
     let tokens = 0;
     let roundsWithoutKeep = 0;
     let maxEvalUsd = 0;
     let stopReason = "";
-    let round = 0;
+    let round = state.round;
 
-    // Scored afresh: under today's scorers, and so this night's cache holds the calls round 1 repeats.
-    const baseline = carried?.kept.metrics ? kept : null;
-    if (carried && baseline) {
-      const outcome = await evaluate("baseline", 0, { evalId: `${nightId}-baseline`, expId: baseline.expId, split: "dev" });
+    // The scorers changed since the kept commit was scored: a round of its own scores it again, or the
+    // next round would be compared with scores from another evaluation.
+    if (start?.rescore) {
+      round += 1;
+      const at = round;
+      const rescored = await step.run("rescore-name", () => renameKept(cfg, nightId, state.kept, `${nightId}-r${at}-e0`));
+      const outcome = await evaluate(`r${at}-rescore`, at, { evalId: `${rescored.expId}-eval`, expId: rescored.expId, split: "dev" });
+      kept = rescored;
       if (outcome.ok) {
         spend += outcome.result.program_usd;
         maxEvalUsd = outcome.result.program_usd;
-        if (outcome.result.ok) kept = { ...baseline, score: outcome.result.metrics[cfg.primary_metric] ?? 0, metrics: outcome.result.metrics };
+        if (outcome.result.ok) kept = { ...rescored, score: outcome.result.metrics[cfg.primary_metric] ?? 0, metrics: outcome.result.metrics };
       }
-      await step.run("record-baseline", () => recordRows(cfg, [baselineRow({ cfg, nightId, round: 0 }, baseline, carried.from, outcome)]));
+      await step.run("record-rescore", () => recordRows(cfg, [rescoreRow({ cfg, nightId, round: at }, rescored, outcome)]));
     }
 
     while (!stopReason) {
@@ -232,7 +235,7 @@ export const runNight = ccInngest.createFunction(
         const evaluated = coded.code.sha && !coded.code.check?.errors.length && coded.code.unchanged === undefined
           ? await evaluate(`r${round}-eval${n ? n : ""}`, round, { evalId: `${expId}-eval`, expId, split: "dev", scoreRunId: coded.runId })
           : null;
-        return { ok: true, expId, model: cfg.model, code: coded.code, eval: evaluated?.ok ? evaluated.result : null };
+        return { ok: true, expId, model: cfg.model, code: coded.code, eval: evaluated?.ok ? evaluated.result : null, ...(evaluated?.ok === false ? { evalError: evaluated.error } : {}) };
       };
 
       let experiment = await attempt(0, parent.expId, { failures, hypothesis });
@@ -260,34 +263,32 @@ export const runNight = ccInngest.createFunction(
       }
       const final = decided;
 
-      // Review, even of a reverted experiment: its feedback is what the next round learns from it. After
-      // the last round with nothing to keep there is nothing to ask.
+      // Review, even of a reverted experiment and in the last round: its feedback is what the next round
+      // learns from it, and a continued night's next round is the one after this.
       let review: Omit<ReviewOutput, "keep"> = { keep_reason: "", feedback, hypothesis: hypothesis ?? "", reviewer_usd: 0, t_review: 0, tokens: 0 };
       let decision = final;
-      if (round < cfg.max_rounds || final.candidate) {
-        for (let n = 0; ; n += 1) {
-          let reviewed;
-          try {
-            reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
-              reviewRound({
-                cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-                summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log], direction,
-              }).catch((e: unknown) => {
-                if (e instanceof OutOfCredits) return { credits: e.stop };
-                throw e;
-              }),
-            );
-          } catch {
-            break; // A failed review reverts and keeps last round's guidance instead of killing the night.
-          }
-          if ("credits" in reviewed) {
-            await pauseForCredits(round, [{ ...reviewed.credits, where: `review of round ${round}` }]);
-            continue;
-          }
-          review = reviewed;
-          decision = applyReview(final, reviewed.keep);
-          break;
+      for (let n = 0; ; n += 1) {
+        let reviewed;
+        try {
+          reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
+            reviewRound({
+              cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
+              summary: final.summary, canKeep: !!final.candidate, override: final.override, log: [...log], direction,
+            }).catch((e: unknown) => {
+              if (e instanceof OutOfCredits) return { credits: e.stop };
+              throw e;
+            }),
+          );
+        } catch {
+          break; // A failed review reverts and keeps last round's guidance instead of killing the night.
         }
+        if ("credits" in reviewed) {
+          await pauseForCredits(round, [{ ...reviewed.credits, where: `review of round ${round}` }]);
+          continue;
+        }
+        review = reviewed;
+        decision = applyReview(final, reviewed.keep);
+        break;
       }
       const row = { ...decision.row, reviewer_usd: review.reviewer_usd, t_review: review.t_review };
       await step.run(`r${round}-record`, async () => {
@@ -333,8 +334,8 @@ export const runNight = ccInngest.createFunction(
       if (kept.metrics && passesThresholds(kept.metrics, cfg.thresholds)) stopReason = "thresholds";
     }
 
-    // After any stop: score the final kept commit on test once, for the report only.
-    const test = await evaluate("test", round, { evalId: `${nightId}-test`, expId: kept.expId, split: "test" });
+    // After any stop: score the final kept commit on test, once per run, for the report only.
+    const test = await evaluate(`test-r${round}`, round, { evalId: `${nightId}-test-r${round}`, expId: kept.expId, split: "test" });
     if (test.ok) spend += test.result.program_usd;
     return step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
   },

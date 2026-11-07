@@ -81,7 +81,7 @@ export function latencyMetrics(ops: OpLatency[]): Metrics {
 const round9 = (x: number) => Math.round(x * 1e9) / 1e9;
 
 /**
- * `cost_usd`, `cost_per_item_usd`, `model_calls`, `model_calls_replayed` and `cost_<op>_usd` per operation. Always present, 0
+ * `cost_usd`, `cost_per_item_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed` and `cost_<op>_usd` per operation. Always present, 0
  * without model calls, so cost compares (and its noise is measured) for every scenario.
  */
 export function costMetrics(ledger: MeterCall[], nItems: number): Metrics {
@@ -97,5 +97,6 @@ export function costMetrics(ledger: MeterCall[], nItems: number): Metrics {
   m.cost_per_item_usd = nItems ? round9(total / nItems) : 0;
   m.model_calls = calls.length;
   m.model_calls_replayed = calls.filter((c) => c.replayed_usd !== undefined).length;
+  m.model_calls_failed = calls.filter((c) => !c.ok).length;
   return m;
 }

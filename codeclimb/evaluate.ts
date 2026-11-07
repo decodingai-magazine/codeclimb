@@ -221,6 +221,7 @@ export async function evalCandidate(cfg: NightConfig, sandbox: Sandbox, req: Eva
       const runLog = await sandbox.readFile(`${box}/run.log`).catch(() => Buffer.from(""));
       writeFileSync(join(sdir, "run.log"), runLog);
       if (!run || result.credits) return result; // the program may have swallowed the errors and exited 0
+      if (proxy) await meterBaseUrl(cfg); // Throws if the way to the proxy went during the run: the scores would be the outage's.
       if (run.timedOut || run.exitCode !== 0) {
         const log = lastLines(runLog.toString(), 2000);
         result.error = `stage ${stage.name}: ${run.timedOut ? `run timed out after ${cfg.timeouts.eval_min} min` : `run exited ${run.exitCode}: ${log}`}`;

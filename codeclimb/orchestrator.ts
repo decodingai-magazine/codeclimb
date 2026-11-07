@@ -2,15 +2,14 @@
 // small JSON (SHAs, metrics, file paths), so the parent's state can be rebuilt
 // from memoized step outputs on replay.
 import type { CreditStop } from "./credits";
-import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
 import { readSpecText } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
-import { carryRejected, keptOf, lastReview, type NightStart, priorLog } from "./continuation";
+import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -36,25 +35,22 @@ export interface NightInit {
   starterSha: string;
 }
 
-function sha256(path: string): string | null {
-  return existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : null;
-}
-
-/** Every file under `dir`, relative to it, sorted. */
-function filesUnder(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir, { recursive: true, encoding: "utf8" })
-    .filter((f) => !f.split("/").includes("__pycache__") && statSync(join(dir, f)).isFile())
-    .sort();
+/** Writes the coder's bundle; rejected diffs stay. A replayed step writes it again. */
+async function writeBundle(cfg: NightConfig, nightId: string): Promise<void> {
+  const { bundleDir, nightDir } = nightPaths(cfg, nightId);
+  const history = join(bundleDir, "history");
+  const aside = join(nightDir, "history");
+  if (existsSync(history)) renameSync(history, aside);
+  rmSync(bundleDir, { recursive: true, force: true });
+  await hostCommand(cfg.scenario_dir, cfg.scenario.bundle, { out: bundleDir });
+  if (!existsSync(join(bundleDir, "spec"))) throw new Error(`the scenario's bundle command wrote no spec/ into ${bundleDir}`);
+  if (existsSync(aside)) renameSync(aside, history);
 }
 
 export async function initNight(cfg: NightConfig, nightId: string): Promise<NightInit> {
   const paths = nightPaths(cfg, nightId);
   mkdirSync(paths.nightDir, { recursive: true });
-  // The coder's bundle, rebuilt on every start (a replayed step overwrites it).
-  rmSync(paths.bundleDir, { recursive: true, force: true });
-  await hostCommand(cfg.scenario_dir, cfg.scenario.bundle, { out: paths.bundleDir });
-  if (!existsSync(join(paths.bundleDir, "spec"))) throw new Error(`the scenario's bundle command wrote no spec/ into ${paths.bundleDir}`);
+  await writeBundle(cfg, nightId);
   const repo = new ExperimentRepo(paths.gitDir);
   await repo.ensure();
   const starterExpId = `${nightId}-r0-starter`;
@@ -66,10 +62,7 @@ export async function initNight(cfg: NightConfig, nightId: string): Promise<Nigh
     starterExpId,
     starterSha,
   };
-  // What scores the night must stay unchanged across it: the scenario's evaluators, gold and scenario.yaml.
-  const scored = ["scenario.yaml", ...["evaluators", "gold"].flatMap((d) => filesUnder(join(cfg.scenario_dir, d)).map((f) => join(d, f)))];
-  const hashes = Object.fromEntries(scored.map((f) => [relative(cfg.base_dir, join(cfg.scenario_dir, f)), sha256(join(cfg.scenario_dir, f))]));
-  writeFileSync(paths.nightJson, JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: hashes }, null, 2));
+  writeFileSync(paths.nightJson, JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: scoringHashes(cfg) }, null, 2));
   return init;
 }
 
@@ -170,10 +163,10 @@ export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): P
   return failures.map((f) => ({ ...f, errors: f.errors.map((e) => maskTerms(e, found)) }));
 }
 
-/** What a night takes over from the night it continues. */
-export interface Carried {
-  from: string;
-  /** The operator's direction for every round, held-out names masked; empty without one. */
+/** Where a night's rounds start: nothing for a new night, what it learned for a continued one. */
+export interface NightState {
+  deadlineMs: number;
+  /** The operator's direction for every new round, held-out names masked; empty without one. */
   direction: string;
   kept: Kept;
   feedback: string;
@@ -181,26 +174,37 @@ export interface Carried {
   log: HypothesisLogEntry[];
   /** `log` as coders read it. */
   history: string[];
+  /** The last round so far. */
+  round: number;
+  spend: number;
 }
 
-/** Takes over night `start.from`'s checkpoint under this night's id, with what it learned. */
-export async function continueNight(cfg: NightConfig, nightId: string, start: NightStart): Promise<Carried> {
+export const freshNight = (init: NightInit): NightState => ({
+  deadlineMs: init.deadlineMs, direction: "", kept: { expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null },
+  feedback: "", hypothesis: null, log: [], history: [], round: 0, spend: 0,
+});
+
+/** Picks a reopened night up at its checkpoint, on the bundle as the scenario stands now. */
+export async function continueNight(cfg: NightConfig, nightId: string, start: NightStart): Promise<NightState> {
   const paths = nightPaths(cfg, nightId);
-  const { from } = start;
-  const { expId: source, score, metrics } = keptOf(cfg, from);
-  const expId = `${nightId}-r0-from`;
-  const sha = await new ExperimentRepo(paths.gitDir).alias(source, expId);
-  carryRejected(cfg, from, nightId);
-  const log = priorLog(cfg, from);
+  await writeBundle(cfg, nightId);
+  const { expId, score, metrics } = keptOf(cfg, nightId);
+  const sha = await new ExperimentRepo(paths.gitDir).sha(expId);
+  const log = priorLog(cfg, nightId);
   const history = await Promise.all(log.map((entry) => historyLine(cfg, entry)));
   const direction = start.direction?.trim() ? await maskText(cfg, start.direction.trim()) : "";
-  const night = JSON.parse(readFileSync(paths.nightJson, "utf8")) as object;
-  writeFileSync(paths.nightJson, JSON.stringify({ ...night, continued: { from, direction, prior: log } }, null, 2));
-  return { from, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, from), log, history };
+  const { deadlineMs } = JSON.parse(readFileSync(paths.nightJson, "utf8")) as { deadlineMs: number };
+  return { deadlineMs, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, nightId), log, history, round: lastRound(cfg, nightId), spend: spentBy(cfg, nightId) };
+}
+
+/** A new name for the kept commit, for the round that scores it again. */
+export async function renameKept(cfg: NightConfig, nightId: string, kept: Kept, expId: string): Promise<Kept> {
+  await new ExperimentRepo(nightPaths(cfg, nightId).gitDir).alias(kept.expId, expId);
+  return { ...kept, expId };
 }
 
 export type ExperimentOutcome =
-  | { ok: true; expId: string; model: string; code: CodeResult; eval: EvalResult | null }
+  | { ok: true; expId: string; model: string; code: CodeResult; eval: EvalResult | null; /** Why it has no evaluation, past retries. */ evalError?: string }
   | { ok: false; expId: string; model: string; error: string };
 
 export type EvalOutcome = { ok: true; evalId: string; result: EvalResult } | { ok: false; evalId: string; error: string; credits?: CreditStop };
@@ -267,16 +271,16 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
 }
 
 /**
- * The row of the commit a continued night starts from, scored afresh. It stays the checkpoint if that
+ * The row of a kept commit scored again because the scorers changed. It stays the checkpoint if that
  * evaluation failed, with the scores it came with: a later continuation finds it here either way.
  */
-export function baselineRow(b: RowBase, kept: Kept, from: string, outcome: EvalOutcome): ResultRow {
+export function rescoreRow(b: RowBase, kept: Kept, outcome: EvalOutcome): ResultRow {
   const scored = outcome.ok && outcome.result.ok;
-  return evalRow(b, kept, outcome, { hypothesis: `continued from ${from}`, decision: "keep", ...(scored ? {} : { metrics: kept.metrics ?? {} }) });
+  return evalRow(b, kept, outcome, { hypothesis: "the kept commit, scored again: the evaluation changed", decision: "keep", ...(scored ? {} : { metrics: kept.metrics ?? {} }) });
 }
 
-// A stage's per-item errors the reviewer reads; graphrag's extraction writes about 120k.
-const MAX_DETAILS_CHARS = 40_000;
+// A stage's per-item errors the reviewer reads; graphrag's extraction errors take about 70k, its matches 25k more.
+const MAX_DETAILS_CHARS = 70_000;
 
 type Candidate = { expId: string; sha: string; score: number; metrics: Metrics };
 
@@ -326,7 +330,7 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
   const metrics = unchanged ? (parent.metrics ?? { [P]: 0 }) : evalOk ? ev!.metrics : { [P]: 0 };
   const primary = unchanged ? parent.score : (metrics[P] ?? 0);
   const failedCheck = x.code.check?.errors ?? [];
-  const errors = [...failedCheck, ...(ev?.error ? [ev.error] : [])];
+  const errors = [...failedCheck, ...(ev?.error ? [ev.error] : []), ...(x.evalError ? [x.evalError] : [])];
   const guardrails = unchanged ? [] : !evalOk ? errors : parent.metrics ? guardrailFailures(metrics, parent.metrics, cfg.scenario.headline) : emptyStages(metrics);
   const gated = evalOk && passesGates(metrics, cfg.gates);
   const override = gated && !!parent.metrics && tinyRegressions(metrics, parent.metrics, cfg.scenario.headline, cfg.scenario.override_limit ?? 0);
@@ -358,13 +362,22 @@ export function applyReview(d: RoundDecision, keep: boolean): RoundDecision {
   return { ...d, keep: d.candidate, row: { ...d.row, decision: "keep", ...(d.override ? { override: true } : {}) }, summary: { ...d.summary, decision: "keep" } };
 }
 
-/** `details` as text, at most `maxChars`: past that every item keeps an equal share, so no item crowds out the rest. */
+/**
+ * `details` as text, at most `maxChars`: past that the long items share what the short ones left, so no
+ * item crowds out the rest.
+ */
 export function spreadDetails(details: unknown, maxChars: number): string {
   const whole = JSON.stringify(details);
   if (whole.length <= maxChars || typeof details !== "object" || details === null) return whole.slice(0, maxChars);
-  const items = Object.entries(details);
-  const share = Math.floor(maxChars / items.length);
-  return items.map(([k, v]) => `${k}: ${JSON.stringify(v).slice(0, share)}`).join("\n");
+  const items = Object.entries(details).map(([k, v]) => [k, JSON.stringify(v)] as const);
+  let left = maxChars;
+  let share = 0;
+  for (const [i, n] of items.map(([, v]) => v.length).sort((a, b) => a - b).entries()) {
+    share = Math.floor(left / (items.length - i));
+    if (n > share) break; // this one and the longer ones are cut at `share`
+    left -= n;
+  }
+  return items.map(([k, v]) => `${k}: ${v.slice(0, share)}`).join("\n");
 }
 
 /** Per-item errors of a branch's dev eval, per stage: what `details` in a stage report holds. */

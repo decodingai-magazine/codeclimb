@@ -84,7 +84,7 @@ class Envelope(BaseModel):
 
 
 def returned(env: Envelope | None) -> dict:
-    """The top of what a query got back, for the reviewer to read against its query. The expected set stays out."""
+    """The top of what a query got back, for the reviewer to read against its query."""
     if env is None:
         return {"nodes": [], "edges": [], "docs": []}
     return {
@@ -108,10 +108,8 @@ def gold_keys() -> dict[tuple[str, str], set[str]]:
     return {(e["type"], e["name"]): keys(e["name"], *e["aliases"]) for e in graph()["entities"]}
 
 
-def score_row(row: dict, env: Envelope, ranked: bool, entity_keys: dict, mentions: dict, published: dict) -> dict:
-    """Every metric that applies to this row (README.md, Scoring, 3. Retrieval), keyed by name."""
-    kind, ex = row["kind"], row["expected"]
-    top = lambda items, k: items if not ranked or k is None else items[:k]  # noqa: E731
+def matchers(ex: dict, entity_keys: dict) -> tuple:
+    """Whether a returned node is expected node i, and whether a returned edge is an expected edge."""
     exp_keys = [entity_keys[(n["type"], n["name"])] for n in ex["nodes"]]
     by_name = {n["name"]: exp_keys[i] for i, n in enumerate(ex["nodes"])}
 
@@ -123,6 +121,33 @@ def score_row(row: dict, env: Envelope, ranked: bool, entity_keys: dict, mention
         forward = src in by_name[x["source"]] and tgt in by_name[x["target"]]
         backward = x["semantic_type"] in COMPARING and src in by_name[x["target"]] and tgt in by_name[x["source"]]
         return (forward or backward) and (not strict or e.semantic_type == x["semantic_type"])
+
+    return node_hit, edge_hit
+
+
+def missed(row: dict, env: Envelope, entity_keys: dict) -> dict:
+    """The expected nodes and edges a query didn't get back: what a reviewer needs to see why a path broke."""
+    ex = row["expected"]
+    node_hit, edge_hit = matchers(ex, entity_keys)
+    return {
+        "nodes": [f"{n['name']} ({n['type']})" for i, n in enumerate(ex["nodes"]) if not any(node_hit(m, i) for m in env.nodes)],
+        "edges": [f"{x['source']} -{x['semantic_type']}-> {x['target']}" for x in ex["edges"] if not any(edge_hit(e, x) for e in env.edges)],
+    }
+
+
+def query_details(row: dict, env: Envelope | None, metrics: dict, ranked: bool, entity_keys: dict) -> dict:
+    """A query in `--details`: its metrics, and when a primary metric fell short, what it got back and what it missed."""
+    shown = {"kind": row["kind"], "metrics": metrics}
+    if all(metrics.get(p, 1) >= 1 for p in primary_metrics(row["kind"], ranked) if p != "subgraph_precision"):
+        return shown
+    return {**shown, "query": row["query"], "missed": missed(row, env or Envelope(id=row["id"]), entity_keys), "returned": returned(env)}
+
+
+def score_row(row: dict, env: Envelope, ranked: bool, entity_keys: dict, mentions: dict, published: dict) -> dict:
+    """Every metric that applies to this row (README.md, Scoring, 3. Retrieval), keyed by name."""
+    kind, ex = row["kind"], row["expected"]
+    top = lambda items, k: items if not ranked or k is None else items[:k]  # noqa: E731
+    node_hit, edge_hit = matchers(ex, entity_keys)
 
     def edges_found(returned: list[Edge], strict: bool = False) -> int:
         return sum(any(edge_hit(e, x, strict) for e in returned) for x in ex["edges"])
@@ -252,9 +277,7 @@ def score(split_name: str, predictions: Path, out_path: Path, ranked: bool, deta
         "not_wired": ["anchor rarity slice", "BM25-miss slice", "closed-book gate"],
     }
     if details:
-        report["details"] = {
-            r["id"]: {"kind": r["kind"], "query": r["query"], "metrics": scores[r["id"]], "returned": returned(envelopes.get(r["id"]))} for r in rows
-        }
+        report["details"] = {r["id"]: query_details(r, envelopes.get(r["id"]), scores[r["id"]], ranked, entity_keys) for r in rows}
     write_report(out_path, report)
     primary = "; ".join(f"{kind} {p}={fmt(v['metrics'].get(p, {}).get('mean'))}" for kind, v in by_kind.items() for p in v["primary"][:1])
     logger.info(f"{len(rows)} queries: {primary} -> {out_path}")

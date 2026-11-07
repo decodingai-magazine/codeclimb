@@ -31,8 +31,6 @@ export interface BranchSummary {
 
 export interface HypothesisLogEntry {
   round: number;
-  /** How the log names a round of an earlier night, `<night>-r<round>`; its rejected diff has the same name. */
-  label?: string;
   hypothesis: string;
   deltaPrimary: number;
   /** Change of each headline and optimized standard metric vs the checkpoint's scores. */
@@ -94,7 +92,7 @@ You receive the program's specification, the checkpoint's source, the experiment
 1. keep: true to keep the experiment, false to revert it. Weigh every metric, not one number, against the checkpoint's scores. Each run is one sample, so a small change may be noise: read it against the ci95 where one is given. An evaluation repeats an earlier one's model calls from a cache, so the prompt says how many it replayed: a call that was replayed adds no noise, and a small move where most calls replayed comes from the change. Before calling a move noise, check the diff: a change to a shared helper is a change to everything that calls it. A clear gain with the other metrics about level is worth keeping, whichever metric it is. A worse result, or a gain in one metric bought by a loss in another, is reverted. Failed guardrails forbid a keep, unless the prompt offers an override for a tiny regression: take it only for a clear gain elsewhere, and say why the regression is acceptable. A change that fits dev items by name is no gain, and a small gain with a simple diff beats the same gain with a fragile one. Simpler code is a gain in itself: keep a change that removes code or makes it simpler when no metric got worse beyond noise. While the kept commit is the empty starter no comparison exists: judge on the absolute scores, and keep unless the result looks broken or fitted to dev items, since it sets the bar for later rounds. Follow the evaluation protocol if one is given.
 2. keep_reason: one or two sentences saying why.
 3. feedback: concise guidance for the next round: what worked, what regressed, which metric families are weakest. When you revert, say why this attempt was worse and which path not to take again. Base it on the data; do not invent failures you cannot see. Coders also get a failed evaluation's error, so don't retype it.
-4. hypothesis: one concrete, testable change for the next round, in one or two sentences, different from hypotheses that already failed. Coders start from the kept commit, but can read a rejected experiment's diff at /spec/history/<round's name in the log>.diff, so a hypothesis that reuses rejected work can point at it. Aim it at the headline metric furthest below its threshold; metrics without a threshold come after those. Where the per-item errors start with a summary of error counts, aim at the largest group one change can reach, and don't propose work on a group those counts show is small. When the prompt gives a direction, every hypothesis follows it. After a revert or a round that barely moved its target, stop refining that path: move to the next headline furthest below its threshold, combine the parts of rejected attempts that helped a metric, or try a clearly different approach.
+4. hypothesis: one concrete, testable change for the next round, in one or two sentences, different from hypotheses that already failed. Coders start from the kept commit, but can read a rejected experiment's diff at /spec/history/r<round>.diff (round 6's is /spec/history/r6.diff), so a hypothesis that reuses rejected work can point at it. Aim it at the headline metric furthest below its threshold; metrics without a threshold come after those. Where the per-item errors start with a summary of error counts, aim at the largest group one change can reach, and don't propose work on a group those counts show is small. When the prompt gives a direction, every hypothesis follows it. After a revert or a round that barely moved its target, stop refining that path: move to the next headline furthest below its threshold, combine the parts of rejected attempts that helped a metric, or try a clearly different approach.
 
 Coders must never see the evaluation data. Coders read keep_reason, feedback and the hypothesis: in all three describe categories of error (which kinds of items fail, and how), and never write a dev entity, document name, query id or query text. Names in a repository check are hints that the experiment's text matches a dev item, which general knowledge can explain, not proof of a leak.
 
@@ -133,10 +131,13 @@ function fmtDeltas(d: Metrics | undefined): string[] {
   return Object.entries(d ?? {}).flatMap(([k, v]) => (v ? [`Δ${k}=${v > 0 ? "+" : ""}${fmtNum(v)}`] : []));
 }
 
-/** How much of the evaluation repeated earlier calls; nothing when it replayed none. */
-function fmtReplayed(m: Metrics): string {
-  const { model_calls: calls, model_calls_replayed: replayed } = m;
-  return replayed ? `\nModel calls: ${replayed} of ${calls} were replayed from an earlier evaluation of this night.` : "";
+/** How much of the evaluation repeated earlier calls and how much failed; nothing when neither. */
+function fmtCalls(m: Metrics): string {
+  const { model_calls: calls, model_calls_replayed: replayed, model_calls_failed: failed } = m;
+  return (
+    (replayed ? `\nModel calls: ${replayed} of ${calls} were replayed from an earlier evaluation of this night.` : "") +
+    (failed ? `\nModel calls: ${failed} of ${calls} failed, so the program ran without those answers.` : "")
+  );
 }
 
 /** How each metric that decides the keep changed from the checkpoint, with its sampling interval where it has one. */
@@ -156,7 +157,7 @@ export function logLine(l: HypothesisLogEntry, primary: string | null): string {
   const moved = [...(primary ? [`Δ${primary}=${l.deltaPrimary.toFixed(4)}`] : []), ...fmtDeltas(l.deltas), ...scores];
   // An error's tail names the failure; its head is the command, and coders get it whole.
   const reason = l.decision === "error" ? l.reason?.slice(-300) : l.reason;
-  return `- ${l.label ?? `r${l.round}`}: ${l.hypothesis} → ${moved.join(", ") || (l.scores ? "not scored" : "no metric moved")} (${l.decision}${reason ? `: ${reason}` : ""})`;
+  return `- r${l.round}: ${l.hypothesis} → ${moved.join(", ") || (l.scores ? "not scored" : "no metric moved")} (${l.decision}${reason ? `: ${reason}` : ""})`;
 }
 
 export function reviewerPrompt(input: ReviewInput): string {
@@ -188,7 +189,7 @@ export function reviewerPrompt(input: ReviewInput): string {
   lines.push(
     `## Experiment ${b.expId} (${b.model})\nHypothesis: ${b.hypothesis}\n${score(b.primary)}metrics: ${fmtMetrics(b.metrics, input)}` +
       fmtDiagnostics(b.metrics, input) +
-      fmtReplayed(b.metrics) +
+      fmtCalls(b.metrics) +
       (input.parentMetrics ? `\nChange from the kept commit: ${fmtChange(b.metrics, input.parentMetrics, input)}` : "") +
       (b.unchanged === undefined ? "" : `\nThe coder committed no change, so nothing was evaluated: these are the checkpoint's scores, and the hypothesis above was not tested in this commit. Judge no result from them. What it reported:\n${b.unchanged}`) +
       (b.guardrails.length ? `\nFailed guardrails${input.override ? " by a tiny margin" : ", can't be kept"}: ${b.guardrails.join("; ")}` : "") +
@@ -198,7 +199,7 @@ export function reviewerPrompt(input: ReviewInput): string {
   );
   if (input.log.length) {
     lines.push(
-      "## Hypothesis log (all rounds)\nEach Δ is against the checkpoint of that round; plain values had no scores to compare with. Coders start from the kept commit; a rejected experiment survives only as a read-only diff at /spec/history/<name>.diff, named as in this log.\n" +
+      "## Hypothesis log (all rounds)\nEach Δ is against the checkpoint of that round; plain values had no scores to compare with. Coders start from the kept commit; a rejected experiment survives only as a read-only diff at /spec/history/r<round>.diff, so r6 here is /spec/history/r6.diff.\n" +
         input.log.map((l) => logLine(l, headlined ? null : input.primaryMetric)).join("\n"),
     );
   }
