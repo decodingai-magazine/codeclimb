@@ -8,10 +8,21 @@ known limit), and the agent's full work: code, transcripts, submissions.
 
 You run the same protocol on two parts; only the part and what goes back differ:
 
-| part | when | what the agent gets back |
-|---|---|---|
-| dev | after each submission | your feedback and each metric's change; you read the full dev report, totals and per-item errors |
-| test | once, on the final submission | nothing per item; test totals go into the final verdict |
+| part | documents | queries | merge decisions | when | you read | what the agent gets back |
+|---|---|---|---|---|---|---|
+| train | 4 (2025-10-07 to 2025-11-18) | 19 | 4 | beside test, at the end | totals | nothing: it is the agent's own material |
+| dev | 8 (2025-12-23 to 2026-05-05) | 41 | 8 | after each submission | totals and per-item errors | your feedback and each metric's change |
+| test | 8 (2026-05-19 to 2026-09-10) | 61 | 7 | once, on the final submission | totals only | nothing until the final verdict |
+
+Keep the two held-out parts apart:
+
+- **Dev is the feedback part.** Run it after every submission, read its per-item errors, and turn
+  them into feedback that names kinds of error, never a dev item, query, entity or document.
+- **Test is the verdict part.** Run it once, on the frozen final submission. Never pass
+  `--details`, never open its predictions or reports item by item, and never let a test number
+  reach the agent or the feedback of any earlier round.
+- **No crossing.** Nothing about test decides a keep or shapes feedback; dev numbers never stand in
+  for test in the verdict. The final report sets train, dev and test side by side from one commit.
 
 Retrieval always runs on `gold/graph.json`: the engine loads the gold graph, so retrieval numbers
 measure retrieval alone and compare across systems; the agent's own graph is scored only by the
@@ -70,13 +81,14 @@ For each `headline` metric:
   extraction and graph, read a drop of more than a few points the same way. Test is later in time
   than dev, so a small drop on the graph stage is expected as new entities arrive.
 - **Graph:** read `b_cubed.precision` and `b_cubed.recall` apart (a wrong merge is worse than a wrong
-  split), and only the recall above `baselines.history_only.recall` measures merging. Dev holds 23
-  merge decisions (about 4 points of `merge_decisions.rate` each), test 14 (about 7).
+  split), and only the recall above `baselines.history_only.recall` measures merging. Dev holds 8
+  merge decisions (about 12 points of `merge_decisions.rate` each), test 7 (about 14).
 - **Retrieval:** per kind, never averaged across kinds. Read each kind's `subgraph_precision` beside
   its recall: recall bought by returning the neighbourhood shows up there. The `hard` difficulty is
   the structure tier: report it apart.
 
-Precision of the numbers: test has 2 to 15 queries per kind (`multi_hop` 15, `single_hop` 11,
+Precision of the numbers: dev has 2 to 11 queries per kind (`single_hop` 11, `temporal` 7,
+`intersection` 7, `multi_hop` 5, `aggregation` 5, `comparison` 4, `unanswerable` 2); test has 2 to 15 queries per kind (`multi_hop` 15, `single_hop` 11,
 `intersection` 11, `temporal` 8, `aggregation` 7, `comparison` 7, `unanswerable` 2). A
 pass/fail metric near 0.5 has a 95% interval of about ±25 points at 15 rows and ±35 at 8. Read the
 `ci95` the report gives; two systems whose intervals overlap are not separated.

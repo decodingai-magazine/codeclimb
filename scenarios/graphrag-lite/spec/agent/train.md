@@ -6,8 +6,8 @@ third-party evaluator, who runs your frozen system on them:
 | part | documents | you get |
 |---|---|---|
 | train | the first 4 (2025-10-07 to 2025-11-18): 100 mentions, 115 relations, 4 merge decisions, 19 retrieval queries | the documents and all their gold, in this bundle |
-| dev | the next 8 (2025-12-23 to 2026-05-05): 41 retrieval queries | after each submission, the reviewer's feedback and how each metric moved; never its items |
-| test | the last 8 (from 2026-05-19) | nothing until the end: it is scored once, totals only |
+| dev | the articles after train | after each submission, the reviewer's feedback and how each metric moved; never its items |
+| test | the articles after dev | nothing until the end: it is scored once, totals only |
 
 ## The bundle
 
@@ -49,14 +49,14 @@ Sample from `train/examples/` freely:
 - **`extraction.jsonl`:** each train document with its `known_entities` and its gold
   `entity_mention` and `related_to` rows, in the format `task.md` asks you to write (with
   `confidence`; a row whose label is a descriptive one the article never writes carries
-  `coined: true`; train has 2, dev 5 and test 5).
+  `coined: true`; train has 2).
 - **`graph.jsonl`:** the train log with every merge decision it holds (`same_as` rows, 4 of them).
 - **`retrieval.jsonl`:** the 19 train queries with their `kind`, `difficulty`, `origin` (`graph` or
   `text`), `expected` nodes (each with a `role`: `anchor`, `bridge` or `answer`), edges (each with
   the `doc_uri` it was read from) and documents. Every one is answered by
   the train articles alone, so the mix leans on what 4 articles hold: 7 `single_hop`, 4
   `multi_hop`, 3 `temporal`, 2 `comparison`, 2 `unanswerable`, 1 `aggregation`, no `intersection`.
-  Dev and test hold every kind, three-hop paths included.
+  The evaluation scores every kind `task.md` lists.
 
 **Why train is the earliest part:** gold rows reuse the canonical name from the first document that
 named the entity, so a later document's rows would reveal earlier documents' answers. Train comes
@@ -111,7 +111,7 @@ a `doc_uri`, and an expected node a `role`. Write predictions from this table, n
 Input, one line per document, in order:
 
 ```json
-{"doc_uri": "…", "path": "corpus/….md", "title": "…", "published": "2026-02-03",
+{"doc_uri": "…", "path": "corpus/….md", "title": "…", "published": "2025-10-14",
  "known_entities": [{"type": "tool", "name": "Claude Code", "aliases": ["claude code"]}]}
 ```
 
@@ -163,13 +163,13 @@ where you look at items. Use the feedback to decide what to change; every change
 submission, scored fresh. Feedback is never an example: every few-shot example stays from
 `train/examples/`.
 
-- **Train is the small end.** Held-out documents come with up to about 800 known entities, against
-  about 120 on train, and retrieval's graph holds about 800 entities. Train's multi-hop queries
-  all take 2 hops; held-out ones go to 3 and more. Check cost, latency and recall at that scale,
-  and don't tune to train's size.
+- **Train is the small end.** A held-out document's `known_entities` holds every earlier
+  document's entities, and retrieval's graph holds every article's, both far more than train's.
+  Train's multi-hop queries all take 2 hops; `task.md` allows 3. Check cost, latency and recall
+  beyond train's scale, and don't tune to train's size.
 
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.
-- **Few merges.** Dev holds 23 merge decisions, so one decision moves merge recall by about 4
-  points. Read the raw counts beside the rate.
+- **Few merges.** Train holds 4 merge decisions, so one decision moves its merge rate by 25
+  points, and the held-out parts are small too. Read the raw counts beside the rate.
 - **Retrieval is per kind.** Never average across kinds: they test different abilities.

@@ -75,7 +75,7 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   `/spec/train/` (gold graph, examples, inputs). Use `--root /spec` to run on train.
 - **Evaluation** runs each stage on dev with gold input; each stage gets the eval time limit the
   prompt names, on its own. Only your repository, `--root`, `--inputs` and `--graph` exist there.
-  `known_entities` grows with history: on dev it is several times longer than train's longest, so
+  `known_entities` grows with history: a held-out document gets every earlier document's entities, so
   a prompt that holds all of it may no longer fit or may cost far more.
   A stage that crashes, overruns or writes a field the schema doesn't allow (`train.md`, Inputs and
   predictions) fails the whole submission: no stage is scored. Dev's scores come back as the

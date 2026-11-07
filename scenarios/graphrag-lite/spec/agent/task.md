@@ -12,7 +12,7 @@ it is loose on purpose. You aren't bound to it: try different ways to extract, m
 install what you need (`runtime.md`), and keep what the metrics back.
 
 **What you have:** your bundle (`train.md`): this spec, the 4 earliest articles (**train**), and
-their gold, which you may read in full and sample as few-shot examples. The other 16 articles are
+their gold, which you may read in full and sample as few-shot examples. The later articles are
 split by time into **dev** and **test**, and you never see them: a third-party evaluator runs your
 frozen system on them. Dev's report comes back to you as feedback after each submission; test is
 scored once, at the end.
@@ -125,7 +125,7 @@ matters; the strings are yours.
 **What:** load the gold graph you're given into a store, alongside the corpus, and for each query
 return one envelope. A suggestion: Ladybug (`runtime.md`), an embedded graph database, queried with
 real Cypher rather than by walking the JSON. Retrieval is always scored on the gold graph (in your bundle,
-`train/graph.json`; when evaluated, the full one over all 20 articles), so its numbers measure
+`train/graph.json`; when evaluated, the full one over every article), so its numbers measure
 retrieval alone and compare across systems. Use the graph's `documents`, `entities` and
 `relationships` (`mentions`, `related_to`) as given; never feed it to extraction or graph building.
 
