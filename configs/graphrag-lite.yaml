@@ -24,7 +24,7 @@ thresholds:
   retrieval.by_kind.multi_hop.metrics.path_complete.mean: 0.3
 budget_usd:
   experiment: 2.5
-  night: 7.5
+  night: 15
   eval: 2.0
   dev: 0.5
 results_path: runs/graphrag-lite-cloud/results.jsonl
