@@ -27,3 +27,5 @@ __pycache__/
 # graphrag's articles and gold answers stay local: this repo is public
 scenarios/graphrag/corpus/
 scenarios/graphrag/gold/
+scenarios/graphrag-lite/corpus/
+scenarios/graphrag-lite/gold/
