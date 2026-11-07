@@ -25,6 +25,4 @@ thresholds:
 budget_usd:
   experiment: 5.0
   night: 15.0
-  eval: 2.0
-  dev: 0.5
 results_path: runs/graphrag-cloud/results.jsonl

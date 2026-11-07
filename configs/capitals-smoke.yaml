@@ -18,6 +18,4 @@ gates:
 budget_usd:
   experiment: 0.5
   night: 2.0
-  eval: 0.1
-  dev: 0.05
 results_path: runs/capitals-smoke/results.jsonl

@@ -8,8 +8,8 @@
 //
 // With `allowed_models`, the coder's runs of the program may call those models
 // as they will during evaluation: the sandbox joins the metering network and
-// the shell gets a token for this experiment's own ledger, capped at
-// `budget_usd.dev`. That spend is `dev_usd`, never the program's cost metrics.
+// the shell gets a token for this experiment's own ledger, inside
+// `budget_usd.experiment` with the coder's tokens. That spend is `dev_usd`, never the program's cost metrics.
 //
 // Crash mid-prompt: the retried step reopens the session JSONL and continues
 // on the same sandbox if it is alive; a dead sandbox gets one fresh restart
@@ -266,7 +266,7 @@ export function coderPrompt(
     /** The kept commit's dev score per threshold metric, null where unscored. */
     standing?: Record<string, number | null>;
   } = { primary: "", metrics: [] },
-  dev?: { models: string[]; budgetUsd: number; evalBudgetUsd?: number },
+  dev?: { models: string[]; budgetUsd: number },
   evalMin?: number,
   failures: EvalFailure[] = [],
   history: string[] = [],
@@ -334,8 +334,7 @@ export function coderPrompt(
         ? [
             "- The program can call a model while you develop, as it will during the evaluation: your shell has OPENAI_BASE_URL and " +
               `OPENAI_API_KEY for an OpenAI-compatible endpoint ($OPENAI_BASE_URL/chat/completions). Models: ${dev.models.join(", ")}. ` +
-              `Every call costs money: you have $${dev.budgetUsd} for them in total, and the endpoint answers 402 once it is spent. ` +
-              (dev.evalBudgetUsd === undefined ? "" : `The evaluation has its own cap of $${dev.evalBudgetUsd} for one run of every stage. `) +
+              `Every call costs money: they share this experiment's $${dev.budgetUsd} with your own tokens, and the endpoint answers 402 once it is spent. ` +
               "A call repeated more than 30 seconds later gets the same answer for free, so a rerun differs only where your change reached. " +
               "Start with a few cases you write; call models only through this endpoint.",
           ]
@@ -482,7 +481,7 @@ export async function runCoder(
     abortWith("credits");
   };
   const token = proxy?.open({
-    evalId: `${input.expId}-dev`, allowedModels: cfg.allowed_models, capUsd: Math.max(cfg.budget_usd.dev - devBefore, 0),
+    evalId: `${input.expId}-dev`, allowedModels: cfg.allowed_models, capUsd: Math.max(cfg.budget_usd.experiment - state.coderUsd - devBefore, 0),
     attrs: { "codeclimb.exp_id": input.expId, "codeclimb.ledger": "dev" },
     mock: cfg.mock,
     onCreditStop: outOfCredits,
@@ -559,7 +558,7 @@ export async function runCoder(
               thresholds: cfg.thresholds,
               weights: cfg.weights,
               standing: input.standing,
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.dev, evalBudgetUsd: cfg.budget_usd.eval } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
       );
       // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. Up to
       // MAX_SEND_BACKS more turns. A repair writes no plan and fixes a failure, so it goes on as it is.

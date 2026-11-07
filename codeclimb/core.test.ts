@@ -81,11 +81,10 @@ test("config validation", () => {
   assert.throws(() => parseConfig(BASE_YAML.replace("reviewer_model: p/c", "reviewer_model: p/a"), ROOT), /reviewer_model/);
   assert.throws(() => parseConfig(`${BASE_YAML}overfit_gap: 0.05\n`, ROOT), /is gone/);
   assert.throws(() => parseConfig(BASE_YAML.replace("scenarios/capitals", "scenarios/missing"), ROOT), /scenario\.yaml/);
-  // eval defaults to experiment, dev to eval.
-  assert.deepEqual(cfg.budget_usd, { experiment: 1, night: 5, eval: 1, dev: 1 });
-  const capped = parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), ROOT);
-  assert.deepEqual([capped.budget_usd.eval, capped.budget_usd.dev], [0.2, 0.2]);
-  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0 }"), ROOT), /budget_usd.dev/);
+  // Two budgets: one experiment, and the whole night with its evaluations.
+  assert.deepEqual(cfg.budget_usd, { experiment: 1, night: 5 });
+  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), ROOT), /budget_usd\.eval is gone/);
+  assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0.1 }"), ROOT), /budget_usd\.dev is gone/);
   // Inngest sandboxes run an hour at most: a long coder or eval must fit, with room to spare.
   const long = { ...cfg, timeouts: { experiment_min: 90, eval_min: 3 } };
   assert.doesNotThrow(() => checkSandboxLimits({ ...long, sandbox: "docker" }));
@@ -310,7 +309,7 @@ test("coder prompt names the dev endpoint only when the program may call models"
   assert.match(dev, /OPENAI_BASE_URL/);
   assert.match(dev, /openrouter\/x\/y/);
   assert.match(dev, /\$0\.05/);
-  assert.match(coderPrompt("spec", "", null, 10, undefined, { models: ["m"], budgetUsd: 1, evalBudgetUsd: 2 }), /own cap of \$2 for one run of every stage/);
+  assert.match(coderPrompt("spec", "", null, 10, undefined, { models: ["m"], budgetUsd: 1 }), /share this experiment's \$1 with your own tokens/);
   assert.doesNotMatch(coderPrompt("spec", "", null, 10), /OPENAI_BASE_URL/);
   assert.match(coderPrompt("spec", "", null, 10, undefined, undefined, 16), /each run of the program 16 minutes/);
 });

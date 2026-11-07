@@ -9,7 +9,7 @@
 //   POST /v1/decisions  OpenRouter's decisions models: {model, state, questions}, answered as {answers}
 //   POST /v1/_op {"op": "query"}  the runner names the operation later calls belong to
 // Status codes follow SDK retry policy: 401 bad token, 403 model not allowed,
-// 402 eval budget spent, 400 unsupported request; only upstream failures are 502.
+// 402 budget spent, 400 unsupported request; only upstream failures are 502.
 import { type CreditStop, isCreditError } from "../credits";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -317,7 +317,7 @@ export class MeterProxy {
       model = String(body.model ?? "");
       if (!ledger.allowed.has(model)) throw new HttpError(403, `model ${model || "(none)"} is not in allowed_models`, "permission_error");
       if (ledger.creditStop) throw new HttpError(402, `out of credits: ${ledger.creditStop.message}`, "insufficient_quota");
-      if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `eval budget of $${ledger.capUsd} is spent`, "insufficient_quota");
+      if (ledger.costUsd >= ledger.capUsd) throw new HttpError(402, `budget of $${ledger.capUsd} is spent`, "insufficient_quota");
       if (route === "chat") return send(res, 200, await this.chat(ledger, parseChat(body)));
       if (route === "decisions") return send(res, 200, await this.decide(ledger, model, body));
       if (route === "rerank") return send(res, 200, await this.rerank(ledger, model, body));

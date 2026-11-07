@@ -53,10 +53,11 @@ export type NightConfig = {
   weights: Record<string, number>;
   gates: Record<string, number>;
   /**
-   * `eval` caps the program's model calls in one eval (default: `experiment`); `dev` caps the calls the
-   * coder's runs of the program make while it develops (default: `eval`). Both need `allowed_models`.
+   * `experiment` caps one experiment: the coder's tokens plus the model calls its runs of the program
+   * make while it develops. `night` caps the whole run: every experiment, review and evaluation,
+   * including the program's model calls in each eval.
    */
-  budget_usd: { experiment: number; night: number; eval: number; dev: number };
+  budget_usd: { experiment: number; night: number };
   results_path: string;
   /** Directory relative paths resolve against. */
   base_dir: string;
@@ -77,6 +78,9 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   const timeouts = req<NightConfig["timeouts"]>(raw, "timeouts", "object");
   const sm = (raw.standard_metrics as Partial<StandardMetricsConfig> | undefined) ?? {};
   const budget = req<NightConfig["budget_usd"]>(raw, "budget_usd", "object");
+  for (const k of ["eval", "dev"]) {
+    if (k in budget) throw new Error(`config: budget_usd.${k} is gone; budget_usd.experiment covers an experiment's development calls, and budget_usd.night every evaluation`);
+  }
   const scenarioDir = abs(req(raw, "scenario", "string"));
   const cfg: NightConfig = {
     scenario_dir: scenarioDir,
@@ -104,8 +108,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     weights: (raw.weights as Record<string, number> | undefined) ?? {},
     gates: (raw.gates as Record<string, number> | undefined) ?? {},
     budget_usd: {
-      experiment: Number(budget.experiment), night: Number(budget.night), eval: Number(budget.eval ?? budget.experiment),
-      dev: Number(budget.dev ?? budget.eval ?? budget.experiment),
+      experiment: Number(budget.experiment), night: Number(budget.night),
     },
     results_path: abs(req(raw, "results_path", "string")),
     base_dir: baseDir,
@@ -136,8 +139,6 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   if (!(Number.isInteger(cfg.plateau_rounds) && cfg.plateau_rounds >= 0)) {
     throw new Error("config: plateau_rounds must be an integer >= 0 (0 = never stop on a plateau)");
   }
-  if (!(cfg.budget_usd.eval > 0)) throw new Error("config: budget_usd.eval must be a positive number");
-  if (!(cfg.budget_usd.dev > 0)) throw new Error("config: budget_usd.dev must be a positive number");
   const st = cfg.standard_metrics;
   if (typeof st.latency !== "boolean" || typeof st.cost !== "boolean") {
     throw new Error("config: standard_metrics.latency and standard_metrics.cost must be true or false");

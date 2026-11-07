@@ -166,7 +166,8 @@ export const runNight = ccInngest.createFunction(
     // One evaluation, however many pauses it takes.
     const evaluate = async (id: string, round: number, spec: EvalSpec): Promise<EvalOutcome> => {
       for (let n = 0; ; n += 1) {
-        const outcome = await invokeEvaluator(n ? `${id}-resume${n}` : id, spec);
+        // The program's calls come out of the night's budget: an eval may spend what is left of it.
+        const outcome = await invokeEvaluator(n ? `${id}-resume${n}` : id, { ...spec, capUsd: Math.max(cfg.budget_usd.night - spend, 0) });
         const stop = creditStopOf(outcome);
         if (!stop) return outcome;
         if (outcome.ok) spend += outcome.result.program_usd;
