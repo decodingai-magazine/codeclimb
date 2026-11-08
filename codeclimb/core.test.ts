@@ -130,9 +130,10 @@ test("token cap and plateau stops", () => {
 });
 
 test("noise_margin: defaults, overrides and validation", () => {
-  assert.deepEqual(cfg.noise_margin, { min: 0.005, fixed: null, scale_by_replay: true });
-  const set = parseConfig(`${BASE_YAML}noise_margin: { min: 0.01, fixed: 0.03, scale_by_replay: false }\n`, ROOT);
-  assert.deepEqual(set.noise_margin, { min: 0.01, fixed: 0.03, scale_by_replay: false });
+  assert.deepEqual(cfg.noise_margin, { min: 0.002, max: 0.005, fixed: null, scale_by_replay: true });
+  const set = parseConfig(`${BASE_YAML}noise_margin: { min: 0.01, max: 0.05, fixed: 0.03, scale_by_replay: false }\n`, ROOT);
+  assert.deepEqual(set.noise_margin, { min: 0.01, max: 0.05, fixed: 0.03, scale_by_replay: false });
+  assert.throws(() => parseConfig(`${BASE_YAML}noise_margin: { min: 0.01, max: 0.005 }\n`, ROOT), /noise_margin\.max/);
   assert.throws(() => parseConfig(`${BASE_YAML}noise_margin: { min: -1 }\n`, ROOT), /noise_margin\.min/);
   assert.throws(() => parseConfig(`${BASE_YAML}noise_margin: { fixed: -0.1 }\n`, ROOT), /noise_margin\.fixed/);
   assert.throws(() => parseConfig(`${BASE_YAML}noise_margin: { scale_by_replay: 1 }\n`, ROOT), /scale_by_replay/);
@@ -153,11 +154,11 @@ test("one experiment per round: kept when its weighted score beats the checkpoin
   const d = round(parent, run({ accuracy: 0.6 }));
   assert.deepEqual([d.keep?.expId, d.keep?.sha, d.row.decision, d.row.parent_id], ["n-r1-e0", "a", "keep", "n-r0"]);
   assert.ok(Math.abs(d.row.score! - 0.6 / 0.9) < 1e-12);
-  assert.equal(d.summary.reason, "weighted score 0.6667 > checkpoint 0.5556 + noise margin 0.0050"); // the floor, before any A/A run
+  assert.equal(d.summary.reason, "weighted score 0.6667 > checkpoint 0.5556 + noise margin 0.0020"); // the floor, before any A/A run
   assert.deepEqual(validateRow(d.row), []);
 
   const level = round(parent, run({ accuracy: 0.5 }));
-  assert.deepEqual([level.keep, level.row.decision, level.row.decision_reason], [null, "revert", "weighted score 0.5556 <= checkpoint 0.5556 + noise margin 0.0050"]);
+  assert.deepEqual([level.keep, level.row.decision, level.row.decision_reason], [null, "revert", "weighted score 0.5556 <= checkpoint 0.5556 + noise margin 0.0020"]);
 
   const gated = round(parent, run({ accuracy: 0.9, schema_violations: 2 }));
   assert.deepEqual([gated.keep, gated.row.decision], [null, "revert"]);
@@ -175,37 +176,56 @@ test("one experiment per round: kept when its weighted score beats the checkpoin
   assert.deepEqual([leak.row.decision, leak.summary.errors, leak.summary.notes, leak.row.infra_errors], ["error", ["leak"], ["named"], 0]);
 });
 
+// The scaling tests use the old floor and no cap, so the arithmetic shows.
+const wide = { ...cfg, noise_margin: { ...cfg.noise_margin, min: 0.005, max: 1 } };
+
 test("a gain inside the noise margin reverts", () => {
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  assert.equal(round(parent, run({ accuracy: 0.52 }), cfg, 0.05).keep, null);
-  const past = round(parent, run({ accuracy: 0.6 }), cfg, 0.05);
+  assert.equal(round(parent, run({ accuracy: 0.52 }), wide, 0.05).keep, null);
+  const past = round(parent, run({ accuracy: 0.6 }), wide, 0.05);
   assert.equal(past.keep?.expId, "n-r1-e0");
   assert.match(past.summary.reason, /\+ noise margin 0\.0500$/);
 });
 
 test("the noise margin shrinks with the square root of the fresh share of model calls", () => {
   // Night n20261107-164949: an A/A move of 0.0222. r3 replayed 74 of 83 calls, r4 83 of 174.
-  const r3 = noiseMargin(cfg, 0.0222, { model_calls: 83, model_calls_replayed: 74 });
+  const r3 = noiseMargin(wide, 0.0222, { model_calls: 83, model_calls_replayed: 74 });
   assert.ok(Math.abs(r3.margin - 0.0222 * Math.sqrt(9 / 83)) < 1e-12);
   assert.ok(Math.abs(r3.fresh! - 9 / 83) < 1e-12);
-  assert.ok(Math.abs(noiseMargin(cfg, 0.0222, { model_calls: 174, model_calls_replayed: 83 }).margin - 0.0222 * Math.sqrt(91 / 174)) < 1e-12);
+  assert.ok(Math.abs(noiseMargin(wide, 0.0222, { model_calls: 174, model_calls_replayed: 83 }).margin - 0.0222 * Math.sqrt(91 / 174)) < 1e-12);
   // Nothing replayed, or no calls at all: the whole base.
-  assert.deepEqual(noiseMargin(cfg, 0.02, { model_calls: 10, model_calls_replayed: 0 }), { margin: 0.02, fresh: 1 });
-  assert.deepEqual(noiseMargin(cfg, 0.02, {}), { margin: 0.02, fresh: null });
+  assert.deepEqual(noiseMargin(wide, 0.02, { model_calls: 10, model_calls_replayed: 0 }), { margin: 0.02, fresh: 1 });
+  assert.deepEqual(noiseMargin(wide, 0.02, {}), { margin: 0.02, fresh: null });
   // The floor applies after scaling.
-  assert.equal(noiseMargin(cfg, 0.02, { model_calls: 100, model_calls_replayed: 99 }).margin, 0.005);
+  assert.equal(noiseMargin(wide, 0.02, { model_calls: 100, model_calls_replayed: 99 }).margin, 0.005);
   // Off, or fixed in the config.
-  const off = { ...cfg, noise_margin: { ...cfg.noise_margin, scale_by_replay: false } };
+  const off = { ...wide, noise_margin: { ...wide.noise_margin, scale_by_replay: false } };
   assert.deepEqual(noiseMargin(off, 0.02, { model_calls: 100, model_calls_replayed: 99 }), { margin: 0.02, fresh: null });
-  const fixed = { ...cfg, noise_margin: { ...cfg.noise_margin, fixed: 0.04 } };
+  const fixed = { ...wide, noise_margin: { ...wide.noise_margin, fixed: 0.04 } };
   assert.equal(noiseMargin(fixed, 0.0222, { model_calls: 4, model_calls_replayed: 3 }).margin, 0.02);
 
   // In the decision: r3's gain of about +0.015 clears its scaled margin, and the reason says why.
   const parent = parentAt(0.5, { accuracy: 0.5 });
-  const replayed = round(parent, run({ accuracy: 0.515, model_calls: 83, model_calls_replayed: 74 }), cfg, 0.0222);
+  const replayed = round(parent, run({ accuracy: 0.515, model_calls: 83, model_calls_replayed: 74 }), wide, 0.0222);
   assert.equal(replayed.keep?.expId, "n-r1-e0");
   assert.match(replayed.summary.reason, /\+ noise margin 0\.0073 \(9 of 83 model calls fresh, A\/A 0\.0222\)$/);
-  assert.equal(round(parent, run({ accuracy: 0.515, model_calls: 83, model_calls_replayed: 0 }), cfg, 0.0222).keep, null);
+  assert.equal(round(parent, run({ accuracy: 0.515, model_calls: 83, model_calls_replayed: 0 }), wide, 0.0222).keep, null);
+  // No A/A yet: the reason names no A/A move.
+  assert.match(round(parent, run({ accuracy: 0.6, model_calls: 83, model_calls_replayed: 74 })).summary.reason, /\(9 of 83 model calls fresh\)$/);
+});
+
+test("the noise margin is capped: one bad A/A run does not revert a real gain", () => {
+  // Night n20261107-183056: an empty dev document in the A/A pair made its move 0.0579. r4 beat the
+  // checkpoint r3 by 0.0101 on the weighted score, with mention and relation F1 both up, and was
+  // reverted against 0.0408. Under the cap it is kept; r5 and r6, below r3, still revert.
+  const calls = { model_calls: 160, model_calls_replayed: 80 };
+  assert.equal(noiseMargin(cfg, 0.0579, calls).margin, 0.005);
+  assert.ok(noiseMargin(wide, 0.0579, calls).margin > 0.04);
+  assert.equal(noiseMargin(cfg, 0.001, { model_calls: 10, model_calls_replayed: 9 }).margin, 0.002); // the floor
+  const r3 = parentAt(0.9323, { accuracy: 0.9323 * 0.9 });
+  assert.equal(round(r3, run({ accuracy: 0.9424 * 0.9, ...calls }), cfg, 0.0579).keep?.expId, "n-r1-e0");
+  assert.equal(round(r3, run({ accuracy: 0.9424 * 0.9, ...calls }), wide, 0.0579).keep, null);
+  assert.equal(round(r3, run({ accuracy: 0.9183 * 0.9, ...calls }), cfg, 0.0579).keep, null);
 });
 
 test("the score caps a metric at its threshold, so a loss elsewhere costs", () => {
@@ -273,6 +293,10 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
   const worked = reviewerPrompt({ ...input, coderWork: 'Tasks (tasks.json):\n[{"task": "gate", "status": "dropped", "note": "cut recall"}]' });
   assert.match(worked, /The coder's task list and train measurements, before the evaluation:\nTasks \(tasks\.json\):\n.*cut recall/);
   assert.doesNotMatch(reviewerPrompt(input), /task list and train measurements, before/);
+  // The A/A pair reaches the review, so it can tell a noisy run from a code change.
+  const noisy = reviewerPrompt({ ...input, noise: { expId: "n-r1-e0", first: 0.8748, second: 0.9327, moves: { "e.f1": [0.62, 0.7] } } });
+  assert.match(noisy, /n-r1-e0 scored twice on dev with no replayed calls, weighted score 0\.8748 -> 0\.9327 \(e\.f1 0\.6200 -> 0\.7000\)/);
+  assert.doesNotMatch(reviewerPrompt(input), /scored twice/);
   assert.match(reviewerPrompt({ ...input, direction: "work on retrieval" }), /direction for every round:\nwork on retrieval/);
 
   // Diagnostics sit under the metrics and skip the cells nobody listed.
@@ -449,7 +473,7 @@ test("a later coder reads every earlier round, with held-out names masked", asyn
   }
 });
 
-test("a rejected diff is masked, capped and listed for later coders", async () => {
+test("a rejected diff is masked, kept whole and listed for later coders", async () => {
   const { dir, cfg: masked } = scanning();
   try {
     const paths = nightPaths(masked, "n");
@@ -468,8 +492,7 @@ test("a rejected diff is masked, capped and listed for later coders", async () =
     const diff = readFileSync(join(paths.bundleDir, "history", "r2.diff"), "utf8");
     assert.match(diff, /\[hidden\]/);
     assert.doesNotMatch(diff, /gold name/i);
-    assert.match(diff, /\[diff cut, \d+ chars\]$/);
-    assert.ok(diff.length < 41_000);
+    assert.ok(diff.length > 50_000); // whole: a cut diff hid what a round changed
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -593,6 +616,12 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
   assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
   assert.match(trainScoreProblem("nope"), /not valid JSON/);
+  // Its own train check got worse and it shipped anyway, with no reason given.
+  const worse = '{"before": {"f1": 0.6, "p": 0.5}, "after": {"f1": 0.55, "p": 0.6}}';
+  assert.match(sendBack({ ...base, trainScore: worse }), /lowered f1 0\.6 -> 0\.55\. Undo the part/);
+  assert.doesNotMatch(sendBack({ ...base, trainScore: worse }), /\bp 0\.5/);
+  assert.equal(sendBack({ ...base, trainScore: worse.replace("}}", '}, "why": "p matters more"}') }), "");
+  assert.match(coderPrompt("s", "", null, 10), /If a metric is lower after, add "why"/);
 });
 
 test("one attempt aims at every threshold metric still short, largest weighted shortfall first", () => {
@@ -655,6 +684,7 @@ test("the A/A run: the kept commit's score moved by the margin, with nothing rep
     const ok = { ok: true as const, evalId: "n-r0-noise", result: evaluated({ accuracy: 0.54 }) };
     const noise = recordNoise({ cfg: c, nightId: "n", round: 2 }, kept, ok)!;
     assert.ok(Math.abs(noise.margin - 0.1) < 1e-9);
+    assert.deepEqual(noise.moves, { accuracy: [0.45, 0.54] });
     assert.deepEqual(JSON.parse(readFileSync(nightPaths(c, "n").noiseJson, "utf8")), noise);
     // Two metrics that move apart add up rather than cancel.
     assert.ok(Math.abs(weightedMove({ a: 0.6, b: 0.3 }, { a: 0.62, b: 0.28 }, { a: 1, b: 1 }) - 0.02) < 1e-9);

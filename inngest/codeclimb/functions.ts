@@ -192,7 +192,8 @@ export const runNight = ccInngest.createFunction(
     let stopReason = "";
     let round = state.round;
     let noise: Noise | null = state.noise;
-    let noiseTried = false;
+    // A failed or capped A/A run is tried once more, on the next checkpoint: at most two per night.
+    let noiseRuns = 0;
     // The A/A move, scaled per experiment by `decideRound`; a fixed margin in the config replaces it.
     const margin = () => cfg.noise_margin.fixed ?? noise?.margin ?? 0;
 
@@ -240,8 +241,8 @@ export const runNight = ccInngest.createFunction(
 
       // The first checkpoint with scores, new, continued or rescored, is scored once more with nothing
       // replayed: how far its weighted score moves is the margin every later experiment must beat. Once.
-      if (kept.metrics && !noise && !noiseTried && cfg.noise_margin.fixed === null) {
-        noiseTried = true;
+      if (kept.metrics && !noise && noiseRuns < 2 && cfg.noise_margin.fixed === null) {
+        noiseRuns += 1;
         const aa = kept;
         const outcome = await evaluate(`r${round}-noise`, round, { evalId: `${aa.expId}-noise-r${round}`, expId: aa.expId, split: "dev", noReplay: true });
         if (outcome.ok) {
@@ -319,7 +320,7 @@ export const runNight = ccInngest.createFunction(
           reviewed = await step.run(`r${round}-review${n ? `-resume${n}` : ""}`, () =>
             reviewRound({
               cfg, nightId, round, parentExpId: parent.expId, parentScore: parent.score, parentMetrics: parent.metrics,
-              summary: final.summary, log: [...log], direction, coderNotes,
+              summary: final.summary, log: [...log], direction, coderNotes, noise,
             }).catch((e: unknown) => {
               if (e instanceof OutOfCredits) return { credits: e.stop };
               throw e;
@@ -378,6 +379,8 @@ export const runNight = ccInngest.createFunction(
       if (decision.keep) {
         const { expId: keptId, sha, score, metrics } = decision.keep;
         kept = { expId: keptId, sha, score, metrics };
+        // One A/A pair is one sample: a capped move (likely one bad run) is measured again on the new checkpoint.
+        if (noise && noise.margin > cfg.noise_margin.max && noiseRuns < 2) noise = null;
       }
 
       // Thresholds pass on the checkpoint's dev scores: done.

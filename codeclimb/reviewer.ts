@@ -83,6 +83,8 @@ export interface ReviewInput {
   coderNotes?: string;
   /** The coder's task list and train measurements (tasks.json, train-score.json), as it left them. */
   coderWork?: string;
+  /** The A/A run: a kept commit scored twice with nothing replayed. */
+  noise?: { expId: string; first: number; second: number; moves?: Record<string, [number, number]> };
 }
 
 export interface ReviewOutput {
@@ -195,6 +197,14 @@ export function reviewerPrompt(input: ReviewInput): string {
       ? `Kept commit (the checkpoint), scores from its own evaluation: ${score(input.parentScore)}metrics: ${fmtMetrics(input.parentMetrics, input)}${fmtDiagnostics(input.parentMetrics, input)}`
       : "The kept commit is the empty starter and wasn't run: read the experiment's scores as they stand. The first experiment kept sets the bar for later rounds.",
   );
+  if (input.noise) {
+    const n = input.noise;
+    const moves = Object.entries(n.moves ?? {}).map(([m, [a, b]]) => `${m} ${a.toFixed(4)} -> ${b.toFixed(4)}`).join(", ");
+    lines.push(
+      `The evaluation's noise: ${n.expId} scored twice on dev with no replayed calls, weighted score ${n.first.toFixed(4)} -> ${n.second.toFixed(4)}${moves ? ` (${moves})` : ""}. ` +
+        "A move this size comes from the model alone; a large one may be one bad run, such as an item that came back empty.",
+    );
+  }
   if (input.parentSource) lines.push(`## Kept commit source\nThe diff applies to this.\n${input.parentSource}`);
   const b = input.result;
   lines.push(

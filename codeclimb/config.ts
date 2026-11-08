@@ -62,9 +62,11 @@ export type NightConfig = {
    * How much an experiment's weighted score must beat the checkpoint's by. The base is the A/A run's
    * measured move, or `fixed` (which skips that run). With `scale_by_replay`, the base shrinks by the
    * square root of the share of the experiment's model calls that were not replayed: a replayed call
-   * repeats the checkpoint's answer and adds no noise. `min` floors the result.
+   * repeats the checkpoint's answer and adds no noise. `min` floors the result and `max` caps it: one A/A
+   * pair is a single sample, and one bad run (a document that came back empty) gave 0.058, which reverted
+   * a round that beat the checkpoint on every threshold metric by 0.010.
    */
-  noise_margin: { min: number; fixed: number | null; scale_by_replay: boolean };
+  noise_margin: { min: number; max: number; fixed: number | null; scale_by_replay: boolean };
   results_path: string;
   /** Directory relative paths resolve against. */
   base_dir: string;
@@ -118,7 +120,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     budget_usd: {
       experiment: Number(budget.experiment), night: Number(budget.night),
     },
-    noise_margin: { min: nm.min ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
+    noise_margin: { min: nm.min ?? 0.002, max: nm.max ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
     results_path: abs(req(raw, "results_path", "string")),
     base_dir: baseDir,
   };
@@ -150,6 +152,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   const n = cfg.noise_margin;
   if (!(typeof n.min === "number" && n.min >= 0)) throw new Error("config: noise_margin.min must be a number >= 0");
+  if (!(typeof n.max === "number" && n.max >= n.min)) throw new Error("config: noise_margin.max must be a number >= noise_margin.min");
   if (n.fixed !== null && !(typeof n.fixed === "number" && n.fixed >= 0)) throw new Error("config: noise_margin.fixed must be a number >= 0, or omitted to measure it");
   if (typeof n.scale_by_replay !== "boolean") throw new Error("config: noise_margin.scale_by_replay must be true or false");
   const st = cfg.standard_metrics;

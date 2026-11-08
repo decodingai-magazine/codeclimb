@@ -146,17 +146,13 @@ export async function historyLine(cfg: NightConfig, entry: HypothesisLogEntry): 
   return logLine(masked, cfg.scenario.headline.length ? null : cfg.primary_metric);
 }
 
-/** A rejected diff is read-only history: more than this is cut, since a coder pays tokens to read it. */
-const MAX_REJECTED_DIFF_CHARS = 40_000;
-
 /** Puts a rejected experiment's diff in the bundle, masked: /spec/history/r<round>.diff in every later sandbox. */
 export async function saveRejected(cfg: NightConfig, nightId: string, round: number, parentExpId: string, expId: string): Promise<void> {
   const paths = nightPaths(cfg, nightId);
-  // Masked before the cut, which could split a name past recognition.
+  // Whole: a coder reads the part it needs with grep or sed, and a cut diff hid what a round changed.
   const diff = await maskText(cfg, await new ExperimentRepo(paths.gitDir).diff(parentExpId, expId, Infinity));
-  const capped = diff.length > MAX_REJECTED_DIFF_CHARS ? `${diff.slice(0, MAX_REJECTED_DIFF_CHARS)}\n... [diff cut, ${diff.length} chars]` : diff;
   mkdirSync(join(paths.bundleDir, "history"), { recursive: true });
-  writeFileSync(join(paths.bundleDir, "history", `r${round}.diff`), capped);
+  writeFileSync(join(paths.bundleDir, "history", `r${round}.diff`), diff);
 }
 
 /** Errors as the next coders may read them. */
@@ -216,6 +212,8 @@ export interface Noise {
   expId: string;
   first: number;
   second: number;
+  /** Each threshold metric in the first run and the second, for the review. */
+  moves?: Record<string, [number, number]>;
 }
 
 /**
@@ -223,14 +221,14 @@ export interface Noise {
  * config's `fixed`; 0 before either exists). The A/A run is fully fresh: its two scores differ by every
  * call's noise. An experiment replays the checkpoint's answers for every unchanged call, so only its
  * fresh share `f` of calls differs: the variance scales with `f`, the margin with sqrt(f). Example: an
- * A/A move of 0.022 and 9 of 83 calls fresh give 0.022 * sqrt(9/83) = 0.0072. `min` floors it.
+ * A/A move of 0.022 and 9 of 83 calls fresh give 0.022 * sqrt(9/83) = 0.0072. `min` floors it, `max` caps it.
  */
 export function noiseMargin(cfg: NightConfig, base: number, metrics: Metrics | null): { margin: number; fresh: number | null } {
   const nm = cfg.noise_margin;
   const b = nm.fixed ?? base;
   const calls = metrics?.model_calls ?? 0;
   const fresh = nm.scale_by_replay && calls > 0 ? (calls - (metrics?.model_calls_replayed ?? 0)) / calls : null;
-  return { margin: Math.max(b * Math.sqrt(fresh ?? 1), nm.min), fresh };
+  return { margin: Math.min(Math.max(b * Math.sqrt(fresh ?? 1), nm.min), nm.max), fresh };
 }
 
 /** Records the A/A run of `kept`, and returns the noise it measured; null when it failed. */
@@ -242,7 +240,9 @@ export function recordNoise(b: RowBase, kept: Kept, outcome: EvalOutcome): Noise
   if (second === undefined) return null;
   const first = scoreOf(b.cfg, kept.metrics);
   const move = weightedMove(kept.metrics, scored, b.cfg.thresholds, b.cfg.weights);
-  const noise = { margin: move, expId: kept.expId, first, second };
+  const moves = Object.fromEntries(Object.keys(b.cfg.thresholds ?? {}).flatMap((m) =>
+    typeof kept.metrics?.[m] === "number" && typeof scored?.[m] === "number" ? [[m, [kept.metrics[m], scored[m]] as [number, number]]] : []));
+  const noise = { margin: move, expId: kept.expId, first, second, moves };
   writeFileSync(nightPaths(b.cfg, b.nightId).noiseJson, JSON.stringify(noise, null, 2));
   return noise;
 }
@@ -443,7 +443,8 @@ export function decideRound(args: RowBase & { parent: Kept; experiment: Experime
   ];
   const scaled = noiseMargin(cfg, args.margin, evalOk && !unchanged ? metrics : null);
   margin = scaled.margin;
-  const fresh = scaled.fresh === null ? "" : ` (${metrics.model_calls - (metrics.model_calls_replayed ?? 0)} of ${metrics.model_calls} model calls fresh, A/A ${fmtScore(cfg.noise_margin.fixed ?? args.margin)})`;
+  const base = cfg.noise_margin.fixed ?? args.margin;
+  const fresh = scaled.fresh === null ? "" : ` (${metrics.model_calls - (metrics.model_calls_replayed ?? 0)} of ${metrics.model_calls} model calls fresh${base ? `, A/A ${fmtScore(base)}` : ""})`;
   const beats = score > parentScore + margin + 1e-12;
   const kept = evalOk && !unchanged && !guardrails.length && beats;
   const reason = unchanged
@@ -530,6 +531,8 @@ export async function reviewRound(args: {
   direction: string;
   /** What the coder wrote before the evaluation, for the verdict to confirm or contradict. */
   coderNotes?: string;
+  /** The A/A run, when one scored. */
+  noise?: Noise | null;
 }): Promise<ReviewOutput> {
   const repo = new ExperimentRepo(nightPaths(args.cfg, args.nightId).gitDir);
   const { metricsPath, ...summary } = args.summary;
@@ -553,6 +556,7 @@ export async function reviewRound(args: {
     direction: args.direction,
     ...(args.coderNotes?.trim() ? { coderNotes: args.coderNotes } : {}),
     ...coderWork(args.cfg, args.nightId, summary.expId),
+    ...(args.noise ? { noise: args.noise } : {}),
     headline: args.cfg.scenario.headline,
     diagnostics: args.cfg.scenario.diagnostics ?? [],
     protocol: readProtocol(args.cfg.scenario_dir, args.cfg.scenario.protocol),

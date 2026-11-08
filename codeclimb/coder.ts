@@ -209,6 +209,27 @@ export function trainScoreProblem(text: string | null): string {
   return s && scored(s.before) && scored(s.after) ? "" : `${TRAIN_SCORE_FILE} needs a "before" and an "after" object of metric scores.`;
 }
 
+/**
+ * The metrics a coder's own train measurement says its change lowered, when it gave no `why`: a change
+ * that measured worse and shipped anyway was not a choice it made on purpose. Empty when none fell.
+ */
+export function trainRegression(text: string | null): string {
+  let s: { before?: Record<string, unknown>; after?: Record<string, unknown>; why?: unknown };
+  try {
+    s = JSON.parse(text ?? "null") ?? {};
+  } catch {
+    return "";
+  }
+  if (typeof s.why === "string" && s.why.trim()) return "";
+  const fell = Object.entries(s.after ?? {}).flatMap(([m, a]) => {
+    const b = s.before?.[m];
+    return typeof a === "number" && typeof b === "number" && a < b ? [`${m} ${b} -> ${a}`] : [];
+  });
+  return fell.length
+    ? `Your ${TRAIN_SCORE_FILE} says your change lowered ${fell.join(", ")}. Undo the part that lowered it and measure again, or add a "why" field saying what makes the change worth it anyway.`
+    : "";
+}
+
 /** How many times a coder that stops too soon is sent back. */
 export const MAX_SEND_BACKS = 2;
 
@@ -229,7 +250,7 @@ export function sendBack(s: {
   /** The threshold metric with the largest weighted shortfall, if any is short. */
   target?: string;
 }): string {
-  const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) : ""];
+  const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) || trainRegression(s.trainScore) : ""];
   if (s.minutesLeft > s.minutes / 2 && s.usdLeft > s.usd / 2) {
     const next = s.target
       ? `Next: add a task that tries a clearly different way to raise ${s.target}, the metric furthest below its threshold, measure it on train against your current code, and keep the better.`
@@ -290,7 +311,7 @@ export function coderPrompt(
   }
   if (history.length) {
     const diffs = rejectedDiffs.length
-      ? `\nThe diffs of the rejected attempts, each against its own parent and possibly cut off, are read-only history: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
+      ? `\nThe diffs of the rejected attempts, each against its own parent, are read-only history: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
       : "";
     parts.push(`<history>\nEvery earlier round. Don't repeat what failed. Each Δ is against the kept commit of that round; only kept rounds are in your /repo.\n${history.join("\n")}${diffs}\n</history>`);
   }
@@ -346,7 +367,7 @@ export function coderPrompt(
       "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Before you stop, write to /tmp/notes.md what the next coder should know, kept in the night's history even if this round is reverted: facts you checked in the sandbox, such as how a tool, library or model endpoint behaves, limits you hit, runtimes, train measurements, and what failed and why. You can't see dev or test, so make no claim about them: the reviewer adds what the evaluation showed. At most 20 lines, plain lines with no heading, no plan and no summary of your diff. It stays outside /repo.",
-      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. A coder that stops without it, or with more than half its time and budget left, is sent back, twice at most.`,
+      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. If a metric is lower after, add "why": what makes the change worth it. A coder that stops without it, or with more than half its time and budget left, is sent back, twice at most.`,
       "- Train items your few-shot examples come from score high by construction, so a train gain over them says little about the hidden split. Score on train items no example is drawn from: leave each one's examples out while scoring it (leave one out), or hold out a few items the examples never use, and say which in the command.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
