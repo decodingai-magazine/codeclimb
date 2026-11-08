@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { emptyStageError, prepareEnvironment } from "./evaluate";
 import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { checkStop, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, noiseMargin, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
+import { checkStop, coderWork, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, noiseMargin, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
@@ -717,6 +717,31 @@ test("only the lines a commit adds are scanned for held-out names", async () => 
     await repo.importDir(code, "adds");
     assert.deepEqual(await diffLeaks(c, "n", "parent", "removes"), []);
     assert.deepEqual(await diffLeaks(c, "n", "removes", "adds"), ["Gold Name"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the coder hears which threshold metrics the kept commit already reaches on dev", () => {
+  const thresholds = { a: 0.9, path: 0.3 };
+  assert.deepEqual(met(thresholds, { a: 0.72, path: 0.3 }), ["path: 0.300, threshold 0.3"]);
+  assert.deepEqual(met(thresholds), []); // the starter: nothing scored, nothing met
+  const prompt = coderPrompt("s", "", null, 10, { primary: "a", metrics: [], thresholds, standing: { a: 0.72, path: 0.3 } });
+  assert.match(prompt, /<met>\n[^]*- path: 0\.300, threshold 0\.3[^]*even where train shows it below[^]*Plan no task for these[^]*<\/met>/);
+  assert.doesNotMatch(prompt.match(/<targets>[^]*<\/targets>/)![0], /- path:/);
+  assert.doesNotMatch(coderPrompt("s", "", null, 10, { primary: "a", metrics: [], thresholds, standing: { a: 0.72, path: 0.2 } }), /<met>/);
+});
+
+test("the reviewer hears a train regression the coder shipped after its last send-back", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-work-"));
+  try {
+    const c = { ...cfg, results_path: join(dir, "r.jsonl") };
+    const exp = nightPaths(c, "n").expDir("n-r4-e0");
+    mkdirSync(exp, { recursive: true });
+    writeFileSync(join(exp, "train-score.json"), '{"before": {"relation_recall": 0.313, "f1": 0.5}, "after": {"relation_recall": 0.3, "f1": 0.6}}');
+    assert.match(coderWork(c, "n", "n-r4-e0").coderWork!, /lowered relation_recall 0\.313 -> 0\.3, and it gave no "why"/);
+    writeFileSync(join(exp, "train-score.json"), '{"before": {"f1": 0.6}, "after": {"f1": 0.5}, "why": "faster"}');
+    assert.doesNotMatch(coderWork(c, "n", "n-r4-e0").coderWork!, /lowered/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

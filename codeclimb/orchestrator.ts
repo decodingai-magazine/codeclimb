@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
-import { CODER_PART, notesDir, readSpecText, REVIEWER_PART } from "./coder";
+import { CODER_PART, notesDir, readSpecText, REVIEWER_PART, trainFell } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
@@ -511,11 +511,15 @@ function readDetails(cfg: NightConfig, metricsPath: string | null): string {
 }
 
 /** What the coder left in its experiment's dir: the task list and train measurements, for the review. */
-function coderWork(cfg: NightConfig, nightId: string, expId: string): { coderWork?: string } {
+export function coderWork(cfg: NightConfig, nightId: string, expId: string): { coderWork?: string } {
   const dir = nightPaths(cfg, nightId).expDir(expId);
   const parts = [["Tasks (tasks.json)", "tasks.json"], ["Train measurements (train-score.json)", "train-score.json"]]
     .filter(([, f]) => existsSync(join(dir, f)))
     .map(([title, f]) => `${title}:\n${readFileSync(join(dir, f), "utf8").trim().slice(0, 4_000)}`);
+  // The coder's last send-back may come before its last train measurement, so nothing else checks that one.
+  const trainFile = join(dir, "train-score.json");
+  const fell = existsSync(trainFile) ? trainFell(readFileSync(trainFile, "utf8")) : [];
+  if (fell.length) parts.push(`The coder's own train measurement shows its change lowered ${fell.join(", ")}, and it gave no "why": weigh that part of the diff.`);
   return parts.length ? { coderWork: parts.join("\n") } : {};
 }
 

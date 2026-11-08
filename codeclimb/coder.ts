@@ -210,21 +210,26 @@ export function trainScoreProblem(text: string | null): string {
 }
 
 /**
- * The metrics a coder's own train measurement says its change lowered, when it gave no `why`: a change
- * that measured worse and shipped anyway was not a choice it made on purpose. Empty when none fell.
+ * The metrics a coder's own train measurement says its change lowered, as "m before -> after", when it
+ * gave no `why`: a change that measured worse and shipped anyway was not a choice it made on purpose.
  */
-export function trainRegression(text: string | null): string {
+export function trainFell(text: string | null): string[] {
   let s: { before?: Record<string, unknown>; after?: Record<string, unknown>; why?: unknown };
   try {
     s = JSON.parse(text ?? "null") ?? {};
   } catch {
-    return "";
+    return [];
   }
-  if (typeof s.why === "string" && s.why.trim()) return "";
-  const fell = Object.entries(s.after ?? {}).flatMap(([m, a]) => {
+  if (typeof s.why === "string" && s.why.trim()) return [];
+  return Object.entries(s.after ?? {}).flatMap(([m, a]) => {
     const b = s.before?.[m];
     return typeof a === "number" && typeof b === "number" && a < b ? [`${m} ${b} -> ${a}`] : [];
   });
+}
+
+/** Why a coder whose train measurement fell is sent back; empty when none fell. */
+export function trainRegression(text: string | null): string {
+  const fell = trainFell(text);
   return fell.length
     ? `Your ${TRAIN_SCORE_FILE} says your change lowered ${fell.join(", ")}. Undo the part that lowered it and measure again, or add a "why" field saying what makes the change worth it anyway.`
     : "";
@@ -270,6 +275,16 @@ export function unmet(thresholds: Record<string, number>, standing?: Record<stri
     .filter((m) => share(m) < 1)
     .sort((a, b) => (weights[b] ?? 1) * (1 - share(b)) - (weights[a] ?? 1) * (1 - share(a)))
     .map((m) => `${m}: ${typeof standing?.[m] === "number" ? (standing[m] as number).toFixed(3) : "not scored yet"}, threshold ${thresholds[m]}${weights[m] ? ` (weight ${weights[m]})` : ""}`);
+}
+
+/**
+ * The threshold metrics `standing` has reached, as prompt lines. Raising one adds nothing to the score,
+ * but a coder that sees it below its threshold on train chases it anyway.
+ */
+export function met(thresholds: Record<string, number>, standing?: Record<string, number | null>): string[] {
+  return Object.keys(thresholds)
+    .filter((m) => typeof standing?.[m] === "number" && (standing[m] as number) >= thresholds[m])
+    .map((m) => `${m}: ${(standing![m] as number).toFixed(3)}, threshold ${thresholds[m]}`);
 }
 
 const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
@@ -325,8 +340,14 @@ export function coderPrompt(
     parts.push(
       `<targets>\nThe threshold metrics the kept commit has not reached, largest weighted shortfall first:\n${below.map((t) => `- ${t}`).join("\n")}\n` +
         "Raise all of them in this attempt, not only one: each round costs a full evaluation, so a round that moves one metric leaves the others for later rounds. " +
-        "Plan at least one task per metric, most weighted shortfall first, and keep each task's change to its own part of the program where you can, so a gain in one doesn't cost another. " +
-        "Spend nothing on a metric past its threshold, but check it doesn't fall.\n</targets>",
+        "Plan at least one task per metric, most weighted shortfall first, and keep each task's change to its own part of the program where you can, so a gain in one doesn't cost another.\n</targets>",
+    );
+  }
+  const reached = repair ? [] : met(objectives.thresholds ?? {}, objectives.standing);
+  if (reached.length) {
+    parts.push(
+      `<met>\nThe threshold metrics the kept commit already reaches on dev:\n${reached.map((t) => `- ${t}`).join("\n")}\n` +
+        "Raising one adds nothing to the score, even where train shows it below its threshold: train is a different sample, and dev is what counts. Plan no task for these; only check they don't fall.\n</met>",
     );
   }
   if (hypothesis) {
