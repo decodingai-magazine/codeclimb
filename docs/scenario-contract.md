@@ -27,7 +27,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 | Q10 | Every scenario has `corpus/`, `gold/` (with `splits.json`), `evaluators/`, `scripts/`, `spec/agent/`, `spec/evaluator/` and a `scenario.yaml` (stages and the agent's command per stage, the `inputs`/`score`/`summary` commands, the bundle export command, headline metrics with margins, Python dependencies). datenorm and capitals move to this layout; the old one is removed. |
 | Q12, Q16 | `allowed_models` is a flat list; the coder decides which model serves which purpose: `openrouter/deepseek/deepseek-v4.1-flash`, `openrouter/typesafe/jev-1.14`, `openrouter/qwen/qwen3-embedding-4b`, `openrouter/qwen/qwen3-reranker-8b`. |
 | Q13 | The reviewer reads `spec/evaluator/evaluate.md` and the README's Scoring section as its protocol, plus the `diagnostics` in `scenario.yaml`: regexes of the metrics that explain the headlines and never decide a keep. |
-| Q14 | The baseline image installs the scenario's fixed `requirements.txt`; no `pip install` at eval time. The starter repo is a stub CLI, `python -m graphrag <stage> --root --inputs --out [--graph]`, writing empty predictions. |
+| Q14 | The baseline image installs the scenario's fixed `requirements.txt`; no `pip install` at eval time. The starter repo is the reference architecture of `spec/agent/task.md` wired end to end behind `python -m graphrag <stage> --root --inputs --out [--graph]`: extraction calls the chat model per section with the ontology as its prompt, graph building merges on name and alias keys, retrieval loads the gold graph into Ladybug and returns the anchors' neighbourhood. It imports only the image's packages. Amended 2026-11-09 from a stub CLI writing empty predictions, so the coder's first round is an extraction change, not plumbing. |
 | Q15 | The night page shows a per-stage headline table (one column per headline metric with its `ci95`), a retrieval kind × metric heatmap, a convergence chart with a metric selector, and one test KPI per stage. |
 | Q17 | No sync with scrabble. |
 | Q19 | Superseded by the weighted score (Q6). `headline` in `scenario.yaml` lists the metrics each round reports; the per-metric margins and `override_limit` are gone. A loss in one threshold metric now costs the score as much as a gain elsewhere earns it. |
@@ -60,7 +60,7 @@ datenorm is one program answering one query at a time, scored per item, with k-f
 ## Build order (one commit each)
 
 1. Generic scenario contract: `scenario.yaml`, fixed splits, host-side stage runner, bundle export to `/spec`. datenorm converted and checked with a Docker night (still the old keep rule, thresholds read on dev).
-2. graphrag on the contract: vendored key, requirements image, stub CLI; plumbing checked on train inputs.
+2. graphrag on the contract: vendored key, requirements image, starter wired end to end (Q14); plumbing checked on train inputs.
 3. OpenRouter proxy backend: direct forwarding, `response_format`, `seed`, embeddings, endpoints-API catalog check.
 4. Reviewer-decided keep: guardrails, `evaluate.md` protocol, dev details, per-metric floors, noise runs removed.
 5. Few-shot enforcement: manifest and id leak scan.

@@ -1,0 +1,27 @@
+# Every threshold and size the program reads (task.md, Reference architecture). Change a value here,
+# never a constant in code. GRAPHRAG_CONFIG names another file to read instead.
+
+[models]
+chat = "openrouter/deepseek/deepseek-v4.1-flash"
+decisions = "openrouter/typesafe/jev-1.14"
+embedding = "openrouter/qwen/qwen3-embedding-4b"
+rerank = "openrouter/qwen/qwen3-reranker-8b"
+
+[llm]
+concurrency = 8      # model calls in flight at once
+max_retries = 4      # on 429 and 502, with backoff
+max_tokens = 8000    # per chat reply; reasoning is off, so this is all output
+seed = 0
+
+[extraction]
+section_max_chars = 6000   # a longer section is cut at paragraph breaks, never dropped
+canon_per_type = 40        # known entities shown per type: those the section names first, then the rest
+critic = false             # a second pass over the document's rows (extraction/critic.py)
+# labels offered for reuse before the model coins one: the ones most of train's claims use
+seed_labels = ["uses", "used_for", "part_of", "instance_of", "compared_with", "built_on", "integrates_with", "applied_to"]
+
+[retrieval]
+max_nodes = 10
+max_edges = 10
+max_docs = 5
+max_hops = 3               # path length between two anchors

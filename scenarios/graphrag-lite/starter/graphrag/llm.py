@@ -1,0 +1,127 @@
+"""Model calls through the OpenAI-compatible endpoint (runtime.md, Models).
+
+`OPENAI_BASE_URL` and `OPENAI_API_KEY` configure the client; without them every call returns nothing
+and says so once, so a stage still writes what it has. A 429 or 502 is retried with backoff, a 402
+stops every later call (the money is spent), a 400 or 403 is not retried. Calls run concurrently
+through `map`, which keeps the input order.
+"""
+
+import logging
+import os
+import random
+import time
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
+
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
+
+from .config import Config
+
+log = logging.getLogger("graphrag.llm")
+
+RETRIED = {429, 500, 502, 503}
+TIMEOUT_S = 180
+
+
+class Client:
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.spent = False
+        configured = bool(os.environ.get("OPENAI_BASE_URL") and os.environ.get("OPENAI_API_KEY"))
+        self._client = OpenAI(timeout=TIMEOUT_S, max_retries=0) if configured else None
+        if not configured:
+            log.warning("OPENAI_BASE_URL or OPENAI_API_KEY is not set: no model is called")
+
+    @property
+    def available(self) -> bool:
+        return self._client is not None and not self.spent
+
+    def _call(self, what: str, fn: Callable[[], Any]) -> Any:
+        """One call with the retry policy; None when it failed for good."""
+        if not self.available:
+            return None
+        for attempt in range(self.cfg.llm.max_retries + 1):
+            try:
+                return fn()
+            except APIStatusError as e:
+                if e.status_code == 402:
+                    self.spent = True
+                    log.error("%s: 402, the budget is spent; no more calls", what)
+                    return None
+                if e.status_code not in RETRIED or attempt == self.cfg.llm.max_retries:
+                    log.error("%s: %s %s", what, e.status_code, str(e)[:200])
+                    return None
+            except (APIConnectionError, APITimeoutError) as e:
+                if attempt == self.cfg.llm.max_retries:
+                    log.error("%s: %s", what, str(e)[:200])
+                    return None
+            time.sleep(min(2**attempt + random.random(), 30))
+        return None
+
+    def chat_json(self, system: str, user: str) -> str | None:
+        """The chat model's reply to a request for a JSON object; None when the call failed or came back empty."""
+
+        def go() -> str | None:
+            r = self._client.chat.completions.create(
+                model=self.cfg.models.chat,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                response_format={"type": "json_object"},
+                temperature=0,
+                seed=self.cfg.llm.seed,
+                max_tokens=self.cfg.llm.max_tokens,
+                extra_body={"reasoning": {"enabled": False}},
+            )
+            choice = r.choices[0]
+            if choice.finish_reason == "length":
+                log.warning("chat: reply cut at max_tokens=%d; salvaging", self.cfg.llm.max_tokens)
+            return choice.message.content or None
+
+        return self._call("chat", go)
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        """One vector per text, in order."""
+        if not texts:
+            return []
+
+        def go() -> list[list[float]]:
+            r = self._client.embeddings.create(model=self.cfg.models.embedding, input=texts)
+            return [d.embedding for d in sorted(r.data, key=lambda d: d.index)]
+
+        return self._call("embeddings", go)
+
+    def rerank(self, query: str, documents: list[str], top_n: int | None = None) -> list[tuple[int, float]] | None:
+        """(index into documents, relevance) best first. Scores are not probabilities: sort by them."""
+        if not documents:
+            return []
+        body: dict[str, Any] = {"model": self.cfg.models.rerank, "query": query, "documents": documents}
+        if top_n is not None:
+            body["top_n"] = top_n
+
+        def go() -> list[tuple[int, float]]:
+            r = self._client.post("/rerank", body=body, cast_to=dict)
+            return [(x["index"], x["relevance_score"]) for x in r["results"]]
+
+        return self._call("rerank", go)
+
+    def decide(self, state: str, questions: dict[str, str]) -> dict[str, float] | None:
+        """One probability per question name, from the decisions model: `state` holds the facts."""
+        if not questions:
+            return {}
+        body = {
+            "model": self.cfg.models.decisions,
+            "state": state,
+            "questions": {name: {"type": "noul", "instructions": q, "criteria": {"false": "no", "true": "yes"}} for name, q in questions.items()},
+        }
+
+        def go() -> dict[str, float]:
+            r = self._client.post("/decisions", body=body, cast_to=dict)
+            return {name: a["noul"] for name, a in r["answers"].items()}
+
+        return self._call("decisions", go)
+
+    def map[T, R](self, fn: Callable[[T], R], items: Iterable[T]) -> list[R]:
+        """fn over items, cfg.llm.concurrency at a time, results in input order."""
+        items = list(items)
+        with ThreadPoolExecutor(max_workers=max(1, self.cfg.llm.concurrency)) as pool:
+            return list(pool.map(fn, items))

@@ -24,6 +24,6 @@ runs/
 __pycache__/
 .venv/
 
-# the graphrag datasets stay local, whole (articles, gold, spec, evaluators): this repo is public
+# the full graphrag dataset stays local (articles, gold, spec, evaluators): this repo is public.
+# graphrag-lite, its 22-article cut, is tracked.
 scenarios/graphrag/
-scenarios/graphrag-lite/
