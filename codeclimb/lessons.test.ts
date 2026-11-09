@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -9,16 +9,19 @@ import {
   applyOps,
   applyProposal,
   checkOps,
+  checkPrune,
+  citedHeadings,
   distillPrompt,
   gatherNight,
-  type Ledger,
   LESSON_CAP,
-  ledgerText,
-  parseLedger,
+  LINE_CAP,
+  type LessonsDoc,
+  lineCount,
+  overlap,
+  parseLessons,
   parseOps,
   proposeLessons,
-  readLedger,
-  renderLessons,
+  serializeLessons,
   sha256,
   writeProposal,
 } from "./lessons";
@@ -39,33 +42,37 @@ budget_usd: { experiment: 1, night: 5 }
 results_path: runs/capitals/results.jsonl
 `;
 
-const ledger = (): Ledger => ({
-  title: "What earlier attempts learned",
-  preamble: "Lessons from earlier nights.",
-  sections: [
-    { id: "worked", heading: "Worked" },
-    { id: "failed", heading: "Failed, more than once", once: "Failed once, not yet confirmed" },
-  ],
-  lessons: [
-    { id: "L001", section: "worked", text: "Extracting by section raised recall.", status: "active", support: [{ night: "n1", note: "r2" }], contradict: [] },
-    { id: "L002", section: "failed", text: "Relation filters cost recall.", status: "active", support: [{ night: "n1", note: "r3" }, { night: "n2", note: "r1" }], contradict: [] },
-    { id: "L003", section: "failed", text: "A second few-shot document hurt.", status: "active", support: [{ night: "n2", note: "r4" }], contradict: [] },
-    { id: "L004", section: "worked", text: "An old lesson.", status: "retired", support: [{ night: "n1", note: "r1" }], contradict: [] },
-  ],
-  nights: {},
-});
+const LESSONS = `# What earlier attempts learned
 
+Lessons from earlier nights.
+
+## Worked
+
+- Extracting by section raised recall.
+- Name keys merged entities with no model.
+
+## Failed, more than once
+
+- Relation filters cost recall.
+- A second few-shot document hurt.
+
+## The lever for relations
+
+- Missing ends, not labels, cost relations.
+`;
+
+/** [1] section recall, [2] name keys, [3] relation filters, [4] few-shot, [5] missing ends. */
+const doc = (): LessonsDoc => parseLessons(LESSONS);
 const noScan = async () => [];
 
-/** A scenario dir with a ledger, and a config whose night results go under the same temp dir. */
+/** A scenario dir with lessons.md, and a config whose night results go under the same temp dir. */
 function scenarioCfg(): NightConfig {
   const dir = mkdtempSync(join(tmpdir(), "cc-lessons-"));
-  mkdirSync(join(dir, "memory"));
   mkdirSync(join(dir, "spec", "agent"), { recursive: true });
-  writeFileSync(join(dir, "memory", "lessons.json"), ledgerText(ledger()));
+  writeFileSync(join(dir, "spec", "agent", "lessons.md"), LESSONS);
   const base = parseConfig(YAML, ROOT);
   return {
-    ...base, scenario_dir: dir, scenario: { ...base.scenario, lessons: { file: "spec/agent/lessons.md", ledger: "memory/lessons.json" } },
+    ...base, scenario_dir: dir, scenario: { ...base.scenario, lessons: "spec/agent/lessons.md" },
     results_path: join(dir, "runs", "results.jsonl"), lessons: "propose", mock: true,
   };
 }
@@ -78,7 +85,7 @@ function writeNight(cfg: NightConfig, nightId: string, rounds: number[]): void {
   mkdirSync(join(p.bundleDir, "spec"), { recursive: true });
   mkdirSync(join(p.nightDir, "reviews"), { recursive: true });
   mkdirSync(join(p.nightDir, "evals", `${nightId}-test-r2`), { recursive: true });
-  writeFileSync(join(p.bundleDir, "spec", "task.md"), "# Task\n");
+  writeFileSync(join(p.bundleDir, "spec", "task.md"), "# Task\nSee (`lessons.md`, The lever for relations).\n");
   writeFileSync(join(p.bundleDir, "spec", "lessons.md"), "# Lessons the night had\n");
   for (const r of rounds) {
     writeFileSync(join(notes, `r${r}-e0.md`), `## r${r}-e0 · revert\nround ${r} note`);
@@ -89,98 +96,139 @@ function writeNight(cfg: NightConfig, nightId: string, rounds: number[]): void {
   writeFileSync(join(p.nightDir, "evals", `${nightId}-test-r2`, "metrics.json"), JSON.stringify({ f1: 0.123456 }));
 }
 
-test("lessons: render puts a failed lesson one night supports apart, and leaves retired ones out", () => {
-  const md = renderLessons(ledger());
-  assert.match(md, /^# What earlier attempts learned\n/);
-  assert.match(md, /## Worked\n\n- Extracting by section raised recall\.\n/);
-  assert.match(md, /## Failed, more than once\n\n- Relation filters cost recall\.\n/);
-  assert.match(md, /## Failed once, not yet confirmed\n\n- A second few-shot document hurt\.\n/);
-  assert.doesNotMatch(md, /An old lesson/);
-});
-
-test("lessons: render wraps bullets at 100 columns with a two-space continuation", () => {
-  const l = ledger();
-  l.lessons[0].text = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
-  const lines = renderLessons(l).split("\n");
+test("lessons: parse and serialize round-trip, wrapping at 100 columns and leaving an empty section out", () => {
+  assert.equal(serializeLessons(doc()), LESSONS);
+  const d = doc();
+  d.sections[0].bullets[0] = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+  d.sections[1].bullets = [];
+  const lines = serializeLessons(d).split("\n");
   assert.ok(lines.every((x) => x.length <= 100));
-  const at = lines.findIndex((x) => x.startsWith("- word0"));
-  assert.ok(lines[at + 1].startsWith("  word"));
+  assert.ok(lines[lines.findIndex((x) => x.startsWith("- word0")) + 1].startsWith("  word"));
+  assert.ok(!lines.includes("## Failed, more than once"));
+  assert.throws(() => parseLessons("# T\n\n## S\n\nloose text\n"), /only "- " bullets/);
 });
 
-test("lessons: the graphrag-lite ledger renders the shipped lessons.md, with the headings task.md cites", () => {
-  const dir = join(ROOT, "scenarios", "graphrag-lite");
-  const md = renderLessons(parseLedger(readFileSync(join(dir, "memory", "lessons.json"), "utf8")));
-  assert.equal(md, readFileSync(join(dir, "spec", "agent", "lessons.md"), "utf8"), "lessons.md was edited by hand: edit the ledger and run `npm run lessons -- render`");
-  for (const heading of ["Failed, more than once", "The lever for relations"]) assert.match(md, new RegExp(`^## ${heading}$`, "m"));
+test("lessons: the shipped graphrag-lite lessons.md is in layout and keeps the headings task.md cites", () => {
+  const dir = join(ROOT, "scenarios", "graphrag-lite", "spec", "agent");
+  const md = readFileSync(join(dir, "lessons.md"), "utf8");
+  assert.equal(serializeLessons(parseLessons(md)), md, "lessons.md is out of layout: run `npm run lessons -- format`");
+  const cited = citedHeadings(readFileSync(join(dir, "task.md"), "utf8"), parseLessons(md));
+  assert.deepEqual(cited, ["Failed, more than once", "The lever for relations"]);
 });
 
 test("lessons: parseOps reads the ops and leaves malformed ones out", () => {
   const ops = parseOps(`Here: {"ops": [
-    {"op": "add", "section": "worked", "text": "t", "evidence": "r1", "round": 1},
-    {"op": "support", "id": "L001", "evidence": "r2"},
-    {"op": "support", "id": "L001"},
-    {"op": "explode", "id": "L001", "evidence": "x"}
+    {"op": "add", "section": "Worked", "text": "t", "reason": "r1"},
+    {"op": "edit", "id": 2, "section": "Failed, more than once", "reason": "r2"},
+    {"op": "edit", "id": 2, "reason": "no change"},
+    {"op": "drop", "id": "3", "reason": "string id"},
+    {"op": "drop", "id": 4},
+    {"op": "explode", "id": 1, "reason": "x"}
   ]}`);
   assert.deepEqual(ops, [
-    { op: "add", section: "worked", text: "t", evidence: "r1", round: 1 },
-    { op: "support", id: "L001", evidence: "r2" },
+    { op: "add", section: "Worked", text: "t", reason: "r1" },
+    { op: "edit", id: 2, section: "Failed, more than once", reason: "r2" },
   ]);
   assert.equal(parseOps("no json"), null);
   assert.equal(parseOps('{"feedback": "x"}'), null);
 });
 
-test("lessons: the gates reject metric values, held-out names, unknown ids and a full ledger", async () => {
-  const l = ledger();
+test("lessons: the gates reject metric values, held-out names, unknown ids, a second op per id and unknown headings", async () => {
   const scan = async (text: string) => (text.includes("Zephyr") ? ["Zephyr"] : []);
   const { ok, rejected } = await checkOps(
-    l,
+    doc(),
     [
-      { op: "add", section: "worked", text: "Mention F1 rose to 0.71.", evidence: "r1" },
-      { op: "add", section: "worked", text: "Recall rose by 12%.", evidence: "r1" },
-      { op: "add", section: "worked", text: "The Zephyr article loops.", evidence: "r1" },
-      { op: "add", section: "nowhere", text: "x", evidence: "r1" },
-      { op: "support", id: "L004", evidence: "retired" },
-      { op: "support", id: "L999", evidence: "unknown" },
-      { op: "reword", id: "L001", text: "x".repeat(401), evidence: "too long" },
-      { op: "add", section: "worked", text: "Calling jev-1.14 per pair with a high threshold kept precision.", evidence: "Zephyr in r2 at 0.71" },
-      { op: "support", id: "L002", evidence: "r3" },
+      { op: "add", section: "Worked", text: "Mention F1 rose to 0.71.", reason: "r1" },
+      { op: "add", section: "Worked", text: "Recall rose by 12%.", reason: "r1" },
+      { op: "add", section: "Worked", text: "The Zephyr article loops.", reason: "r1" },
+      { op: "add", section: "Nowhere", text: "Batching calls saved time.", reason: "r1" },
+      { op: "drop", id: 9, reason: "unknown" },
+      { op: "edit", id: 1, text: "x".repeat(501), reason: "too long" },
+      { op: "edit", id: 2, text: "Name keys and acronyms merged entities with no model.", reason: "Zephyr in r2 at 0.71" },
+      { op: "drop", id: 2, reason: "second op" },
+      { op: "add", section: "Failed once, not yet confirmed", text: "Calling jev-1.14 per pair kept precision.", reason: "r3", new_section: true },
     ],
     scan,
   );
-  assert.deepEqual(rejected.map((r) => r.why.split(":")[0].split(" ").slice(0, 3).join(" ")), [
-    "holds a decimal", "holds a decimal", "names evaluation items", "no section nowhere;", "no active lesson", "no active lesson", "over 400 characters",
-  ]);
+  assert.deepEqual(rejected.map((r) => r.problem.split(":")[0].split(" ").slice(0, 4).join(" ")), [
+    "no lesson [9]", "the lesson is over", "[2] already has an", "the lesson holds a", "the lesson holds a", "the lesson names evaluation", 'no section "Nowhere"; sections',
+  ], "adds are checked after the other ops");
   assert.equal(ok.length, 2);
-  assert.equal((ok[0] as { evidence: string }).evidence, "[hidden] in r2 at 0.71", "evidence is masked, not rejected");
-  const full: Ledger = { ...l, lessons: Array.from({ length: LESSON_CAP }, (_, i) => ({ ...l.lessons[0], id: `L${i + 1}` })) };
-  const capped = await checkOps(full, [{ op: "retire", id: "L1", evidence: "merged" }, { op: "add", section: "worked", text: "new", evidence: "r1" }, { op: "add", section: "worked", text: "more", evidence: "r1" }], noScan);
-  assert.equal(capped.ok.length, 2, "a retirement makes room for one add");
-  assert.match(capped.rejected[0].why, /merge/);
+  assert.equal(ok[0].reason, "[hidden] in r2 at 0.71", "a reason is masked, not rejected");
 });
 
-test("lessons: applyOps adds, supports once per night, rewords with history, retires", () => {
-  const out = applyOps(
-    ledger(),
+test("lessons: an add close to a lesson is a near-duplicate unless marked distinct or the lesson is dropped", async () => {
+  assert.ok(overlap("Relation filters of every kind cost recall.", "Relation filters cost recall.") >= 0.5);
+  assert.ok(overlap("Batching the calls saved wall time.", "Relation filters cost recall.") < 0.5);
+  const dup = { op: "add" as const, section: "Worked", text: "Filtering relations cost recall every time.", reason: "r2" };
+  const plain = await checkOps(doc(), [dup], noScan);
+  assert.match(plain.rejected[0].problem, /close to \[3\]/);
+  assert.equal((await checkOps(doc(), [{ ...dup, distinct: true }], noScan)).ok.length, 1);
+  assert.equal((await checkOps(doc(), [dup, { op: "drop", id: 3, reason: "merged" }], noScan)).ok.length, 2, "a drop later in the reply counts");
+  const kept = await checkOps(doc(), [{ op: "drop", id: 3, reason: "x" }, { op: "drop", id: 3, reason: "again" }], noScan);
+  assert.equal(kept.rejected.length, 1);
+  const cited = await checkOps(parseLessons("# T\n\n## Cited\n\n- Relation filters cost recall.\n"), [{ op: "drop", id: 1, reason: "x" }, { ...dup, section: "Cited" }], noScan, ["Cited"]);
+  assert.match(cited.rejected.map((r) => r.problem).join(" "), /close to \[1\]/, "a rejected drop leaves its lesson to match");
+});
+
+test("lessons: a cited heading keeps a lesson, and a full file takes an add only after a drop", async () => {
+  const cited = ["The lever for relations"];
+  const last = await checkOps(doc(), [{ op: "drop", id: 5, reason: "wrong" }], noScan, cited);
+  assert.match(last.rejected[0].problem, /which the spec cites/);
+  assert.equal((await checkOps(doc(), [{ op: "edit", id: 5, text: "Missing ends cost relations most.", reason: "r1" }], noScan, cited)).ok.length, 1);
+  const full = doc();
+  full.sections[0].bullets = Array.from({ length: LESSON_CAP - 3 }, (_, i) => `Change number ${"abcdefghijklmnopqrstuvwxyz0"[i]} did something.`);
+  const add = { op: "add" as const, section: "Worked", text: "Batching the model calls saved wall time.", reason: "r1" };
+  assert.match((await checkOps(full, [add], noScan)).rejected[0].problem, /merge two/);
+  assert.equal((await checkOps(full, [{ op: "drop", id: 1, reason: "merged" }, add], noScan)).ok.length, 2);
+});
+
+test("lessons: a prune round takes drops and shortening edits only", async () => {
+  assert.equal(lineCount(LESSONS), 17);
+  const { ok, rejected } = await checkPrune(
+    doc(),
     [
-      { op: "add", section: "failed", text: "Raising max_tokens kept the loop.", evidence: "r2", round: 2 },
-      { op: "support", id: "L003", evidence: "r1" },
-      { op: "support", id: "L003", evidence: "r4 again" },
-      { op: "contradict", id: "L002", evidence: "r3" },
-      { op: "reword", id: "L001", text: "Extracting by section raised mention recall.", evidence: "r5" },
-      { op: "retire", id: "L001", evidence: "r6" },
+      { op: "add", section: "Worked", text: "Batching calls saved time.", reason: "r1" },
+      { op: "edit", id: 1, text: "Extracting by section raised recall, and more words than before.", reason: "longer" },
+      { op: "edit", id: 2, text: "Name keys merged entities.", reason: "shorter" },
+      { op: "drop", id: 4, reason: "least value" },
     ],
-    "n3",
-    6,
+    noScan,
   );
-  const by = new Map(out.lessons.map((x) => [x.id, x]));
-  assert.deepEqual(by.get("L005"), { id: "L005", section: "failed", text: "Raising max_tokens kept the loop.", status: "active", support: [{ night: "n3", round: 2, note: "r2" }], contradict: [] });
-  assert.deepEqual(by.get("L003")!.support.map((e) => e.night), ["n2", "n3"]);
-  assert.equal(by.get("L002")!.contradict[0].night, "n3");
-  assert.deepEqual(by.get("L001")!.history, [{ night: "n3", text: "Extracting by section raised recall." }]);
-  assert.equal(by.get("L001")!.status, "retired");
-  assert.deepEqual(out.nights, { n3: 6 });
-  assert.equal(ledger().lessons[2].support.length, 1, "the input ledger is unchanged");
-  assert.match(renderLessons(out), /## Failed, more than once\n\n- Relation filters cost recall\.\n- A second few-shot document hurt\./, "a second night confirms it");
+  assert.deepEqual(rejected.map((r) => r.problem), ["a prune adds nothing: drop or shorten", "the edit of [1] is not shorter"]);
+  assert.deepEqual(ok.map((o) => o.reason), ["shorter", "least value"]);
+});
+
+test("lessons: a proposal over the line cap after its prune rounds is never applied", async () => {
+  const cfg = scenarioCfg();
+  const file = join(cfg.scenario_dir, "spec", "agent", "lessons.md");
+  const long = LESSONS.replace("Lessons from earlier nights.", Array.from({ length: LINE_CAP * 16 }, (_, i) => `w${i}`).join(" "));
+  writeFileSync(file, serializeLessons(parseLessons(long)));
+  assert.ok(lineCount(readFileSync(file, "utf8")) > LINE_CAP);
+  writeNight(cfg, "n8", [1]);
+  const proposal = await proposeLessons(cfg, "n8", noScan);
+  assert.ok(proposal);
+  assert.ok(proposal.lines > LINE_CAP, "the mock model prunes nothing");
+  assert.deepEqual(proposal.prune, []);
+  const { dir } = writeProposal(cfg, { ...proposal }, true);
+  assert.match(readFileSync(join(dir, "changes.md"), "utf8"), /## Over the cap/);
+  assert.throws(() => applyProposal(cfg, dir), /over 200/);
+});
+
+test("lessons: applyOps resolves ids before any op, edits in place, moves beside the old section and adds", () => {
+  const out = applyOps(doc(), [
+    { op: "drop", id: 1, reason: "wrong" },
+    { op: "edit", id: 2, text: "Name keys and acronyms merged entities with no model.", reason: "r2" },
+    { op: "edit", id: 4, section: "Failed once, not yet confirmed", reason: "one night" },
+    { op: "add", section: "Worked", text: "Batching calls saved time.", reason: "r3" },
+  ]);
+  assert.deepEqual(out.sections.map((s) => [s.heading, s.bullets]), [
+    ["Worked", ["Name keys and acronyms merged entities with no model.", "Batching calls saved time."]],
+    ["Failed, more than once", ["Relation filters cost recall."]],
+    ["Failed once, not yet confirmed", ["A second few-shot document hurt."]],
+    ["The lever for relations", ["Missing ends, not labels, cost relations."]],
+  ]);
+  assert.equal(serializeLessons(doc()), LESSONS, "the input is unchanged");
 });
 
 test("lessons: a night is read from its notes and reviews only, never from test or the review prompts", () => {
@@ -188,38 +236,36 @@ test("lessons: a night is read from its notes and reviews only, never from test 
   writeNight(cfg, "n5", [1, 2]);
   const rounds = gatherNight(nightPaths(cfg, "n5").nightDir);
   assert.deepEqual(rounds.map((r) => r.round), [1, 2]);
-  const prompt = distillPrompt({ model: "m", thinkingLevel: "low", nightId: "n5", spec: "spec", ledger: ledger(), rounds });
+  const prompt = distillPrompt({ model: "m", thinkingLevel: "low", nightId: "n5", spec: "spec", doc: doc(), rounds });
   assert.match(prompt, /round 2 note/);
   assert.match(prompt, /hypothesis 1/);
+  assert.match(prompt, /\[3\] Relation filters cost recall\./, "bullets are numbered across sections");
   assert.doesNotMatch(prompt, /0\.123456/, "a test metric reached the distiller");
   assert.doesNotMatch(prompt, /0\.987654/, "a review prompt reached the distiller");
-  assert.doesNotMatch(prompt, /An old lesson/, "retired lessons stay out");
 });
 
-test("lessons: a continued night is distilled from the round after the last one the ledger holds", () => {
+test("lessons: propose, skip a repeat, apply, refuse a stale proposal, and distill a continued night from the applied round", async () => {
   const cfg = scenarioCfg();
-  writeNight(cfg, "n6", [1, 2, 3, 4]);
-  assert.deepEqual(gatherNight(nightPaths(cfg, "n6").nightDir, 2).map((r) => r.round), [3, 4]);
-});
-
-test("lessons: propose, skip a repeat, apply, and refuse a stale proposal", async () => {
-  const cfg = scenarioCfg();
+  const file = join(cfg.scenario_dir, "spec", "agent", "lessons.md");
   writeNight(cfg, "n7", [1, 2]);
   const proposal = await proposeLessons(cfg, "n7", noScan);
   assert.ok(proposal);
   assert.equal(proposal.lastRound, 2);
   assert.deepEqual(proposal.ops, [], "the mock model teaches nothing");
+  assert.equal(proposal.lessons, LESSONS);
   const { dir, applied } = writeProposal(cfg, proposal, true);
-  assert.equal(applied, false, "a mock night never writes the scenario's ledger");
+  assert.equal(applied, false, "a mock night never writes the scenario's lessons.md");
+  assert.ok(existsSync(join(dir, "changes.md")));
   assert.equal(await proposeLessons(cfg, "n7", noScan), null, "the same rounds are proposed once");
-  applyProposal(cfg, dir);
-  assert.deepEqual(readLedger(cfg).nights, { n7: 2 });
-  assert.equal(readFileSync(join(cfg.scenario_dir, "spec", "agent", "lessons.md"), "utf8"), renderLessons(readLedger(cfg)));
-  assert.throws(() => applyProposal(cfg, dir), /changed since/);
   writeNight(cfg, "n7", [1, 2, 3]);
+  assert.equal((await proposeLessons(cfg, "n7", noScan))?.fromRound, 0, "an unapplied proposal's rounds are distilled again");
+  applyProposal(cfg, dir);
+  assert.equal(readFileSync(file, "utf8"), LESSONS);
+  writeFileSync(file, `${LESSONS}\n- A hand edit.\n`);
+  assert.throws(() => applyProposal(cfg, dir), /changed since/);
   const next = await proposeLessons(cfg, "n7", noScan);
   assert.equal(next?.fromRound, 2);
-  assert.equal(next?.base_sha256, sha256(readFileSync(join(cfg.scenario_dir, "memory", "lessons.json"), "utf8")));
+  assert.equal(next?.base_sha256, sha256(readFileSync(file, "utf8")));
 });
 
 test("lessons: config defaults to propose when the scenario declares lessons, and checks the mode", () => {
@@ -228,5 +274,5 @@ test("lessons: config defaults to propose when the scenario declares lessons, an
   assert.throws(() => parseConfig(`${YAML}lessons: always\n`, ROOT), /lessons must be/);
   const lite = parseConfig(YAML.replace("scenarios/capitals", "scenarios/graphrag-lite"), ROOT);
   assert.equal(lite.lessons, "propose");
-  assert.deepEqual(lite.scenario.lessons, { file: "spec/agent/lessons.md", ledger: "memory/lessons.json" });
+  assert.equal(lite.scenario.lessons, "spec/agent/lessons.md");
 });

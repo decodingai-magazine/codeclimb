@@ -46,11 +46,10 @@ export interface Scenario {
   /** Host: finds the held-out names in the file `{text}` and writes `Scan` as JSON to `{report}`. Run on all that reaches a coder. */
   scan?: string;
   /**
-   * Lessons across nights (codeclimb/lessons.ts), both paths relative to the scenario dir: `ledger` is the
-   * JSON the distiller updates after each night, `file` the lessons.md rendered from it, inside the
-   * spec the bundle ships.
+   * Lessons across nights (codeclimb/lessons.ts): the lessons.md inside the spec the bundle ships,
+   * relative to the scenario dir, which the distiller edits after each night.
    */
-  lessons?: { file: string; ledger: string };
+  lessons?: string;
 }
 
 /** A `check` command's report. */
@@ -107,14 +106,8 @@ export function parseScenario(text: string, where = "scenario.yaml"): Scenario {
     ...(raw.check === undefined ? {} : { check: str(raw, "check", where) }),
     ...(raw.scan === undefined ? {} : { scan: str(raw, "scan", where) }),
     ...(raw.inngest_image === undefined ? {} : { inngest_image: str(raw, "inngest_image", where) }),
-    ...(raw.lessons === undefined ? {} : { lessons: lessonsOf(raw.lessons, where) }),
+    ...(raw.lessons === undefined ? {} : { lessons: str(raw, "lessons", where) }),
   };
-}
-
-function lessonsOf(raw: unknown, where: string): { file: string; ledger: string } {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`${where}: lessons must map file and ledger to paths`);
-  const o = raw as Record<string, unknown>;
-  return { file: str(o, "file", `${where}: lessons`), ledger: str(o, "ledger", `${where}: lessons`) };
 }
 
 /** The scenario's `protocol` files as one text; a `path#Heading` entry is that `## Heading` section of the file. */
@@ -136,7 +129,7 @@ export function loadScenario(dir: string): Scenario {
   if (!existsSync(file)) throw new Error(`config: ${dir} has no scenario.yaml`);
   const s = parseScenario(readFileSync(file, "utf8"), file);
   if (!existsSync(join(dir, "starter"))) throw new Error(`${file}: the scenario needs a starter/ directory (the round-0 repo)`);
-  if (s.lessons && !existsSync(join(dir, s.lessons.ledger))) throw new Error(`${file}: lessons.ledger ${s.lessons.ledger} does not exist`);
+  if (s.lessons && !existsSync(join(dir, s.lessons))) throw new Error(`${file}: lessons ${s.lessons} does not exist`);
   return s;
 }
 

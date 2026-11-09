@@ -1,12 +1,16 @@
 // Lessons across nights. A night's notes and reviews die with its bundle: the next night exports a new
-// one from the scenario's spec. After each night a model reads what the night left (the coders' notes and
-// the reviewer's verdicts, never anything from test) and proposes operations on the scenario's ledger of
-// lessons: add one, support or contradict one, reword or retire one. Code applies them, and the
-// scenario's lessons.md, which ships in every later bundle, is rendered from the ledger.
+// one from the scenario's spec. The scenario's lessons.md, which ships in every bundle, is the memory
+// between nights. After each night a model reads what the night left (the coders' notes and the
+// reviewer's verdicts, never anything from test) and edits it: adds a lesson, edits or moves one the
+// night refined, drops one the night showed wrong. It is a scratchpad kept current, not a log: a night
+// that repeats a lesson changes nothing, and two lessons that say one thing become one.
 //
-// What a coder reads is gated: no held-out name (the scenario's `scan`), no decimal or percentage (every
-// dev metric is one), a length and a size cap. The evidence behind a lesson stays in the ledger, which no
-// coder reads, with held-out names masked.
+// The model returns operations on the numbered bullets, not a new file, so an unchanged lesson stays
+// byte for byte and none is lost by omission. What a coder reads is gated: no held-out name (the
+// scenario's `scan`), no decimal or percentage (every dev metric is one), a length and a size cap, no
+// near-duplicate of a lesson already there. The file holds at most LINE_CAP lines: when a night's ops
+// pass it, the model prunes the lessons of least value. The reasons stay in the proposal, which no coder
+// reads.
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,66 +22,46 @@ import { createIsolatedSession } from "./pi/session";
 import { maskTerms } from "./scenario";
 
 export interface LessonSection {
-  id: string;
   heading: string;
-  /** Heading for this section's lessons that only one night supports: the main heading claims more. */
-  once?: string;
+  bullets: string[];
 }
 
-export interface Evidence {
-  night: string;
-  round?: number;
-  note: string;
-}
-
-export interface Lesson {
-  id: string;
-  section: string;
-  text: string;
-  status: "active" | "retired";
-  support: Evidence[];
-  contradict: Evidence[];
-  /** Earlier wordings, oldest first. */
-  history?: { night: string; text: string }[];
-  retired?: Evidence;
-}
-
-export interface Ledger {
+/** lessons.md: a `# ` title, preamble paragraphs, then `## ` sections of `- ` bullets. */
+export interface LessonsDoc {
   title: string;
-  preamble: string;
+  preamble: string[];
   sections: LessonSection[];
-  lessons: Lesson[];
-  /** Night id → the last round distilled from it: a continued night adds only its new rounds. */
-  nights: Record<string, number>;
 }
 
+/** `id` is a bullet's number in the prompt's listing of the file, counted from 1 across sections. */
 export type LessonOp =
-  | { op: "add"; section: string; text: string; evidence: string; round?: number }
-  | { op: "support" | "contradict" | "retire"; id: string; evidence: string; round?: number }
-  | { op: "reword"; id: string; text: string; evidence: string; round?: number };
+  | { op: "add"; section: string; text: string; reason: string; new_section?: boolean; distinct?: boolean }
+  | { op: "edit"; id: number; text?: string; section?: string; reason: string; new_section?: boolean }
+  | { op: "drop"; id: number; reason: string };
 
 export interface Rejected {
   op: LessonOp;
-  why: string;
+  problem: string;
 }
 
-/** Active lessons at most: past it, an `add` must come with a merge or a retirement. */
+/** Lessons at most: past it, an `add` must come with a merge or a drop. */
 export const LESSON_CAP = 30;
-export const LESSON_MAX_CHARS = 400;
+/** lessons.md lines at most: past it, the model drops or shortens the lessons of least value. */
+export const LINE_CAP = 200;
+/** Prune rounds before a proposal is left over LINE_CAP, which is never applied. */
+const PRUNE_ROUNDS = 2;
+export const LESSON_MAX_CHARS = 500;
+const HEADING_MAX_CHARS = 80;
+/** An `add` sharing this share of its content words with a lesson is a near-duplicate of it. */
+export const DUPLICATE_OVERLAP = 0.5;
 const WIDTH = 100;
 /** A decimal or a percentage: the shape of every metric value, which a coder must not read. A version in a name (`jev-1.14`) is neither. */
 const METRIC_VALUE = /(?<![\w.-])\d+\.\d+(?![\w-]|\.\w)|\d+\s*%/;
 
-// ---------- the ledger and its rendering
+// ---------- the file
 
-export function parseLedger(text: string): Ledger {
-  const l = JSON.parse(text) as Ledger;
-  if (typeof l.title !== "string" || !Array.isArray(l.sections) || !Array.isArray(l.lessons)) throw new Error("lessons ledger: needs title, sections and lessons");
-  return { ...l, nights: l.nights ?? {} };
-}
-
-export const ledgerText = (l: Ledger): string => `${JSON.stringify(l, null, 2)}\n`;
 export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+export const lineCount = (md: string): number => md.split("\n").length - (md.endsWith("\n") ? 1 : 0);
 
 /** `text` wrapped at WIDTH, the first line after `first`, the rest after `rest`. */
 export function wrap(text: string, first = "", rest = first): string {
@@ -94,23 +78,76 @@ export function wrap(text: string, first = "", rest = first): string {
   return lines.join("\n");
 }
 
-/** Tells whoever edits lessons.md by hand that the next night's distillation overwrites it. */
-export const RENDERED = "<!-- Rendered from the lessons ledger (codeclimb/lessons.ts): edit the ledger, not this file. -->";
-
-const nightsOf = (l: Lesson): number => new Set(l.support.map((e) => e.night)).size;
-
-/** The coder's lessons.md: active lessons per section, those one night supports apart when the section says so. */
-export function renderLessons(l: Ledger): string {
-  const parts = [`# ${l.title}`, RENDERED, wrap(l.preamble)];
-  const block = (heading: string, lessons: Lesson[]) => {
-    if (lessons.length) parts.push(`## ${heading}`, lessons.map((x) => wrap(x.text, "- ", "  ")).join("\n"));
+export function parseLessons(md: string): LessonsDoc {
+  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  if (!lines[0]?.startsWith("# ")) throw new Error("lessons.md: the first line must be the `# ` title");
+  const doc: LessonsDoc = { title: lines[0].slice(2).trim(), preamble: [], sections: [] };
+  let paragraph: string[] = [];
+  let section: LessonSection | undefined;
+  const flush = () => {
+    if (paragraph.length) doc.preamble.push(paragraph.join(" "));
+    paragraph = [];
   };
-  for (const s of l.sections) {
-    const active = l.lessons.filter((x) => x.section === s.id && x.status === "active");
-    block(s.heading, s.once ? active.filter((x) => nightsOf(x) > 1) : active);
-    if (s.once) block(s.once, active.filter((x) => nightsOf(x) <= 1));
-  }
+  lines.slice(1).forEach((line, i) => {
+    if (line.startsWith("## ")) {
+      flush();
+      section = { heading: line.slice(3).trim(), bullets: [] };
+      doc.sections.push(section);
+    } else if (!line.trim()) {
+      if (!section) flush();
+    } else if (!section) paragraph.push(line.trim());
+    else if (line.startsWith("- ")) section.bullets.push(line.slice(2).trim());
+    else if (line.startsWith("  ") && section.bullets.length) section.bullets[section.bullets.length - 1] += ` ${line.trim()}`;
+    else throw new Error(`lessons.md line ${i + 2}: under a "## " heading, only "- " bullets and their two-space continuations`);
+  });
+  flush();
+  return doc;
+}
+
+/** The file in its one layout: wrapped at WIDTH, a section without bullets left out. */
+export function serializeLessons(doc: LessonsDoc): string {
+  const parts = [`# ${doc.title}`, ...doc.preamble.map((p) => wrap(p))];
+  for (const s of doc.sections) if (s.bullets.length) parts.push(`## ${s.heading}`, s.bullets.map((b) => wrap(b, "- ", "  ")).join("\n"));
   return `${parts.join("\n\n")}\n`;
+}
+
+interface Numbered {
+  id: number;
+  section: string;
+  text: string;
+}
+
+const numbered = (doc: LessonsDoc): Numbered[] =>
+  doc.sections.flatMap((s) => s.bullets.map((text) => ({ section: s.heading, text }))).map((b, i) => ({ id: i + 1, ...b }));
+
+/** The headings the rest of the spec cites as (`lessons.md`, Heading): they must keep a lesson. */
+export const citedHeadings = (spec: string, doc: LessonsDoc): string[] => {
+  const cited = new Set([...spec.matchAll(/`lessons\.md`, ([^)]+)\)/g)].map((m) => m[1].trim()));
+  return doc.sections.map((s) => s.heading).filter((h) => cited.has(h));
+};
+
+const STOP = new Set(
+  "that this with from than then them they what when which were have each every into only more most also does their there about over after before where your until".split(" "),
+);
+
+/** A text's content words, a plural folded into its singular. */
+function words(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of text.toLowerCase().split(/[^a-z]+/)) {
+    if (w.length < 4 || STOP.has(w)) continue;
+    out.add(w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+  }
+  return out;
+}
+
+/** The share of the shorter text's content words the other one also has. */
+export function overlap(a: string, b: string): number {
+  const x = words(a);
+  const y = words(b);
+  if (!x.size || !y.size) return 0;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both += 1;
+  return both / Math.min(x.size, y.size);
 }
 
 // ---------- operations
@@ -133,83 +170,144 @@ export function parseOps(text: string): LessonOp[] | null {
   if (!Array.isArray(obj.ops)) return null;
   const ops: LessonOp[] = [];
   for (const raw of obj.ops as Record<string, unknown>[]) {
-    const evidence = str(raw?.evidence);
-    const round = typeof raw?.round === "number" ? raw.round : undefined;
-    const at = round === undefined ? {} : { round };
-    if (!evidence) continue;
-    if (raw.op === "add" && str(raw.section) && str(raw.text)) ops.push({ op: "add", section: str(raw.section)!, text: str(raw.text)!, evidence, ...at });
-    else if (raw.op === "reword" && str(raw.id) && str(raw.text)) ops.push({ op: "reword", id: str(raw.id)!, text: str(raw.text)!, evidence, ...at });
-    else if ((raw.op === "support" || raw.op === "contradict" || raw.op === "retire") && str(raw.id)) ops.push({ op: raw.op, id: str(raw.id)!, evidence, ...at });
+    const reason = str(raw?.reason);
+    if (!reason) continue;
+    const id = typeof raw.id === "number" && Number.isInteger(raw.id) ? raw.id : undefined;
+    const text = str(raw.text);
+    const section = str(raw.section);
+    const fresh = raw.new_section === true ? { new_section: true } : {};
+    if (raw.op === "add" && section && text) ops.push({ op: "add", section, text, reason, ...fresh, ...(raw.distinct === true ? { distinct: true } : {}) });
+    else if (raw.op === "edit" && id !== undefined && (text || section)) {
+      ops.push({ op: "edit", id, ...(text ? { text } : {}), ...(section ? { section } : {}), reason, ...fresh });
+    } else if (raw.op === "drop" && id !== undefined) ops.push({ op: "drop", id, reason });
   }
   return ops;
 }
 
 /**
  * The ops that may be applied, and why the others may not. `scan` returns the held-out names in a text:
- * a lesson's text naming one is rejected (a coder reads it); its evidence is masked instead (no coder does).
+ * a lesson or heading naming one is rejected (a coder reads it); a reason is masked instead (no coder
+ * does). `cited` are the headings the spec cites, which must keep at least one lesson.
  */
 export async function checkOps(
-  ledger: Ledger,
+  doc: LessonsDoc,
   ops: LessonOp[],
   scan: (text: string) => Promise<string[]>,
+  cited: string[] = [],
 ): Promise<{ ok: LessonOp[]; rejected: Rejected[] }> {
   const ok: LessonOp[] = [];
   const rejected: Rejected[] = [];
-  const active = new Map(ledger.lessons.filter((x) => x.status === "active").map((x) => [x.id, x]));
-  const sections = new Set(ledger.sections.map((s) => s.id));
-  let count = active.size;
-  for (const op of ops) {
-    const why = await (async () => {
-      if (op.op !== "add" && !active.has(op.id)) return `no active lesson ${op.id}`;
-      if (op.op === "add" && !sections.has(op.section)) return `no section ${op.section}; sections: ${[...sections].join(", ")}`;
-      if (op.op === "add" || op.op === "reword") {
-        if (op.text.length > LESSON_MAX_CHARS) return `over ${LESSON_MAX_CHARS} characters: say it shorter`;
-        if (METRIC_VALUE.test(op.text)) return "holds a decimal or a percentage: a lesson carries no metric value; say what the change did in words";
-        const found = await scan(op.text);
-        if (found.length) return `names evaluation items coders may not see: ${found.join(", ")}`;
+  const bullets = numbered(doc);
+  const byId = new Map(bullets.map((b) => [b.id, b]));
+  const headings = new Set(doc.sections.map((s) => s.heading));
+  const left = new Map(doc.sections.map((s) => [s.heading, s.bullets.length]));
+  const touched = new Set<number>();
+  const dropped = new Set<number>();
+  let count = bullets.length;
+  const textProblem = async (text: string, what: string, max: number): Promise<string | null> => {
+    if (text.length > max) return `the ${what} is over ${max} characters: say it shorter`;
+    if (METRIC_VALUE.test(text)) return `the ${what} holds a decimal or a percentage: a lesson carries no metric value; say what the change did in words`;
+    const found = await scan(text);
+    return found.length ? `the ${what} names evaluation items coders may not see: ${found.join(", ")}` : null;
+  };
+  // Adds last: a drop or a merge in the same reply makes room for them and stops matching as a duplicate.
+  for (const op of [...ops.filter((o) => o.op !== "add"), ...ops.filter((o) => o.op === "add")]) {
+    const problem = await (async () => {
+      const from = op.op === "add" ? undefined : byId.get(op.id);
+      if (op.op !== "add" && !from) return `no lesson [${op.id}]: ids run from 1 to ${bullets.length}`;
+      if (op.op !== "add" && touched.has(op.id)) return `[${op.id}] already has an op: one op per lesson`;
+      const section = op.op === "drop" ? undefined : op.section;
+      if (section && !headings.has(section)) {
+        if (!(op.op !== "drop" && op.new_section)) return `no section "${section}"; sections: ${[...headings].map((h) => `"${h}"`).join(", ")}. A new one needs "new_section": true`;
+        const bad = await textProblem(section, "heading", HEADING_MAX_CHARS);
+        if (bad) return bad;
       }
-      if (op.op === "add" && count >= LESSON_CAP) return `the ledger holds ${LESSON_CAP} active lessons: merge (reword one, retire another) instead of adding`;
+      const text = op.op === "drop" ? undefined : op.text;
+      if (text) {
+        const bad = await textProblem(text, "lesson", LESSON_MAX_CHARS);
+        if (bad) return bad;
+      }
+      if (op.op !== "add" && from && (op.op === "drop" || (section && section !== from.section)) && cited.includes(from.section) && left.get(from.section) === 1) {
+        return `[${op.id}] is the last lesson under "${from.section}", which the spec cites: edit it instead`;
+      }
+      if (op.op === "add" && !op.distinct) {
+        const close = bullets.filter((b) => !dropped.has(b.id)).map((b) => ({ b, o: overlap(op.text, b.text) })).sort((x, y) => y.o - x.o)[0];
+        if (close && close.o >= DUPLICATE_OVERLAP) {
+          return `close to [${close.b.id}] ("${close.b.text.slice(0, 80)}..."): edit [${close.b.id}] to hold both, or add again with "distinct": true if it says what [${close.b.id}] does not`;
+        }
+      }
+      if (op.op === "add" && count >= LESSON_CAP) return `lessons.md holds ${LESSON_CAP} lessons: merge two (edit one, drop the other) instead of adding`;
       return null;
     })();
-    if (why) {
-      rejected.push({ op, why });
+    if (problem) {
+      rejected.push({ op, problem });
       continue;
     }
     if (op.op === "add") count += 1;
-    if (op.op === "retire") count -= 1;
-    ok.push({ ...op, evidence: maskTerms(op.evidence, await scan(op.evidence)) });
+    else {
+      touched.add(op.id);
+      const from = byId.get(op.id)!;
+      if (op.op === "drop") {
+        count -= 1;
+        dropped.add(op.id);
+        left.set(from.section, left.get(from.section)! - 1);
+      } else if (op.section && op.section !== from.section) left.set(from.section, left.get(from.section)! - 1);
+    }
+    if (op.op !== "drop" && op.section && !headings.has(op.section)) headings.add(op.section);
+    ok.push({ ...op, reason: maskTerms(op.reason, await scan(op.reason)) });
   }
   return { ok, rejected };
 }
 
-/** The ledger after `ops`, which `checkOps` passed. One night supports or contradicts a lesson once. */
-export function applyOps(ledger: Ledger, ops: LessonOp[], nightId: string, lastRound: number): Ledger {
-  const lessons = ledger.lessons.map((x) => ({ ...x, support: [...x.support], contradict: [...x.contradict], ...(x.history ? { history: [...x.history] } : {}) }));
-  const byId = new Map(lessons.map((x) => [x.id, x]));
-  let next = Math.max(0, ...lessons.map((x) => Number(x.id.replace(/\D/g, "")) || 0)) + 1;
-  for (const op of ops) {
-    const ev: Evidence = { night: nightId, ...(op.round === undefined ? {} : { round: op.round }), note: op.evidence };
-    if (op.op === "add") {
-      const lesson: Lesson = { id: `L${String(next++).padStart(3, "0")}`, section: op.section, text: op.text, status: "active", support: [ev], contradict: [] };
-      lessons.push(lesson);
-      byId.set(lesson.id, lesson);
-      continue;
-    }
-    const lesson = byId.get(op.id);
-    if (!lesson) continue;
-    if (op.op === "support" || op.op === "contradict") {
-      const list = lesson[op.op];
-      if (!list.some((e) => e.night === nightId)) list.push(ev);
-    } else if (op.op === "reword") {
-      lesson.history = [...(lesson.history ?? []), { night: nightId, text: lesson.text }];
-      lesson.text = op.text;
-      if (!lesson.support.some((e) => e.night === nightId)) lesson.support.push(ev);
-    } else {
-      lesson.status = "retired";
-      lesson.retired = ev;
-    }
+/** The ops of a prune round: drops, and edits that shorten their lesson; then the usual gates. */
+export async function checkPrune(
+  doc: LessonsDoc,
+  ops: LessonOp[],
+  scan: (text: string) => Promise<string[]>,
+  cited: string[] = [],
+): Promise<{ ok: LessonOp[]; rejected: Rejected[] }> {
+  const byId = new Map(numbered(doc).map((b) => [b.id, b]));
+  const rejected: Rejected[] = [];
+  const kept = ops.filter((op) => {
+    const problem =
+      op.op === "add" ? "a prune adds nothing: drop or shorten"
+      : op.op === "edit" && op.text && byId.has(op.id) && op.text.length >= byId.get(op.id)!.text.length ? `the edit of [${op.id}] is not shorter`
+      : null;
+    if (problem) rejected.push({ op, problem });
+    return !problem;
+  });
+  const checked = await checkOps(doc, kept, scan, cited);
+  return { ok: checked.ok, rejected: [...rejected, ...checked.rejected] };
+}
+
+/**
+ * lessons.md after `ops`, which `checkOps` passed. Ids name the bullets as numbered before any op, so a
+ * drop never shifts another op's target. A moved bullet goes to the end of its new section, an added
+ * one too. A new section goes right after the section its first moved bullet left, else after the others.
+ */
+export function applyOps(doc: LessonsDoc, ops: LessonOp[]): LessonsDoc {
+  const sections: LessonSection[] = doc.sections.map((s) => ({ heading: s.heading, bullets: [] }));
+  const at = (heading: string, after?: string): LessonSection => {
+    const found = sections.find((s) => s.heading === heading);
+    if (found) return found;
+    const fresh = { heading, bullets: [] };
+    const i = after === undefined ? -1 : sections.findIndex((s) => s.heading === after);
+    sections.splice(i < 0 ? sections.length : i + 1, 0, fresh);
+    return fresh;
+  };
+  const byId = new Map(ops.flatMap((o) => (o.op === "add" ? [] : [[o.id, o] as const])));
+  const moved: { section: string; from: string; text: string }[] = [];
+  for (const b of numbered(doc)) {
+    const op = byId.get(b.id);
+    if (op?.op === "drop") continue;
+    const text = (op?.op === "edit" && op.text) || b.text;
+    const section = (op?.op === "edit" && op.section) || b.section;
+    if (section === b.section) at(section).bullets.push(text);
+    else moved.push({ section, from: b.section, text });
   }
-  return { ...ledger, lessons, nights: { ...ledger.nights, [nightId]: Math.max(lastRound, ledger.nights[nightId] ?? 0) } };
+  for (const m of moved) at(m.section, m.from).bullets.push(m.text);
+  for (const op of ops) if (op.op === "add") at(op.section).bullets.push(op.text);
+  return { ...doc, sections };
 }
 
 // ---------- what a night left
@@ -249,7 +347,7 @@ export function gatherNight(nightDir: string, fromRound = 0): NightRound[] {
   return [...rounds.values()].sort((a, b) => a.round - b.round);
 }
 
-/** The spec the night's coders read, without the lessons file the ledger renders. */
+/** The spec the night's coders read, without lessons.md, which the prompt shows apart. */
 export function specWithoutLessons(bundleDir: string, lessonsFile: string): string {
   const dir = join(bundleDir, "spec");
   const skip = basename(lessonsFile);
@@ -263,32 +361,43 @@ export function specWithoutLessons(bundleDir: string, lessonsFile: string): stri
 
 // ---------- the model call
 
-const SYSTEM_PROMPT = `You keep a ledger of lessons for one scenario of an automated coding loop. Each night, coding agents get
-a spec, a starter repository and train data, and try for several rounds to raise the scores of the system
-they build; a reviewer reads each round's dev scores and errors and says what to try next. A night starts
-from the spec again, so the ledger is how one night's experience reaches the next: every coder reads its
-lessons before planning.
+const SYSTEM_PROMPT = `You keep lessons.md for one scenario of an automated coding loop. Each night, coding agents get a spec,
+a starter repository and train data, and try for several rounds to raise the scores of the system they
+build; a reviewer reads each round's dev scores and errors and says what to try next. A night starts from
+the spec again, so lessons.md is the only memory between nights: every coder reads it before planning.
 
-You read one night's rounds (the coders' notes and the reviewer's verdicts) and propose operations on the
-ledger. A good lesson names a change (an algorithm, a prompt, a parameter, a way to measure on train) and
-what it did, in words, so a later coder can skip a dead end or start from what worked.
+It is a scratchpad kept current, not a log. You read one night's rounds (the coders' notes and the
+reviewer's verdicts) and edit lessons.md so it says what all nights so far have shown, as briefly as that
+can be said:
+- A lesson the night only repeats needs no op. Never add what a lesson already says.
+- A lesson the night refines, narrows or extends: edit it.
+- Two lessons that say one thing: edit one to say both, drop the other.
+- A lesson the night shows wrong: drop it, or edit it to what holds now. Never leave a lesson standing
+  beside one that says the opposite: resolve the conflict in one lesson.
+- Add only what neither lessons.md nor the spec already says.
+- lessons.md holds at most ${LINE_CAP} lines. When your ops would pass that, you are asked to cut it:
+  drop the lessons a later coder gains least from, or shorten long ones.
+- A failure only one night showed goes under a heading that says so, such as "Failed once, not yet
+  confirmed"; when a later night repeats it, move it (edit with a section) to the main heading.
 
-Rules:
-- A lesson carries no score, metric value, decimal or percentage, and no dev or test item: no document,
-  query, entity or name that only dev or test holds. Describe kinds of error. Names the spec itself uses are fine.
+What a lesson says:
+- A change (an algorithm, a prompt, a parameter, a way to measure on train) and what it did, in words, so
+  a later coder can skip a dead end or start from what worked.
+- What the night measured, not what it guessed: a hypothesis nobody tested is not a lesson.
+- No score, metric value, decimal or percentage, and no dev or test item: no document, query, entity or
+  name that only dev or test holds. Describe kinds of error. Names the spec itself uses are fine.
 - You never see test, and nothing you write may be about it.
-- Prefer support or contradict on an existing lesson over adding a near-duplicate. Add only what neither the
-  ledger nor the spec already says. Reword to merge two lessons into one, then retire the other.
-- Retire a lesson only when the night's evidence shows it wrong, and say how.
-- Record what the night showed, not what it guessed: a hypothesis nobody measured is not a lesson.
-- A lesson is one or two plain sentences, under ${LESSON_MAX_CHARS} characters.
-- Evidence is for the ledger's maintainers, never for coders: the round and what happened there. It may cite numbers.
-- An empty list is a good answer for a night that taught nothing new.
+- One to three plain sentences, under ${LESSON_MAX_CHARS} characters.
+
+The reason on each op is for the people who review your edit, never for coders: the round and what
+happened there. It may cite numbers. An empty list is a good answer for a night that taught nothing new.
 
 Return only JSON: {"ops": [...]}, each op one of
-{"op": "add", "section": "<section id>", "text": "...", "evidence": "...", "round": 3}
-{"op": "support" | "contradict" | "retire", "id": "L004", "evidence": "...", "round": 3}
-{"op": "reword", "id": "L004", "text": "...", "evidence": "...", "round": 3}`;
+{"op": "add", "section": "<heading>", "text": "...", "reason": "..."}
+{"op": "edit", "id": 4, "text": "...", "section": "<heading, to move it>", "reason": "..."}  (text, section or both)
+{"op": "drop", "id": 4, "reason": "..."}
+Ids are the bracketed numbers in the listing. At most one op per id. Use a heading lessons.md has; a new
+one needs "new_section": true on its op.`;
 
 export interface DistillInput {
   model: string;
@@ -296,16 +405,25 @@ export interface DistillInput {
   mock?: boolean;
   nightId: string;
   spec: string;
-  ledger: Ledger;
+  doc: LessonsDoc;
   rounds: NightRound[];
 }
 
+/** lessons.md with its bullets numbered for ops. */
+function listing(doc: LessonsDoc): string {
+  const ids = numbered(doc);
+  return [
+    `# ${doc.title}`,
+    ...doc.preamble,
+    ...doc.sections
+      .filter((s) => s.bullets.length)
+      .map((s) => [`## ${s.heading}`, ...ids.filter((b) => b.section === s.heading).map((b) => `[${b.id}] ${b.text}`)].join("\n")),
+  ].join("\n\n");
+}
+
 export function distillPrompt(input: DistillInput): string {
-  const sections = input.ledger.sections.map((s) => `- ${s.id}: "${s.heading}"`).join("\n");
-  const lessons = input.ledger.lessons
-    .filter((x) => x.status === "active")
-    .map((x) => `- ${x.id} [${x.section}; ${nightsOf(x)} night(s) support, ${new Set(x.contradict.map((e) => e.night)).size} contradict] ${x.text}`)
-    .join("\n");
+  const lessons = numbered(input.doc).length;
+  const lines = lineCount(serializeLessons(input.doc));
   const rounds = input.rounds
     .map((r) =>
       [
@@ -316,23 +434,41 @@ export function distillPrompt(input: DistillInput): string {
     )
     .join("\n\n");
   return [
-    `## The spec the coders had (lessons excluded)\n\n${input.spec}`,
-    `## Ledger sections\n${sections}`,
-    `## Active lessons (${input.ledger.lessons.filter((x) => x.status === "active").length} of at most ${LESSON_CAP})\n${lessons || "(none)"}`,
+    `## The spec the coders had (lessons.md apart)\n\n${input.spec}`,
+    `## lessons.md now (${lessons} of at most ${LESSON_CAP} lessons, ${lines} of at most ${LINE_CAP} lines; numbered for your ops)\n\n${listing(input.doc)}`,
     `## Night ${input.nightId}\n\n${rounds}`,
     'Return only the JSON object {"ops": [...]}.',
   ].join("\n\n");
 }
 
+/** A prune round's prompt: lessons.md after the night's ops, numbered afresh. */
+export const prunePrompt = (doc: LessonsDoc): string =>
+  `lessons.md after your ops is ${lineCount(serializeLessons(doc))} lines; it may hold at most ${LINE_CAP}. Cut it to fit: drop the ` +
+  "lessons a later coder gains least from (narrow, rarely relevant, implied by the spec or by another lesson), or shorten long ones. " +
+  `The bullets are numbered afresh below. Reply with only the JSON object {"ops": [...]}: drop ops, and edit ops whose text is shorter.\n\n${listing(doc)}`;
+
 export interface DistillOutput {
   ops: LessonOp[];
   rejected: Rejected[];
+  /** Prune rounds' ops, in order; each round's ids number the file after the ops before it. */
+  prune: LessonOp[][];
+  pruneRejected: Rejected[];
+  /** Lines of lessons.md after every op: over LINE_CAP, the proposal is never applied. */
+  lines: number;
   usd: number;
   tokens: number;
 }
 
-/** One distillation: ops for the night, gated; one rewrite of the ops the gates rejected. */
+/** lessons.md after a distillation's ops and its prune rounds. */
+export const afterOps = (doc: LessonsDoc, out: Pick<DistillOutput, "ops" | "prune">): LessonsDoc =>
+  out.prune.reduce((d, ops) => applyOps(d, ops), applyOps(doc, out.ops));
+
+/**
+ * One distillation: ops for the night, gated; one rewrite of the ops the gates rejected; then, while the
+ * file is over LINE_CAP, up to PRUNE_ROUNDS rounds of drops and shortening edits.
+ */
 export async function runDistill(input: DistillInput, scan: (text: string) => Promise<string[]> = async () => []): Promise<DistillOutput> {
+  const cited = citedHeadings(input.spec, input.doc);
   const session = await createIsolatedSession({
     model: input.model,
     mock: input.mock ? "lessons" : undefined,
@@ -361,13 +497,24 @@ export async function runDistill(input: DistillInput, scan: (text: string) => Pr
     let ops = await ask(distillPrompt(input));
     if (!ops) ops = await ask('Reply again with only the JSON object {"ops": [...]}.');
     if (!ops) throw new Error("the lessons model returned no parsable JSON twice");
-    let checked = await checkOps(input.ledger, ops, scan);
+    let checked = await checkOps(input.doc, ops, scan, cited);
     if (checked.rejected.length) {
-      const why = checked.rejected.map((r) => `- ${JSON.stringify(r.op)}: ${r.why}`).join("\n");
+      const why = checked.rejected.map((r) => `- ${JSON.stringify(r.op)}: ${r.problem}`).join("\n");
       const again = await ask(`These ops were rejected:\n${why}\nReply with the whole corrected JSON object {"ops": [...]}: fix or drop each rejected op, keep the others.`);
-      if (again) checked = await checkOps(input.ledger, again, scan);
+      if (again) checked = await checkOps(input.doc, again, scan, cited);
     }
-    return { ops: checked.ok, rejected: checked.rejected, usd, tokens };
+    const prune: LessonOp[][] = [];
+    const pruneRejected: Rejected[] = [];
+    let doc = applyOps(input.doc, checked.ok);
+    for (let round = 0; round < PRUNE_ROUNDS && lineCount(serializeLessons(doc)) > LINE_CAP; round += 1) {
+      const ops = (await ask(prunePrompt(doc))) ?? [];
+      const pruned = await checkPrune(doc, ops, scan, citedHeadings(input.spec, doc));
+      pruneRejected.push(...pruned.rejected);
+      if (!pruned.ok.length) continue;
+      prune.push(pruned.ok);
+      doc = applyOps(doc, pruned.ok);
+    }
+    return { ops: checked.ok, rejected: checked.rejected, prune, pruneRejected, lines: lineCount(serializeLessons(doc)), usd, tokens };
   } finally {
     session.dispose();
   }
@@ -375,34 +522,48 @@ export async function runDistill(input: DistillInput, scan: (text: string) => Pr
 
 // ---------- proposals
 
-export interface Proposal {
+export interface Proposal extends DistillOutput {
   nightId: string;
   fromRound: number;
   lastRound: number;
-  /** The scenario ledger the ops were computed against: applying over a newer one is refused. */
+  /** The lessons.md the ops were computed against: applying over a newer one is refused. */
   base_sha256: string;
-  ops: LessonOp[];
-  rejected: Rejected[];
-  usd: number;
-  tokens: number;
-  ledger: Ledger;
+  /** The new lessons.md. */
+  lessons: string;
+  /** The ops for a reviewer, each with the lesson it changes. */
+  changes: string;
 }
 
-export function lessonPaths(cfg: NightConfig) {
-  const l = cfg.scenario.lessons;
-  if (!l) throw new Error(`scenario ${cfg.scenario.name} declares no lessons`);
-  return { file: join(cfg.scenario_dir, l.file), ledger: join(cfg.scenario_dir, l.ledger) };
+export function lessonsFile(cfg: NightConfig): string {
+  if (!cfg.scenario.lessons) throw new Error(`scenario ${cfg.scenario.name} declares no lessons`);
+  return join(cfg.scenario_dir, cfg.scenario.lessons);
 }
 
-export const proposalDir = (cfg: NightConfig, nightId: string, lastRound: number): string =>
-  join(nightPaths(cfg, nightId).root, "lessons", `${nightId}-r${lastRound}`);
+const proposalsRoot = (cfg: NightConfig, nightId: string): string => join(nightPaths(cfg, nightId).root, "lessons");
+
+export const proposalDir = (cfg: NightConfig, nightId: string, lastRound: number): string => join(proposalsRoot(cfg, nightId), `${nightId}-r${lastRound}`);
+
+/** A night's proposals, oldest first, with the last round each covers. */
+export function proposalsOf(cfg: NightConfig, nightId: string): { dir: string; lastRound: number; applied: boolean }[] {
+  const root = proposalsRoot(cfg, nightId);
+  if (!existsSync(root)) return [];
+  const name = new RegExp(`^${nightId.replace(/\W/g, "\\$&")}-r(\\d+)$`);
+  return readdirSync(root)
+    .flatMap((d) => {
+      const m = name.exec(d);
+      const meta = join(root, d, "proposal.json");
+      if (!m || !existsSync(meta)) return [];
+      return [{ dir: join(root, d), lastRound: Number(m[1]), applied: (JSON.parse(readFileSync(meta, "utf8")) as { applied?: boolean }).applied === true }];
+    })
+    .sort((a, b) => a.lastRound - b.lastRound);
+}
 
 /** Whether a night distills lessons when it ends. A night saved before lessons existed has no mode. */
 export const lessonsOn = (cfg: NightConfig): boolean => (cfg.lessons === "propose" || cfg.lessons === "apply") && !!cfg.scenario.lessons;
 
 /** The sha256 of the lessons.md in a night's bundle: which lessons its coders read. */
 export function bundleLessonsSha(cfg: NightConfig, bundleDir: string): string | null {
-  const file = cfg.scenario.lessons && join(bundleDir, "spec", basename(cfg.scenario.lessons.file));
+  const file = cfg.scenario.lessons && join(bundleDir, "spec", basename(cfg.scenario.lessons));
   return file && existsSync(file) ? sha256(readFileSync(file, "utf8")) : null;
 }
 
@@ -422,49 +583,79 @@ export function stoppedNight(nightId: string): NightConfig | null {
   return null;
 }
 
-export const readLedger = (cfg: NightConfig): Ledger => parseLedger(readFileSync(lessonPaths(cfg).ledger, "utf8"));
+/** The ops for a reviewer, each edit and drop with the lesson as it was. */
+function describeOps(doc: LessonsDoc, ops: LessonOp[]): string {
+  const byId = new Map(numbered(doc).map((b) => [b.id, b]));
+  const was = (id: number) => `[${id}] under "${byId.get(id)!.section}": ${byId.get(id)!.text}`;
+  const lines = ops.map((op) => {
+    if (op.op === "add") return `- add under "${op.section}": ${op.text}\n  reason: ${op.reason}`;
+    if (op.op === "drop") return `- drop ${was(op.id)}\n  reason: ${op.reason}`;
+    const to = [op.section ? `move to "${op.section}"` : "", op.text ? `now: ${op.text}` : ""].filter(Boolean).join("; ");
+    return `- edit ${was(op.id)}\n  ${to}\n  reason: ${op.reason}`;
+  });
+  return lines.join("\n") || "(none)";
+}
+
+const describeRejected = (rejected: Rejected[]): string => rejected.map((r) => `- ${JSON.stringify(r.op)}\n  ${r.problem}`).join("\n");
+
+function describe(doc: LessonsDoc, out: DistillOutput): string {
+  const parts = [`## Changes\n\n${describeOps(doc, out.ops)}`];
+  if (out.rejected.length) parts.push(`## Rejected twice\n\n${describeRejected(out.rejected)}`);
+  let at = applyOps(doc, out.ops);
+  out.prune.forEach((ops, i) => {
+    parts.push(`## Pruned to fit ${LINE_CAP} lines, round ${i + 1}\n\n${describeOps(at, ops)}`);
+    at = applyOps(at, ops);
+  });
+  if (out.pruneRejected.length) parts.push(`## Prune ops rejected\n\n${describeRejected(out.pruneRejected)}`);
+  if (out.lines > LINE_CAP) parts.push(`## Over the cap\n\nlessons.md would be ${out.lines} lines, over ${LINE_CAP}: this proposal is never applied. Prune lessons.md by hand and distill again.`);
+  return `${parts.join("\n\n")}\n`;
+}
 
 /**
- * A night's proposal, or null when nothing is new: no round past what the ledger already holds from it,
- * or a proposal for these rounds already written.
+ * A night's proposal, or null when nothing is new: no round past the last applied proposal from it, or a
+ * proposal for these rounds already written. An unapplied proposal's rounds are distilled again.
  */
 export async function proposeLessons(cfg: NightConfig, nightId: string, scan: (text: string) => Promise<string[]>): Promise<Proposal | null> {
-  const paths = lessonPaths(cfg);
-  const baseText = readFileSync(paths.ledger, "utf8");
-  const ledger = parseLedger(baseText);
-  const fromRound = ledger.nights[nightId] ?? 0;
+  const file = lessonsFile(cfg);
+  const baseText = readFileSync(file, "utf8");
+  const doc = parseLessons(baseText);
+  const fromRound = Math.max(0, ...proposalsOf(cfg, nightId).filter((p) => p.applied).map((p) => p.lastRound));
   const night = nightPaths(cfg, nightId);
   const rounds = gatherNight(night.nightDir, fromRound);
   if (!rounds.length) return null;
   const lastRound = rounds.at(-1)!.round;
   if (existsSync(join(proposalDir(cfg, nightId, lastRound), "proposal.json"))) return null;
   const out = await runDistill(
-    { model: cfg.reviewer_model, thinkingLevel: cfg.reviewer_thinking, mock: cfg.mock, nightId, spec: specWithoutLessons(night.bundleDir, paths.file), ledger, rounds },
+    { model: cfg.reviewer_model, thinkingLevel: cfg.reviewer_thinking, mock: cfg.mock, nightId, spec: specWithoutLessons(night.bundleDir, file), doc, rounds },
     scan,
   );
-  return { nightId, fromRound, lastRound, base_sha256: sha256(baseText), ...out, ledger: applyOps(ledger, out.ops, nightId, lastRound) };
+  return {
+    nightId, fromRound, lastRound, base_sha256: sha256(baseText), ...out,
+    lessons: serializeLessons(afterOps(doc, out)), changes: describe(doc, out),
+  };
 }
 
-/** Writes the proposal beside the night's runs; with `apply`, the scenario's ledger and lessons.md too, never from a mock night. */
+/** Writes the proposal beside the night's runs; with `apply`, the scenario's lessons.md too, never from a mock night. */
 export function writeProposal(cfg: NightConfig, p: Proposal, apply: boolean): { dir: string; applied: boolean } {
   const dir = proposalDir(cfg, p.nightId, p.lastRound);
   mkdirSync(dir, { recursive: true });
-  const { ledger, ...meta } = p;
-  writeFileSync(join(dir, "lessons.json"), ledgerText(ledger));
-  writeFileSync(join(dir, "lessons.md"), renderLessons(ledger));
+  const { lessons, changes, ...meta } = p;
+  writeFileSync(join(dir, "lessons.md"), lessons);
+  writeFileSync(join(dir, "changes.md"), `# Lessons from ${p.nightId}, rounds ${p.fromRound + 1}-${p.lastRound}\n\n${changes}`);
   writeFileSync(join(dir, "proposal.json"), `${JSON.stringify(meta, null, 2)}\n`);
-  if (!apply || cfg.mock) return { dir, applied: false };
+  if (!apply || cfg.mock || p.lines > LINE_CAP) return { dir, applied: false };
   applyProposal(cfg, dir);
   return { dir, applied: true };
 }
 
-/** Writes a proposal's ledger and lessons.md into the scenario, unless its ledger moved since. */
+/** Writes a proposal's lessons.md into the scenario, unless the scenario's file moved since or it is over LINE_CAP. */
 export function applyProposal(cfg: NightConfig, dir: string): void {
-  const paths = lessonPaths(cfg);
-  const meta = JSON.parse(readFileSync(join(dir, "proposal.json"), "utf8")) as Omit<Proposal, "ledger">;
-  const now = sha256(readFileSync(paths.ledger, "utf8"));
-  if (now !== meta.base_sha256) throw new Error(`${paths.ledger} changed since ${dir} was proposed: distill the night again`);
-  const ledger = parseLedger(readFileSync(join(dir, "lessons.json"), "utf8"));
-  writeFileSync(paths.ledger, ledgerText(ledger));
-  writeFileSync(paths.file, renderLessons(ledger));
+  const file = lessonsFile(cfg);
+  const metaFile = join(dir, "proposal.json");
+  const meta = JSON.parse(readFileSync(metaFile, "utf8")) as Omit<Proposal, "lessons" | "changes"> & { applied?: boolean };
+  if (sha256(readFileSync(file, "utf8")) !== meta.base_sha256) throw new Error(`${file} changed since ${dir} was proposed: distill the night again`);
+  const next = readFileSync(join(dir, "lessons.md"), "utf8");
+  if (lineCount(next) > LINE_CAP) throw new Error(`${dir}/lessons.md is ${lineCount(next)} lines, over ${LINE_CAP}: prune lessons.md by hand and distill again`);
+  writeFileSync(file, next);
+  writeFileSync(metaFile, `${JSON.stringify({ ...meta, applied: true }, null, 2)}\n`);
 }

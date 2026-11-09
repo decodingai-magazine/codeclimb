@@ -23,7 +23,7 @@ export function reviewerReply() {
   return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis", verdict: "mock verdict" }));
 }
 
-/** The JSON `parseOps` wants: a night of mock rounds teaches nothing. */
+/** The JSON `parseOps` wants: a night of mock rounds leaves lessons.md as it is. */
 export function lessonsReply() {
   return fauxAssistantMessage(JSON.stringify({ ops: [] }));
 }

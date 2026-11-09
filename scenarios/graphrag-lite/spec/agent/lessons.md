@@ -1,7 +1,5 @@
 # What earlier attempts learned
 
-<!-- Rendered from the lessons ledger (codeclimb/lessons.ts): edit the ledger, not this file. -->
-
 Earlier attempts built this system from an empty starter. What they learned while building it is
 below, so you don't spend a round finding it again. The starter you get already holds some of it:
 extraction by section, the critic switch, the row cap and the split of a looping reply. Each line is

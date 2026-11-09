@@ -451,8 +451,8 @@ export const onRunCancelled = ccInngest.createFunction(
 
 /**
  * A night's rounds into the scenario's lessons: a proposal beside the night's runs, or with `lessons:
- * apply` the scenario's ledger itself. One at a time per scenario, so two nights never write one ledger
- * at once. A night already distilled to its last round is skipped.
+ * apply` the scenario's lessons.md itself. One at a time per scenario, so two nights never edit one
+ * lessons.md at once. A night already distilled to its last round is skipped.
  */
 export const distillLessons = ccInngest.createFunction(
   { id: "distill-lessons", triggers: [nightFinished], retries: 2, concurrency: [{ key: "event.data.scenario", limit: 1 }] },
