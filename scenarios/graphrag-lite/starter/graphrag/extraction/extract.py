@@ -6,8 +6,10 @@ name. The system prompt is the ontology itself (prompts/ontology.md) plus the re
 whose envelope has the wrong shape is asked for again once, with the validation error.
 
 A reply cut at max_tokens, or with more rows than `max_rows_per_reply`, is a loop: the model repeats
-rows until the limit. Its rows are dropped, never salvaged, and the section is extracted again in two
-halves, once. A half that loops again is given up and counted.
+rows until the limit. Its rows are dropped, never salvaged. When the entities reply loops, the section
+is extracted again in two halves, once. When only the claims reply loops, the entities are kept and
+the claims are asked for again per half, with the same entity list. A part that loops again is given
+up and counted.
 """
 
 import logging
@@ -116,29 +118,38 @@ class SectionRows:
     """Parts given up: they looped again after the split."""
 
 
+def claims(cfg: Config, client: Client, head: str, text: str, mentions: list[RawMention], what: str) -> list[RawRelation] | None:
+    """The claims `text` states between the listed entities; None when the reply looped."""
+    names = "\n".join(f"- {m.name} ({m.type})" for m in mentions)
+    labels = ("Labels in use: " + ", ".join(cfg.extraction.seed_labels) + "\n\n") if cfg.extraction.seed_labels else ""
+    user = labels + "Entities in this section:\n" + names + "\n\n" + head + text
+    return ask_rows(client, ONTOLOGY + CLAIMS_FORMAT, user, ClaimsReply, "relations", RawRelation, what, cfg.extraction.max_rows_per_reply)
+
+
 def extract_section(cfg: Config, client: Client, item: dict, section: Section, depth: int = 0) -> SectionRows:
     head = f"Document: {item['title']} ({item['published']})" + (f", section: {section.heading}" if section.heading else "") + "\n\n"
     what = f"{item['doc_uri']} #{section.position}" + (" (half)" if depth else "")
-    cap = cfg.extraction.max_rows_per_reply
     user = canon(item["known_entities"], section.text, cfg.extraction.canon_per_type) + head + section.text
-    mentions = ask_rows(client, ONTOLOGY + ENTITIES_FORMAT, user, EntitiesReply, "mentions", RawMention, what, cap)
-    relations: list[RawRelation] | None = []
-    if mentions:
-        names = "\n".join(f"- {m.name} ({m.type})" for m in mentions)
-        labels = ("Labels in use: " + ", ".join(cfg.extraction.seed_labels) + "\n\n") if cfg.extraction.seed_labels else ""
-        user = labels + "Entities in this section:\n" + names + "\n\n" + head + section.text
-        relations = ask_rows(client, ONTOLOGY + CLAIMS_FORMAT, user, ClaimsReply, "relations", RawRelation, what, cap)
-    if mentions is not None and relations is not None:
-        return SectionRows(mentions, relations)
+    mentions = ask_rows(client, ONTOLOGY + ENTITIES_FORMAT, user, EntitiesReply, "mentions", RawMention, what, cfg.extraction.max_rows_per_reply)
     parts = halves(section.text)
+    if mentions is None:
+        if depth or len(parts) < 2:
+            log.warning("%s: entities looped again; part given up", what)
+            return SectionRows([], [], lost=1)
+        log.info("%s: entities looped; extracting again in %d parts", what, len(parts))
+        done = [extract_section(cfg, client, item, Section(section.heading, p, section.position), depth + 1) for p in parts]
+        return SectionRows(
+            [m for d in done for m in d.mentions], [r for d in done for r in d.relations], 1 + sum(d.splits for d in done), sum(d.lost for d in done)
+        )
+    relations = claims(cfg, client, head, section.text, mentions, what) if mentions else []
+    if relations is not None:
+        return SectionRows(mentions, relations)
     if depth or len(parts) < 2:
-        log.warning("%s: looped again; part given up", what)
-        return SectionRows([], [], lost=1)
-    log.info("%s: extracting again in %d parts", what, len(parts))
-    done = [extract_section(cfg, client, item, Section(section.heading, p, section.position), depth + 1) for p in parts]
-    return SectionRows(
-        [m for d in done for m in d.mentions], [r for d in done for r in d.relations], 1 + sum(d.splits for d in done), sum(d.lost for d in done)
-    )
+        log.warning("%s: claims looped again; its claims given up", what)
+        return SectionRows(mentions, [], lost=1)
+    log.info("%s: claims looped; asking for claims again in %d parts, same entities", what, len(parts))
+    per_part = [claims(cfg, client, head, p, mentions, what + " (half)") for p in parts]
+    return SectionRows(mentions, [r for p in per_part if p for r in p], splits=1, lost=sum(p is None for p in per_part))
 
 
 def fold_document(item: dict, raw_mentions: list[RawMention], raw_relations: list[RawRelation]) -> tuple[list[Mention], list[Relation], list[dict]]:

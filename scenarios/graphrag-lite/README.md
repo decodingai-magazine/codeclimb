@@ -79,7 +79,7 @@ gold/         the answers; the agent sees only train's slice, through its bundle
   retrieval.jsonl 230 retrieval queries with the nodes, edges and documents each expects
   splits.json     the train/dev/test split, for documents and retrieval queries
 spec/
-  agent/          the spec in the agent's bundle: ontology.md (also the extractor's prompt), task.md, train.md, runtime.md
+  agent/          the spec in the agent's bundle: ontology.md (also the extractor's prompt), task.md, train.md, runtime.md, lessons.md
   evaluator/      the third-party evaluator's protocol, for dev and test: evaluate.md
 evaluators/   one CLI per stage (extraction.py, graph.py, retrieval.py), summary.py over all split
               parts, common.py shared by them: they load the gold themselves and write JSON reports

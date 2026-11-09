@@ -6,7 +6,7 @@ evaluator's reports.
 
 Layout of `<dir>`:
 
-    spec/                       task.md, ontology.md, train.md, runtime.md
+    spec/                       task.md, ontology.md, train.md, runtime.md, lessons.md
     corpus/                     the train documents
     train/graph.json            the gold graph of the train documents only
     train/examples/<stage>.jsonl  train gold per stage (few-shot material); retrieval rows without

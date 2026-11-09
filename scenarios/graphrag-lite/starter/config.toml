@@ -9,7 +9,7 @@ rerank = "openrouter/qwen/qwen3-reranker-8b"
 
 [llm]
 concurrency = 8      # model calls in flight at once
-max_retries = 4      # on 429 and 502, with backoff
+max_retries = 4      # on 429, 500, 502 and 503, with backoff
 max_tokens = 8000    # per chat reply; reasoning is off, so this is all output
 seed = 0
 
@@ -19,7 +19,7 @@ canon_per_type = 40        # known entities shown per type, of those the section
 max_rows_per_reply = 60    # a reply with more rows is a loop: dropped, and the section asked again in halves
 critic = false             # a second pass over the document's rows (extraction/critic.py): the first knob to measure
 # labels offered for reuse before the model coins one: the ones most of train's claims use
-seed_labels = ["uses", "used_for", "part_of", "instance_of", "compared_with", "built_on", "integrates_with", "applied_to"]
+seed_labels = ["uses", "used_for", "instance_of", "implements", "compared_with", "applied_to", "supports", "integrates_with"]
 
 [retrieval]
 max_nodes = 10

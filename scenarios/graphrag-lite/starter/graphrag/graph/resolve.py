@@ -43,7 +43,10 @@ class Resolver:
         self.union(to_id, from_id)
 
     def nominations(self, surface: dict) -> list[str]:
-        """Surface ids of candidate entities for a verdict (acronym, fuzzy, embeddings): none in the starter."""
+        """Surface ids of candidate entities for a verdict (acronym, fuzzy, embeddings): none in the starter.
+
+        Not called yet: once a verdict exists, `resolve` asks it last, for a surface no key joined.
+        """
         return []
 
     def resolve(self, surface: dict) -> None:
@@ -67,6 +70,3 @@ class Resolver:
                 self.union(named, sid)
             else:
                 self.alias_keys.setdefault(akey, sid)
-        for candidate in self.nominations(surface):
-            # a nomination needs a verdict before it merges; the starter makes none
-            del candidate

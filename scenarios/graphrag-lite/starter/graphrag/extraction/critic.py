@@ -11,6 +11,7 @@ from ..contracts import TYPES, CriticReply, Mention, RawDecision, Relation
 from ..llm import Client
 from .chunking import body
 from .extract import ONTOLOGY, ask_rows
+from .filter import rejected
 
 CRITIC_FORMAT = f"""
 # Reply format
@@ -40,7 +41,7 @@ def critique(
         if d is None or d.action == "keep":
             kept.append(m)
         elif d.action == "drop":
-            rejects.append({"doc_uri": item["doc_uri"], "reason": "critic_drop", "row": m.model_dump(exclude_none=True)})
+            rejects.append(rejected(item["doc_uri"], "critic_drop", m))
         elif d.type in TYPES:
             kept.append(m.model_copy(update={"type": d.type}))
         else:

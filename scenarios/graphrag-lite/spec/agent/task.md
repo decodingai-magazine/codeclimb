@@ -17,7 +17,8 @@ what you need (`runtime.md`), and keep what the metrics back.
 their gold, which you may read in full and sample as few-shot examples. The later articles are
 split by time into **dev** and **test**, and you never see them: a third-party evaluator runs your
 frozen system on them. Dev's report comes back to you as feedback after each submission; test is
-scored once, at the end.
+scored once, at the end. `lessons.md` holds what earlier attempts learned while building this
+system: read it before you plan.
 
 ## The pipeline
 
@@ -56,10 +57,10 @@ between two of them:
   entity anyway if you can: they give your merging and retrieval something to compare.
 - **No frequency floor.** Every gold row counts, including entities named once, so a row you leave
   out for being rare is a missed row.
-- **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each, about 0.7 mentions per 1000
-  characters. Held-out gold is denser, because the gold engages with every named thing. A system
-  that returns train-like counts on a held-out document has stopped early. Measure recall by section
-  on train, not by total.
+- **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each,
+  about 0.9 mentions per 1000 characters of body text. Held-out gold is denser, because the gold
+  engages with every named thing. A system that returns train-like counts on a held-out document
+  has stopped early. Measure recall by section on train, not by total.
 - **A wrong type is a miss and a false positive.** Mentions match only on equal type. Type accuracy
   is measured apart, over the pairs that match when type is ignored.
 - **Unnamed things.** When an article describes a method or system without naming it, the gold row
@@ -78,17 +79,16 @@ between two of them:
   component `part_of` whole, instance `instance_of` class, organization `develops` product, tool
   `used_for` method, method `applied_to` system.
 - **Claims are subject-centred and span sentences.** An article's central subject is one end of a
-  large share of its claims (a fifth of them on train, half in the most centred document); that is the gold, not a
-  defect to suppress. A claim is any relation the article states between two entities you
-  extracted, wherever the two are named: a list item, a comparison table, a sentence two paragraphs
-  after the subject was introduced. Known dead ends: a cap per source, a sentence or paragraph
-  co-occurrence filter, a second model asked to verify or re-orient each claim.
+  large share of its claims; that is the gold, not a defect to suppress. A claim is any relation the
+  article states between two entities you extracted, wherever the two are named: a list item, a
+  comparison table, a sentence two paragraphs after the subject was introduced. Filters on claims
+  cost recall here (`lessons.md`, Failed, more than once).
 - **One label per claim.** Reuse a `semantic_type` you already wrote in earlier documents rather
   than rewording it (`applied_to`, never `applies_to` beside it). The gold labels are never shown to
   you. **Why:** labels are scored only in the `labeled` relation variant, but a graph with two
   spellings for one claim can't be queried by label. Train's claims use 26 labels, and eight
-  of them (`uses`, `used_for`, `part_of`, `instance_of`, `compared_with`, `built_on`,
-  `integrates_with`, `applied_to`) cover most claims. Reuse before coining.
+  of them (`uses`, `used_for`, `instance_of`, `implements`, `compared_with`, `applied_to`, `supports`,
+  `integrates_with`) cover most claims. Reuse before coining.
 
 ### 2. Graph building
 
@@ -199,11 +199,9 @@ Query kinds, and what a good answer holds:
 ## Reference architecture
 
 Build each stage as a small pipeline of modules with typed rows between them, not one script. The
-shape below is adapted from a working ontology-extraction system over documents like these; the
-exclusions at the end are where its rules lost recall on this corpus. Your repository starts as
-this layout, wired end to end and runnable (its README says what each module does out of the box).
-It is the recommended starting point, not a requirement: depart from it when train and the feedback
-back the change.
+shape below is adapted from a working ontology-extraction system over documents like these;
+`lessons.md` lists where its rules lost recall on this corpus. Your repository starts as this
+layout, wired end to end and runnable (its README says what each module does out of the box).
 
 ```
 graphrag/
@@ -238,10 +236,11 @@ returns the claims between them, with the canon injected: the known entities the
 matched by whole key tokens, under one rule, "write these names". Parse the reply into a typed
 model (a strict envelope, lenient rows, one re-ask on a schema error), drop a reply that loops (cut
 at the token limit, or over a row cap) and extract that section again in halves, then a
-deterministic filter with a closed list of reasons (`unknown_type`, `blank_name`,
-`endpoint_not_mentioned`; never a count floor), then the union across sections into one row per
-`(type, key)` per document: counts summed, aliases joined, one type per key within the document.
-Keep the rejected rows in a file of your own: reading them on train is how you tune the filter.
+deterministic filter with a closed list of reasons (the starter's: `unknown_type`, `blank_name`,
+`type_conflict`, `endpoint_not_mentioned`, `self_loop`, `duplicate_claim`; never a count floor),
+then the union across sections into one row per `(type, key)` per document: counts summed, aliases
+joined, one type per key within the document. Keep the rejected rows in a file of your own: reading
+them on train is how you tune the filter.
 Log one line per document on stderr: sections, looping replies split or given up, rows kept, rows
 rejected by reason. A document far denser or sparser than the others is the first thing to read.
 Relation work goes through this stage's mention recall: a claim whose end was never extracted
@@ -250,41 +249,34 @@ can't be found (`lessons.md`, The lever for relations).
 **Graph data flow.** Rows in `seq` order, a key index per type, and for each surface: an exact key
 hit (identity), an alias key hit (identity, unless the alias narrows the name or another entity of
 the type already owns it), an acronym match (a nomination), fuzzy (a nomination; a gray band goes to
-a verdict, which prefers "new"), then the assignment. Rebuild from the whole log each run; nothing
-persists. The scorer's key is `normalize` in `/spec/scorer/scripts/compile.py`; your repository
-ships the same function as `graphrag/graph/keys.py`, because `/spec` does not exist when evaluated
-(`train.md`, What you submit).
+a verdict, which prefers "new"), then the assignment. The starter has the exact and alias steps;
+its hook for acronym, fuzzy and embedding nominations returns nothing. Rebuild from the whole log
+each run; nothing persists. The scorer's key is `normalize` in `/spec/scorer/scripts/compile.py`;
+your repository ships the same function as `graphrag/graph/keys.py`, because `/spec` does not
+exist when evaluated (`train.md`, What you submit).
 
 **Retrieval data flow.** The gold graph into Ladybug tables (`Entity`, `Document`, `MENTIONS`,
 `RELATED_TO` with `semantic_type` and `doc_uri`; `runtime.md` has a schema), anchors from the query
 (a key match on names and aliases, then embeddings), one Cypher template per shape (the edges of an
 anchor; `*1..3` paths between two anchors; the common neighbour of two anchors; documents by
 `MENTIONS` inside a `published` window), then ranking with BM25 and embeddings, a rerank of the
-short list, and abstention when no anchor resolves and the top score is low.
+short list, and abstention when no anchor resolves and the top score is low. The starter has the
+first three templates, returns an anchor's documents without a window, ranks by fixed scores and
+abstains only when no anchor resolves.
 
 **Knobs belong in `config.toml`,** read at start: section size, candidate counts, thresholds,
 concurrency, model names. Tune them on train; never edit a constant in code to try a value.
-
-**Excluded on purpose.** Each of these cost recall on this corpus when a system tried it: a count
-or frequency floor of any kind; a document character cap; an entity count target or cap per
-document; a per-source relation cap; a "what is this article about" framing; one type per name
-across the corpus (within one document, one type per key is right).
 
 ## Where models help
 
 Starting points, not requirements. `runtime.md` lists the models and their endpoints. Every call
 costs time and money, so try a change on train and keep what raises a metric there.
 
-- **Chat model: read text.** Use it to extract rows, with few-shot examples from train. A second
-  pass that hands it the article and its first rows, and asks only what's missing, targets recall.
-- **Chunking: extract by section, always.** One call over a whole article returns far fewer rows
-  than its gold on long documents and sometimes truncates (`finish_reason: "length"`). Split on
-  headings into size-bounded sections, extract each, and union the rows per `(type, key)` with one
-  type per key across the document. Short articles are one section. The same sections can serve as
-  passages for retrieval. The cost is one or two calls per section: time one section call on train,
-  multiply by sections and calls, divide by concurrency, and keep the part's total under the stage's
-  time limit. A critic pass adds one call per document; a gray-band verdict adds one decision call
-  per candidate pair.
+- **Chat model: read text.** Use it to extract rows, with few-shot examples from train.
+- **Extraction cost.** The sections (Extraction data flow) can serve as passages for retrieval too.
+  The cost is one or two calls per section: time one section call on train, multiply by sections
+  and calls, divide by concurrency, and keep the part's total under the stage's time limit. A critic
+  pass adds one call per document; a gray-band verdict adds one decision call per candidate pair.
 - **Embedding model: find candidates cheaply.** Embed names with their descriptions, edges as short
   sentences, and passages, then compare by cosine similarity. Send texts in batches.
 - **Decision model: answer yes or no with a probability.** Use it where a threshold is the design:
@@ -297,7 +289,7 @@ Per stage:
 
 | stage | where a model fits |
 |---|---|
-| extraction | embed the document and show the extractor only the nearest known entities per type, as a canon with the reuse rule above it, so a growing history doesn't fill the prompt; parse replies into pydantic models and re-ask once on a schema error; a critic pass over the document's rows (keep, drop, fix type) catches roles, code identifiers and list-only names |
+| extraction | the canon holds only the known entities a section names (Extraction data flow), so a growing history doesn't fill the prompt; a critic pass over the document's rows (keep, drop, fix type) catches roles, code identifiers and list-only names |
 | graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
 | retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them, with Cypher paths for example, for `multi_hop` and `intersection` |
 

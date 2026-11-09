@@ -3,16 +3,17 @@ and the endpoint check on claims. No count floor: a row named once is a row.
 
 Reasons: `unknown_type` (not one of the six), `blank_name` (no key), `type_conflict` (the key already
 has a row of another type in this document; folded into it as an alias), `endpoint_not_mentioned` (a
-claim's end is no mention of the document), `self_loop` (both ends one mention), `duplicate_claim`.
+claim's end is no mention of the document), `self_loop` (both ends one mention), `duplicate_claim`, and
+`critic_drop` (the optional critic dropped the mention, extraction/critic.py).
 """
 
 from ..contracts import TYPES, Mention, RawMention, RawRelation, Relation
 from ..graph.keys import normalize
 
-REASONS = ("unknown_type", "blank_name", "type_conflict", "endpoint_not_mentioned", "self_loop", "duplicate_claim")
+REASONS = ("unknown_type", "blank_name", "type_conflict", "endpoint_not_mentioned", "self_loop", "duplicate_claim", "critic_drop")
 
 
-def rejected(doc_uri: str, reason: str, row: RawMention | RawRelation) -> dict:
+def rejected(doc_uri: str, reason: str, row: RawMention | RawRelation | Mention) -> dict:
     assert reason in REASONS
     return {"doc_uri": doc_uri, "reason": reason, "row": row.model_dump(exclude_none=True)}
 

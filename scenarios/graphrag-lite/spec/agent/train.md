@@ -13,7 +13,7 @@ third-party evaluator, who runs your frozen system on them:
 
 | path | what |
 |---|---|
-| `spec/` | `task.md`, `ontology.md`, `runtime.md` (how codeclimb runs your system) and this file |
+| `spec/` | `task.md`, `ontology.md`, `runtime.md` (how codeclimb runs your system), `lessons.md` (what earlier attempts learned) and this file |
 | `corpus/` | the 6 train articles, one markdown file each |
 | `train/graph.json` | the gold graph of the train articles: `documents`, `entities`, `relationships` (`mentions`, `related_to`) |
 | `train/examples/<stage>.jsonl` | train's gold for each stage, below |
@@ -60,7 +60,7 @@ Sample from `train/examples/` freely:
 - **`extraction.jsonl`:** each train document with its `known_entities` and its gold
   `entity_mention` and `related_to` rows, in the format `task.md` asks you to write (with
   `confidence`; a row whose label is a descriptive one the article never writes carries
-  `coined: true`; train has 2).
+  `coined: true`; train has none, the held-out parts some).
 - **`graph.jsonl`:** the train log with every merge decision it holds (`same_as` rows, 7 of them).
 - **`retrieval.jsonl`:** the 29 train queries with their `kind`, `difficulty`, `origin` (`graph` or
   `text`), `expected` nodes (each with a `role`: `anchor`, `bridge` or `answer`), edges (each with
@@ -95,9 +95,6 @@ evaluated, and `--root` holds only `corpus/`: copy any few-shot rows the system 
 repository, and list them in `fewshot.json`. Run it on `train/inputs/` to
 check it end to end: that run checks the plumbing, not the quality, because train is your few-shot
 material and scores high by construction.
-
-**Why one command per stage:** each stage is scored on gold input, so an error is charged to the
-stage that made it (`task.md`, The pipeline).
 
 ## Inputs and predictions
 
@@ -178,16 +175,12 @@ submission, scored fresh. Feedback is never an example: every few-shot example s
   document's entities, and retrieval's graph holds every article's, both far more than train's.
   Train's multi-hop queries all take 2 hops; `task.md` allows 3. Check cost, latency and recall
   beyond train's scale, and don't tune to train's size.
-  Train is also the sparse end: its documents are the earliest, and their gold is the sparsest,
-  about 0.7 mentions per 1000 characters. Held-out gold is denser. A count tuned on train
-  under-extracts everywhere else. Tune what to extract (the engagement rule) and how (by section),
-  not how many.
+  Train is also the sparse end (`task.md`, Density): tune what to extract and how, not how many.
 
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.
 - **Few merges.** Train holds 7 merge decisions, so one decision moves its merge rate by 14
   points, and the held-out parts are small too. Read the raw counts beside the rate.
-- **Retrieval is per kind.** Never average across kinds: they test different abilities.
 - **The feedback names kinds; train's details name items.** After a dropped round, run extraction
   on train with `--details` and read the per-item errors of the kind the feedback names, then change
   the filter or the prompt where those items show it.

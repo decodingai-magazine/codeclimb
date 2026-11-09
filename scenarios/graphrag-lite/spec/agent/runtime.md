@@ -105,7 +105,8 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   as a background job: a background job that dies says nothing. The sandbox has `date`: check the
   time before each decision, since a round has a fixed length.
 - **Your bundle** is at `/spec`: `/spec/spec/` (this spec), `/spec/corpus/` (train articles),
-  `/spec/train/` (gold graph, examples, inputs). Use `--root /spec` to run on train.
+  `/spec/train/` (gold graph, examples, inputs), `/spec/scorer/` (the official scorers, on train).
+  Use `--root /spec` to run on train.
 - **Evaluation** runs each stage on dev with gold input; each stage gets the eval time limit the
   prompt names, on its own. Only your repository, `--root`, `--inputs` and `--graph` exist there.
   `known_entities` grows with history: a held-out document gets every earlier document's entities, so
