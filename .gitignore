@@ -18,3 +18,12 @@ npm-debug.log*
 
 # misc
 .DS_Store
+
+# codeclimb night runs (experiment repo, sessions, results)
+runs/
+__pycache__/
+.venv/
+
+# the graphrag datasets stay local, whole (articles, gold, spec, evaluators): this repo is public
+scenarios/graphrag/
+scenarios/graphrag-lite/

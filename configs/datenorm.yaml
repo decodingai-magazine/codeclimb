@@ -1,0 +1,23 @@
+scenario: scenarios/datenorm
+sandbox: docker
+max_rounds: 24
+plateau_rounds: 3
+deadline: 8h
+timeouts:
+  experiment_min: 15
+  eval_min: 3
+model: github-copilot/claude-haiku-5.5
+coder_thinking: medium  # off | minimal | low | medium | high
+reviewer_model: github-copilot/claude-haiku-4.5
+reviewer_thinking: high
+allowed_models: []
+primary_metric: accuracy
+thresholds:
+  accuracy: 0.99
+gates:
+  schema_violations: 0
+  latency_query_p95_ms: 50
+budget_usd:
+  experiment: 1.0
+  night: 40.0
+results_path: runs/datenorm/results.jsonl

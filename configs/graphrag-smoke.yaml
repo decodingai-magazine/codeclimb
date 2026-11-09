@@ -1,0 +1,27 @@
+scenario: scenarios/graphrag
+sandbox: docker
+max_rounds: 2
+deadline: 3h
+timeouts:
+  experiment_min: 30
+  eval_min: 30
+model: github-copilot/claude-haiku-5.5
+coder_thinking: medium  # off | minimal | low | medium | high
+reviewer_model: github-copilot/claude-haiku-4.5
+reviewer_thinking: high
+allowed_models:
+  - openrouter/deepseek/deepseek-v4.1-flash
+  - openrouter/typesafe/jev-1.14
+  - openrouter/qwen/qwen3-embedding-4b
+  - openrouter/qwen/qwen3-reranker-8b
+primary_metric: extraction.mentions.f1
+thresholds:
+  extraction.mentions.f1: 0.8
+  extraction.relations.directed.f1: 0.6
+  graph.b_cubed.precision: 0.98
+  graph.b_cubed.recall: 0.98
+  retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
+budget_usd:
+  experiment: 2.0
+  night: 20.0
+results_path: runs/graphrag-smoke/results.jsonl
