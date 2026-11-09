@@ -3,7 +3,7 @@
 // so every experiment has a real diff, and writes a done task list and a note; every score is 0, so nothing is kept.
 import { type FauxResponseFactory, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 
-export type MockRole = "coder" | "reviewer";
+export type MockRole = "coder" | "reviewer" | "lessons";
 
 type Messages = Parameters<FauxResponseFactory>[0]["messages"];
 
@@ -23,12 +23,17 @@ export function reviewerReply() {
   return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis", verdict: "mock verdict" }));
 }
 
+/** The JSON `parseOps` wants: a night of mock rounds teaches nothing. */
+export function lessonsReply() {
+  return fauxAssistantMessage(JSON.stringify({ ops: [] }));
+}
+
 const respond: FauxResponseFactory = (context, _options, _state, model) => {
   faux.appendResponses([respond]);
-  return model.id === "reviewer" ? reviewerReply() : coderReply(context.messages);
+  return model.id === "reviewer" ? reviewerReply() : model.id === "lessons" ? lessonsReply() : coderReply(context.messages);
 };
 
-const faux = fauxProvider({ provider: "mock", models: [{ id: "coder" }, { id: "reviewer" }] });
+const faux = fauxProvider({ provider: "mock", models: [{ id: "coder" }, { id: "reviewer" }, { id: "lessons" }] });
 // Faux pops one step per call and sessions share the queue: each step refills it, the head start covers concurrency.
 faux.setResponses(Array.from({ length: 64 }, () => respond));
 

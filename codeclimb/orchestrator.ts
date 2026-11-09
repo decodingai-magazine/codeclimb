@@ -13,6 +13,7 @@ import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
+import { bundleLessonsSha } from "./lessons";
 import { isMetered, meterBaseUrl } from "./meter";
 import { checkNightModels } from "./meter/backends";
 import { nightPaths } from "./paths";
@@ -66,7 +67,10 @@ export async function initNight(cfg: NightConfig, nightId: string): Promise<Nigh
     starterExpId,
     starterSha,
   };
-  writeFileSync(paths.nightJson, JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: scoringHashes(cfg) }, null, 2));
+  writeFileSync(
+    paths.nightJson,
+    JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: scoringHashes(cfg), lessons_sha256: bundleLessonsSha(cfg, paths.bundleDir) }, null, 2),
+  );
   return init;
 }
 
@@ -191,6 +195,9 @@ export const freshNight = (init: NightInit): NightState => ({
 export async function continueNight(cfg: NightConfig, nightId: string, start: NightStart): Promise<NightState> {
   const paths = nightPaths(cfg, nightId);
   await writeBundle(cfg, nightId);
+  // The new bundle carries the lessons as they stand now: night.json says which.
+  const saved = JSON.parse(readFileSync(paths.nightJson, "utf8")) as Record<string, unknown>;
+  writeFileSync(paths.nightJson, JSON.stringify({ ...saved, lessons_sha256: bundleLessonsSha(cfg, paths.bundleDir) }, null, 2));
   const { expId, score, metrics } = keptOf(cfg, nightId);
   const sha = await new ExperimentRepo(paths.gitDir).sha(expId);
   const log = priorLog(cfg, nightId);

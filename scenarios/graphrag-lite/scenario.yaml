@@ -7,6 +7,10 @@ inngest_image: codeclimb-graphrag:v2   # the same image, linux/amd64, published 
 bundle: uv run python scripts/export_agent.py --out {out}
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
 check: uv run python scripts/check_repo.py --repo {repo} --out {report}
+# Lessons across nights: the ledger the distiller updates after each night, and the lessons.md it renders.
+lessons:
+  file: spec/agent/lessons.md
+  ledger: memory/lessons.json
 scan: uv run python scripts/scan_text.py --text {text} --out {report}
 # The metrics every round reports, per stage. The night config's thresholds decide a keep.
 headline:

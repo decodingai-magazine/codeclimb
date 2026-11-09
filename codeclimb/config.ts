@@ -72,7 +72,16 @@ export type NightConfig = {
   base_dir: string;
   /** Scripted models and canned program calls, for a free end-to-end check; see `mockConfig`. */
   mock?: boolean;
+  /**
+   * After each night, distill its rounds into the scenario's lessons (codeclimb/lessons.ts): `propose`
+   * writes the change beside the night's runs for review, `apply` writes it into the scenario too.
+   * Defaults to `propose` when the scenario declares lessons, else `off`.
+   */
+  lessons: LessonsMode;
 };
+
+export const LESSONS_MODES = ["off", "propose", "apply"] as const;
+export type LessonsMode = (typeof LESSONS_MODES)[number];
 
 function req<T>(raw: Record<string, unknown>, key: string, type: string): T {
   const v = raw[key];
@@ -92,9 +101,10 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     if (k in budget) throw new Error(`config: budget_usd.${k} is gone; budget_usd.experiment covers an experiment's development calls, and budget_usd.night every evaluation`);
   }
   const scenarioDir = abs(req(raw, "scenario", "string"));
+  const scenario = loadScenario(scenarioDir);
   const cfg: NightConfig = {
     scenario_dir: scenarioDir,
-    scenario: loadScenario(scenarioDir),
+    scenario,
     sandbox: req(raw, "sandbox", "string"),
     max_rounds: req(raw, "max_rounds", "number"),
     max_tokens: raw.max_tokens == null ? null : Number(raw.max_tokens),
@@ -123,6 +133,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     noise_margin: { min: nm.min ?? 0.002, max: nm.max ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
     results_path: abs(req(raw, "results_path", "string")),
     base_dir: baseDir,
+    lessons: (raw.lessons ?? (scenario.lessons ? "propose" : "off")) as LessonsMode,
   };
   if (raw.deadline instanceof Date) cfg.deadline = raw.deadline.toISOString();
   if (!["docker", "inngest"].includes(cfg.sandbox)) throw new Error(`config: sandbox must be docker | inngest`);
@@ -143,6 +154,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     if (!(k in cfg.thresholds)) throw new Error(`config: weights.${k} names no threshold metric`);
     if (!(typeof v === "number" && v > 0)) throw new Error(`config: weights.${k} must be a number > 0`);
   }
+  if (!LESSONS_MODES.includes(cfg.lessons)) throw new Error(`config: lessons must be ${LESSONS_MODES.join(" | ")}`);
+  if (cfg.lessons !== "off" && !cfg.scenario.lessons) throw new Error(`config: lessons is ${cfg.lessons}, but scenario ${cfg.scenario.name} declares no lessons in its scenario.yaml`);
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
   if (cfg.max_tokens !== null && !(Number.isInteger(cfg.max_tokens) && cfg.max_tokens > 0)) {
     throw new Error("config: max_tokens must be a positive integer, or omitted for no cap");

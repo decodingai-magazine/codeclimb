@@ -12,6 +12,7 @@ import { type EvalFailure, type ExperimentInput, runCoder } from "../../codeclim
 import { efficiencyMetrics, evalMinutes, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
+import { lessonsOn, proposeLessons, stoppedNight, writeProposal } from "../../codeclimb/lessons";
 import {
   checkRepo,
   checkStop,
@@ -31,13 +32,13 @@ import {
   type Noise,
   type PausedAt,
   recordNoise, recordRows, renameKept, rescoreRow, saveRejected,
-  reviewRound, smokeTest, noteOutcome, writeNote,
+  reviewRound, scanText, smokeTest, noteOutcome, writeNote,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import { writeReport } from "../../codeclimb/report/html";
 import type { HypothesisLogEntry, ReviewOutput } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
-import { ccInngest, nightResume, nightStart, nightStop } from "./client";
+import { ccInngest, nightFinished, nightResume, nightStart, nightStop } from "./client";
 
 
 /** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
@@ -397,7 +398,12 @@ export const runNight = ccInngest.createFunction(
     // After any stop: score the final kept commit on test, once per run, for the report only.
     const test = await evaluate(`test-r${round}`, round, { evalId: `${nightId}-test-r${round}`, expId: kept.expId, split: "test" });
     if (test.ok) spend += test.result.program_usd;
-    return step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
+    const summary = await step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
+    // The id holds the round: a continued night finishes again, and its new rounds are new lessons.
+    if (lessonsOn(cfg)) {
+      await step.sendEvent("lessons", { id: `lessons-${nightId}-r${round}`, name: nightFinished.name, data: { night_id: nightId, scenario: cfg.scenario.name, config: event.data.config } });
+    }
+    return summary;
   },
 );
 
@@ -408,6 +414,13 @@ export const onNightStop = ccInngest.createFunction(
     const aborted = await step.run("abort-pi", () => abortNight(event.data.night_id));
     const swept = await step.run("sweep", () => sweepNight(event.data.night_id));
     await step.run("mark-stopped", () => markStopped(event.data.night_id, event.data.reason ?? "stop"));
+    // A stopped night's rounds teach as much as a finished one's. Its second stop (a cancel) sends the same id.
+    const stopped = await step.run("find-night", () => stoppedNight(event.data.night_id));
+    if (stopped && lessonsOn(stopped)) {
+      await step.sendEvent("lessons", {
+        id: `lessons-${event.data.night_id}-stop`, name: nightFinished.name, data: { night_id: event.data.night_id, scenario: stopped.scenario.name, config: stopped },
+      });
+    }
     return { aborted, swept };
   },
 );
@@ -436,4 +449,21 @@ export const onRunCancelled = ccInngest.createFunction(
   },
 );
 
-export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled];
+/**
+ * A night's rounds into the scenario's lessons: a proposal beside the night's runs, or with `lessons:
+ * apply` the scenario's ledger itself. One at a time per scenario, so two nights never write one ledger
+ * at once. A night already distilled to its last round is skipped.
+ */
+export const distillLessons = ccInngest.createFunction(
+  { id: "distill-lessons", triggers: [nightFinished], retries: 2, concurrency: [{ key: "event.data.scenario", limit: 1 }] },
+  async ({ event, step }) => {
+    const cfg = rootConfig(event.data.config);
+    const nightId = event.data.night_id;
+    const proposal = await step.run("distill", () => proposeLessons(cfg, nightId, (text) => scanText(cfg, text)));
+    if (!proposal) return { skipped: "nothing new" };
+    const written = await step.run("write", () => writeProposal(cfg, proposal, cfg.lessons === "apply"));
+    return { ...written, ops: proposal.ops.length, rejected: proposal.rejected.length, usd: proposal.usd };
+  },
+);
+
+export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled, distillLessons];
