@@ -296,6 +296,16 @@ Rounds number on from the last one and start from the kept commit, with the last
 
 If `scenario.yaml`, the evaluators or the gold changed since the last run, one extra round scores the kept commit again first, so the next round isn't compared with scores from another evaluation.
 
+### Starting a night from an earlier night
+
+A new night can start from an ended night's kept commit instead of the scenario's starter:
+
+```bash
+npm run run-night:cloud -- --config configs/graphrag-lite.yaml --seed best
+```
+
+`--seed` (or `seed:` in the config) takes a night id, `latest` (the newest that ended) or `best` (the highest weighted dev score among the nights scored by the scenario's current evaluators and gold; test scores never count). The night gets its own id, budget and trajectory, and only the code and the dev scores it was kept on carry over: its first round must beat them. What the earlier night learned reaches it through the scenario's lessons, so a seed from a night that applies lessons waits until its distill has written them. If the evaluation changed since, one extra round scores the seed again first. Coders and reviewers read a `<start>` note naming the night it came from. `continue` is the other way on: the same night, with its whole trajectory.
+
 ### Multi-stage scenario: `graphrag`
 
 `scenarios/graphrag` is a GraphRAG system over 56 articles, scored in three stages, each on gold input: extraction (mention and relation F1), graph building (B-cubed precision and recall) and retrieval (per query kind). Its own `README.md` documents the gold data and every metric; `docs/scenario-contract.md` records how it plugs into codeclimb.

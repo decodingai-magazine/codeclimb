@@ -268,11 +268,11 @@ test("lessons: propose, skip a repeat, apply, refuse a stale proposal, and disti
   assert.equal(next?.base_sha256, sha256(readFileSync(file, "utf8")));
 });
 
-test("lessons: config defaults to propose when the scenario declares lessons, and checks the mode", () => {
+test("lessons: config defaults to apply when the scenario declares lessons, and checks the mode", () => {
   assert.equal(parseConfig(YAML, ROOT).lessons, "off");
   assert.throws(() => parseConfig(`${YAML}lessons: apply\n`, ROOT), /declares no lessons/);
   assert.throws(() => parseConfig(`${YAML}lessons: always\n`, ROOT), /lessons must be/);
   const lite = parseConfig(YAML.replace("scenarios/capitals", "scenarios/graphrag-lite"), ROOT);
-  assert.equal(lite.lessons, "propose");
+  assert.equal(lite.lessons, "apply");
   assert.equal(lite.scenario.lessons, "spec/agent/lessons.md");
 });

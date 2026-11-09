@@ -2,15 +2,20 @@
 // picks up at its kept commit with its last feedback and hypothesis, its log of rounds and its rejected
 // diffs, and its round numbers go on from the last. `reopenNight` runs before the start event goes out, so
 // from then on the night reads as running, and a second continue is refused.
+//
+// A new night can instead start from an ended night's kept commit (a seed): a new id, budget and trajectory,
+// with only the code and the dev scores it was kept on. What that night learned reaches the new one
+// through the scenario's lessons.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
+import { distilledThrough, pendingRounds } from "./lessons";
 import { nightPaths } from "./paths";
 import { nightSpend } from "./report/data";
 import { readRows, type ResultRow } from "./results";
 import type { HypothesisLogEntry } from "./reviewer";
-import type { Metrics } from "./stats";
+import { type Metrics, weightedScore } from "./stats";
 
 /** The start event's `continue`. */
 export interface NightStart {
@@ -20,12 +25,29 @@ export interface NightStart {
   rescore: boolean;
 }
 
+/** Where a seeded night starts: another night's kept commit, with the dev scores it was kept on. */
+export interface Seed {
+  night: string;
+  /** The source night's kept experiment. */
+  expId: string;
+  /** The source night's last round. */
+  round: number;
+  /** The primary metric, as a checkpoint's score. */
+  score: number;
+  metrics: Metrics;
+  /** The scorers changed since it was scored: the night scores it again before round 1's experiment. */
+  rescore: boolean;
+}
+
 interface NightFile {
   startedAt: number;
   config: NightConfig;
   metric_script_sha256: Record<string, string | null>;
   /** The night's budget for one run: a continuation adds it to what the night has spent. */
   run_budget_usd?: number;
+  /** The round-0 commit; nights before seeds always had `<id>-r0-starter`. */
+  starterExpId?: string;
+  seed?: Seed | null;
 }
 
 const readNight = (cfg: NightConfig, id: string) => JSON.parse(readFileSync(nightPaths(cfg, id).nightJson, "utf8")) as NightFile;
@@ -48,18 +70,27 @@ export function scoringHashes(cfg: NightConfig): Record<string, string | null> {
   return Object.fromEntries(scored.map((f) => [relative(cfg.base_dir, join(cfg.scenario_dir, f)), sha256(join(cfg.scenario_dir, f))]));
 }
 
+const sameScoring = (now: Record<string, string | null>, then: Record<string, string | null>): boolean =>
+  Object.keys({ ...now, ...then }).every((f) => now[f] === then[f]);
+
 /** It ran and ended: a running night's commit could still change. */
 function ended(cfg: NightConfig, id: string): boolean {
   const p = nightPaths(cfg, id);
   return existsSync(p.nightJson) && (existsSync(p.doneJson) || existsSync(p.stopJson));
 }
 
-/** The newest night that ended, among the nights sharing `cfg`'s results. */
-export function latestNight(cfg: NightConfig): string {
+/** The nights that ended, among the nights sharing `cfg`'s results, newest first. */
+function endedNights(cfg: NightConfig): string[] {
   const dir = join(nightPaths(cfg, "").root, "nights");
   const ids = (existsSync(dir) ? readdirSync(dir) : []).filter((id) => ended(cfg, id));
-  if (!ids.length) throw new Error(`no finished night under ${dir} to continue`);
-  return ids.map((id) => ({ id, at: readNight(cfg, id).startedAt })).sort((a, b) => b.at - a.at)[0].id;
+  return ids.map((id) => ({ id, at: readNight(cfg, id).startedAt })).sort((a, b) => b.at - a.at).map((n) => n.id);
+}
+
+/** The newest night that ended, among the nights sharing `cfg`'s results. */
+export function latestNight(cfg: NightConfig): string {
+  const id = endedNights(cfg)[0];
+  if (!id) throw new Error(`no finished night under ${join(nightPaths(cfg, "").root, "nights")} to continue`);
+  return id;
 }
 
 /** Throws unless a night of `cfg` can continue from `id`. */
@@ -73,10 +104,50 @@ export function checkSource(cfg: NightConfig, id: string): void {
 
 const experimentRows = (cfg: NightConfig, id: string): ResultRow[] => readRows(cfg.results_path).filter((r) => r.night_id === id && r.kind === "experiment");
 
-/** The night's checkpoint: its last keep, else its starter, which has no scores. */
+/** The night's checkpoint: its last keep, else its round-0 commit: the starter, which has no scores, or its seed. */
 export function keptOf(cfg: NightConfig, id: string): { expId: string; score: number; metrics: Metrics | null } {
   const row = experimentRows(cfg, id).filter((r) => r.decision === "keep").at(-1);
-  return row ? { expId: row.exp_id, score: row.metrics[cfg.primary_metric] ?? 0, metrics: row.metrics } : { expId: `${id}-r0-starter`, score: 0, metrics: null };
+  if (row) return { expId: row.exp_id, score: row.metrics[cfg.primary_metric] ?? 0, metrics: row.metrics };
+  const night = existsSync(nightPaths(cfg, id).nightJson) ? readNight(cfg, id) : null;
+  return { expId: night?.starterExpId ?? `${id}-r0-starter`, score: night?.seed?.score ?? 0, metrics: night?.seed?.metrics ?? null };
+}
+
+/**
+ * The night a new night starts from: an id, `latest` (the newest that ended) or `best` (the highest
+ * weighted dev score among the nights scored as the scenario scores now). Test scores never count.
+ */
+export function resolveSeed(cfg: NightConfig, wanted: string): string {
+  if (wanted === "latest") return latestNight(cfg);
+  if (wanted !== "best") return wanted;
+  const hashes = scoringHashes(cfg);
+  const scored = endedNights(cfg)
+    .filter((id) => readNight(cfg, id).config.scenario.name === cfg.scenario.name && sameScoring(hashes, readNight(cfg, id).metric_script_sha256))
+    .flatMap((id) => {
+      const { metrics } = keptOf(cfg, id);
+      return metrics ? [{ id, score: weightedScore(metrics, cfg.thresholds, cfg.weights) }] : [];
+    });
+  if (!scored.length) throw new Error("seed best: no ended night kept a commit under the scenario's current evaluation");
+  // Newest first, so a tie goes to the newer night.
+  return scored.reduce((a, b) => (b.score > a.score ? b : a)).id;
+}
+
+/**
+ * The seed from night `id`: its kept commit and the dev scores it was kept on. Refused while the night's
+ * lessons are due in lessons.md (it applies them) but not there yet: the new night would start without them.
+ */
+export function seedFrom(cfg: NightConfig, id: string): Seed {
+  checkSource(cfg, id);
+  const night = readNight(cfg, id);
+  const { expId, score, metrics } = keptOf(cfg, id);
+  if (!metrics) throw new Error(`night ${id} kept nothing: seeding from it would start from the starter`);
+  const src = night.config;
+  if (src.lessons === "apply" && !src.mock && src.scenario.lessons && pendingRounds(cfg, id) > 0) {
+    throw new Error(
+      `night ${id}'s lessons are not in lessons.md yet (applied through round ${distilledThrough(cfg, id)}): ` +
+        `wait for distill-lessons to finish, or apply its proposal with npm run lessons -- apply --night ${id}`,
+    );
+  }
+  return { night: id, expId, round: lastRound(cfg, id), score, metrics, rescore: !sameScoring(scoringHashes(cfg), night.metric_script_sha256) };
 }
 
 /** The night's last review: what its next round would have started with. */
@@ -105,8 +176,7 @@ export function reopenNight(cfg: NightConfig, id: string, rounds: number = cfg.m
   const night = readNight(cfg, id);
   const last = lastRound(cfg, id);
   const hashes = scoringHashes(cfg);
-  const same = Object.keys({ ...hashes, ...night.metric_script_sha256 }).every((f) => hashes[f] === night.metric_script_sha256[f]);
-  const rescore = !same && keptOf(cfg, id).metrics !== null;
+  const rescore = !sameScoring(hashes, night.metric_script_sha256) && keptOf(cfg, id).metrics !== null;
   const runBudget = night.run_budget_usd ?? cfg.budget_usd.night;
   const config: NightConfig = {
     ...cfg, max_rounds: last + rounds + (rescore ? 1 : 0), budget_usd: { ...cfg.budget_usd, night: spentBy(cfg, id) + runBudget },
@@ -126,8 +196,10 @@ export function priorLog(cfg: NightConfig, id: string): HypothesisLogEntry[] {
   const rows = experimentRows(cfg, id);
   // A repaired round has two rows: the last stands.
   const rounds = [...new Map(rows.map((r) => [r.round, r])).values()].sort((a, b) => a.round - b.round);
-  let parent: Metrics | null = null;
-  let parentScore = 0;
+  // A seeded night's first round moved from its seed's scores.
+  const seed = readNight(cfg, id).seed;
+  let parent: Metrics | null = seed?.metrics ?? null;
+  let parentScore = seed ? weightedScore(seed.metrics, cfg.thresholds, cfg.weights) : 0;
   return rounds.map((r): HypothesisLogEntry => {
     const before: Metrics | null = parent;
     const scoreBefore = parentScore;

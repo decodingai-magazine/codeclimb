@@ -177,7 +177,7 @@ export const runNight = ccInngest.createFunction(
     };
 
     let spend = state.spend;
-    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated.
+    // The checkpoint. Round 1's is the starter repo, scored 0 and never evaluated, or a seed with the scores it was kept on.
     let kept: Kept = state.kept;
     let feedback = state.feedback;
     let failures: EvalFailure[] = [];
@@ -198,9 +198,9 @@ export const runNight = ccInngest.createFunction(
     // The A/A move, scaled per experiment by `decideRound`; a fixed margin in the config replaces it.
     const margin = () => cfg.noise_margin.fixed ?? noise?.margin ?? 0;
 
-    // The scorers changed since the kept commit was scored: a round of its own scores it again, or the
-    // next round would be compared with scores from another evaluation.
-    if (start?.rescore) {
+    // The scorers changed since the kept commit (continued or seeded) was scored: a round of its own scores
+    // it again, or the next round would be compared with scores from another evaluation.
+    if (state.rescore) {
       round += 1;
       const at = round;
       const rescored = await step.run("rescore-name", () => renameKept(cfg, nightId, state.kept, `${nightId}-r${at}-e0`));

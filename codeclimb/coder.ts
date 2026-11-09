@@ -19,6 +19,7 @@ import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { registerLive } from "./aborts";
 import { efficiencyMetrics, type NightConfig } from "./config";
+import type { Seed } from "./continuation";
 import { type CreditStop, isCreditError } from "./credits";
 import { ExperimentRepo, expRef } from "./git";
 import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
@@ -203,9 +204,24 @@ export function formatTrajectory(rounds: TrajectoryRound[], budget = TRAJECTORY_
   return text();
 }
 
-/** The rounds before `round` as the coder and the reviewer of `round` read them. */
-export const readTrajectory = (paths: { bundleDir: string; reviewJson: (round: number) => string }, logLines: string[], round: number, budget = TRAJECTORY_CHARS): string =>
-  formatTrajectory(nightRounds(paths, logLines, round - 1), budget);
+/** Where a seeded night started, for its coders and reviewers; empty for a night from the starter. */
+export function startNote(nightJson: string): string {
+  const seed = existsSync(nightJson) ? (JSON.parse(readFileSync(nightJson, "utf8")) as { seed?: Seed | null }).seed : null;
+  if (!seed) return "";
+  const scored = seed.rescore ? "The evaluation changed since, so this night scored it again before its first experiment." : "Its dev scores carry over: the first round must beat them.";
+  return (
+    `<start>\nThis night starts from the kept commit of an earlier night (${seed.night}, after its round ${seed.round}), not from the scenario's starter: /repo starts at it, and git log shows that night's commits. ${scored} ` +
+    "That night's rounds are not shown here; what it learned is in the spec's lessons.\n</start>"
+  );
+}
+
+/** The rounds before `round` as the coder and the reviewer of `round` read them, after where a seeded night started. */
+export const readTrajectory = (
+  paths: { bundleDir: string; nightJson: string; reviewJson: (round: number) => string },
+  logLines: string[],
+  round: number,
+  budget = TRAJECTORY_CHARS,
+): string => [startNote(paths.nightJson), formatTrajectory(nightRounds(paths, logLines, round - 1), budget)].filter(Boolean).join("\n\n");
 
 /** One task of /tmp/tasks.json. */
 export interface Task {
@@ -386,7 +402,7 @@ export function coderPrompt(
       ? `\nThe diffs of the rejected attempts, each against its own parent, are read-only: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
       : "";
     parts.push(
-      "<trajectory>\nEvery earlier round of the night, oldest first. Each round holds the hypothesis it tested and what moved (each Δ is against that round's kept commit; only kept rounds are in your /repo), " +
+      "<trajectory>\nEvery earlier round of the night, oldest first, after a <start> note when the night began from an earlier night's commit. Each round holds the hypothesis it tested and what moved (each Δ is against that round's kept commit; only kept rounds are in your /repo), " +
         "each experiment's note (the loop's decision, what its coder found before the evaluation, the reviewer's verdict after it; /spec/history/notes/) and the reviewer's feedback after the round. Older rounds may be shortened to fit. " +
         "Read it as one path: what moved across rounds, what was tried more than once and what it did, which kinds of error persist. The latest round is the newest evidence, so start from it, but don't retry what an earlier round ruled out. " +
         `Where a coder's note and a verdict disagree, the verdict saw the scores. Trust all of it less than what you check yourself.${diffs}\n\n${trajectory.trim()}\n</trajectory>`,

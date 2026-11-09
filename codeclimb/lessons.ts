@@ -558,6 +558,13 @@ export function proposalsOf(cfg: NightConfig, nightId: string): { dir: string; l
     .sort((a, b) => a.lastRound - b.lastRound);
 }
 
+/** The last round of a night whose lessons are in lessons.md: the newest applied proposal's; 0 for none. */
+export const distilledThrough = (cfg: NightConfig, nightId: string): number =>
+  Math.max(0, ...proposalsOf(cfg, nightId).filter((p) => p.applied).map((p) => p.lastRound));
+
+/** How many of a night's rounds hold notes or reviews that no applied proposal covers yet. */
+export const pendingRounds = (cfg: NightConfig, nightId: string): number => gatherNight(nightPaths(cfg, nightId).nightDir, distilledThrough(cfg, nightId)).length;
+
 /** Whether a night distills lessons when it ends. A night saved before lessons existed has no mode. */
 export const lessonsOn = (cfg: NightConfig): boolean => (cfg.lessons === "propose" || cfg.lessons === "apply") && !!cfg.scenario.lessons;
 
@@ -619,7 +626,7 @@ export async function proposeLessons(cfg: NightConfig, nightId: string, scan: (t
   const file = lessonsFile(cfg);
   const baseText = readFileSync(file, "utf8");
   const doc = parseLessons(baseText);
-  const fromRound = Math.max(0, ...proposalsOf(cfg, nightId).filter((p) => p.applied).map((p) => p.lastRound));
+  const fromRound = distilledThrough(cfg, nightId);
   const night = nightPaths(cfg, nightId);
   const rounds = gatherNight(night.nightDir, fromRound);
   if (!rounds.length) return null;

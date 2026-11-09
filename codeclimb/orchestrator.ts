@@ -10,7 +10,7 @@ import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
 import { CODER_PART, notesDir, readSpecText, readTrajectory, REVIEWER_PART, trainFell } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
-import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
+import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, type Seed, seedFrom, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { bundleLessonsSha } from "./lessons";
@@ -38,6 +38,10 @@ export interface NightInit {
   deadlineMs: number;
   starterExpId: string;
   starterSha: string;
+  /** The night started from another night's kept commit, not the starter. */
+  seed: Seed | null;
+  /** The seed's night's measured noise, when the evaluation hasn't changed since. */
+  noise: Noise | null;
 }
 
 /** Writes the coder's bundle; rejected diffs stay. A replayed step writes it again. */
@@ -58,18 +62,27 @@ export async function initNight(cfg: NightConfig, nightId: string): Promise<Nigh
   await writeBundle(cfg, nightId);
   const repo = new ExperimentRepo(paths.gitDir);
   await repo.ensure();
-  const starterExpId = `${nightId}-r0-starter`;
-  const starterSha = await repo.importDir(join(cfg.scenario_dir, "starter"), starterExpId);
+  // Nights share one experiment repo: a seed's commit is already in it.
+  const seed = cfg.seed ? seedFrom(cfg, cfg.seed) : null;
+  const starterExpId = `${nightId}-r0-${seed ? "seed" : "starter"}`;
+  if (seed) await repo.alias(seed.expId, starterExpId);
+  const starterSha = seed ? await repo.sha(starterExpId) : await repo.importDir(join(cfg.scenario_dir, "starter"), starterExpId);
+  const seedNoise = seed && !seed.rescore ? nightPaths(cfg, seed.night).noiseJson : null;
+  const noise = seedNoise && existsSync(seedNoise) ? (JSON.parse(readFileSync(seedNoise, "utf8")) as Noise) : null;
+  if (noise) writeFileSync(paths.noiseJson, JSON.stringify(noise, null, 2));
   const startedAt = Date.now();
   const init: NightInit = {
     startedAt,
     deadlineMs: resolveDeadline(cfg.deadline, startedAt),
     starterExpId,
     starterSha,
+    seed,
+    noise,
   };
+  const { noise: _, ...saved } = init;
   writeFileSync(
     paths.nightJson,
-    JSON.stringify({ night_id: nightId, ...init, config: cfg, metric_script_sha256: scoringHashes(cfg), lessons_sha256: bundleLessonsSha(cfg, paths.bundleDir) }, null, 2),
+    JSON.stringify({ night_id: nightId, ...saved, config: cfg, metric_script_sha256: scoringHashes(cfg), lessons_sha256: bundleLessonsSha(cfg, paths.bundleDir) }, null, 2),
   );
   return init;
 }
@@ -170,6 +183,8 @@ export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): P
 
 /** Where a night's rounds start: nothing for a new night, what it learned for a continued one. */
 export interface NightState {
+  /** The checkpoint's scores came from another evaluation: a round of its own scores it again first. */
+  rescore: boolean;
   deadlineMs: number;
   /** The operator's direction for every new round, held-out names masked; empty without one. */
   direction: string;
@@ -187,8 +202,10 @@ export interface NightState {
 }
 
 export const freshNight = (init: NightInit): NightState => ({
-  deadlineMs: init.deadlineMs, direction: "", kept: { expId: init.starterExpId, sha: init.starterSha, score: 0, metrics: null },
-  feedback: "", hypothesis: null, log: [], history: [], round: 0, spend: 0, noise: null,
+  rescore: init.seed?.rescore ?? false,
+  deadlineMs: init.deadlineMs, direction: "",
+  kept: { expId: init.starterExpId, sha: init.starterSha, score: init.seed?.score ?? 0, metrics: init.seed?.metrics ?? null },
+  feedback: "", hypothesis: null, log: [], history: [], round: 0, spend: 0, noise: init.noise,
 });
 
 /** Picks a reopened night up at its checkpoint, on the bundle as the scenario stands now. */
@@ -207,7 +224,7 @@ export async function continueNight(cfg: NightConfig, nightId: string, start: Ni
   // New scorers make new noise: the rescored commit is measured again.
   const noise = start.rescore || !existsSync(paths.noiseJson) ? null : (JSON.parse(readFileSync(paths.noiseJson, "utf8")) as Noise);
   return {
-    deadlineMs, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, nightId), log, history, round: lastRound(cfg, nightId), spend: spentBy(cfg, nightId), noise,
+    rescore: start.rescore, deadlineMs, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, nightId), log, history, round: lastRound(cfg, nightId), spend: spentBy(cfg, nightId), noise,
   };
 }
 

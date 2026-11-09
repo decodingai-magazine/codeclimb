@@ -75,9 +75,16 @@ export type NightConfig = {
   /**
    * After each night, distill its rounds into the scenario's lessons (codeclimb/lessons.ts): `propose`
    * writes the change beside the night's runs for review, `apply` writes it into the scenario too.
-   * Defaults to `propose` when the scenario declares lessons, else `off`.
+   * Defaults to `apply` when the scenario declares lessons, else `off`. lessons.md changes in the working
+   * tree, never committed: its git diff and each proposal's changes.md are the review.
    */
   lessons: LessonsMode;
+  /**
+   * Where a new night starts: null for the scenario's starter, else an ended night's kept commit, with the
+   * dev scores it was kept on: a night id, `latest` or `best` (codeclimb/continuation.ts `resolveSeed`).
+   * The CLI resolves `latest` and `best` to an id before the night starts.
+   */
+  seed: string | null;
 };
 
 export const LESSONS_MODES = ["off", "propose", "apply"] as const;
@@ -133,7 +140,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
     noise_margin: { min: nm.min ?? 0.002, max: nm.max ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
     results_path: abs(req(raw, "results_path", "string")),
     base_dir: baseDir,
-    lessons: (raw.lessons ?? (scenario.lessons ? "propose" : "off")) as LessonsMode,
+    lessons: (raw.lessons ?? (scenario.lessons ? "apply" : "off")) as LessonsMode,
+    seed: raw.seed == null ? null : String(raw.seed),
   };
   if (raw.deadline instanceof Date) cfg.deadline = raw.deadline.toISOString();
   if (!["docker", "inngest"].includes(cfg.sandbox)) throw new Error(`config: sandbox must be docker | inngest`);

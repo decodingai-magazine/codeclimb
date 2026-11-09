@@ -1,6 +1,7 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
 //   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock]     (always on Docker)
-//   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest]
+//   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest] [--seed ID|latest|best]
+//     --seed (or the config's `seed`): start from an ended night's kept commit and its dev scores, not the starter
 //   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--night ID] [--direction TEXT] [--rounds N]
 //     more rounds on a night, from its kept commit; default: the newest night that ended
 //   npm run run-night -- stop --night ID
@@ -10,7 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
-import { latestNight, reopenNight } from "../codeclimb/continuation";
+import { latestNight, reopenNight, resolveSeed, seedFrom } from "../codeclimb/continuation";
 import { newNightId, nightPaths } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
@@ -25,6 +26,7 @@ const { values, positionals } = parseArgs({
     sandbox: { type: "string" },
     direction: { type: "string" },
     rounds: { type: "string" },
+    seed: { type: "string" },
     "no-wait": { type: "boolean", default: false },
     mock: { type: "boolean", default: false },
   },
@@ -82,6 +84,7 @@ if (positionals[0] === "stop") {
   if (positionals.length && !continuing) throw new Error(`unknown command ${positionals[0]}`);
   if (!values.config) throw new Error("usage: run-night [continue] --config <yaml>");
   if (!continuing && values.direction) throw new Error("--direction needs the continue command");
+  if (continuing && values.seed) throw new Error("--seed starts a new night: a continued night goes on from its own kept commit");
   const loaded = loadConfig(resolve(values.config));
   const cfg = values.mock ? mockConfig(loaded) : loaded;
   if (values.sandbox && values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
@@ -94,6 +97,16 @@ if (positionals[0] === "stop") {
     if (!(Number.isInteger(cfg.max_rounds) && cfg.max_rounds >= 1)) throw new Error("--rounds must be an integer >= 1");
   }
   checkSandboxLimits(cfg);
+  const wantedSeed = continuing ? null : (values.seed ?? cfg.seed);
+  cfg.seed = null;
+  if (wantedSeed) {
+    // Resolved here, so the night's events carry the night it starts from, not "best".
+    cfg.seed = resolveSeed(cfg, wantedSeed);
+    const seed = seedFrom(cfg, cfg.seed);
+    // Scoring the seed again takes a round of its own (run-night's rescore round; `reopenNight` does the same for a continue).
+    if (seed.rescore) cfg.max_rounds += 1;
+    console.log(`[run-night] seed: ${seed.expId} (night ${seed.night}), ${cfg.primary_metric}=${seed.score.toFixed(4)}${seed.rescore ? ", scored again first: the evaluation changed" : ""}`);
+  }
   await checkNightModels(cfg);
   if (cfg.mock) console.log("[run-night] mock: scripted models, metrics mean nothing");
   const nightId = continuing ? (values.night ?? latestNight(cfg)) : (values["night-id"] ?? newNightId());
