@@ -1,12 +1,15 @@
 // Pi sessions isolated from the worker host: no AGENTS.md, skills, prompt
 // templates, extensions or ~/.pi settings. Only Pi's base system prompt (with
-// cwd = /repo) plus what we pass in the user prompt reaches the model.
+// cwd = /repo) plus what we pass in the user prompt reaches the model. The one
+// extension is the coder's web research (./web), loaded only when asked for.
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createAgentSession,
   createExtensionRuntime,
+  DefaultResourceLoader,
+  type LoadExtensionsResult,
   ModelRuntime,
   type AgentSession,
   type ResourceLoader,
@@ -17,6 +20,7 @@ import {
 import type { ThinkingLevel } from "../config";
 import { type MockRole, mockModel, mockProvider } from "./mock";
 import { REPO_DIR } from "./tools";
+import { WEB_TOOLS, webExtensions } from "./web";
 
 let runtime: Promise<ModelRuntime> | undefined;
 
@@ -74,9 +78,9 @@ export async function checkModels(refs: string[]): Promise<void> {
   if (problems.length) throw new Error(`models not ready:\n  - ${problems.join("\n  - ")}`);
 }
 
-function isolatedLoader(systemPrompt?: string): ResourceLoader {
+function isolatedLoader(extensions: LoadExtensionsResult, systemPrompt?: string): ResourceLoader {
   return {
-    getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
+    getExtensions: () => extensions,
     getSkills: () => ({ skills: [], diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -102,25 +106,47 @@ export interface IsolatedSessionOptions {
   /** Replaces Pi's base prompt. Only the reviewer sets it. */
   systemPrompt?: string;
   thinkingLevel: ThinkingLevel;
+  /** Web research (pi-web-access behind a guard); `repos` are the `owner/repo` slugs it never reads. */
+  web?: { repos: string[] };
+}
+
+/** pi-web-access and its guard, loaded through Pi's own loader with everything else off. */
+async function loadWeb(agentDir: string, repos: string[], active: string[]): Promise<LoadExtensionsResult> {
+  const loader = new DefaultResourceLoader({
+    cwd: REPO_DIR,
+    agentDir,
+    noExtensions: true,
+    extensionFactories: webExtensions(repos, active),
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await loader.reload();
+  const loaded = loader.getExtensions();
+  if (loaded.errors.length) throw new Error(`web research failed to load: ${loaded.errors.map((e) => `${e.path}: ${e.error}`).join("; ")}`);
+  return loaded;
 }
 
 export async function createIsolatedSession(opts: IsolatedSessionOptions): Promise<AgentSession> {
   // An empty agent dir: nothing from ~/.pi/agent is discovered.
   const agentDir = join(tmpdir(), "codeclimb-pi-agent");
   mkdirSync(agentDir, { recursive: true });
+  const names = [...(opts.tools ?? []).map((t) => t.name), ...(opts.web ? WEB_TOOLS : [])];
+  const extensions = opts.web ? await loadWeb(agentDir, opts.web.repos, names) : { extensions: [], errors: [], runtime: createExtensionRuntime() };
   const { session } = await createAgentSession({
     cwd: REPO_DIR,
     agentDir,
     modelRuntime: await modelRuntime(),
     model: opts.mock ? mockModel(opts.mock) : await resolveModel(opts.model),
     thinkingLevel: opts.thinkingLevel,
-    resourceLoader: isolatedLoader(opts.systemPrompt),
+    resourceLoader: isolatedLoader(extensions, opts.systemPrompt),
     settingsManager: SettingsManager.inMemory({
       compaction: { enabled: true },
       retry: { enabled: true, maxRetries: 4 },
     }),
     sessionManager: opts.sessionManager,
-    ...(opts.tools ? { customTools: opts.tools, tools: opts.tools.map((t) => t.name) } : { noTools: "all" as const }),
+    ...(names.length ? { customTools: opts.tools ?? [], tools: names } : { noTools: "all" as const }),
   });
   return session;
 }

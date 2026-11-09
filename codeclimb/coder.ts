@@ -26,6 +26,7 @@ import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter
 import { nightPaths, sandboxName } from "./paths";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
 import { sandboxTools } from "./pi/tools";
+import { originRepo } from "./pi/web";
 import { sandboxBackend } from "./sandbox";
 import { commitAndExport } from "./sandbox/repo";
 import type { Sandbox } from "./sandbox/types";
@@ -489,8 +490,10 @@ export const WORKFLOW = [
   "Work in four steps:",
   "1. Research. First run the program in /repo on two or three train items, or cases you write, so you know it runs and where it stands. " +
     "If /spec/train exists, score the code you start from on it now, the same way you will score your change and on items no few-shot example comes from, and keep the numbers for /tmp/train-score.json. " +
-    "Then, before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources. " +
-    "The sandbox has internet access but no browser or curl: fetch pages with python3 (urllib), such as a package's docs, its README on GitHub, PyPI, or a paper on the method. " +
+    "Then, before you write code, find out what you need to do this attempt well: the parts of the spec it touches, the code in /repo, and outside sources: " +
+    "how others solved the same problem, the algorithms and libraries that fit it, and the docs of the ones you will use. " +
+    "Search with web_search and read a result in full with fetch_content (a package's docs, a file on GitHub by its /blob/ URL, PyPI, a paper's HTML version or PDF); " +
+    "a long page continues with get_search_content. Don't write fetch scripts in the sandbox. " +
     "Spend at most a fifth of your time here, and stop once you know how you will build it.",
   '2. Plan. Write your plan of attack to /tmp/tasks.json, a JSON list in the order you will do the tasks: one task per change, as {"task": "...", "check": "how you will check it", "status": "todo"}. ' +
     "It stays outside /repo, so it isn't committed.",
@@ -629,6 +632,8 @@ export async function runCoder(
     mock: cfg.mock ? "coder" : undefined,
     thinkingLevel: cfg.coder_thinking,
     tools: sandboxTools(sandbox, token ? { env: meterEnv(token, meterUrl) } : {}),
+    // Research on the host (pi-web-access), never on a scripted night: it would reach the real web.
+    web: cfg.mock ? undefined : { repos: [originRepo(cfg.base_dir)].filter((r): r is string => !!r) },
     sessionManager: sessionManagerFor(sessionDir, resumed ? sessionFile : undefined),
   });
 
