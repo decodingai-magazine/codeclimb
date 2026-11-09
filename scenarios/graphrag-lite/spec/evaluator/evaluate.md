@@ -82,15 +82,13 @@ For each `headline` metric:
   than dev, so a small drop on the graph stage is expected as new entities arrive.
 - **Graph:** read `b_cubed.precision` and `b_cubed.recall` apart (a wrong merge is worse than a wrong
   split), and only the recall above `baselines.history_only.recall` measures merging. Dev holds 9
-  merge decisions (about 11 points of `merge_decisions.rate` each), test 6 (about 17).
-- **Retrieval:** per kind, never averaged across kinds. Read each kind's `subgraph_precision` beside
-  its recall: recall bought by returning the neighbourhood shows up there. The `hard` difficulty is
-  the structure tier: report it apart.
+  merge decisions, test 6: `--details` lists the ones missed.
+- **Retrieval:** only `single_hop` is scored; the other kinds are answered and left unscored. Read
+  `answer_mrr` beside `edge_recall_at_k`: recall@5 can't tell an answer ranked first from one ranked
+  fifth. Read `edge_precision` too: recall bought by returning the neighbourhood shows up there.
 
-Precision of the numbers: dev has 2 to 12 queries per kind (`single_hop` 12, `multi_hop` 10,
-`comparison` 6, `intersection` 6, `aggregation` 5, `temporal` 5, `unanswerable` 2); test has 2 to 11 queries per kind (`single_hop` 11, `multi_hop` 11,
-`intersection` 9, `comparison` 8, `aggregation` 7, `temporal` 7, `unanswerable` 2). A
-pass/fail metric near 0.5 has a 95% interval of about ±30 points at 11 rows and ±35 at 8. Read the
+Precision of the numbers: single-hop is a few dozen queries per part at most. A recall near 0.5 has
+a 95% interval of about ±30 points at 11 rows. Read the
 `ci95` the report gives; two systems whose intervals overlap are not separated.
 
 ## Checks on the agent's work
@@ -118,5 +116,5 @@ Judge these apart and say so:
   `passage_tokens` the envelopes report.
 - **Code**: whether a stage could be swapped without touching the others.
 - **Not measurable from this gold**: `count`, `confidence`, `domain`, `released`, `country`, and
-  `description` (needs a judge). The coined labels need a judge too. The anchor-rarity and BM25-miss
-  retrieval slices are not wired.
+  `description` (needs a judge). The coined labels need a judge too. Types count only through the
+  mention match, relation labels not at all, and retrieval kinds other than `single_hop` aren't scored.

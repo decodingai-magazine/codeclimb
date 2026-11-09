@@ -51,7 +51,7 @@ between two of them:
 ```
 
 - **Scored fields:** `kind`, `doc_uri`, `name`, `type` and `aliases` on a mention; `source_name` and
-  `target_name` on a relation. `semantic_type` counts only in the `labeled` variant. `description`,
+  `target_name` on a relation. `semantic_type` is not scored. `description`,
   `properties`, `count`, `confidence` and the document's `domain` are part of the ontology but not
   scored; the gold has them for every entity. Extract `description` and `properties` for every
   entity anyway if you can: they give your merging and retrieval something to compare.
@@ -85,7 +85,7 @@ between two of them:
   cost recall here (`lessons.md`, Failed, more than once).
 - **One label per claim.** Reuse a `semantic_type` you already wrote in earlier documents rather
   than rewording it (`applied_to`, never `applies_to` beside it). The gold labels are never shown to
-  you. **Why:** labels are scored only in the `labeled` relation variant, but a graph with two
+  you. **Why:** labels are not scored, but a graph with two
   spellings for one claim can't be queried by label. Train's claims use 26 labels, and eight
   of them (`uses`, `used_for`, `instance_of`, `implements`, `compared_with`, `applied_to`, `supports`,
   `integrates_with`) cover most claims. Reuse before coining.
@@ -302,8 +302,6 @@ Primary metrics, all in the evaluator's report:
 
 | stage | primary | why |
 |---|---|---|
-| extraction | mention F1 (micro) and `related_to` F1 (directed); type accuracy beside them | entities and claims are what the graph is made of |
-| graph building | B-cubed precision and recall, read apart, against the history-only baseline | the baseline merges nothing new; only recall above it measures your merging |
-| retrieval | per kind: `single_hop` and `comparison` edge recall@5, `multi_hop` path completeness, `aggregation` and `temporal` R-precision, `intersection` answer MRR, `unanswerable` abstention; subgraph precision for every kind | each kind tests a different ability; precision stops recall being bought by returning everything |
-
-Never collapse retrieval into one average across kinds: the kinds test different things.
+| extraction | mention F1 (micro) and `related_to` F1 (directed), with their precision and recall | entities and claims are what the graph is made of; a mention with the wrong type is a miss |
+| graph building | B-cubed recall, with precision held high, against the history-only baseline | the baseline merges nothing new; only recall above it measures your merging |
+| retrieval | `single_hop` only: edge recall@5 and answer-node MRR, with edge precision beside them | the other kinds are answered but not scored; MRR reads whether the answer comes first, and precision stops recall being bought by returning everything |

@@ -136,8 +136,7 @@ def score_document(gold_m: list[dict], gold_r: list[dict], pred_m: list, pred_r:
     index = {g["surface_id"]: i for i, g in enumerate(gold_m)}
 
     gold_pairs = {(index[r["source_id"]], index[r["target_id"]]) for r in gold_r}
-    gold_labeled = {(index[r["source_id"]], index[r["target_id"]], r["semantic_type"]) for r in gold_r}
-    pred_pairs, pred_labeled, unresolved = set(), set(), 0
+    pred_pairs, unresolved = set(), 0
     for r in pred_r:
         a, b = resolve_end(r.source_name, r.source_type, pred_m), resolve_end(r.target_name, r.target_type, pred_m)
         unresolved += (a is None) + (b is None)
@@ -146,8 +145,6 @@ def score_document(gold_m: list[dict], gold_r: list[dict], pred_m: list, pred_r:
         else:  # an end with no matched mention: a false positive, kept distinct by its surfaces
             pair = (("x", normalize(r.source_name), r.source_type), ("x", normalize(r.target_name), r.target_type))
         pred_pairs.add(pair)
-        pred_labeled.add((*pair, r.semantic_type))
-    undirected = lambda pairs: {frozenset(p[:2]) for p in pairs}  # noqa: E731
     matched_gold = set(typed.values())
     return {
         "typed": typed,
@@ -157,12 +154,8 @@ def score_document(gold_m: list[dict], gold_r: list[dict], pred_m: list, pred_r:
             "tp_strict": len(matched_gold - coined),
             "predicted": len(pred_m),
             "gold_strict": len(gold_m) - len(coined),
-            "coined_gold": len(coined),
-            "coined_matched": len(matched_gold & coined),
         },
         "directed": (len(pred_pairs & gold_pairs), len(pred_pairs), len(gold_pairs)),
-        "undirected": (len(undirected(pred_pairs) & undirected(gold_pairs)), len(undirected(pred_pairs)), len(undirected(gold_pairs))),
-        "labeled": (len(pred_labeled & gold_labeled), len(pred_labeled), len(gold_labeled)),
         "unresolved_ends": unresolved,
         "pairs": (gold_pairs, pred_pairs),
     }
@@ -254,7 +247,7 @@ def examples(out_path: Path) -> None:
 def score(split_name: str, predictions: Path, out_path: Path, details: bool, skip_docs: tuple[str, ...]) -> None:
     """Score predicted rows against the held-out documents' gold rows."""
     refuse_test_details(split_name, details)
-    history, held = held_out(split_name)
+    _, held = held_out(split_name)
     unknown = sorted(set(skip_docs) - set(held))
     if unknown:
         raise click.BadParameter(f"not held-out documents of {split_name}: {', '.join(unknown)}", param_hint="--skip-doc")
@@ -275,36 +268,24 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool, ski
             (pred_m if p.kind == "entity_mention" else pred_r)[p.doc_uri].append(p)
     coined = coined_rows()
 
-    totals, confusion, macro_m, macro_r, per_doc, groups = Counter(), defaultdict(Counter), [], [], {}, Counter()
+    totals, per_doc, groups = Counter(), {}, Counter()
     for u in held:
         gm = gold_m[u]
         doc_coined = {i for i, g in enumerate(gm) if (u, g["surface_id"]) in coined}
         s = score_document(gm, gold_r[u], pred_m[u], pred_r[u], doc_coined)
-        m = s["mentions"]
-        totals.update(m)
-        for name in ("directed", "undirected", "labeled"):
-            tp, pr, go = s[name]
-            totals.update({f"{name}_tp": tp, f"{name}_predicted": pr, f"{name}_gold": go})
-        totals["unresolved_ends"] += s["unresolved_ends"]
-        for j, i in s["untyped"].items():
-            confusion[gm[i]["type"]][pred_m[u][j].type] += 1
-        if m["gold_strict"]:
-            macro_m.append(f1(ratio(m["tp"], m["predicted"]), ratio(m["tp_strict"], m["gold_strict"])) or 0.0)
-        if s["directed"][2]:
-            tp, pr, go = s["directed"]
-            macro_r.append(f1(ratio(tp, pr), ratio(tp, go)) or 0.0)
+        totals.update(s["mentions"])
+        tp, pr, go = s["directed"]
+        totals.update({"directed_tp": tp, "directed_predicted": pr, "directed_gold": go, "unresolved_ends": s["unresolved_ends"]})
         if details:
             per_doc[u] = document_details(gm, pred_m[u], pred_r[u], gold_r[u], s, doc_coined)
             groups.update(error_groups(s))
 
     p_m = ratio(totals["tp"], totals["predicted"])
     r_m = ratio(totals["tp_strict"], totals["gold_strict"])
-    matched_untyped = sum(sum(c.values()) for c in confusion.values())
-    correct = sum(confusion[t][t] for t in confusion)
+    directed = prf(totals["directed_tp"], totals["directed_predicted"], totals["directed_gold"])
     report = {
-        **split_header(split_name, len(history), len(held), "documents"),
+        **split_header(split_name),
         "documents": {
-            "with_gold_mentions": sum(1 for u in held if gold_m[u]),
             "without_predictions": [u for u in held if not pred_m[u] and not pred_r[u]],
             "empty": sum(1 for u in held if not pred_m[u] and not pred_r[u]),
             "predicted_rows_outside_held_out": outside,
@@ -313,34 +294,14 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool, ski
             "precision": p_m,
             "recall": r_m,
             "f1": f1(p_m, r_m),
-            "tp": totals["tp"],
-            "predicted": totals["predicted"],
-            "gold": totals["gold_strict"],
-            "macro_f1": sum(macro_m) / len(macro_m) if macro_m else None,
-            "macro_documents": len(macro_m),
-            "note": "precision counts a match to any gold row; recall leaves the coined rows out",
-        },
-        "coined": {
-            "gold": totals["coined_gold"],
-            "matched": totals["coined_matched"],
-            "note": "labels absent from the body; judged apart (not wired)",
-        },
-        "type_accuracy": {
-            "matched_ignoring_type": matched_untyped,
-            "correct": correct,
-            "accuracy": ratio(correct, matched_untyped),
-            "confusion": {g: dict(sorted(c.items())) for g, c in sorted(confusion.items())},
+            "note": "precision counts a match to any gold row; recall leaves the coined rows (labels absent from the body) out",
         },
         "relations": {
-            "directed": prf(totals["directed_tp"], totals["directed_predicted"], totals["directed_gold"]),
-            "undirected": prf(totals["undirected_tp"], totals["undirected_predicted"], totals["undirected_gold"]),
-            "labeled": prf(totals["labeled_tp"], totals["labeled_predicted"], totals["labeled_gold"]),
-            "macro_f1_directed": sum(macro_r) / len(macro_r) if macro_r else None,
-            "macro_documents": len(macro_r),
+            "directed": {k: directed[k] for k in ("precision", "recall", "f1")},
             "unresolved_ends": totals["unresolved_ends"],
-            "note": "directed is primary; labels are ignored except in `labeled`",
+            "note": "relation labels are ignored; an end that names no predicted mention is unresolved",
         },
-        "not_measured": ["count", "confidence", "domain", "released", "country", "description (needs a judge)"],
+        "not_measured": ["types apart from matching", "relation labels", "count", "confidence", "domain", "released", "country", "description (needs a judge)"],
     }
     if details:
         report["details"] = {"summary": dict(sorted(groups.items())), **per_doc}

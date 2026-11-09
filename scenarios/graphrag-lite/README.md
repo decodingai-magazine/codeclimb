@@ -468,14 +468,15 @@ type plus the key of any name or alias.
 Input: one document, the ontology and the earlier documents' entities. Gold: its `entity_mention`
 and `related_to` rows.
 
-- **Mention precision, recall, F1** (headline): micro over documents, plus per-document macro. One
-  to one: each gold row matches once, a name-to-name hit preferred. Recall leaves the 10 coined rows
-  out (they need a judge on the description) and reports them apart.
-- **Type accuracy:** match ignoring type, then a 6×6 confusion matrix; `tool`/`system` and
-  `method`/`system` are the confusions the type tests exist for.
-- **`related_to` P/R/F1:** both ends resolve to the document's predicted mentions by key and must
-  match the gold ends. `directed` is primary; `undirected` and `labeled` (exact `semantic_type`)
-  beside it.
+- **Mention precision, recall, F1** (headline): micro over documents. One to one: each gold row
+  matches once, a name-to-name hit preferred. Recall leaves the 10 coined rows out (they need a judge
+  on the description). A type counts only through the match: a mention with the wrong type is a miss
+  and a false positive (`--details` lists the type errors).
+- **`related_to` P/R/F1, directed** (headline): both ends resolve to the document's predicted mentions
+  by key and must match the gold ends, in order; labels are ignored. `unresolved_ends` counts ends
+  that name no predicted mention.
+- **Guards:** `documents.empty` (a held-out document with no rows back) and
+  `documents.predicted_rows_outside_held_out`.
 
 Not measurable here: `count` (bare shorthand was counted: `tester agent` has 10 for one full-name
 use), `confidence` (review rows carry a flat 1.0), `domain` (54 of 56 documents are only
@@ -490,12 +491,11 @@ builder's errors are its own. Gold: each `surface_id` → its terminal id.
 - **B-cubed precision and recall** over `entity_mention` rows: per row, overlap ÷ predicted cluster
   (precision) and overlap ÷ gold cluster (recall). Read apart: precision drops on over-merges,
   recall on under-merges, and a wrong merge is worse than a wrong split.
-- **Baselines:** no merge at all scores P 1.000, R 0.943 over all documents, so only the last 6
-  recall points measure merging. Per part, the evaluator reports `history_only` (the given history,
-  nothing new merged).
-- **Merge decisions:** the hidden `same_as` rows got right, by reason, plus `wrong_merges`: the
-  held-out surfaces that share a predicted entity with another gold entity (one bad merge of two
-  held-out surfaces counts both).
+- **Baseline:** no merge at all scores P 1.000, R 0.943 over all documents, so only the last 6
+  recall points measure merging. Per part, the evaluator reports `baselines.history_only.recall` (the
+  given history, nothing new merged): only recall above it is the builder's.
+- **Guards:** `surfaces.*` count surfaces left without an assignment and assignments to surfaces
+  outside the cut log. `--details` lists the missed and the wrong merges.
 
 ### 3. Retrieval
 
@@ -506,22 +506,18 @@ extraction of every document. The agent's bundle carries train's graph in its pl
 key; an edge on both ends and direction (`compared_with`, `alternative_to` either way; label and
 `doc_uri` ignored, a strict variant needs the label); a document on `doc_uri`.
 
-| metric | primary for | why |
-|---|---|---|
-| edge recall@k (k = 5) | `single_hop`, `comparison` | a node can come back for the wrong reason, an edge can't |
-| path completeness | `multi_hop` | 1 when every edge of the path is back; half a path is no answer |
-| R-precision / set F1 | `aggregation`, `temporal` | cut at the expected size: a fixed k caps recall, no cut rewards returning the corpus |
-| answer-node MRR | `intersection` (with edge recall over its two edges) | the only metric that reads order |
-| abstention | `unanswerable` | an empty envelope is right |
-| subgraph precision, with returned size | every kind | recall can be bought by returning the neighbourhood |
+Every kind is answered (`spec/agent/task.md`), but only `single_hop` is scored:
 
-Diagnostics: anchor recall (did the engine find the query's entities), node recall@k, strict edge
-recall, `temporal_distractors` (documents outside the window returned). Every metric is reported per
-`kind`, `difficulty` and `origin` with a seeded bootstrap 95% interval; a metric that can't apply is
-left out of the mean, never zero; never one average across kinds. Report the `hard` rows apart:
-only structure answers them, so pooling makes "the graph adds value" circular.
+| metric | why |
+|---|---|
+| edge recall@k (k = 5) (headline) | a node can come back for the wrong reason, an edge can't |
+| answer-node MRR (headline) | the only metric that reads order: recall@5 can't tell rank 1 from rank 5 |
+| edge precision | recall can be bought by returning the neighbourhood |
 
-Precision: at 176 reader-tier queries recall is good to about ±7 points; at 54 hard queries ±14.
+Each is a mean over the part's single-hop queries with a seeded bootstrap 95% interval (`ci95`); a
+metric that can't apply to a query is left out of its mean, never zero. `--unranked` replaces recall@5
+with recall over every edge returned and drops MRR. `rows.envelopes_outside_held_out` counts envelopes
+for queries outside the part. Single-hop is a few dozen queries per part, so read the `ci95`.
 
 ## Evaluators
 
@@ -534,19 +530,16 @@ Scoring above. Only the evaluator runs them.
 
 `summary.py --stage <stage> --predictions-dir <dir>` scores `dev.jsonl` (required), `train.jsonl`
 and `test.jsonl` (optional) and writes `headline`: each primary metric for train, dev and test, with
-`dev_ci95` for retrieval and `gap` (test minus dev). Graph's merge decisions are a rate there, so
-the parts compare. Without `test.jsonl`, test and gap are
+`dev_ci95` for retrieval and `gap` (test minus dev). Without `test.jsonl`, test and gap are
 null: the evaluator runs it on each dev submission, then once with test (`spec/evaluator/evaluate.md`).
 
-Gates the evaluators pass: gold predictions score 1.0 on every metric on train, dev and test
-(intersection MRR needs the answer node listed first); empty predictions give recall 0 and
-abstention 1. Perturbations move only what they should: a dropped mention lowers recall only; a
-flipped type lowers precision, recall and type accuracy and shows in the confusion matrix; a
-reversed relation lowers `directed` but not `undirected`; a wrong label lowers only `labeled`; a
-name swapped with its alias still matches; a wrong merge lowers B-cubed precision only; a missing
-merge lowers recall and the merge count; an answer at rank 2 halves that row's MRR; an
-out-of-window document counts as a temporal distractor; a reversed edge misses unless it is
-`compared_with` or `alternative_to`; `--unranked` drops every metric that reads order.
+Gates the evaluators pass: gold predictions score 1.0 on every metric on train, dev and test (MRR
+needs the answer node listed first); empty predictions give recall 0. Perturbations move only what
+they should: a dropped mention lowers recall only; a flipped type lowers mention precision and
+recall; a reversed relation lowers `directed`; a wrong label changes nothing; a name swapped with its
+alias still matches; a wrong merge lowers B-cubed precision only; a missing merge lowers recall; an
+answer at rank 2 halves that row's MRR; a reversed edge misses unless it is `compared_with` or
+`alternative_to`; `--unranked` drops every metric that reads order.
 
 ## Scripts
 

@@ -27,23 +27,17 @@ HEADLINE = {
         "mentions.precision",
         "mentions.recall",
         "relations.directed.f1",
-        "type_accuracy.accuracy",
     ],
     "graph": [
         "b_cubed.precision",
         "b_cubed.recall",
         "baselines.history_only.recall",
-        "merge_decisions.rate",
-        "merge_decisions.wrong_merges",
     ],
 }
 
 
 def lookup(report: dict, path: str):
-    """A dotted path into a report; `merge_decisions.rate` is derived, so test and dev compare as rates, not counts."""
-    if path == "merge_decisions.rate":
-        m = report.get("merge_decisions", {})
-        return m["correct"] / m["gold"] if m.get("gold") else None
+    """A dotted path into a report."""
     node = report
     for part in path.split("."):
         if not isinstance(node, dict) or part not in node:
@@ -53,7 +47,7 @@ def lookup(report: dict, path: str):
 
 
 def headline_paths(stage: str, reports: list[dict]) -> list[tuple[str, str]]:
-    """(label, path into the report). Retrieval's headline is each kind's primary metrics, read from the reports."""
+    """(label, path into the report). Retrieval's headline is the scored kind's primary metrics, read from the reports."""
     if stage != "retrieval":
         return [(p, p) for p in HEADLINE[stage]]
     out = {}
@@ -121,7 +115,7 @@ def main(stage: str, predictions_dir: Path, out_path: Path, mode: str | None, ra
         "headline": headline,
         "note": "gap = test minus dev; a drop beyond dev_ci95 (retrieval) or a few points (extraction, graph) "
         "means the system was fit to dev. Train is few-shot material, so a high train score proves nothing. "
-        "Retrieval kinds are never averaged together.",
+        "Retrieval scores single_hop only.",
         **reports,
     }
     write_report(out_path, report)

@@ -104,8 +104,9 @@ def write_report(path: Path, report: dict) -> None:
     path.write_text(json.dumps(report, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
-def split_header(split_name: str, history: int, held: int, unit: str) -> dict:
-    return {"split": split_name, "splits_params": splits()["params"], f"history_{unit}": history, f"held_out_{unit}": held}
+def split_header(split_name: str) -> dict:
+    """The part a report scores. Counts stay out: every number in a report is read as a metric."""
+    return {"split": split_name}
 
 
 def ratio(a: int, b: int) -> float | None:

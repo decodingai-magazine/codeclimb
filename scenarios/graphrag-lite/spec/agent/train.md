@@ -67,7 +67,7 @@ Sample from `train/examples/` freely:
   the `doc_uri` it was read from) and documents. Every one is answered by
   the train articles alone, so the mix leans on what 6 articles hold: 9 `single_hop`, 7
   `multi_hop`, 4 `comparison`, 3 `intersection`, 3 `temporal`, 2 `unanswerable`, 1 `aggregation`.
-  The evaluation scores every kind `task.md` lists.
+  The evaluation answers every kind `task.md` lists and scores `single_hop` only.
 
 **Why train is the earliest part:** gold rows reuse the canonical name from the first document that
 named the entity, so a later document's rows would reveal earlier documents' answers. Train comes

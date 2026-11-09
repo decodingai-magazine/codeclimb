@@ -21,7 +21,7 @@ thresholds:
   graph.b_cubed.precision: 0.98
   graph.b_cubed.recall: 0.98
   retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean: 0.7
-  retrieval.by_kind.multi_hop.metrics.path_complete.mean: 0.3
+  retrieval.by_kind.single_hop.metrics.answer_mrr.mean: 0.8  # the answer ranked first for most one-hop queries
 budget_usd:
   experiment: 2.5
   night: 15

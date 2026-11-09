@@ -160,16 +160,9 @@ def score(split_name: str, mode: Mode, predictions: Path, out_path: Path, detail
         return given(s) if mode == "gold-history" and not is_held(s) else s
 
     result = b_cubed(mentions, gold, pred, held_docs)
-    no_merge = b_cubed(mentions, gold, lambda s: s, held_docs)
     history_only = b_cubed(mentions, gold, lambda s: s if is_held(s) else given(s), held_docs)
 
-    decisions = Counter()
-    missed = []
-    for r in cut["hidden"]:
-        ok = pred(r["from_id"]) == pred(r["to_id"])
-        decisions[(r["reason"], ok)] += 1
-        if not ok:
-            missed.append(f"{names[r['from_id']]} -> {names[r['to_id']]} ({r['reason']})")
+    missed = [f"{names[r['from_id']]} -> {names[r['to_id']]} ({r['reason']})" for r in cut["hidden"] if pred(r["from_id"]) != pred(r["to_id"])]
     members = defaultdict(set)
     for s in first_seen:
         members[pred(s)].add(s)
@@ -179,14 +172,11 @@ def score(split_name: str, mode: Mode, predictions: Path, out_path: Path, detail
             others = sorted({names[u] for u in members[pred(s)] if gold(u) != gold(s)})
             if others:
                 wrong.append(f"{names[s]} merged with {', '.join(others)}")
-    reasons = sorted({r for r, _ in decisions})
 
     report = {
-        **split_header(split_name, len(cut["history"]), len(cut["held"]), "documents"),
+        **split_header(split_name),
         "mode": mode,
-        "rows": {"in_cut_log": len(mentions), "held_out": result["rows"]},
         "surfaces": {
-            "held_out": sum(map(is_held, first_seen)),
             "missing_held_out_assignments": len(missing_held),
             "missing_history_assignments": len(missing_history),
             "assignments_outside_cut_log": ignored,
@@ -194,19 +184,10 @@ def score(split_name: str, mode: Mode, predictions: Path, out_path: Path, detail
         },
         "b_cubed": {"precision": result["precision"], "recall": result["recall"]},
         "baselines": {
-            "no_merge": {"precision": no_merge["precision"], "recall": no_merge["recall"]},
             "history_only": {
-                "precision": history_only["precision"],
                 "recall": history_only["recall"],
                 "note": "the given history, and every held-out surface its own entity: what a builder that merges nothing new scores",
             },
-        },
-        "merge_decisions": {
-            "gold": sum(decisions.values()),
-            "correct": sum(n for (_, ok), n in decisions.items() if ok),
-            "by_reason": {r: {"gold": decisions[(r, True)] + decisions[(r, False)], "correct": decisions[(r, True)]} for r in reasons},
-            "wrong_merges": len(wrong),
-            "note": "a decision is a hidden same_as row; a wrong merge puts a held-out surface with another gold entity",
         },
     }
     if details:
@@ -214,7 +195,7 @@ def score(split_name: str, mode: Mode, predictions: Path, out_path: Path, detail
     write_report(out_path, report)
     logger.info(
         f"B-cubed P={fmt(result['precision'])} R={fmt(result['recall'])} (history-only R={fmt(history_only['recall'])}); "
-        f"merges {report['merge_decisions']['correct']}/{report['merge_decisions']['gold']}, wrong {len(wrong)} -> {out_path}"
+        f"{len(cut['hidden']) - len(missed)}/{len(cut['hidden'])} merges, {len(wrong)} wrong -> {out_path}"
     )
 
 
