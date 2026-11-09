@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
-import { CODER_PART, notesDir, readSpecText, REVIEWER_PART, trainFell } from "./coder";
+import { CODER_PART, notesDir, readSpecText, readTrajectory, REVIEWER_PART, trainFell } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, spentBy } from "./continuation";
 import type { EvalResult } from "./evaluate";
@@ -640,7 +640,7 @@ export async function reviewRound(args: {
       ...summary, diff, details: readDetails(args.cfg, metricsPath), logs: readRunLogs(args.cfg, metricsPath),
       sameOutput: sameOutputStages(args.cfg, metricsPath, nightPaths(args.cfg, args.nightId).evalDir(`${args.parentExpId}-eval`)),
     },
-    log: args.log,
+    trajectory: readTrajectory(nightPaths(args.cfg, args.nightId), args.log.map((l) => logLine(l, args.cfg.scenario.headline.length ? null : args.cfg.primary_metric)), args.round),
     direction: args.direction,
     ...(args.coderNotes?.trim() ? { coderNotes: args.coderNotes } : {}),
     ...coderWork(args.cfg, args.nightId, summary.expId),

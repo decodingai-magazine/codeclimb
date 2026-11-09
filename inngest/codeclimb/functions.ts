@@ -269,7 +269,7 @@ export const runNight = ccInngest.createFunction(
         const code = (resume: number) => {
           const data: ExperimentEvent = {
             nightId, expId, parentExpId, round, model: cfg.model,
-            feedback, history, direction, standing, standingCi, ...input, config: cfg, ...(resume ? { resume: true } : {}),
+            history, direction, standing, standingCi, ...input, config: cfg, ...(resume ? { resume: true } : {}),
           };
           return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, code: out.code, runId: out.runId }),

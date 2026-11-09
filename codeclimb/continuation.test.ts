@@ -167,9 +167,9 @@ test("a continued night picks up its kept commit, learning and rejected diffs, u
   assert.deepEqual([failed.decision, failed.exp_id, failed.commit, failed.metrics.accuracy], ["keep", "n1-r3-e0", sha, 0.5]);
 });
 
-test("a direction reaches the coder ahead of the feedback", () => {
-  const prompt = coderPrompt("spec", "feedback", null, 10, undefined, undefined, undefined, [], [], [], false, "work on retrieval");
-  assert.ok(prompt.indexOf("<direction>") > 0 && prompt.indexOf("<direction>") < prompt.indexOf("<feedback>"));
+test("a direction reaches the coder ahead of the trajectory", () => {
+  const prompt = coderPrompt("spec", "<round n=\"1\" latest>\n</round>", null, 10, undefined, undefined, undefined, [], [], false, "work on retrieval");
+  assert.ok(prompt.indexOf("<direction>") > 0 && prompt.indexOf("<direction>") < prompt.indexOf("<trajectory>"));
   assert.match(prompt, /every round[\s\S]*work on retrieval/);
   assert.doesNotMatch(coderPrompt("spec", "", null, 10), /<direction>/);
 });

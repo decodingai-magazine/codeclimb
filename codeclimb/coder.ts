@@ -39,13 +39,11 @@ export type ExperimentInput = {
   parentExpId: string;
   round: number;
   model: string;
-  /** Reviewer feedback from earlier rounds; empty in round 1. */
-  feedback: string;
   /** The last round's experiment if it was never scored, with its errors, held-out names masked. */
   failures?: EvalFailure[];
   /** This attempt fixes the failed commit it starts from (`parentExpId`), named in `failures`. */
   repair?: boolean;
-  /** One line per earlier round, held-out names masked: what was tried, what moved, why it went. */
+  /** One log line per earlier round, held-out names masked: what was tried, what moved, why it went. With the notes and reviews on disk, the trajectory. */
   history?: string[];
   /** The operator's direction for every round of a continued night, held-out names masked. */
   direction?: string;
@@ -91,8 +89,8 @@ export interface CodeResult {
 
 /** One coder's notes, at most. */
 export const NOTE_CHARS = 3000;
-/** The notes a coder's prompt holds at most: past this, older notes keep only their outcome. */
-export const NIGHT_NOTE_CHARS = 12_000;
+/** The night's trajectory a prompt holds at most: past this, older rounds shrink, the latest never. */
+export const TRAJECTORY_CHARS = 48_000;
 /** No model token or tool event for this long while no tool runs: the session is stuck. */
 const IDLE_MS = 10 * 60_000;
 /** A tool running this long with no output: stuck too. A bash command defaults to a 10-minute cap. */
@@ -143,34 +141,71 @@ export const notesDir = (bundleDir: string) => join(bundleDir, "history", "notes
 export const CODER_PART = "### Coder, before the evaluation";
 export const REVIEWER_PART = "### Reviewer, after the evaluation";
 
-/**
- * Every note of the night, newest first, within `budget`: each note's heading (the loop's outcome, what
- * later rounds need most) first, then the newest grow back to their verdict, then whole.
- */
-export function readNotes(bundleDir: string, budget = NIGHT_NOTE_CHARS): string {
-  const dir = notesDir(bundleDir);
-  if (!existsSync(dir)) return "";
-  const notes = readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
-    .map((f) => readFileSync(join(dir, f), "utf8").trim());
-  const verdictOnly = (n: string) => n.replace(new RegExp(`\\n${CODER_PART}[^]*?(?=\\n${REVIEWER_PART}|$)`), "");
-  const out: string[] = [];
-  let used = 0;
-  for (const n of notes) {
-    const head = n.split("\n")[0];
-    if (used + head.length + 2 > budget) break;
-    out.push(head);
-    used += head.length + 2;
-  }
-  for (const [i, n] of out.entries()) {
-    const form = [notes[i], verdictOnly(notes[i])].find((f) => used - n.length + f.length <= budget);
-    if (!form) continue;
-    used += form.length - n.length;
-    out[i] = form;
-  }
-  return out.join("\n\n");
+/** One earlier round of the night, as `readTrajectory` gathers it. */
+export interface TrajectoryRound {
+  round: number;
+  /** The round's log line: the hypothesis it tested, what moved, the loop's decision and why. */
+  log?: string;
+  /** Its experiments' notes, oldest first: a failed attempt's, then its repair's. */
+  notes: string[];
+  /** The reviewer's feedback after the round. */
+  feedback?: string;
 }
+
+const verdictOnly = (note: string) => note.replace(new RegExp(`\\n${CODER_PART}[^]*?(?=\\n${REVIEWER_PART}|$)`), "");
+
+/**
+ * The rounds of a night up to `upTo`: each one's log line from `logLines` (`- r<round>: ...`), its notes
+ * from /spec/history/notes and the reviewer's feedback from reviews/r<round>.json. Notes and reviews are
+ * masked when they are written; `logLines` must be too, for a coder.
+ */
+export function nightRounds(paths: { bundleDir: string; reviewJson: (round: number) => string }, logLines: string[], upTo: number): TrajectoryRound[] {
+  const rounds = new Map<number, TrajectoryRound>();
+  const at = (n: number) => rounds.get(n) ?? rounds.set(n, { round: n, notes: [] }).get(n)!;
+  for (const line of logLines) {
+    const n = Number(/^- r(\d+):/.exec(line)?.[1]);
+    if (n <= upTo) at(n).log = line;
+  }
+  const dir = notesDir(paths.bundleDir);
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir).filter((f) => f.endsWith(".md")).sort((a, b) => a.localeCompare(b, "en", { numeric: true }))) {
+      const n = Number(/^r(\d+)-/.exec(f)?.[1]);
+      if (n <= upTo) at(n).notes.push(readFileSync(join(dir, f), "utf8").trim());
+    }
+  }
+  for (const r of rounds.values()) {
+    const file = paths.reviewJson(r.round);
+    if (existsSync(file)) r.feedback = (JSON.parse(readFileSync(file, "utf8")) as { feedback?: string }).feedback?.trim() || undefined;
+  }
+  return [...rounds.values()].sort((a, b) => a.round - b.round);
+}
+
+/** One round in full (`level` 0), without its feedback (1), with only its verdicts (2), or its log line alone (3). */
+function renderRound(r: TrajectoryRound, level: number, latest: boolean): string {
+  const parts = [`<round n="${r.round}"${latest ? " latest" : ""}>`];
+  if (r.log) parts.push(`Tested: ${r.log.replace(/^- r\d+: /, "")}`);
+  if (level < 3) parts.push(...r.notes.map((n) => (level < 2 ? n : verdictOnly(n))));
+  if (level < 1 && r.feedback) parts.push(`Reviewer's feedback after the round:\n${r.feedback}`);
+  return `${parts.join("\n\n")}\n</round>`;
+}
+
+/**
+ * The night as one path, oldest round first, the latest marked. Past `budget`, the oldest rounds lose
+ * their feedback first, then their coders' notes, then all but their log line; the latest stays whole,
+ * and every round keeps its log line.
+ */
+export function formatTrajectory(rounds: TrajectoryRound[], budget = TRAJECTORY_CHARS): string {
+  const level = rounds.map(() => 0);
+  const text = () => rounds.map((r, i) => renderRound(r, level[i], i === rounds.length - 1)).join("\n\n");
+  for (let l = 1; l <= 3; l += 1) {
+    for (let i = 0; i < rounds.length - 1 && text().length > budget; i += 1) level[i] = l;
+  }
+  return text();
+}
+
+/** The rounds before `round` as the coder and the reviewer of `round` read them. */
+export const readTrajectory = (paths: { bundleDir: string; reviewJson: (round: number) => string }, logLines: string[], round: number, budget = TRAJECTORY_CHARS): string =>
+  formatTrajectory(nightRounds(paths, logLines, round - 1), budget);
 
 /** One task of /tmp/tasks.json. */
 export interface Task {
@@ -317,7 +352,8 @@ const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, 
 
 export function coderPrompt(
   spec: string,
-  feedback: string,
+  /** Every earlier round of the night (`readTrajectory`); empty in round 1. */
+  trajectory: string,
   hypothesis: string | null,
   minutes: number,
   objectives: {
@@ -333,11 +369,9 @@ export function coderPrompt(
   dev?: { models: string[]; budgetUsd: number },
   evalMin?: number,
   failures: EvalFailure[] = [],
-  history: string[] = [],
   rejectedDiffs: string[] = [],
   repair = false,
   direction = "",
-  notes = "",
   /** When the round ends (ms since the epoch); the coder has a shell clock but no sense of elapsed time. */
   endsAt?: number,
 ): string {
@@ -347,23 +381,22 @@ export function coderPrompt(
     `<spec>\n${spec}\n</spec>`,
   ];
   if (direction) parts.push(`<direction>\nThe person running this loop set this direction for every round. Follow it:\n${direction}\n</direction>`);
-  if (feedback.trim()) parts.push(`<feedback>\nReviewer feedback on earlier attempts:\n${feedback.trim()}\n</feedback>`);
+  if (trajectory.trim()) {
+    const diffs = rejectedDiffs.length
+      ? `\nThe diffs of the rejected attempts, each against its own parent, are read-only: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
+      : "";
+    parts.push(
+      "<trajectory>\nEvery earlier round of the night, oldest first. Each round holds the hypothesis it tested and what moved (each Δ is against that round's kept commit; only kept rounds are in your /repo), " +
+        "each experiment's note (the loop's decision, what its coder found before the evaluation, the reviewer's verdict after it; /spec/history/notes/) and the reviewer's feedback after the round. Older rounds may be shortened to fit. " +
+        "Read it as one path: what moved across rounds, what was tried more than once and what it did, which kinds of error persist. The latest round is the newest evidence, so start from it, but don't retry what an earlier round ruled out. " +
+        `Where a coder's note and a verdict disagree, the verdict saw the scores. Trust all of it less than what you check yourself.${diffs}\n\n${trajectory.trim()}\n</trajectory>`,
+    );
+  }
   if (failures.length) {
     const intro = repair
       ? "Your last attempt, now in /repo, failed before it was scored. Fix this failure and nothing else, then test the fix: there is no second repair."
       : "The last attempt failed before it was scored. Its code is gone, but your code can fail the same way.";
     parts.push(`<failures>\n${intro} The errors:\n${failures.map((f) => `- ${f.expId}: ${f.errors.join("\n")}`).join("\n")}\n</failures>`);
-  }
-  if (history.length) {
-    const diffs = rejectedDiffs.length
-      ? `\nThe diffs of the rejected attempts, each against its own parent, are read-only history: ${rejectedDiffs.join(", ")}. Read one only when you want to reuse or avoid that work: reading costs tokens.`
-      : "";
-    parts.push(`<history>\nEvery earlier round. Don't repeat what failed. Each Δ is against the kept commit of that round; only kept rounds are in your /repo.\n${history.join("\n")}${diffs}\n</history>`);
-  }
-  if (notes.trim()) {
-    parts.push(
-      `<notes>\nThe night's history: one note per earlier experiment, newest first, kept whether or not its round was (/spec/history/notes/). Each holds the loop's decision, what that coder found before its evaluation, and the reviewer's verdict after it; where the two disagree, the verdict saw the scores. Trust them less than what you check yourself.\n${notes.trim()}\n</notes>`,
-    );
   }
   const below = repair ? [] : unmet(objectives.thresholds ?? {}, objectives.standing, objectives.weights);
   if (below.length) {
@@ -631,14 +664,14 @@ export async function runCoder(
       await session.prompt(
         resumed
           ? RESUME_PROMPT
-          : coderPrompt(readSpecText(paths.bundleDir), input.feedback, input.hypothesis, minutes, {
+          : coderPrompt(readSpecText(paths.bundleDir), readTrajectory(paths, input.history ?? [], input.round), input.hypothesis, minutes, {
               primary: cfg.primary_metric,
               metrics: efficiencyMetrics(cfg),
               thresholds: cfg.thresholds,
               weights: cfg.weights,
               standing: input.standing,
               ci: input.standingCi,
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir), deadline),
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, rejectedDiffs(paths.bundleDir), input.repair, input.direction, deadline),
       );
       // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. Up to
       // MAX_SEND_BACKS more turns. A repair writes no plan and fixes a failure, so it goes on as it is.

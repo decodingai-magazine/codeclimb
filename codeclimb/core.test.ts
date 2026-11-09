@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, fragile, notesDir, openTasks, parseApproach, readNotes, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, formatTrajectory, fragile, notesDir, openTasks, parseApproach, readTrajectory, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -13,7 +13,7 @@ import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
 import { checkStop, coderWork, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, logExcerpt, noiseMargin, noteOutcome, recordNoise, repairable, sameOutputStages, saveRejected, spreadDetails, writeNote } from "./orchestrator";
 import { validateRow } from "./results";
-import { parseReview, reviewerPrompt, runReview } from "./reviewer";
+import { logLine, parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
 import { emptyStages, passesGates, passesThresholds, weightedMove, weightedScore } from "./stats";
 
@@ -266,7 +266,7 @@ test("standard metrics: on by default, cost before latency, validated", () => {
 const REVIEW = {
   model: "m", mock: true, thinkingLevel: "low" as const, spec: "s", round: 3, primaryMetric: "e.f1", thresholds: {}, weights: {}, gates: {}, parentScore: 0.7,
   parentMetrics: { "e.f1": 0.7, "r.x.mean": 0.5, "r.x.ci95_half": 0.1 } as Record<string, number> | null,
-  objectives: [], minEfficiencyGain: 0.1, log: [], headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
+  objectives: [], minEfficiencyGain: 0.1, trajectory: "", headline: ["e.f1", "r.x.mean", "gone"], diagnostics: ["^e\\.(precision|recall)$"], protocol: "", parentSource: "",
   result: {
     expId: "b", model: "m", hypothesis: "h", decision: "revert", primary: 0, metrics: { "e.f1": 0.7 } as Record<string, number>, guardrails: [] as string[], notes: [], diff: "", details: "",
     score: 0.5, parentScore: 0.6, margin: 0, reason: "weighted score 0.5000 <= checkpoint 0.6000",
@@ -311,13 +311,14 @@ test("the reviewer reads the experiment against the checkpoint's stored scores",
     assert.match(framed([]), framing);
   }
 
-  // The log says what moved and why it went, and that reverted code is gone.
+  // A log line says what moved and why it went; the night so far says reverted code is gone.
   const entry = { round: 1, hypothesis: "h1", deltaPrimary: -0.1, decision: "revert", reason: "r.x fell" };
-  const logged = reviewerPrompt({ ...input, log: [{ ...entry, deltaScore: -0.02, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }] });
-  assert.match(logged, /- r1: h1 → Δscore=-0\.0200, Δe\.f1=-0\.1000, Δr\.x\.mean=\+0\.2000 \(revert: r\.x fell\)/);
-  assert.match(logged, /survives only as a read-only diff at \/spec\/history/);
-  assert.match(reviewerPrompt({ ...input, headline: [], log: [entry] }), /- r1: h1 → Δe\.f1=-0\.1000 \(revert/);
-  assert.match(reviewerPrompt({ ...input, log: [entry] }), /- r1: h1 → no metric moved/);
+  assert.equal(logLine({ ...entry, deltaScore: -0.02, deltas: { "e.f1": -0.1, "r.x.mean": 0.2, "gone": 0 } }, null), "- r1: h1 → Δscore=-0.0200, Δe.f1=-0.1000, Δr.x.mean=+0.2000 (revert: r.x fell)");
+  assert.match(logLine(entry, "e.f1"), /^- r1: h1 → Δe\.f1=-0\.1000 \(revert/);
+  assert.match(logLine(entry, null), /^- r1: h1 → no metric moved/);
+  const logged = reviewerPrompt({ ...input, trajectory: formatTrajectory([{ round: 1, log: logLine(entry, null), notes: [] }]) });
+  assert.match(logged, /## The night so far[^]*survives only as a read-only diff at \/spec\/history[^]*from all of it[^]*<round n="1" latest>\n\nTested: h1 → no metric moved/);
+  assert.doesNotMatch(reviewerPrompt(input), /The night so far/);
 
   assert.match(reviewerPrompt({ ...input, parentSource: "### a.py" }), /## Kept commit source\n.*\n### a\.py/);
 });
@@ -347,7 +348,7 @@ test("the coders read a failed evaluation's error unedited", () => {
   assert.doesNotMatch(coderPrompt("s", "", null, 10), /<failures>/);
   // A repair skips research and planning; every attempt reviews its work before the evaluator gets it.
   assert.ok(coderPrompt("s", "", null, 10).includes(`${WORKFLOW}\n4. Review. ${CODER_REVIEW}`));
-  const repair = coderPrompt("s", "", null, 10, undefined, undefined, undefined, [{ expId: "n-r1-e1", errors: [error] }], [], [], true);
+  const repair = coderPrompt("s", "", null, 10, undefined, undefined, undefined, [{ expId: "n-r1-e1", errors: [error] }], [], true);
   assert.ok(!repair.includes("1. Research.") && repair.includes(`Before you stop, review:\n${CODER_REVIEW}`));
 });
 
@@ -430,11 +431,11 @@ test("against the empty starter any experiment that worked and scored is kept", 
 
   const input = { ...REVIEW, parentMetrics: null, headline: ["accuracy"] };
   const entry = { round: 1, hypothesis: "h1", deltaPrimary: 0.5, decision: "revert" };
-  const prompt = reviewerPrompt({ ...input, log: [{ ...entry, scores: { accuracy: 0.5 } }, { ...entry, hypothesis: "h2", scores: {} }] });
+  const prompt = reviewerPrompt(input);
   assert.match(prompt, /is the empty starter and wasn't run/);
   assert.doesNotMatch(prompt, /scores from its own evaluation|Change from the kept commit/);
-  assert.match(prompt, /- r1: h1 → accuracy=0\.5000 /);
-  assert.match(prompt, /- r1: h2 → not scored /);
+  assert.match(logLine({ ...entry, scores: { accuracy: 0.5 } }, null), /- r1: h1 → accuracy=0\.5000 /);
+  assert.match(logLine({ ...entry, hypothesis: "h2", scores: {} }, null), /- r1: h2 → not scored /);
 });
 
 test("what the reviewer names of the held-out data never reaches a coder: one rewrite, then masked", async () => {
@@ -464,10 +465,12 @@ test("a later coder reads every earlier round, with held-out names masked", asyn
       await historyLine(masked, { round: 1, hypothesis: "h1", deltaPrimary: 0.1, decision: "keep", reason: "better" }),
       await historyLine(masked, { round: 2, hypothesis: "h2", deltaPrimary: -0.2, deltas: { accuracy: -0.2 }, decision: "revert", reason: "lost gold name again" }),
     ];
-    const prompt = coderPrompt("spec", "fb", "hyp", 10, undefined, undefined, undefined, [], lines, ["/spec/history/r2.diff"]);
-    assert.match(prompt, /<history>[^]*- r1: h1[^]*keep: better[^]*- r2: h2[^]*revert: lost \[hidden\] again[^]*\/spec\/history\/r2\.diff[^]*<\/history>/);
+    const trajectory = formatTrajectory(lines.map((log, i) => ({ round: i + 1, log, notes: [] })));
+    const prompt = coderPrompt("spec", trajectory, "hyp", 10, undefined, undefined, undefined, [], ["/spec/history/r2.diff"]);
+    assert.match(prompt, /<trajectory>[^]*\/spec\/history\/r2\.diff[^]*<round n="1">\n\nTested: h1[^]*keep: better[^]*<round n="2" latest>\n\nTested: h2[^]*revert: lost \[hidden\] again[^]*<\/trajectory>/);
+    assert.ok(prompt.indexOf("</trajectory>") < prompt.indexOf("<hypothesis>"), "the hypothesis comes after the path that led to it");
     assert.doesNotMatch(prompt, /gold name/i);
-    assert.doesNotMatch(coderPrompt("spec", "", null, 10), /<history>/);
+    assert.doesNotMatch(coderPrompt("spec", "", null, 10), /<trajectory>/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -587,7 +590,7 @@ test("repair: a commit that failed before scoring, not a scored, empty or uncomm
 
 test("repair: the coder is told its commit is in /repo and to fix only this", () => {
   const failures = [{ expId: "e", errors: ["stage a: run exited 1"] }];
-  const fix = coderPrompt("spec", "", "h", 10, undefined, undefined, undefined, failures, [], [], true);
+  const fix = coderPrompt("spec", "", "h", 10, undefined, undefined, undefined, failures, [], true);
   assert.match(fix, /now in \/repo[^]*no second repair[^]*run exited 1/);
   assert.match(coderPrompt("spec", "", "h", 10, undefined, undefined, undefined, failures), /Its code is gone/);
 });
@@ -679,7 +682,7 @@ test("one attempt aims at every threshold metric still short, largest weighted s
   assert.doesNotMatch(prompt.match(/<targets>[^]*<\/targets>/)![0], /- c:/);
   assert.match(prompt, /<hypothesis>\nTest this hypothesis in this attempt, within the targets above[^]*fix b/);
   assert.doesNotMatch(coderPrompt("s", "", "fix b", 10, { ...objectives, standing: { a: 1, b: 1, c: 1 } }), /<targets>/);
-  assert.doesNotMatch(coderPrompt("s", "", null, 10, objectives, undefined, undefined, [{ expId: "e", errors: ["x"] }], [], [], true), /<targets>/); // a repair fixes its failure only
+  assert.doesNotMatch(coderPrompt("s", "", null, 10, objectives, undefined, undefined, [{ expId: "e", errors: ["x"] }], [], true), /<targets>/); // a repair fixes its failure only
 });
 
 test("the coder hears the score that decides a keep, and that cost and latency don't count", () => {
@@ -690,31 +693,39 @@ test("the coder hears the score that decides a keep, and that cost and latency d
   assert.match(coderPrompt("s", "", null, 10), /First run the program in \/repo on two or three train items/);
 });
 
-test("each experiment leaves one note, coder and verdict, newest first, masked, shrunk to the budget", async () => {
+test("the trajectory holds every earlier round oldest first: log line, notes, feedback; masked, the latest marked", async () => {
   const { dir, cfg: masked } = scanning();
   try {
-    const { bundleDir } = nightPaths(masked, "n");
-    assert.equal(readNotes(bundleDir), "");
+    const paths = nightPaths(masked, "n");
+    const { bundleDir } = paths;
+    assert.equal(readTrajectory(paths, [], 1), "");
     await writeNote(masked, "n", "n-r1-e0", { outcome: noteOutcome("keep", "score up"), coder: "rerank 503s above 8 calls at once", reviewer: "the rerank raised recall" });
-    await writeNote(masked, "n", "n-r2-e0", { outcome: noteOutcome("revert", ""), coder: "ladybug needs a fresh db per run; Gold Name" });
-    await writeNote(masked, "n", "n-r2-e0", { outcome: "revert", coder: "a replayed step writes the same file" });
-    await writeNote(masked, "n", "n-r10-e0", { outcome: "error: check failed", reviewer: "Gold Name broke the parser" });
-    const notes = readNotes(bundleDir);
-    assert.match(notes, /^## r10-e0 · error: check failed\n### Reviewer, after the evaluation\n\[hidden\] broke the parser\n\n## r2-e0 · revert\n### Coder, before the evaluation\na replayed step[^]*\n\n## r1-e0 · keep: score up\n### Coder[^]*rerank 503s[^]*### Reviewer[^]*recall$/);
-    assert.doesNotMatch(notes, /Gold/);
-    assert.equal(readdirSync(notesDir(bundleDir)).length, 3);
+    await writeNote(masked, "n", "n-r2-e0", { outcome: noteOutcome("error", "check failed"), coder: "ladybug needs a fresh db per run; Gold Name" });
+    await writeNote(masked, "n", "n-r2-e1", { outcome: "revert", coder: "a replayed step writes the same file", reviewer: "Gold Name broke the parser" });
+    await writeNote(masked, "n", "n-r3-e0", { outcome: "error: the round under way", coder: "not yet reviewed" });
+    mkdirSync(join(paths.nightDir, "reviews"), { recursive: true });
+    writeFileSync(paths.reviewJson(1), JSON.stringify({ feedback: "recall is the gap", hypothesis: "h2", verdict: "v" }));
+    writeFileSync(paths.reviewJson(2), JSON.stringify({ feedback: "the parser is fragile", hypothesis: "h3", verdict: "v" }));
+    const lines = ["- r1: h1 → Δscore=+0.1000 (keep: better)", "- r2: h2 → not scored (error: check failed)"];
+    const t = readTrajectory(paths, lines, 3);
+    assert.match(
+      t,
+      /^<round n="1">\n\nTested: h1 → Δscore=\+0\.1000 \(keep: better\)\n\n## r1-e0 · keep: score up\n### Coder[^]*rerank 503s[^]*### Reviewer[^]*recall\n\nReviewer's feedback after the round:\nrecall is the gap\n<\/round>\n\n<round n="2" latest>\n\nTested: h2[^]*## r2-e0 · error[^]*## r2-e1 · revert[^]*\[hidden\] broke the parser\n\nReviewer's feedback after the round:\nthe parser is fragile\n<\/round>$/,
+    );
+    assert.doesNotMatch(t, /Gold|under way/, "masked, and the round under way stays out");
+    assert.equal(readdirSync(notesDir(bundleDir)).length, 4);
     assert.equal(rejectedDiffs(bundleDir).length, 0); // the notes are no rejected diff
-    assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", notes), /<notes>[^]*\/spec\/history\/notes\/[^]*rerank 503s[^]*<\/notes>/);
-    assert.doesNotMatch(coderPrompt("s", "", null, 10), /<notes>/);
-    // Past the budget: the newest stay whole, then the coder part goes, then all but the heading.
-    for (let i = 3; i < 10; i += 1) await writeNote(masked, "n", `n-r${i}-e0`, { outcome: "revert", coder: "c".repeat(400), reviewer: "v".repeat(200) });
-    const shrunk = readNotes(bundleDir, 2_000);
-    assert.ok(shrunk.length <= 2_000);
-    assert.match(shrunk, /^## r10-e0/);
-    assert.match(shrunk, /## r9-e0 · revert\n### Coder/);
-    assert.match(shrunk, /## r[0-9]-e0 · revert\n### Reviewer[^]*v{200}/);
-    assert.match(shrunk, /\n\n## r6-e0 · revert\n\n/); // heading only
-    assert.match(shrunk, /## r1-e0 · keep: score up/); // every outcome stays
+    assert.equal(readTrajectory(paths, lines, 2), readTrajectory(paths, lines.slice(0, 1), 2).replace('<round n="1">', '<round n="1" latest>'));
+    // Past the budget: older rounds lose their feedback, then their coders' notes, then all but the log line; the latest stays whole.
+    const rounds = Array.from({ length: 10 }, (_, i) => ({
+      round: i + 1, log: `- r${i + 1}: h${i + 1} → (revert)`, notes: [`## r${i + 1}-e0 · revert\n### Coder, before the evaluation\n${"c".repeat(400)}\n### Reviewer, after the evaluation\n${"v".repeat(200)}`], feedback: "f".repeat(300),
+    }));
+    const shrunk = formatTrajectory(rounds, 3_000);
+    assert.ok(shrunk.length <= 3_000);
+    assert.match(shrunk, /<round n="10" latest>[^]*c{400}[^]*v{200}[^]*f{300}\n<\/round>$/);
+    assert.match(shrunk, /<round n="1">\n\nTested: h1 → \(revert\)\n<\/round>/, "the oldest keep their log line only");
+    for (let i = 1; i <= 10; i += 1) assert.match(shrunk, new RegExp(`Tested: h${i} `), "every round keeps its log line");
+    assert.match(formatTrajectory(rounds, 9_000), /<round n="9">[^]*v{200}\n\n[^]*f{300}/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -791,7 +802,7 @@ test("a metric past its threshold by less than its ci95 is fragile, not met", ()
 
 test("the coder hears when its round ends", () => {
   const endsAt = Date.UTC(2026, 10, 9, 14, 25);
-  assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", "", endsAt), /The round ends at 2026-11-09T14:25:00\.000Z; `date -u` in your shell/);
+  assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], false, "", endsAt), /The round ends at 2026-11-09T14:25:00\.000Z; `date -u` in your shell/);
   assert.doesNotMatch(coderPrompt("s", "", null, 10), /The round ends at/);
 });
 
