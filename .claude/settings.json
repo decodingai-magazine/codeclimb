@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "inngest@anthropic-plugin-directory": true
+    "inngest@anthropic-plugin-directory": true,
+    "mattpocock-skills@claude-plugins-official": true
   }
 }
