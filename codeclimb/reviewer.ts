@@ -28,6 +28,10 @@ export interface BranchSummary {
   diff: string;
   /** The stage reports' per-item errors on dev, when the scenario gives them. */
   details: string;
+  /** What the program wrote to its log on dev, per stage: warnings, errors and the end of the log. */
+  logs?: string;
+  /** Stages whose dev predictions are byte for byte the checkpoint's: the change never reached them. */
+  sameOutput?: string[];
   /** Its weighted score, the checkpoint's, and the noise margin it had to beat that by. */
   score: number;
   parentScore: number;
@@ -99,7 +103,7 @@ export interface ReviewOutput {
 
 const SYSTEM_PROMPT = `You review experiments in an automated research loop. A coding agent changes a program to raise its metrics on hidden evaluation data. The loop is linear: each round starts from the kept commit (the checkpoint) and tests one hypothesis, which should raise every threshold metric still short of its threshold, since each round costs a full evaluation. The loop keeps or reverts each experiment by its score, not by your judgment: every threshold metric counts as its share of its threshold, capped at 1, and the weighted mean of those shares must beat the checkpoint's by more than the evaluation's measured noise. A failed gate, a stage with no output, or held-out names in the diff block a keep whatever the score. A kept experiment becomes the new checkpoint. A reverted one's code is dropped, and the next round restarts from the same checkpoint with your feedback, the log of earlier rounds and read-only diffs of what was rejected.
 
-You receive the program's specification, the checkpoint's source, the experiment's metrics on the dev split (with per-item errors when the scenario provides them), its diff, the coder's notes, task list and train measurements, the loop's decision, and the log of earlier hypotheses with their effect. The experiment's hypothesis is the one the previous review proposed: judge it like any other, and when part of it caused a regression, name that part. Find why each metric falls short by reading the errors against the code. Each run is one sample, so a small move may be noise: read it against the ci95 where one is given. An evaluation repeats an earlier one's model calls from a cache, so the prompt says how many it replayed: a call that was replayed adds no noise, and a small move where most calls replayed comes from the change. Before calling a move noise, check the diff: a change to a shared helper is a change to everything that calls it. Write:
+You receive the program's specification, the checkpoint's source, the experiment's metrics on the dev split (with per-item errors when the scenario provides them, and the program's own log), its diff, the coder's notes, task list and train measurements, the loop's decision, and the log of earlier hypotheses with their effect. The experiment's hypothesis is the one the previous review proposed: judge it like any other, and when part of it caused a regression, name that part. Find why each metric falls short by reading the errors against the code. Each run is one sample, so a small move may be noise: read it against the ci95 where one is given. An evaluation repeats an earlier one's model calls from a cache, so the prompt says how many it replayed: a call that was replayed adds no noise, and a small move where most calls replayed comes from the change. Before calling a move noise, check the diff: a change to a shared helper is a change to everything that calls it. Write:
 1. feedback: concise guidance for the next round: what worked, what regressed, which metric families are weakest. When it was reverted, say why it scored worse and which path not to take again. When it was kept, say what in it is fragile: a gain that rests on one metric at another's cost, code that fits dev items rather than the task, or complexity a simpler change would avoid, so the next round can fix it. Base it on the data; do not invent failures you cannot see. Coders also get a failed evaluation's error, so don't retype it.
 2. hypothesis: the next round's plan: one concrete, testable change per threshold metric still below its threshold after this round, most weighted shortfall first, one or two sentences each, at most four changes; different from hypotheses that already failed. Read the coder's task list first: a change it already measured on train and dropped, or kept at a loss, is no hypothesis unless dev shows why train misled it, and then say so. The coder makes each change a task of its own, so keep the changes to separate parts of the program where you can. Coders start from the kept commit, but can read a rejected experiment's diff at /spec/history/r<round>.diff (round 6's is /spec/history/r6.diff), so a hypothesis that reuses rejected work can point at it. Put first the change that raises the weighted score most: the threshold metric furthest below its threshold, times its weight; a metric past its threshold adds nothing more, so propose no change for it. Where the per-item errors start with a summary of error counts, aim at the largest group one change can reach, and don't propose work on a group those counts show is small. When the prompt gives a direction, every hypothesis follows it. After a revert or a round that barely moved a target, stop refining that path for it: try a clearly different change for that metric, combine the parts of rejected attempts that helped a metric, or try a clearly different approach.
 3. verdict: the experiment's outcome for the night's history, at most 8 lines. Each experiment keeps one note there, the coder's notes followed by your verdict, and every later coder reads all of them, so write what stays true: which change moved which metric, in which direction and why, as kinds of error; which of the coder's notes the scores confirm, and which they contradict (a claim about dev the coder could not check, a train measurement dev did not bear out); what not to try again. No plan for the next round: that is the hypothesis.
@@ -197,6 +201,19 @@ export function reviewerPrompt(input: ReviewInput): string {
       ? `Kept commit (the checkpoint), scores from its own evaluation: ${score(input.parentScore)}metrics: ${fmtMetrics(input.parentMetrics, input)}${fmtDiagnostics(input.parentMetrics, input)}`
       : "The kept commit is the empty starter and wasn't run: read the experiment's scores as they stand. The first experiment kept sets the bar for later rounds.",
   );
+  const shaky = Object.keys(input.thresholds).flatMap((m) => {
+    const v = input.parentMetrics?.[m];
+    const ci = input.parentMetrics?.[m.replace(/\.mean$/, ".ci95_half")];
+    return m.endsWith(".mean") && typeof v === "number" && typeof ci === "number" && v >= input.thresholds[m] && v - ci < input.thresholds[m]
+      ? [`${m} ${fmtNum(v)} ± ${fmtNum(ci)} (threshold ${input.thresholds[m]})`]
+      : [];
+  });
+  if (shaky.length) {
+    lines.push(
+      `Past their threshold on dev by less than their ci95, so they can fall below it on the next split: ${shaky.join(", ")}. ` +
+        "Raising one adds nothing to this round's score, but a change that makes one safer without costing another metric is worth a part of the hypothesis.",
+    );
+  }
   if (input.noise) {
     const n = input.noise;
     const moves = Object.entries(n.moves ?? {}).map(([m, [a, b]]) => `${m} ${a.toFixed(4)} -> ${b.toFixed(4)}`).join(", ");
@@ -218,6 +235,10 @@ export function reviewerPrompt(input: ReviewInput): string {
       (input.coderWork?.trim() ? `\nThe coder's task list and train measurements, before the evaluation:\n${input.coderWork.trim()}` : "") +
       (b.notes.length ? `\nRepository check: ${b.notes.join("; ")}` : "") +
       (b.details ? `\nPer-item errors on dev (may be cut off):\n${b.details}` : "") +
+      (b.sameOutput?.length
+        ? `\nStages whose dev predictions are byte for byte the checkpoint's: ${b.sameOutput.join(", ")}. The change never reached their output, so a move in their metrics is not its effect, and nothing it meant for them was tested.`
+        : "") +
+      (b.logs ? `\nThe program's log on dev, per stage (its warnings and errors, then the end of the log; may be cut off). A warning here can explain a metric better than the per-item errors: a reply cut short, an item that failed and was skipped, a stage that fell back:\n${b.logs}` : "") +
       `\nDiff vs the kept commit:\n\`\`\`diff\n${b.diff}\n\`\`\``,
   );
   if (input.log.length) {

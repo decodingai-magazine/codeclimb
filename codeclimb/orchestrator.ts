@@ -1,6 +1,7 @@
 // Step bodies for the night run. Each takes plain data and returns plain,
 // small JSON (SHAs, metrics, file paths), so the parent's state can be rebuilt
 // from memoized step outputs on replay.
+import { createHash } from "node:crypto";
 import type { CreditStop } from "./credits";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +20,7 @@ import { writeReport } from "./report/html";
 import { appendRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, logLine, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
+import { TIMINGS_FILE } from "./standard-metrics";
 import { emptyStages, type Metrics, passesGates, weightedMove, weightedScore } from "./stats";
 
 /** The checkpoint: the commit the next round starts from, with the dev scores of its own evaluation. */
@@ -152,7 +154,8 @@ export async function saveRejected(cfg: NightConfig, nightId: string, round: num
   // Whole: a coder reads the part it needs with grep or sed, and a cut diff hid what a round changed.
   const diff = await maskText(cfg, await new ExperimentRepo(paths.gitDir).diff(parentExpId, expId, Infinity));
   mkdirSync(join(paths.bundleDir, "history"), { recursive: true });
-  writeFileSync(join(paths.bundleDir, "history", `r${round}.diff`), diff);
+  // git output comes back trimmed; a patch without its final newline is "corrupt" to `git apply`.
+  writeFileSync(join(paths.bundleDir, "history", `r${round}.diff`), diff.endsWith("\n") ? diff : `${diff}\n`);
 }
 
 /** Errors as the next coders may read them. */
@@ -510,6 +513,77 @@ function readDetails(cfg: NightConfig, metricsPath: string | null): string {
   return parts.join("\n\n");
 }
 
+/** A stage's log as the review reads it: the program's own warnings and errors, then the end of the log. */
+const MAX_LOG_CHARS = 4_000;
+/** Lines that only say a request went out: the bulk of a model-calling program's log. */
+const LOG_NOISE = /HTTP Request:|^\s*$/;
+const LOG_FLAGGED = /\b(warn(ing)?|error|critical|exception|traceback|failed)\b/i;
+
+/**
+ * The part of a run log a reviewer needs, at most `maxChars`: every line without request noise when it
+ * fits; else the warning and error lines first (each distinct line once, with a count), then the end of
+ * the log, where a program writes its totals.
+ */
+export function logExcerpt(log: string, maxChars = MAX_LOG_CHARS): string {
+  const lines = log.split("\n").filter((l) => !LOG_NOISE.test(l));
+  const whole = lines.join("\n");
+  if (whole.length <= maxChars) return whole;
+  const counts = new Map<string, number>();
+  for (const l of lines.filter((l) => LOG_FLAGGED.test(l))) counts.set(l, (counts.get(l) ?? 0) + 1);
+  const flagged = [...counts].map(([l, n]) => (n > 1 ? `${l}  [x${n}]` : l)).join("\n").slice(0, Math.floor(maxChars / 2));
+  const room = maxChars - flagged.length;
+  const tail: string[] = [];
+  let used = 0;
+  for (const l of [...lines].reverse()) {
+    if (used + l.length + 1 > room) break;
+    tail.unshift(l);
+    used += l.length + 1;
+  }
+  return `${flagged}${flagged ? "\n...\n" : ""}${tail.join("\n")}`;
+}
+
+/** Each stage's dev run log, cut by `logExcerpt`: what the program said on stderr, which no score shows. */
+function readRunLogs(cfg: NightConfig, metricsPath: string | null): string {
+  if (!metricsPath) return "";
+  return cfg.scenario.stages
+    .flatMap((stage) => {
+      const file = join(dirname(metricsPath), stage.name, "run.log");
+      const text = existsSync(file) ? logExcerpt(readFileSync(file, "utf8")) : "";
+      return text ? [`### ${stage.name}\n${text}`] : [];
+    })
+    .join("\n\n");
+}
+
+/** A stage's predictions, as one hash: every output file but the timings, which differ on every run. */
+function outputDigest(dir: string): string | null {
+  if (!existsSync(dir)) return null;
+  const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => !f.endsWith(TIMINGS_FILE)).sort();
+  const hash = createHash("sha256");
+  for (const f of files) {
+    const p = join(dir, f);
+    try {
+      hash.update(f).update("\0").update(readFileSync(p)).update("\0");
+    } catch {
+      // a directory
+    }
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * The stages whose dev predictions are byte for byte the checkpoint's: the change never reached their
+ * output, so their metrics say nothing about it. Empty when the checkpoint was never evaluated.
+ */
+export function sameOutputStages(cfg: NightConfig, metricsPath: string | null, parentEvalDir: string): string[] {
+  if (!metricsPath || !existsSync(parentEvalDir)) return [];
+  return cfg.scenario.stages
+    .filter((stage) => {
+      const mine = outputDigest(join(dirname(metricsPath), stage.name, "outputs"));
+      return mine !== null && mine === outputDigest(join(parentEvalDir, stage.name, "outputs"));
+    })
+    .map((stage) => stage.name);
+}
+
 /** What the coder left in its experiment's dir: the task list and train measurements, for the review. */
 export function coderWork(cfg: NightConfig, nightId: string, expId: string): { coderWork?: string } {
   const dir = nightPaths(cfg, nightId).expDir(expId);
@@ -555,7 +629,10 @@ export async function reviewRound(args: {
     parentMetrics: args.parentMetrics,
     objectives: efficiencyMetrics(args.cfg),
     minEfficiencyGain: args.cfg.standard_metrics.min_efficiency_gain,
-    result: { ...summary, diff, details: readDetails(args.cfg, metricsPath) },
+    result: {
+      ...summary, diff, details: readDetails(args.cfg, metricsPath), logs: readRunLogs(args.cfg, metricsPath),
+      sameOutput: sameOutputStages(args.cfg, metricsPath, nightPaths(args.cfg, args.nightId).evalDir(`${args.parentExpId}-eval`)),
+    },
     log: args.log,
     direction: args.direction,
     ...(args.coderNotes?.trim() ? { coderNotes: args.coderNotes } : {}),

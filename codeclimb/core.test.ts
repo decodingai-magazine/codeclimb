@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, notesDir, openTasks, parseApproach, readNotes, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, fragile, notesDir, openTasks, parseApproach, readNotes, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
 import { emptyStageError, prepareEnvironment } from "./evaluate";
 import type { Sandbox } from "./sandbox/types";
 import { coderReply, reviewerReply } from "./pi/mock";
-import { checkStop, coderWork, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, noiseMargin, noteOutcome, recordNoise, repairable, saveRejected, spreadDetails, writeNote } from "./orchestrator";
+import { checkStop, coderWork, decideRound, diffLeaks, type ExperimentOutcome, historyLine, type Kept, logExcerpt, noiseMargin, noteOutcome, recordNoise, repairable, sameOutputStages, saveRejected, spreadDetails, writeNote } from "./orchestrator";
 import { validateRow } from "./results";
 import { parseReview, reviewerPrompt, runReview } from "./reviewer";
 import { flattenReport, lastLines, maskTerms, parseScenario, readProtocol } from "./scenario";
@@ -493,9 +493,50 @@ test("a rejected diff is masked, kept whole and listed for later coders", async 
     assert.match(diff, /\[hidden\]/);
     assert.doesNotMatch(diff, /gold name/i);
     assert.ok(diff.length > 50_000); // whole: a cut diff hid what a round changed
+    assert.ok(diff.endsWith("\n")); // git output is trimmed, and `git apply` calls a patch without it corrupt
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the reviewer reads the program's log: every line when it fits, else its warnings first and its end", () => {
+  const log = ["INFO HTTP Request: POST /chat 200", "INFO doc a: 3 sections", "WARNING doc b #2: reply cut at max_tokens; dropped", "INFO doc b: 9 sections"].join("\n");
+  assert.equal(logExcerpt(log), "INFO doc a: 3 sections\nWARNING doc b #2: reply cut at max_tokens; dropped\nINFO doc b: 9 sections");
+  const long = [...Array(200).fill("WARNING the same thing"), ...Array.from({ length: 400 }, (_, i) => `INFO line ${i}`), "INFO 8 documents, 120 rows"].join("\n");
+  const cut = logExcerpt(long, 600);
+  assert.ok(cut.length <= 600 + 5);
+  assert.match(cut, /^WARNING the same thing {2}\[x200\]\n\.\.\.\n/); // each distinct warning once, counted
+  assert.match(cut, /INFO 8 documents, 120 rows$/); // the totals at the end survive
+  const prompt = reviewerPrompt({ ...REVIEW, result: { ...REVIEW.result, logs: "### e\nWARNING cut", sameOutput: ["r"] } });
+  assert.match(prompt, /The program's log on dev, per stage[^]*### e\nWARNING cut/);
+  assert.match(prompt, /byte for byte the checkpoint's: r\. The change never reached their output/);
+  assert.doesNotMatch(reviewerPrompt(REVIEW), /The program's log on dev|byte for byte/);
+});
+
+test("a stage whose predictions equal the checkpoint's is named; timings don't count", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cc-same-"));
+  try {
+    const write = (evalDir: string, body: string, timings: string) => {
+      mkdirSync(join(dir, evalDir, "answer", "outputs"), { recursive: true });
+      writeFileSync(join(dir, evalDir, "answer", "outputs", "predictions.jsonl"), body);
+      writeFileSync(join(dir, evalDir, "answer", "outputs", "timings.jsonl"), timings);
+    };
+    write("parent-eval", '{"a": 1}\n', "1");
+    write("exp-eval", '{"a": 1}\n', "2");
+    const metricsPath = join(dir, "exp-eval", "metrics.json");
+    assert.deepEqual(sameOutputStages(cfg, metricsPath, join(dir, "parent-eval")), ["answer"]);
+    write("exp-eval", '{"a": 2}\n', "2");
+    assert.deepEqual(sameOutputStages(cfg, metricsPath, join(dir, "parent-eval")), []);
+    assert.deepEqual(sameOutputStages(cfg, metricsPath, join(dir, "starter-eval")), []); // the starter was never evaluated
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the reviewer hears which threshold metrics passed by less than their ci95", () => {
+  const input = { ...REVIEW, thresholds: { "r.x.mean": 0.45 } };
+  assert.match(reviewerPrompt(input), /less than their ci95[^]*r\.x\.mean 0\.5000 ± 0\.1000 \(threshold 0\.45\)/);
+  assert.doesNotMatch(reviewerPrompt({ ...input, thresholds: { "r.x.mean": 0.3 } }), /less than their ci95/);
 });
 
 test("no code change: nothing evaluated, the parent's scores, no infra error, the coder's report read", () => {
@@ -611,7 +652,11 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.match(sendBack({ ...base, trainScore: '{"before": {}, "after": {"f1": 1}}' }), /needs a "before" and an "after"/);
   assert.match(sendBack({ ...base, minutesLeft: 20 }), /20 of 25 minutes and \$2\.00 of \$2\.50 left/);
   assert.match(sendBack({ ...base, minutesLeft: 20 }), /Next: read the worst train items/);
-  assert.match(sendBack({ ...base, minutesLeft: 20, target: "f1" }), /Next: add a task that tries a clearly different way to raise f1, the metric furthest below/);
+  assert.match(sendBack({ ...base, minutesLeft: 20, target: "f1" }), /Next: read the worst train items for f1, the metric furthest below[^]*may sit in an earlier step/);
+  // With a reviewer's hypothesis the coder goes back to its untested parts, not to the weakest metric.
+  const back = sendBack({ ...base, minutesLeft: 20, target: "f1", hypothesis: true });
+  assert.match(back, /Next: go back to the hypothesis\. Add a task for each part of it you have not built and measured/);
+  assert.doesNotMatch(back, /for f1/);
   assert.match(coderPrompt("s", "", null, 10), /leave one out/);
   assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
   assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
@@ -730,6 +775,24 @@ test("the coder hears which threshold metrics the kept commit already reaches on
   assert.match(prompt, /<met>\n[^]*- path: 0\.300, threshold 0\.3[^]*even where train shows it below[^]*Plan no task for these[^]*<\/met>/);
   assert.doesNotMatch(prompt.match(/<targets>[^]*<\/targets>/)![0], /- path:/);
   assert.doesNotMatch(coderPrompt("s", "", null, 10, { primary: "a", metrics: [], thresholds, standing: { a: 0.72, path: 0.2 } }), /<met>/);
+});
+
+test("a metric past its threshold by less than its ci95 is fragile, not met", () => {
+  const thresholds = { a: 0.9, "path.mean": 0.3, "edge.mean": 0.7 };
+  const standing = { a: 0.72, "path.mean": 0.4, "edge.mean": 0.98 };
+  const ci = { "path.mean": 0.3, "edge.mean": 0.04 };
+  assert.deepEqual(met(thresholds, standing, ci), ["edge.mean: 0.980, threshold 0.7"]);
+  assert.deepEqual(fragile(thresholds, standing, ci), ["path.mean: 0.400 ± 0.300, threshold 0.3"]);
+  assert.deepEqual(fragile(thresholds, standing), []); // no ci: a reached metric is met
+  const prompt = coderPrompt("s", "", null, 10, { primary: "a", metrics: [], thresholds, standing, ci });
+  assert.match(prompt, /<fragile>\n[^]*- path\.mean: 0\.400 ± 0\.300[^]*keep any change that raises it on train[^]*<\/fragile>/);
+  assert.doesNotMatch(prompt.match(/<met>[^]*<\/met>/)![0], /path\.mean/);
+});
+
+test("the coder hears when its round ends", () => {
+  const endsAt = Date.UTC(2026, 10, 9, 14, 25);
+  assert.match(coderPrompt("s", "", null, 10, undefined, undefined, undefined, [], [], [], false, "", "", endsAt), /The round ends at 2026-11-09T14:25:00\.000Z; `date -u` in your shell/);
+  assert.doesNotMatch(coderPrompt("s", "", null, 10), /The round ends at/);
 });
 
 test("the reviewer hears a train regression the coder shipped after its last send-back", () => {

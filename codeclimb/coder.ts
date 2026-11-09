@@ -53,6 +53,8 @@ export type ExperimentInput = {
   hypothesis: string | null;
   /** The kept commit's dev score on each threshold metric; null where it has none (the starter is never scored). */
   standing?: Record<string, number | null>;
+  /** The kept commit's ci95 half-width per threshold metric, where its report gives one. */
+  standingCi?: Record<string, number>;
   config: NightConfig;
   /** Go on after a pause for credits from the commit `expId` holds, in the same Pi session. */
   resume?: boolean;
@@ -254,12 +256,18 @@ export function sendBack(s: {
   usd: number;
   /** The threshold metric with the largest weighted shortfall, if any is short. */
   target?: string;
+  /** The round tests a reviewer's hypothesis: the next step is its untested parts. */
+  hypothesis?: boolean;
 }): string {
   const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) || trainRegression(s.trainScore) : ""];
   if (s.minutesLeft > s.minutes / 2 && s.usdLeft > s.usd / 2) {
-    const next = s.target
-      ? `Next: add a task that tries a clearly different way to raise ${s.target}, the metric furthest below its threshold, measure it on train against your current code, and keep the better.`
-      : "Next: read the worst train items and add a task that fixes the largest kind of error you find, measured on train against your current code.";
+    // Not "another way to raise the metric furthest below": that metric's errors often start in an
+    // earlier step, and coders sent at it spent whole rounds on changes that could not reach them.
+    const next = s.hypothesis
+      ? "Next: go back to the hypothesis. Add a task for each part of it you have not built and measured on train yet, and measure it against your current code. If every part is measured, read the worst train items and add a task that fixes the largest kind of error you find."
+      : s.target
+        ? `Next: read the worst train items for ${s.target}, the metric furthest below its threshold, and add a task that fixes the largest kind of error you find. Its cause may sit in an earlier step of the program than the one the metric scores. Measure it on train against your current code, and keep the better.`
+        : "Next: read the worst train items and add a task that fixes the largest kind of error you find, measured on train against your current code.";
     why.push(`You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left. ${next} Stop only when that finds nothing more, and say why in APPROACH.`);
   }
   return why.filter(Boolean).join(" ");
@@ -277,14 +285,32 @@ export function unmet(thresholds: Record<string, number>, standing?: Record<stri
     .map((m) => `${m}: ${typeof standing?.[m] === "number" ? (standing[m] as number).toFixed(3) : "not scored yet"}, threshold ${thresholds[m]}${weights[m] ? ` (weight ${weights[m]})` : ""}`);
 }
 
+/** Whether `standing` reaches `m`'s threshold, and with how much margin to spare over its ci95 half-width. */
+function reach(m: string, thresholds: Record<string, number>, standing?: Record<string, number | null>, ci: Record<string, number> = {}): "no" | "fragile" | "met" {
+  const v = standing?.[m];
+  if (typeof v !== "number" || v < thresholds[m]) return "no";
+  return v - (ci[m] ?? 0) >= thresholds[m] ? "met" : "fragile";
+}
+
 /**
- * The threshold metrics `standing` has reached, as prompt lines. Raising one adds nothing to the score,
- * but a coder that sees it below its threshold on train chases it anyway.
+ * The threshold metrics `standing` has reached by more than their sampling error, as prompt lines.
+ * Raising one adds nothing to the score, but a coder that sees it below its threshold on train chases it anyway.
  */
-export function met(thresholds: Record<string, number>, standing?: Record<string, number | null>): string[] {
+export function met(thresholds: Record<string, number>, standing?: Record<string, number | null>, ci: Record<string, number> = {}): string[] {
   return Object.keys(thresholds)
-    .filter((m) => typeof standing?.[m] === "number" && (standing[m] as number) >= thresholds[m])
+    .filter((m) => reach(m, thresholds, standing, ci) === "met")
     .map((m) => `${m}: ${(standing![m] as number).toFixed(3)}, threshold ${thresholds[m]}`);
+}
+
+/**
+ * The threshold metrics `standing` reaches, but by less than their ci95 half-width: a metric scored on a
+ * few items that passed on dev can fall below on the next split. Every graphrag night met multi-hop on
+ * dev's few queries, left retrieval alone, and fell below it on test.
+ */
+export function fragile(thresholds: Record<string, number>, standing?: Record<string, number | null>, ci: Record<string, number> = {}): string[] {
+  return Object.keys(thresholds)
+    .filter((m) => reach(m, thresholds, standing, ci) === "fragile")
+    .map((m) => `${m}: ${(standing![m] as number).toFixed(3)} ± ${ci[m].toFixed(3)}, threshold ${thresholds[m]}`);
 }
 
 const OBJECTIVE_NAMES: [RegExp, string][] = [[/^latency_/, "speed"], [/^cost_/, "model-call cost"]];
@@ -301,6 +327,8 @@ export function coderPrompt(
     weights?: Record<string, number>;
     /** The kept commit's dev score per threshold metric, null where unscored. */
     standing?: Record<string, number | null>;
+    /** Its ci95 half-width per threshold metric, where the report gives one. */
+    ci?: Record<string, number>;
   } = { primary: "", metrics: [] },
   dev?: { models: string[]; budgetUsd: number },
   evalMin?: number,
@@ -310,6 +338,8 @@ export function coderPrompt(
   repair = false,
   direction = "",
   notes = "",
+  /** When the round ends (ms since the epoch); the coder has a shell clock but no sense of elapsed time. */
+  endsAt?: number,
 ): string {
   const parts = [
     "You are improving the program in /repo (a git checkout). Its specification follows; a copy is in /spec/spec. " +
@@ -343,11 +373,18 @@ export function coderPrompt(
         "Plan at least one task per metric, most weighted shortfall first, and keep each task's change to its own part of the program where you can, so a gain in one doesn't cost another.\n</targets>",
     );
   }
-  const reached = repair ? [] : met(objectives.thresholds ?? {}, objectives.standing);
+  const reached = repair ? [] : met(objectives.thresholds ?? {}, objectives.standing, objectives.ci);
+  const shaky = repair ? [] : fragile(objectives.thresholds ?? {}, objectives.standing, objectives.ci);
   if (reached.length) {
     parts.push(
       `<met>\nThe threshold metrics the kept commit already reaches on dev:\n${reached.map((t) => `- ${t}`).join("\n")}\n` +
         "Raising one adds nothing to the score, even where train shows it below its threshold: train is a different sample, and dev is what counts. Plan no task for these; only check they don't fall.\n</met>",
+    );
+  }
+  if (shaky.length) {
+    parts.push(
+      `<fragile>\nThe threshold metrics the kept commit reaches on dev by less than their sampling error (± the ci95 half-width):\n${shaky.map((t) => `- ${t}`).join("\n")}\n` +
+        "Each is scored on few items: it passed on dev, and can fall below its threshold on the next split. Raising it adds nothing to this round's score, but keep any change that raises it on train without lowering another metric, and check it doesn't fall.\n</fragile>",
     );
   }
   if (hypothesis) {
@@ -392,7 +429,7 @@ export function coderPrompt(
       "- Train items your few-shot examples come from score high by construction, so a train gain over them says little about the hidden split. Score on train items no example is drawn from: leave each one's examples out while scoring it (leave one out), or hold out a few items the examples never use, and say which in the command.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
       "- Do not commit: the harness commits everything in /repo when you finish.",
-      `- You have about ${minutes} minutes: use them. Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis and the targets. If a target shows no clear gain over the code you started from and time and budget remain, try another way to raise it. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
+      `- You have about ${minutes} minutes: use them.${endsAt ? ` The round ends at ${new Date(endsAt).toISOString()}; \`date -u\` in your shell tells the time now. Check it before you decide to stop.` : ""} Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis and the targets. If a target shows no clear gain over the code you started from and time and budget remain, try another way to raise it. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
     ].join("\n"),
   );
@@ -600,7 +637,8 @@ export async function runCoder(
               thresholds: cfg.thresholds,
               weights: cfg.weights,
               standing: input.standing,
-            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir)),
+              ci: input.standingCi,
+            }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, input.history, rejectedDiffs(paths.bundleDir), input.repair, input.direction, readNotes(paths.bundleDir), deadline),
       );
       // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. Up to
       // MAX_SEND_BACKS more turns. A repair writes no plan and fixes a failure, so it goes on as it is.
@@ -617,6 +655,7 @@ export async function runCoder(
           usdLeft: cfg.budget_usd.experiment - state.coderUsd - (state.devUsd ?? 0),
           usd: cfg.budget_usd.experiment,
           target,
+          hypothesis: !!input.hypothesis,
         });
         if (!back) break;
         await session.prompt(
