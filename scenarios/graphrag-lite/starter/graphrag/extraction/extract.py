@@ -1,20 +1,26 @@
 """Per section, an entities call then a claims call, with the canon injected; then the document's rows.
 
-The canon is the known entities (the gold of every earlier document) the section names, first, then
-the rest up to a cap per type, under one rule: when a thing listed is named, write that name. The
-system prompt is the ontology itself (prompts/ontology.md) plus the reply format. A reply whose
-envelope has the wrong shape is asked for again once, with the validation error; a reply cut short
-is salvaged row by row.
+The canon is the known entities (the gold of every earlier document) the section names, matched by
+whole key tokens, up to a cap per type, under one rule: when a thing listed is named, write that
+name. The system prompt is the ontology itself (prompts/ontology.md) plus the reply format. A reply
+whose envelope has the wrong shape is asked for again once, with the validation error.
+
+A reply cut at max_tokens, or with more rows than `max_rows_per_reply`, is a loop: the model repeats
+rows until the limit. Its rows are dropped, never salvaged, and the section is extracted again in two
+halves, once. A half that loops again is given up and counted.
 """
 
 import logging
+from dataclasses import dataclass
+from functools import lru_cache
 
 from pydantic import BaseModel
 
 from ..config import ROOT, Config
 from ..contracts import TYPES, ClaimsReply, EntitiesReply, Mention, RawMention, RawRelation, Relation, lenient_rows, parse_reply
+from ..graph.keys import tokens
 from ..llm import Client
-from .chunking import Section
+from .chunking import Section, halves
 from .filter import fold_mentions, fold_relations
 
 log = logging.getLogger("graphrag.extract")
@@ -42,50 +48,97 @@ product, tool used_for method, method applied_to system). `source` and `target` 
 """
 
 
+@lru_cache(maxsize=1 << 16)
+def key_tokens(name: str) -> tuple[str, ...]:
+    return tuple(tokens(name))
+
+
+def named_in(known: list[dict], text: str) -> list[dict]:
+    """The known entities `text` names: a name or alias whose key tokens occur there as whole tokens.
+
+    Whole tokens, not substrings: `cli` is not named by "client", nor `uv` by "uvicorn".
+    """
+    keys = {id(k): [ks for s in [k["name"], *k["aliases"]] if (ks := key_tokens(s))] for k in known}
+    longest = max((len(ks) for v in keys.values() for ks in v), default=0)
+    words = tokens(text)
+    grams = {tuple(words[i : i + n]) for n in range(1, longest + 1) for i in range(len(words) - n + 1)}
+    return [k for k in known if any(ks in grams for ks in keys[id(k)])]
+
+
 def canon(known: list[dict], text: str, per_type: int) -> str:
-    """The known entities per type: those the section names first, then the rest, up to the cap."""
-    lower = text.lower()
+    """The known entities the section names, per type, up to the cap."""
+    named = named_in(known, text)
     lines = []
     for t in TYPES:
-        rows = [k for k in known if k["type"] == t]
-        named = [k for k in rows if any(s.lower() in lower for s in [k["name"], *k["aliases"]])]
-        rest = [k for k in rows if k not in named]
-        chosen = sorted(named, key=lambda k: k["name"]) + sorted(rest, key=lambda k: k["name"])
-        if chosen[:per_type]:
-            lines.append(f"{t}: " + "; ".join(k["name"] + (f" ({', '.join(k['aliases'])})" if k["aliases"] else "") for k in chosen[:per_type]))
+        rows = sorted((k for k in named if k["type"] == t), key=lambda k: k["name"])[:per_type]
+        if rows:
+            lines.append(f"{t}: " + "; ".join(k["name"] + (f" ({', '.join(k['aliases'])})" if k["aliases"] else "") for k in rows))
     if not lines:
         return ""
-    return "Known entities, from earlier documents. If one of them is named here, write that name.\n" + "\n".join(lines) + "\n\n"
+    return "Known entities, from earlier documents, that this section names. Write these names.\n" + "\n".join(lines) + "\n\n"
 
 
-def ask_rows[T: BaseModel](client: Client, system: str, user: str, envelope: type[BaseModel], key: str, row: type[T], what: str) -> list[T]:
-    """The rows under `key` of a reply to (system, user): one re-ask when the envelope has the wrong shape."""
+def ask_rows[T: BaseModel](
+    client: Client, system: str, user: str, envelope: type[BaseModel], key: str, row: type[T], what: str, max_rows: int | None = None
+) -> list[T] | None:
+    """The rows under `key` of a reply to (system, user): one re-ask when the envelope has the wrong shape.
+
+    None when the reply looped (cut at max_tokens, or over `max_rows` rows): the caller asks smaller.
+    """
     reply = client.chat_json(system, user)
-    if reply is None:
-        return []
-    raw, error = parse_reply(reply, envelope, key)
-    if error is not None:
+    for attempt in range(2):
+        if reply is None:
+            return []
+        if reply.cut:
+            log.warning("%s: %s reply cut at max_tokens; dropped", what, key)
+            return None
+        raw, error = parse_reply(reply.text, envelope, key)
+        if error is None or attempt == 1:
+            break
         log.info("%s: reply did not match the format (%s); asking again", what, error[:120])
         reply = client.chat_json(system, user + f"\n\nYour previous reply did not match the reply format: {error[:500]}\nReply again, in the format.")
-        raw, error = parse_reply(reply or "", envelope, key)
+    if max_rows is not None and len(raw) > max_rows:
+        log.warning("%s: %d %s rows, over max_rows_per_reply=%d; dropped", what, len(raw), key, max_rows)
+        return None
     rows, dropped = lenient_rows(raw, row)
     if dropped:
         log.info("%s: %d rows did not validate", what, dropped)
     return rows
 
 
-def extract_section(cfg: Config, client: Client, item: dict, section: Section) -> tuple[list[RawMention], list[RawRelation]]:
+@dataclass
+class SectionRows:
+    mentions: list[RawMention]
+    relations: list[RawRelation]
+    splits: int = 0
+    """Looping replies answered by extracting the section again in halves."""
+    lost: int = 0
+    """Parts given up: they looped again after the split."""
+
+
+def extract_section(cfg: Config, client: Client, item: dict, section: Section, depth: int = 0) -> SectionRows:
     head = f"Document: {item['title']} ({item['published']})" + (f", section: {section.heading}" if section.heading else "") + "\n\n"
-    what = f"{item['doc_uri']} #{section.position}"
+    what = f"{item['doc_uri']} #{section.position}" + (" (half)" if depth else "")
+    cap = cfg.extraction.max_rows_per_reply
     user = canon(item["known_entities"], section.text, cfg.extraction.canon_per_type) + head + section.text
-    mentions = ask_rows(client, ONTOLOGY + ENTITIES_FORMAT, user, EntitiesReply, "mentions", RawMention, what)
-    if not mentions:
-        return [], []
-    names = "\n".join(f"- {m.name} ({m.type})" for m in mentions)
-    labels = ("Labels in use: " + ", ".join(cfg.extraction.seed_labels) + "\n\n") if cfg.extraction.seed_labels else ""
-    user = labels + "Entities in this section:\n" + names + "\n\n" + head + section.text
-    relations = ask_rows(client, ONTOLOGY + CLAIMS_FORMAT, user, ClaimsReply, "relations", RawRelation, what)
-    return mentions, relations
+    mentions = ask_rows(client, ONTOLOGY + ENTITIES_FORMAT, user, EntitiesReply, "mentions", RawMention, what, cap)
+    relations: list[RawRelation] | None = []
+    if mentions:
+        names = "\n".join(f"- {m.name} ({m.type})" for m in mentions)
+        labels = ("Labels in use: " + ", ".join(cfg.extraction.seed_labels) + "\n\n") if cfg.extraction.seed_labels else ""
+        user = labels + "Entities in this section:\n" + names + "\n\n" + head + section.text
+        relations = ask_rows(client, ONTOLOGY + CLAIMS_FORMAT, user, ClaimsReply, "relations", RawRelation, what, cap)
+    if mentions is not None and relations is not None:
+        return SectionRows(mentions, relations)
+    parts = halves(section.text)
+    if depth or len(parts) < 2:
+        log.warning("%s: looped again; part given up", what)
+        return SectionRows([], [], lost=1)
+    log.info("%s: extracting again in %d parts", what, len(parts))
+    done = [extract_section(cfg, client, item, Section(section.heading, p, section.position), depth + 1) for p in parts]
+    return SectionRows(
+        [m for d in done for m in d.mentions], [r for d in done for r in d.relations], 1 + sum(d.splits for d in done), sum(d.lost for d in done)
+    )
 
 
 def fold_document(item: dict, raw_mentions: list[RawMention], raw_relations: list[RawRelation]) -> tuple[list[Mention], list[Relation], list[dict]]:

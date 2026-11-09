@@ -3,7 +3,7 @@
 Predictions forbid unknown fields, as the evaluator does: a field not in the table fails the stage.
 Model replies use a strict envelope and lenient rows: a whole reply must have exactly the keys asked
 for (else it is asked for again, once, with the error), each row keeps what validates and drops the
-rest, and a truncated reply is salvaged row by row.
+rest. A reply cut at max_tokens is dropped, never salvaged (extraction/extract.py).
 """
 
 import json
@@ -137,8 +137,9 @@ def parse_reply(text: str, envelope: type[BaseModel], key: str) -> tuple[list[di
     """The rows under `key`, and the envelope error if the reply parsed but had the wrong shape.
 
     A whole reply must validate as `envelope` (exactly the keys asked for), else the error comes back
-    for a re-ask. A reply cut short (`finish_reason: "length"`) is not JSON: it is read up to its last
-    complete row, so the rows before the cut are not lost, and no error is reported.
+    for a re-ask. A complete reply that still isn't JSON (a stray character after the object) is read
+    up to its last complete row. A reply cut at max_tokens never comes here: it is a loop, and
+    `extract.ask_rows` drops it.
     """
     text = FENCE.sub("", text)
     try:

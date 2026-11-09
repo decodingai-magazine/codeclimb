@@ -15,8 +15,9 @@ seed = 0
 
 [extraction]
 section_max_chars = 6000   # a longer section is cut at paragraph breaks, never dropped
-canon_per_type = 40        # known entities shown per type: those the section names first, then the rest
-critic = false             # a second pass over the document's rows (extraction/critic.py)
+canon_per_type = 40        # known entities shown per type, of those the section names (whole key tokens)
+max_rows_per_reply = 60    # a reply with more rows is a loop: dropped, and the section asked again in halves
+critic = false             # a second pass over the document's rows (extraction/critic.py): the first knob to measure
 # labels offered for reuse before the model coins one: the ones most of train's claims use
 seed_labels = ["uses", "used_for", "part_of", "instance_of", "compared_with", "built_on", "integrates_with", "applied_to"]
 

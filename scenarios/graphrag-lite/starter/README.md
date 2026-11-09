@@ -15,9 +15,9 @@ The layout is the reference architecture of `task.md`, wired end to end and runn
 | path | what |
 |---|---|
 | `config.toml` | every threshold, size and model name; `GRAPHRAG_CONFIG` names another file |
-| `graphrag/contracts.py` | the prediction rows (unknown fields forbidden, as the evaluator does) and the reply models (strict envelope, lenient rows, salvage of a truncated reply) |
+| `graphrag/contracts.py` | the prediction rows (unknown fields forbidden, as the evaluator does) and the reply models (strict envelope, lenient rows) |
 | `graphrag/llm.py` | chat, embeddings, rerank and decisions through the endpoint; retries, the 402 stop, concurrency |
-| `graphrag/extraction/` | frontmatter off, sections at headings, an entities call then a claims call per section with the canon of known entities, the deterministic filter, the optional critic (`extraction.critic`) |
+| `graphrag/extraction/` | frontmatter off, sections at headings, an entities call then a claims call per section with the canon of known entities, a looping reply dropped and its section asked again in halves, the deterministic filter, the optional critic (`extraction.critic`), one stderr line per document |
 | `graphrag/prompts/ontology.md` | the ontology, which is the extractor's system prompt |
 | `graphrag/graph/` | the scorer's normalized key (`keys.py`), the resolver chain (exact, alias; `nominations` is the hook for acronym, fuzzy and embedding candidates), the assignments |
 | `graphrag/retrieval/` | the gold graph in Ladybug (`store.py`), anchors by key (`anchors.py`), one Cypher template per query shape (`queries.py`), the ranked envelope (`rank.py`) |

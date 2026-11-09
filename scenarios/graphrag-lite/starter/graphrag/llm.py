@@ -12,6 +12,7 @@ import random
 import time
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
@@ -22,6 +23,13 @@ log = logging.getLogger("graphrag.llm")
 
 RETRIED = {429, 500, 502, 503}
 TIMEOUT_S = 180
+
+
+@dataclass
+class Reply:
+    text: str
+    cut: bool
+    """The reply stopped at max_tokens (`finish_reason: "length"`): usually a loop, never a long answer."""
 
 
 class Client:
@@ -59,10 +67,10 @@ class Client:
             time.sleep(min(2**attempt + random.random(), 30))
         return None
 
-    def chat_json(self, system: str, user: str) -> str | None:
+    def chat_json(self, system: str, user: str) -> Reply | None:
         """The chat model's reply to a request for a JSON object; None when the call failed or came back empty."""
 
-        def go() -> str | None:
+        def go() -> Reply | None:
             r = self._client.chat.completions.create(
                 model=self.cfg.models.chat,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -73,9 +81,7 @@ class Client:
                 extra_body={"reasoning": {"enabled": False}},
             )
             choice = r.choices[0]
-            if choice.finish_reason == "length":
-                log.warning("chat: reply cut at max_tokens=%d; salvaging", self.cfg.llm.max_tokens)
-            return choice.message.content or None
+            return Reply(choice.message.content, choice.finish_reason == "length") if choice.message.content else None
 
         return self._call("chat", go)
 

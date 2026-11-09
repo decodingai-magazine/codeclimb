@@ -56,11 +56,10 @@ between two of them:
   entity anyway if you can: they give your merging and retrieval something to compare.
 - **No frequency floor.** Every gold row counts, including entities named once, so a row you leave
   out for being rare is a missed row.
-- **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each; held-out
-  documents are two to three times denser (the densest reach about 70 mentions and over 90 claims),
-  because the articles grow longer and the gold engages with every named thing. A system that
-  returns train-like counts on a held-out document has stopped early. Measure recall by section on
-  train, not by total.
+- **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each, about 0.7 mentions per 1000
+  characters. Held-out gold is denser, because the gold engages with every named thing. A system
+  that returns train-like counts on a held-out document has stopped early. Measure recall by section
+  on train, not by total.
 - **A wrong type is a miss and a false positive.** Mentions match only on equal type. Type accuracy
   is measured apart, over the pairs that match when type is ignored.
 - **Unnamed things.** When an article describes a method or system without naming it, the gold row
@@ -72,8 +71,8 @@ between two of them:
 - **The document's own wording must be a name or alias.** A row is matched by its name or any
   alias, so either `name: "RAG"` or `name: "Retrieval-Augmented Generation", aliases: ["RAG"]`
   scores the same. Reusing the known name is optional: it joins the two in extraction already,
-  where otherwise graph building must. The gold does both: most rows reuse known names, and 60 rows (31 surfaces) keep
-  their own variant (`RAG`, `LLMs`, `AI agent`), joined later by a merge decision.
+  where otherwise graph building must. The gold does both: most rows reuse known names, and some keep their own variant
+  (`RAG`, `LLMs`, `AI agent`), joined later by a merge decision.
 - **`related_to` ends** name two mentions of the same document (by name or alias), in the direction
   the claim reads: "Anthropic develops Claude Code", not the reverse. Write the claim as it reads:
   component `part_of` whole, instance `instance_of` class, organization `develops` product, tool
@@ -235,13 +234,18 @@ fewshot.json
 
 **Extraction data flow.** Document, then sections (every section whole: a long article is more
 sections, never fewer characters), then per section one call that returns entities and one that
-returns the claims between them, with the canon injected: the known entities of each type, nearest
-first, under one rule, "if a thing below is named, write that name". Parse the reply into a typed
-model (a strict envelope, lenient rows, one re-ask on a schema error, salvage on truncation), then a
+returns the claims between them, with the canon injected: the known entities the section names,
+matched by whole key tokens, under one rule, "write these names". Parse the reply into a typed
+model (a strict envelope, lenient rows, one re-ask on a schema error), drop a reply that loops (cut
+at the token limit, or over a row cap) and extract that section again in halves, then a
 deterministic filter with a closed list of reasons (`unknown_type`, `blank_name`,
 `endpoint_not_mentioned`; never a count floor), then the union across sections into one row per
 `(type, key)` per document: counts summed, aliases joined, one type per key within the document.
 Keep the rejected rows in a file of your own: reading them on train is how you tune the filter.
+Log one line per document on stderr: sections, looping replies split or given up, rows kept, rows
+rejected by reason. A document far denser or sparser than the others is the first thing to read.
+Relation work goes through this stage's mention recall: a claim whose end was never extracted
+can't be found (`lessons.md`, The lever for relations).
 
 **Graph data flow.** Rows in `seq` order, a key index per type, and for each surface: an exact key
 hit (identity), an alias key hit (identity, unless the alias narrows the name or another entity of

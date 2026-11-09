@@ -42,8 +42,16 @@ is few-shot material, so a score here is a check on the code, not a forecast of 
 The evaluation runs your system with `PYTHONHASHSEED=0`: do the same, so a run is comparable with the
 last one. The chat model is not deterministic, even at temperature 0 with a seed, but the model
 endpoint replays a repeated request's earlier answer: rerun the same code and only the calls your
-change reached are answered anew. Those new answers still carry noise: read an F1 gain under about
-0.02 as none.
+change reached are answered anew. Those new answers still carry noise: an unpaired rerun on
+train moved mention F1 by up to about 0.045 and relation F1 by up to about 0.1. Compare two versions
+paired: rerun under replay so only the calls your change reached are fresh, or save the raw replies
+once and rescore each variant offline. Report precision, recall and row counts beside F1, never F1
+alone: a mention change that lowers train precision by more than 0.05 is a regression whatever it
+does to recall.
+
+Before you stop, run extraction once on a held-out-sized input: two train articles joined into one,
+with every train gold entity as its `known_entities`. Its rows per 1000 characters should stay near
+the single articles'. Far more means a loop or a flooded canon; far fewer means a dropped section.
 
 ## Few-shot examples
 
@@ -170,8 +178,8 @@ submission, scored fresh. Feedback is never an example: every few-shot example s
   document's entities, and retrieval's graph holds every article's, both far more than train's.
   Train's multi-hop queries all take 2 hops; `task.md` allows 3. Check cost, latency and recall
   beyond train's scale, and don't tune to train's size.
-  Train is also the sparse end: its documents are the earliest and shortest, with a median of about
-  22 mentions and 28 claims; held-out medians run two to three times that. A count tuned on train
+  Train is also the sparse end: its documents are the earliest, and their gold is the sparsest,
+  about 0.7 mentions per 1000 characters. Held-out gold is denser. A count tuned on train
   under-extracts everywhere else. Tune what to extract (the engagement rule) and how (by section),
   not how many.
 

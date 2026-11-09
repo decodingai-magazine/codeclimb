@@ -98,8 +98,12 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   - **Typed replies.** Ask for JSON (`response_format`) and parse into a pydantic model with a
     strict envelope and lenient rows: an unknown row field is dropped, a row that fails validation
     is dropped, the rest is kept. Re-ask once with the error message when the envelope fails.
-    Salvage a truncated reply by closing the JSON at the last complete row; asking for the rest is
-    a step beyond the starter.
+    A reply cut at `max_tokens` (`finish_reason: "length"`) is a loop, not a long answer: drop it,
+    split its input in two and ask again, and log the split. Never salvage its rows, and never raise
+    `max_tokens` to make room for it.
+- **Running it.** Run the program in the foreground under `timeout`, its output in a file, never
+  as a background job: a background job that dies says nothing. The sandbox has `date`: check the
+  time before each decision, since a round has a fixed length.
 - **Your bundle** is at `/spec`: `/spec/spec/` (this spec), `/spec/corpus/` (train articles),
   `/spec/train/` (gold graph, examples, inputs). Use `--root /spec` to run on train.
 - **Evaluation** runs each stage on dev with gold input; each stage gets the eval time limit the

@@ -22,7 +22,7 @@ def body(text: str) -> str:
     return FRONTMATTER.sub("", text, count=1)
 
 
-def _bounded(text: str, max_chars: int) -> list[str]:
+def bounded(text: str, max_chars: int) -> list[str]:
     if len(text) <= max_chars:
         return [text]
     pieces, current = [], ""
@@ -54,7 +54,12 @@ def sections(text: str, max_chars: int) -> list[Section]:
         if not chunk.strip():
             continue
         heading = HEADING.match(chunk)
-        for piece in _bounded(chunk, max_chars):
+        for piece in bounded(chunk, max_chars):
             if piece.strip():
                 out.append(Section(heading.group().lstrip("# ").strip() if heading else None, piece, len(out)))
     return out
+
+
+def halves(text: str) -> list[str]:
+    """`text` cut in two at a paragraph break near its middle (three pieces when no break fits)."""
+    return [p for p in bounded(text, (len(text) + 1) // 2) if p.strip()]

@@ -31,6 +31,7 @@ class Llm(Strict):
 class Extraction(Strict):
     section_max_chars: int = 6000
     canon_per_type: int = 40
+    max_rows_per_reply: int = 60
     critic: bool = False
     seed_labels: list[str] = []
 
