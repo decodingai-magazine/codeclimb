@@ -6,8 +6,8 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   run from the repository root. Keep that entry point; everything behind it is yours.
 - **Python 3.14** with `numpy`, `networkx`, `openai`, `pydantic`, `ladybug` and `rank-bm25`
   installed (pinned versions), plus `uv`. That's a starting point, not a limit: the sandbox has
-  internet access, for installing packages. Nothing outside the bundle is yours to read
-  (`train.md`).
+  internet access, for packages and for reading about methods and libraries. The publication
+  the articles come from is off limits (`task.md`, Domain knowledge).
 - **Other packages.** Add what you need with uv, when you need it:
 
   ```bash
@@ -60,8 +60,9 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   for the envelope.
 - **Models.** Call models only through the OpenAI-compatible endpoint in `OPENAI_BASE_URL` with
   `OPENAI_API_KEY`, and only the models the prompt lists. Every call is metered and capped; a call
-  past the cap fails. The prompt names the caps. The evaluation's cap covers all three stages
-  together. A request body can be at most 16 MB.
+  past the cap fails. While you build, the cap is the experiment's budget the prompt names, and
+  your own tokens draw on it too. The evaluation has its own cap, over all three stages together,
+  which the prompt does not name: keep a stage's cost per document near what it costs on train. A request body can be at most 16 MB.
   - **Errors.** The endpoint doesn't retry. Retry a 429, 500, 502 or 503 with backoff, and catch it: one
     unhandled failure ends the run. A 402 means the money is spent, so stop calling and write the
     rows you have. A 400 or 403 is a bad request and won't pass on retry. Bound the calls a query

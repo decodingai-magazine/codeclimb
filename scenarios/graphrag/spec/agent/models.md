@@ -3,7 +3,8 @@
 The four models the evaluation allows, one card each: what it is for, how to call it, what it costs,
 and where it failed here. The list in the prompt is the authority: if it differs from this file,
 follow the prompt. Everything below is a starting point, not a requirement; `runtime.md`
-(Models) has the rules every call follows (the endpoint, the caps, errors, typed replies).
+(Models) has what applies to every call: the endpoint, the caps, errors, and how to handle typed
+replies.
 
 | model | endpoint | use it to | don't use it to |
 |---|---|---|---|
@@ -145,17 +146,19 @@ $0.0004 and under half a second.
 
 ## The cost of a run
 
-Work it out before you add a call, then check it against the caps the prompt names.
+Work it out before you add a call, then check it against the experiment's budget the prompt
+names, which your own tokens share.
 
 - **A train extraction run** is 6 articles, 76 sections at the starter's section size, and two
   chat calls per section: about 150 calls, $0.05 to $0.15, and about a minute at 8 calls in
-  flight. The experiment's cap pays for
-  dozens of fresh runs, and a rerun pays only for the calls your change reached.
+  flight. A fresh run is a few percent of
+  a budget of a few dollars, and a rerun pays only for the calls your change reached.
 - **Each call you add per section** adds half of that again. A call per document (a critic) adds
   6. A call per candidate pair or per claim adds hundreds: batch them, or ask the decision model
   several questions at once.
-- **The evaluation is larger than train.** Held-out documents are longer and their canon is larger,
-  so a stage costs and takes more there than on train (`train.md`, Feedback). Run calls
+- **The evaluation is larger than train.** Some held-out documents are longer than any train
+  article and every canon is larger, so a stage can cost and take more there than on train
+  (`lessons.md`, Traps train doesn't show). Run calls
   concurrently, time one section call, multiply by sections and calls, divide by concurrency, and
   keep the total well under the stage's time limit: a stage that overruns fails the whole
   submission.

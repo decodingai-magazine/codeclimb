@@ -6,8 +6,9 @@ graph the nodes, edges and documents a query needs. Nothing generates or judges 
 retrieval returns evidence, and the evidence is scored.
 
 **The score is the goal; the rest is suggestions.** Only the evaluation is fixed: its commands, its
-prediction schema, the models and caps it allows, the `fewshot.json` manifest (`train.md`), and
-keeping dev and test out of your system.
+prediction schema, the models and caps it allows, the `fewshot.json` manifest (`train.md`), not
+routing on a query's id (3. Retrieval), and keeping dev and test out of your system, the
+publication's other articles included (Domain knowledge).
 Everything else in this spec about how to build it is a suggestion. A reference shape is given below
 (Reference architecture) and is the recommended starting point: it is what a working system of this
 kind looks like, and the spec names where its rules were wrong for this corpus. Depart from it when
@@ -80,12 +81,13 @@ in general terms. The data shows it:
   a claim looks like. `train/examples/extraction.jsonl` has each article's rows.
 - **Give the extractor that knowledge.** The ontology is its system prompt, and the starter uses
   no few-shot example. Train's gold rows may be used as examples, but more of them has not helped
-  so far: a second or swapped example document was worse, and a section with its gold rows was
-  flat (`lessons.md`). Use an example to show one judgment the ontology leaves open (Open
+  so far: attempts that used an example document found a second or a swapped one worse, and a
+  section with its gold rows was flat (`lessons.md`). Use an example to show one judgment the ontology leaves open (Open
   hypotheses, Type contrast), measure it, and list the documents it comes from in `fewshot.json`
   (`train.md`, Few-shot examples).
-- **Train is the only sample you may read.** The other articles of the same publication are dev
-  and test: don't look the publication up.
+- **Train is the only sample of the publication you may read.** Its other articles are dev and
+  test: never open the publication, its archive or a copy of one of its articles. This is a rule
+  of the evaluation. Reading about methods, libraries and their docs on the web is fine.
 
 ## The pipeline
 
@@ -105,7 +107,8 @@ errors, and both as retrieval errors, and you couldn't tell which stage to fix.
 **Why order matters:** documents arrive in order (by `published`, then `uri`), like new articles
 landing in a live graph. A document is extracted and resolved with only earlier documents in view,
 and the first surface of an entity (a surface is one `(type, name)` as a document wrote it)
-decides its canonical name.
+decides its canonical name. The documents before the part being evaluated are its history: none
+for train, train for dev, train and dev for test.
 
 ### The log
 
@@ -159,9 +162,11 @@ between two of them:
 ```
 
 - **Scored fields:** `kind`, `doc_uri`, `name`, `type` and `aliases` on a mention; `source_name` and
-  `target_name` on a relation. `semantic_type` is not scored. `description`,
-  `properties`, `count` and `confidence` are part of the ontology but not scored, and no scored
-  stage reads yours: graph building and retrieval get the gold's. They matter for the system the
+  `target_name` on a relation. `semantic_type` is not scored. `source_type` and
+  `target_type` are optional, but when written an end resolves only to a mention of that type, so
+  a wrong one loses the relation: leave them out, or copy the mention's type. `description`,
+  `properties`, `count` and `confidence` (your own 0 to 1 estimate) are part of the row but not
+  scored, and no scored stage reads yours: graph building and retrieval get the gold's. They matter for the system the
   graph is for (`count` separates a document's subject from a thing it names once; What the graph
   is for), so write them when it costs nothing, and never trade a scored field for them. The
   document's `domain` has no row in the prediction schema: don't write it.
@@ -235,8 +240,8 @@ matters; the strings are yours.
   a merge that destroyed a distinction (`tool calls` folded into `tool calling` loses the request
   apart from the practice).
   When in doubt, keep two entities apart. Precision and recall are scored apart for this reason, and
-  the trade is one-sided: a change that raises recall while lowering precision is a regression unless
-  you can name the merges it gets right.
+  the trade is one-sided: treat a change that raises recall while lowering precision as a
+  regression unless you can name the merges it gets right.
 - **When two strings are the same name.** Compare names through a normalized key, never the raw
   string. The scorer uses its own key with these properties; edge cases (an odd plural) are rare,
   and listing the document's own spelling as an alias covers them. The key must be:
@@ -294,8 +299,9 @@ them. Edge precision is reported beside the primary metrics for that reason.
   never carries a `doc_uri`, even though the gold's expected edges do. Your own ids never reach the
   scorer.
 - **The query `id` is an opaque handle.** Echo it; don't route on its prefix (`tr-sh-`, `mh-`, …), which
-  is an artifact of how the set was built. **Why:** a real query carries no kind, so a system that
-  reads it from the id scores what it can't do.
+  is an artifact of how the set was built. This is a rule of the evaluation, not a suggestion.
+  **Why:** a real query carries no kind, so a system that reads it from the id scores what it
+  can't do.
 - **Order is your ranking.** Best first in each list.
 - **Anchors** are the entities the query names. In the gold each expected node has a `role`:
   `anchor` (named in the query), `bridge` (a hop on the way) or `answer`. Nothing scores a
@@ -315,8 +321,8 @@ them. Edge precision is reported beside the primary metrics for that reason.
   no anchor resolves; before adding a model check, count the `single_hop` queries it empties on
   train.
 
-Query kinds, and what a good answer holds. Every kind is answered and must return a valid
-envelope; only `single_hop` is scored (What you're optimizing):
+Query kinds, and what a good answer holds. Write an envelope for every query, whatever its kind
+(a missing one counts as empty); only `single_hop` is scored (What you're optimizing):
 
 | kind | example | a good envelope |
 |---|---|---|
@@ -333,7 +339,7 @@ envelope; only `single_hop` is scored (What you're optimizing):
 Build each stage as a small pipeline of modules with typed rows between them, not one script. The
 shape below is adapted from a working ontology-extraction system over documents like these;
 `lessons.md` lists where its rules lost recall on this corpus. Your repository starts as this
-layout, wired end to end and runnable (its README says what each module does out of the box).
+layout, every stage wired and runnable (its README says what each module does out of the box).
 
 ```
 graphrag/
@@ -392,8 +398,9 @@ can't be found (`lessons.md`, The lever for relations).
 4. **Three bands on the similarity.** Above `high`: merge. Below `low`: a new entity. Between
    them: ask the decision model whether the two are one referent, with both names, types,
    aliases and descriptions in `state`, and merge only above its own threshold. Use what the log
-   rows carry: the graph stage is not given the articles.
-5. **The assignment.**
+   rows carry: on train `--root` holds the articles, but the evaluation gives the graph stage
+   none.
+5. **The assignment.** Write the surface's `entity_id`: the entity it merged into, or a new one.
 
 Set `low`, `high` and the decision threshold on train's merges and non-merges, in `config.toml`.
 Similarity alone is not identity, so `high` is safe only above every train pair that is two
@@ -409,10 +416,12 @@ submit).
 **Retrieval data flow.** The gold graph into Ladybug tables (`Entity`, `Document`, `MENTIONS`,
 `RELATED_TO` with `semantic_type` and `doc_uri`; `runtime.md` has a schema), anchors from the query
 (a key match on names and aliases, then embeddings), the anchor's edges as candidates, a shortlist
-by BM25 and embeddings, a rerank of the shortlist, and an empty envelope when no anchor resolves (never
-a threshold on rerank scores; 3. Retrieval, Abstain, carefully). That is `single_hop`, the scored
+by BM25 and embeddings, a rerank of the shortlist, and an empty envelope when no anchor resolves (3. Retrieval,
+Abstain, carefully; never a threshold on rerank scores, `models.md`, Reranker). That is `single_hop`, the scored
 kind. The other kinds each take one more Cypher template (`runtime.md` has them): answer them, but
-spend rounds on them only after the scored metrics pass. The starter has the templates for an anchor's edges, paths and common
+spend rounds on them only after the scored metrics pass. `lessons.md` records what raised
+multi-hop; since a query carries no kind, path and bridge edges must never push a one-hop
+answer's edge out of the first 5. The starter has the templates for an anchor's edges, paths and common
 neighbours, returns an anchor's documents without a window, ranks by fixed scores and abstains only
 when no anchor resolves.
 
@@ -434,8 +443,10 @@ so try a change on train and keep what raises a metric there.
 ## Open hypotheses
 
 Changes to extraction that no earlier attempt has tested, in a suggested order. Extraction is where
-the metrics fall short. Graph building by rule and `single_hop` retrieval already pass with the
-recipes in `lessons.md`; the one addition to measure there is the three bands (Graph data flow).
+the metrics fall short. Earlier attempts passed graph building and `single_hop` retrieval with the
+recipes in `lessons.md`. The starter does not have them yet (no acronym rule, fixed-score ranking,
+anchors listed first): build those first. The one addition to measure there is the three bands
+(Graph data flow).
 Each is a hypothesis, not a rule: it names the train measurement that
 decides it. Measure paired (`train.md`, Scoring your work on train), keep it only if the measurement
 moves, and say in your notes which way it went.

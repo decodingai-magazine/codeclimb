@@ -20,7 +20,8 @@ third-party evaluator, who runs your frozen system on them:
 | `train/inputs/<stage>.jsonl` | exactly what the evaluator hands each stage, for train |
 | `scorer/` | the official scorers, on train alone, below |
 
-`<stage>` is `extraction`, `graph` or `retrieval`. Nothing outside the bundle is yours to read.
+`<stage>` is `extraction`, `graph` or `retrieval`. No article of the publication outside the
+bundle is yours to read (`task.md`, Domain knowledge).
 
 ## Scoring your work on train
 
@@ -43,12 +44,14 @@ held-out gold, so a score here checks a change; it does not forecast dev.
 The evaluation runs your system with `PYTHONHASHSEED=0`: do the same, so a run is comparable with the
 last one. The chat model is not deterministic, even at temperature 0 with a seed, but the model
 endpoint replays a repeated request's earlier answer: rerun the same code and only the calls your
-change reached are answered anew. Those new answers still carry noise: an unpaired rerun on
+change reached are answered anew. A request repeated within about 5 seconds of its answer counts
+as a retry and is also answered anew, so wait a moment before rerunning a fast stage. Those new
+answers still carry noise: an unpaired rerun on
 train moved mention F1 by up to about 0.045 and relation F1 by up to about 0.1. Compare two versions
 paired: rerun under replay so only the calls your change reached are fresh, or save the raw replies
 once and rescore each variant offline. Report precision, recall and row counts beside F1, never F1
-alone: a mention change that lowers train precision by more than 0.05 is a regression whatever it
-does to recall.
+alone: so far a mention change that lowered train precision by more than 0.05 lost on dev,
+whatever it did to recall (`lessons.md`).
 
 Before you stop, run extraction once on a held-out-sized input (the stress run): two train articles joined into one,
 with every train gold entity as its `known_entities`. Its rows per 1000 characters should stay near
@@ -68,7 +71,7 @@ Sample from `train/examples/` freely:
   the `doc_uri` it was read from) and documents. Every one is answered by
   the train articles alone, so the mix leans on what 6 articles hold: 9 `single_hop`, 7
   `multi_hop`, 4 `comparison`, 3 `intersection`, 3 `temporal`, 2 `unanswerable`, 1 `aggregation`.
-  The evaluation answers every kind `task.md` lists and scores `single_hop` only.
+  Your system answers every kind `task.md` lists; the evaluation scores `single_hop` only.
 
 **Why train is the earliest part:** gold rows reuse the canonical name from the first document that
 named the entity, so a later document's rows would reveal earlier documents' answers. Train comes
@@ -94,12 +97,15 @@ A frozen system (one commit) with one command per stage, which the evaluator run
 reads nothing else, and writes one prediction line per input item. `/spec` doesn't exist when
 evaluated, and `--root` holds only `corpus/`: copy any few-shot rows the system uses into your
 repository, and list them in `fewshot.json`. Run it on `train/inputs/` to
-check it end to end. A document your few-shot examples come from scores high by construction.
+check that every stage runs.
 
 ## Inputs and predictions
 
 Predictions are checked against a fixed schema. **A field not listed here fails the stage, and with
-it the whole submission**, even if every other row is right. Extra data belongs in your own files.
+it the whole submission**, even if every other row is right. A row that fails validation another way
+fails it too: a `type` outside the six, `aliases` that is not a list, a `count` that is not an
+integer, one surface assigned to two entities, or two envelopes with one id. Extra data belongs in
+your own files.
 
 | row | allowed fields |
 |---|---|
@@ -129,7 +135,8 @@ their names (`task.md`, 1. Extraction).
 Predictions: your rows, one per line, as in `task.md`. A predicted mention matches a gold row of the
 same document when the types are equal and the key of any of its names or aliases equals the key of
 any of the gold row's; each gold row matches once. A relation's ends resolve to your mentions of the
-same document by key, then must match the gold row's two ends.
+same document by key, then must match the gold row's two ends. When a relation writes
+`source_type` or `target_type`, that end resolves only to a mention of that type.
 
 ### Graph building
 
@@ -178,8 +185,9 @@ submission, scored fresh. Feedback is never an example: every few-shot example s
 
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.
-- **Few merges.** Train holds 7 merge decisions, so one decision moves its merge rate by 14
-  points, and the held-out parts are small too. Read the raw counts beside the rate.
+- **Few merges.** Train holds 7 merge decisions, so one decision is 14 points
+  of them, and the held-out parts are small too. The report has only B-cubed; the scorer logs
+  the merges found as a count: read it.
 - **The feedback names kinds; train's details name items.** After a dropped round, run extraction
   on train with `--details` and read the per-item errors of the kind the feedback names, then change
   the filter or the prompt where those items show it.
