@@ -11,8 +11,8 @@ You run the same protocol on two parts; only the part and what goes back differ:
 | part | documents | queries | merge decisions | when | you read | what the agent gets back |
 |---|---|---|---|---|---|---|
 | train | 6 (2025-10-07 to 2025-11-18) | 29 | 7 | beside test, at the end | totals | nothing: it is the agent's own material |
-| dev | 8 (2026-01-13 to 2026-05-12) | 46 | 9 | after each submission | totals and per-item errors | your feedback and each metric's change |
-| test | 8 (2026-05-19 to 2026-09-10) | 55 | 6 | once, on the final submission | totals only | nothing until the final verdict |
+| dev | 8 (2026-01-13 to 2026-05-12) | 46 | 10 | after each submission | totals and per-item errors | your feedback and each metric's change |
+| test | 8 (2026-05-19 to 2026-09-10) | 54 | 9 | once, on the final submission | totals only | nothing until the final verdict |
 
 Keep the two held-out parts apart:
 
@@ -81,8 +81,8 @@ For each `headline` metric:
   extraction and graph, read a drop of more than a few points the same way. Test is later in time
   than dev, so a small drop on the graph stage is expected as new entities arrive.
 - **Graph:** read `b_cubed.precision` and `b_cubed.recall` apart (a wrong merge is worse than a wrong
-  split), and only the recall above `baselines.history_only.recall` measures merging. Dev holds 9
-  merge decisions, test 6: `--details` lists the ones missed.
+  split), and only the recall above `baselines.history_only.recall` measures merging. Dev holds 10
+  merge decisions, test 9: `--details` lists the ones missed.
 - **Retrieval:** only `single_hop` is scored; the other kinds are answered and left unscored. Read
   `answer_mrr` beside `edge_recall_at_k`: recall@5 can't tell an answer ranked first from one ranked
   fifth. Read `edge_precision` too: recall bought by returning the neighbourhood shows up there.
@@ -118,3 +118,5 @@ Judge these apart and say so:
 - **Not measurable from this gold**: `count`, `confidence`, `domain`, `released`, `country`, and
   `description` (needs a judge). The coined labels need a judge too. Types count only through the
   mention match, relation labels not at all, and retrieval kinds other than `single_hop` aren't scored.
+- **Relation direction**: the gold has it, but no metric reads it, by choice: a claim is its pair of
+  ends, and an edge matches either way round.

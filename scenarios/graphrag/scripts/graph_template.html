@@ -414,7 +414,7 @@ $cdn_scripts
       return toggle(hiddenStatus, k, dotFor(k), DIFF.entities[k]);
     })));
     diffBox.appendChild(el("div", {class: "eyebrow", text: "Relations against gold"}));
-    diffBox.appendChild(el("div", {class: "scores", text: "directed " + pr(sc.relations)}));
+    diffBox.appendChild(el("div", {class: "scores", text: "undirected " + pr(sc.relations)}));
     diffBox.appendChild(el("ul", {class: "types"}, ["matched", "extra", "missed"].map(function (k) {
       return toggle(hiddenEdgeStatus, k, barFor(k), DIFF.relations[k]);
     })));

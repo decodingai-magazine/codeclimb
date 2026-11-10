@@ -199,12 +199,11 @@ between two of them:
   scores the same. Reusing the known name is optional: it joins the two in extraction already,
   where otherwise graph building must. The gold does both: most rows reuse known names, and some
   keep their own variant (`RAG`, `LLMs`, `AI agent`), joined later by a merge decision.
-- **`related_to` ends** name two mentions of the same document (by name or alias), in the direction
-  the claim reads: "Anthropic develops Claude Code", not the reverse. The gold reads component
-  `part_of` whole, instance `instance_of` class, organization `develops` product, tool `used_for`
-  method, method `applied_to` system. That describes the gold; as rules in the extractor's
-  prompt, direction lists did not help (`lessons.md`, Failed, more than once). The starter's
-  claims prompt carries one.
+- **`related_to` ends** name two mentions of the same document (by name or alias). Direction is
+  not scored: a claim is its pair of ends, so "Anthropic develops Claude Code" and "Claude Code
+  develops Anthropic" are the same claim to the evaluator, and two rows that differ only in order
+  count once. Write the ends in the order the claim reads, as the gold does, and spend nothing on
+  getting direction right. The starter's claims prompt carries a direction list; it can go.
 - **Claims are subject-centred and span sentences.** An article's central subject is one end of a
   large share of its claims; that is the gold, not a defect to suppress. A claim is any relation the
   article states between two entities you extracted, wherever the two are named: a list item, a
@@ -315,9 +314,8 @@ them. Edge precision is reported beside the primary metrics for that reason.
   `anchor` (named in the query), `bridge` (a hop on the way) or `answer`. Nothing scores a
   returned anchor. Answer MRR reads the rank of the first `answer` node in `nodes`, so list answer
   nodes above anchors; the starter lists anchors first.
-- **An edge is found only when both ends and the direction are right.** `compared_with` and
-  `alternative_to` count either way; the label is not required to match. **Why:** a node can come
-  back for the wrong reason, an edge can't.
+- **An edge is found only when both ends are right,** in either order; the label is not required
+  to match. **Why:** a node can come back for the wrong reason, an edge can't.
 - **Return what answers the query, not its neighbourhood.** Edge recall reads only your first 5
   edges. Edge precision is the share of all returned edges that are expected: a diagnostic, with
   no threshold. Returned documents are not scored.
@@ -450,16 +448,16 @@ so try a change on train and keep what raises a metric there.
 
 ## Open hypotheses
 
-Changes to extraction that no earlier attempt has tested, in a suggested order. Each is a
-hypothesis, not a rule: it names the train measurement that decides it. Measure paired
+Changes to extraction and graph building that no earlier attempt has tested, in a suggested
+order. Each is a hypothesis, not a rule: it names the train measurement that decides it. Measure paired
 (`train.md`, Scoring your work on train), keep it only if the measurement moves, and say in your
 notes which way it went.
 
-They cover extraction only. For graph building and `single_hop` retrieval, the recipes in
-`lessons.md` passed in earlier attempts and the starter does not have them yet (no acronym rule,
-fixed-score ranking, anchors listed first): they are the cheapest gains for those two stages, in
-whatever order your targets put them. The one addition to measure there is the three bands (Graph
-data flow).
+Four cover extraction and one graph building. For graph building and `single_hop` retrieval, the
+recipes in `lessons.md` passed in earlier attempts and the starter does not have them yet (no
+acronym rule, fixed-score ranking, anchors listed first): they are the cheapest gains for those two
+stages, in whatever order your targets put them. The additions to measure there are the three bands
+(Graph data flow) and hypothesis 5, which works inside them.
 
 The extraction hypotheses:
 
@@ -495,12 +493,26 @@ The extraction hypotheses:
    linked it to everything near it (`lessons.md`, Failed, more than once), so drop it if those
    claims rise.
 
+The graph-building hypothesis:
+
+5. **Shared neighbours as identity evidence.** **Problem:** a name and its embedding say little
+   about whether two surfaces are one referent: `tool calling` scores about as close to
+   `tool calls` (two entities) as to `tool-calling` (one), and the decision model's probabilities
+   sit close together (`models.md`, Decision). **Try:** for a candidate pair in the middle
+   band, find the entities both surfaces have a `related_to` row with, across their documents and
+   after the history's merges: their shared neighbours. Either pass the shared neighbours to the
+   decision model in `state`, or use them as a veto: no shared neighbour, no merge. **Measure:**
+   B-cubed precision and recall on train against step 1 alone (Graph data flow), and the wrong
+   merges each variant adds. Train holds 7 merge decisions and one is 14 points, so read this as a
+   check that the variant adds no wrong merge, not as a gain. The veto also blocks right merges
+   between surfaces with few claims; count those beside it.
+
 ## What you're optimizing
 
 Primary metrics, all in the evaluator's report:
 
 | stage | primary | why |
 |---|---|---|
-| extraction | mention F1 (micro) and `related_to` F1 (directed), with their precision and recall | entities and claims are what the graph is made of; a mention with the wrong type is a miss |
+| extraction | mention F1 (micro) and `related_to` F1 (undirected: a claim is its pair of ends), with their precision and recall | entities and claims are what the graph is made of; a mention with the wrong type is a miss |
 | graph building | B-cubed recall, with precision held high, against the history-only baseline | the baseline merges nothing new; only recall above it measures your merging |
 | retrieval | `single_hop` only: edge recall@5 and answer-node MRR, with edge precision beside them | the other kinds are answered but not scored; MRR reads whether the answer comes first, and precision stops recall being bought by returning everything |

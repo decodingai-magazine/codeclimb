@@ -10,8 +10,9 @@ the night's test eval, which exists only for the experiment the night tested.
 
 - **Entities.** Every `entity_mention` row, merged across documents on type plus the dataset's name
   key (`normalize`, README.md, Identity). The shown name is the most frequent surface.
-- **Relations.** Every `related_to` row, collapsed to one edge per directed pair. Its label is the
-  most frequent `semantic_type`, its weight the number of documents behind it.
+- **Relations.** Every `related_to` row, collapsed to one edge per pair of entities, either way round
+  (the score ignores direction). Its label is the most frequent `semantic_type`, its weight the
+  number of documents behind it.
 
 `--diff` marks the graph against gold with the extraction evaluator's own matching, document by
 document, so its colors agree with the score: each predicted entity is matched, of the wrong type or
@@ -25,6 +26,7 @@ needs a network connection; everything else is inline.
 
 import json
 import sys
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 from string import Template
@@ -38,7 +40,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evaluators"))
 from common import graph as gold_graph
 from common import held_out, log_rows, read_predictions, terminal_of
 from compile import normalize  # the dataset's key function, from the scripts dir above
-from extraction import Prediction, coined_rows, resolve_end, score_document
+from extraction import Prediction, coined_rows, resolve_end, score_document, undirected
+from extraction import score as score_extraction
 
 SCENARIO = Path(__file__).resolve().parent.parent
 RUNS = SCENARIO.parent.parent / "runs" / "graphrag-cloud"
@@ -164,7 +167,7 @@ def build_graph(eval_dir: Path) -> dict:
             continue
         if s == t:
             continue
-        p = pairs.setdefault((s, t), {"labels": Counter(), "docs": set()})
+        p = pairs.setdefault((t, s) if (t, s) in pairs else (s, t), {"labels": Counter(), "docs": set()})
         p["labels"][r["semantic_type"]] += 1
         p["docs"].add(r["doc_uri"])
     if dangling:
@@ -261,15 +264,15 @@ def add_diff(graph: dict, eval_dir: Path, split: str) -> dict:
         for r in pred_r[u]:
             a = resolve_end(r.source_name, r.source_type, pm)
             b = resolve_end(r.target_name, r.target_type, pm)
-            hit = a in typed and b in typed and (typed[a], typed[b]) in gold_pairs
+            hit = a in typed and b in typed and undirected(typed[a], typed[b]) in gold_pairs
             ends = (
                 key(r.source_type or "", r.source_name),
                 key(r.target_type or "", r.target_name),
             )
-            edge_rows[ends]["matched" if hit else "extra"] += 1
+            edge_rows[tuple(sorted(ends))]["matched" if hit else "extra"] += 1
         index = {g["surface_id"]: i for i, g in enumerate(gm)}
         label = {
-            (index[r["source_id"]], index[r["target_id"]]): r["semantic_type"]
+            undirected(index[r["source_id"]], index[r["target_id"]]): r["semantic_type"]
             for r in gold_r[u]
         }
         for a, b in gold_pairs - pred_pairs:
@@ -304,7 +307,7 @@ def add_diff(graph: dict, eval_dir: Path, split: str) -> dict:
         )
     for e in graph["edges"]:
         e["status"] = (
-            "matched" if edge_rows[(e["source"], e["target"])]["matched"] else "extra"
+            "matched" if edge_rows[tuple(sorted((e["source"], e["target"])))]["matched"] else "extra"
         )
     have = {(e["source"], e["target"]) for e in graph["edges"]}
     # A coined gold row is never missed, so a missed relation to one has no node to end on.
@@ -312,9 +315,9 @@ def add_diff(graph: dict, eval_dir: Path, split: str) -> dict:
     gone: dict[tuple[str, str], dict] = {}
     for a, b, lab, u in missed_pairs:
         s, t = (node_of.get(n[5:], n) if n.startswith("gold:") else n for n in (a, b))
-        if s == t or (s, t) in have or s not in ids or t not in ids:
+        if s == t or (s, t) in have or (t, s) in have or s not in ids or t not in ids:
             continue
-        m = gone.setdefault((s, t), {"labels": Counter(), "docs": set()})
+        m = gone.setdefault((t, s) if (t, s) in gone else (s, t), {"labels": Counter(), "docs": set()})
         m["labels"][lab] += 1
         m["docs"].add(u)
     graph["edges"] += [
@@ -414,11 +417,16 @@ def main(
             "kept": exp == kept,
         }
         if diff:
-            report = json.loads((eval_dir / "extraction" / "report.json").read_text())
+            # Scored again with today's gold and scorer: the eval's own report may predate either.
+            with tempfile.TemporaryDirectory() as tmp:
+                predictions = eval_dir / "extraction" / "outputs" / "predictions.jsonl"
+                args = ["--split", split, "--predictions", str(predictions), "--out", f"{tmp}/report.json"]
+                score_extraction.main(args, standalone_mode=False)
+                report = json.loads(Path(f"{tmp}/report.json").read_text())
             meta["diff"] = add_diff(graph, eval_dir, split)
             meta["scores"] = {
                 "mentions": report["mentions"],
-                "relations": report["relations"]["directed"],
+                "relations": report["relations"]["undirected"],
             }
             logger.info(f"{split} against gold: {meta['diff']}")
         path = out / f"{split}{'-diff' if diff else ''}.html"

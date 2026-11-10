@@ -57,6 +57,13 @@ Before you stop, run extraction once on a held-out-sized input (the stress run):
 with every train gold entity as its `known_entities`. Its rows per 1000 characters should stay near
 the single articles'. Far more means a loop or a flooded canon; far fewer means a dropped section.
 
+For retrieval, score a baseline with no graph once and keep its numbers in your notes: every edge of
+the graph written as text (as your reranker sees it), a BM25 shortlist over all of them for the
+query, the reranker on top, and the answer nodes taken from the top edges, with no anchor step. The
+evaluation does not score it. It tells you what anchor resolution adds on `single_hop`: if the
+baseline comes close to your system's `edge_recall_at_k` and `answer_mrr`, the anchor step is where
+to look, and a change to anchors that does not beat the baseline gains nothing.
+
 ## Few-shot examples
 
 Sample from `train/examples/` freely:

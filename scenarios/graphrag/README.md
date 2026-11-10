@@ -1,6 +1,6 @@
 # GraphRAG evaluation dataset
 
-22 Decoding AI articles, 6 train, 8 dev and 8 test, with their gold and the 130 retrieval queries
+22 Decoding AI articles, 6 train, 8 dev and 8 test, with their gold and the 129 retrieval queries
 they answer. They were cut from a private 56-article dataset with the same format, scripts,
 evaluators and scoring; sections from "The source dataset" on are its README, and their counts
 describe the 56 articles, not these 22.
@@ -15,16 +15,16 @@ points.
 | part | documents | mentions | relations | merge decisions | queries (easy / medium / hard) |
 |---|---|---|---|---|---|
 | train | 6 (2025-10-07 to 2025-11-18) | 144 | 180 | 7 | 29 (13 / 13 / 3) |
-| dev | 8 (2026-01-13 to 2026-05-12) | 373 | 455 | 9 | 46 (16 / 21 / 9) |
-| test | 8 (2026-05-19 to 2026-09-10) | 475 | 614 | 6 | 55 (16 / 26 / 13) |
+| dev | 8 (2026-01-13 to 2026-05-12) | 383 | 511 | 10 | 46 (16 / 21 / 9) |
+| test | 8 (2026-05-19 to 2026-09-10) | 474 | 622 | 9 | 54 (16 / 25 / 13) |
 
 Extraction traps per part (mention rows; `not_a_tool` counts dropped tool-like names in the bodies):
 
 | part | alias-only | merged variant | coined | kept-apart sibling | typed twice | ruled alias | renamed | retyped | not a tool | isolated | types |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| train | 3 | 11 | 2 | 13 | 1 | 2 | 3 | 1 | 55 | 7 | 6 of 6 |
-| dev | 24 | 17 | 7 | 5 | 5 | 3 | 2 | 0 | 89 | 20 | 6 of 6 |
-| test | 41 | 14 | 5 | 13 | 13 | 7 | 5 | 4 | 117 | 12 | 6 of 6 |
+| train | 3 | 11 | 2 | 13 | 3 | 2 | 3 | 3 | 65 | 7 | 6 of 6 |
+| dev | 23 | 15 | 7 | 6 | 5 | 3 | 3 | 4 | 114 | 23 | 6 of 6 |
+| test | 44 | 15 | 6 | 16 | 16 | 7 | 5 | 9 | 146 | 14 | 6 of 6 |
 
 The `spec/agent/` examples were picked for these documents: every example entity is one the train
 articles write, every example query is a train query, and the rest are marked *invented*
@@ -448,9 +448,10 @@ and `related_to` rows.
   matches once, a name-to-name hit preferred. Recall leaves the 10 coined rows out (they need a judge
   on the description). A type counts only through the match: a mention with the wrong type is a miss
   and a false positive (`--details` lists the type errors).
-- **`related_to` P/R/F1, directed** (headline): both ends resolve to the document's predicted mentions
-  by key and must match the gold ends, in order; labels are ignored. `unresolved_ends` counts ends
-  that name no predicted mention.
+- **`related_to` P/R/F1, undirected** (headline): both ends resolve to the document's predicted
+  mentions by key and must match the gold ends, in either order: a claim is its pair of ends, so
+  `A -> B` and `B -> A` are one claim, and labels are ignored. `unresolved_ends` counts ends that
+  name no predicted mention.
 - **Guards:** `documents.empty` (a held-out document with no rows back) and
   `documents.predicted_rows_outside_held_out`.
 
@@ -479,8 +480,8 @@ Input: a query, `corpus/` and `gold/graph.json`, always: retrieval is scored on 
 measures retrieval alone, and the system's own graph is scored only by the graph stage. The
 retrieval stage may load `graph.json`; nothing else in the system may, since it holds the gold
 extraction of every document. The agent's bundle carries train's graph in its place. Output: one envelope per query (`spec/agent/task.md`). A node matches on type plus
-key; an edge on both ends and direction (`compared_with`, `alternative_to` either way; label and
-`doc_uri` ignored, a strict variant needs the label); a document on `doc_uri`.
+key; an edge on both ends, in either order (label and `doc_uri` ignored, a strict variant needs the
+label); a document on `doc_uri`.
 
 Every kind is answered (`spec/agent/task.md`), but only `single_hop` is scored:
 
@@ -512,10 +513,10 @@ null: the evaluator runs it on each dev submission, then once with test (`spec/e
 Gates the evaluators pass: gold predictions score 1.0 on every metric on train, dev and test (MRR
 needs the answer node listed first); empty predictions give recall 0. Perturbations move only what
 they should: a dropped mention lowers recall only; a flipped type lowers mention precision and
-recall; a reversed relation lowers `directed`; a wrong label changes nothing; a name swapped with its
+recall; a reversed relation changes nothing, nor does a wrong label; a name swapped with its
 alias still matches; a wrong merge lowers B-cubed precision only; a missing merge lowers recall; an
-answer at rank 2 halves that row's MRR; a reversed edge misses unless it is `compared_with` or
-`alternative_to`; `--unranked` drops every metric that reads order.
+answer at rank 2 halves that row's MRR; a reversed edge still matches; `--unranked` drops every
+metric that reads order.
 
 ## Scripts
 
@@ -536,7 +537,7 @@ answer at rank 2 halves that row's MRR; a reversed edge misses unless it is `com
   `runs/graphrag-cloud/nights/<id>/graphs/{dev,test}.html` by default. Dev comes from the
   experiment's own eval and test from the night's test eval; both read its
   `extraction/outputs/predictions.jsonl`, never gold. Entities merge on type plus `normalize`,
-  relations collapse to one edge per directed pair, and each entity type is one cluster. The page
+  relations collapse to one edge per pair of entities, either way round, and each entity type is one cluster. The page
   (`scripts/graph_template.html`) loads sigma, graphology and d3-force from jsdelivr, so it needs a
   network connection. **`--diff`** writes `dev-diff.html` instead: the graph marked against gold with
   the extraction evaluator's own per-document matching (matched, wrong type, not in gold), plus the

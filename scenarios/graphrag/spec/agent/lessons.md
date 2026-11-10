@@ -51,8 +51,8 @@ your notes.
 - Prompts framed around the article's main subject ("what is this article about", "hub first",
   "attach claims to the central entity"). They link the subject to everything near it.
 - Direction rules and inverse-label maps in the prompt. Reversed claims went up, not down, or a
-  train gain vanished on dev. An inverse-label map in code never fires when the prompt fixes the
-  label vocabulary. Reversed claims are a small error group either way.
+  train gain vanished on dev. Direction is no longer scored, so there is nothing left to gain from
+  them.
 - The decision model as an entity filter. It ranks core methods below junk, drops named tools,
   models and organizations an article compares or uses briefly, and passes code symbols. Exempting
   person, organization, model and tool rows and filtering only method and system rows raised dev
@@ -79,7 +79,7 @@ your notes.
 ## The lever for relations
 
 - Most missed relations lack an end, most often a method or system; on dev many were known entities
-  the section names but the entities call skipped. Direction and labels are small next to that.
+  the section names but the entities call skipped. Neither direction nor labels are scored.
   Raise relation F1 through mention recall for those types and by cutting fan-out, not by filtering
   claims. Fan-out is the subject joined to entities named near it but never related to it. Claims
   the article states about its subject are gold.

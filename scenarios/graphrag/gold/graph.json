@@ -456,8 +456,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 1,
-   "mention_count": 9
+   "doc_count": 2,
+   "mention_count": 10
   },
   {
    "id": "method:08a6074d209e5e89",
@@ -720,14 +720,15 @@
    "aliases": [
     "Deduplicate",
     "dedup",
-    "deduplicated"
+    "deduplicated",
+    "deduplicates"
    ],
    "description": "the step that decides whether a new node gets created at all",
    "properties": {
     "released": null
    },
-   "doc_count": 3,
-   "mention_count": 15
+   "doc_count": 4,
+   "mention_count": 18
   },
   {
    "id": "method:160931661987415c",
@@ -782,18 +783,6 @@
    },
    "doc_count": 4,
    "mention_count": 16
-  },
-  {
-   "id": "method:1d45a3e71d348284",
-   "name": "agentic search",
-   "type": "method",
-   "aliases": [],
-   "description": null,
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 3
   },
   {
    "id": "method:1f1dc4421f705792",
@@ -913,18 +902,6 @@
    },
    "doc_count": 1,
    "mention_count": 4
-  },
-  {
-   "id": "method:29c7a4b83f3d5b3a",
-   "name": "harness interface",
-   "type": "method",
-   "aliases": [],
-   "description": "the interface made of build_agent() and AgentDeps, implemented to add a new serving layer",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 2
   },
   {
    "id": "method:2de5b348189ea41e",
@@ -1069,8 +1046,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 1,
-   "mention_count": 2
+   "doc_count": 2,
+   "mention_count": 3
   },
   {
    "id": "method:35578928e137f5e3",
@@ -1129,8 +1106,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 3,
-   "mention_count": 9
+   "doc_count": 2,
+   "mention_count": 8
   },
   {
    "id": "method:3d9fe8faf55751a3",
@@ -1181,8 +1158,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 1,
-   "mention_count": 4
+   "doc_count": 2,
+   "mention_count": 6
   },
   {
    "id": "method:42651c0d2bd4f186",
@@ -1412,13 +1389,15 @@
    "id": "method:541e2634100f3be2",
    "name": "NL query",
    "type": "method",
-   "aliases": [],
+   "aliases": [
+    "agentic search"
+   ],
    "description": "agentic search that lets the LLM write its own MongoDB queries based on the ontology",
    "properties": {
     "released": null
    },
    "doc_count": 1,
-   "mention_count": 2
+   "mention_count": 5
   },
   {
    "id": "method:54e7996b7a17a5b4",
@@ -1431,20 +1410,6 @@
    },
    "doc_count": 3,
    "mention_count": 20
-  },
-  {
-   "id": "method:552894d1e5af7f21",
-   "name": "data partitioning",
-   "type": "method",
-   "aliases": [
-    "partitioning"
-   ],
-   "description": null,
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 1
   },
   {
    "id": "method:55de137ee6359326",
@@ -1527,6 +1492,18 @@
    "mention_count": 1
   },
   {
+   "id": "method:5ba942bca6d1d302",
+   "name": "Document Ontology",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 3
+  },
+  {
    "id": "method:5c1993848d1c89e5",
    "name": "Orchestrator-Worker",
    "type": "method",
@@ -1596,8 +1573,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 2,
-   "mention_count": 27
+   "doc_count": 3,
+   "mention_count": 31
   },
   {
    "id": "method:62fd50d3d4ffad16",
@@ -1915,6 +1892,18 @@
    "mention_count": 1
   },
   {
+   "id": "method:81ceac18e842c150",
+   "name": "orchestration",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 1
+  },
+  {
    "id": "method:8209456d4f4ef9dc",
    "name": "zigzag pattern",
    "type": "method",
@@ -1990,6 +1979,18 @@
    },
    "doc_count": 1,
    "mention_count": 3
+  },
+  {
+   "id": "method:873d96d16fb5ad15",
+   "name": "audit trail",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 2
   },
   {
    "id": "method:888b4fa886f72ad8",
@@ -2191,6 +2192,18 @@
    "mention_count": 2
   },
   {
+   "id": "method:9d63924e6bf3c96a",
+   "name": "Person Ontology",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 4
+  },
+  {
    "id": "method:a004e2b0b06b2e2f",
    "name": "agentic templates",
    "type": "method",
@@ -2342,20 +2355,6 @@
    "mention_count": 1
   },
   {
-   "id": "method:af1148104a2de26e",
-   "name": "application layer",
-   "type": "method",
-   "aliases": [
-    "app layer"
-   ],
-   "description": "Layer that orchestrates domain elements into workflows and business use cases",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 2,
-   "mention_count": 13
-  },
-  {
    "id": "method:af58108a18c1d434",
    "name": "ontology",
    "type": "method",
@@ -2432,30 +2431,19 @@
    "mention_count": 1
   },
   {
-   "id": "method:b715beaf28d1847b",
-   "name": "name resolution",
-   "type": "method",
-   "aliases": [
-    "Resolve names"
-   ],
-   "description": "a write-path step that only checks whether two canonical names match, on the name and its aliases, filtered by type",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 3
-  },
-  {
    "id": "method:b8e3dee152c1341d",
    "name": "resolution",
    "type": "method",
-   "aliases": [],
+   "aliases": [
+    "Resolve names",
+    "name resolution"
+   ],
    "description": "the step that sets a canonical string property on an existing reference",
    "properties": {
     "released": null
    },
-   "doc_count": 1,
-   "mention_count": 4
+   "doc_count": 2,
+   "mention_count": 7
   },
   {
    "id": "method:bb29ee2906f59553",
@@ -2714,6 +2702,18 @@
    "mention_count": 2
   },
   {
+   "id": "method:cc536a5beba617cf",
+   "name": "Global Ontology",
+   "type": "method",
+   "aliases": [],
+   "description": "the digital twin's ontology of six entity types, split into a Document Ontology and a Person Ontology",
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 2
+  },
+  {
    "id": "method:cc5ea50f49f6c442",
    "name": "summarization-based context compression",
    "type": "method",
@@ -2772,8 +2772,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 5,
-   "mention_count": 42
+   "doc_count": 6,
+   "mention_count": 43
   },
   {
    "id": "method:d03ae979fda96b0a",
@@ -2840,6 +2840,20 @@
    },
    "doc_count": 1,
    "mention_count": 4
+  },
+  {
+   "id": "method:db5a2bc359833e50",
+   "name": "Resource Description Framework",
+   "type": "method",
+   "aliases": [
+    "RDF"
+   ],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 10
   },
   {
    "id": "method:dc8350966c103a56",
@@ -3006,6 +3020,18 @@
    "mention_count": 6
   },
   {
+   "id": "method:e8c6d15f92e02d56",
+   "name": "long-context",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 2
+  },
+  {
    "id": "method:e8e8b086a755d8fb",
    "name": "GraphRAG",
    "type": "method",
@@ -3014,8 +3040,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 6,
-   "mention_count": 25
+   "doc_count": 5,
+   "mention_count": 24
   },
   {
    "id": "method:e9c036795ff0ef04",
@@ -3092,8 +3118,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 3,
-   "mention_count": 13
+   "doc_count": 5,
+   "mention_count": 16
   },
   {
    "id": "method:f0b85c2298d7601c",
@@ -3122,6 +3148,18 @@
    },
    "doc_count": 2,
    "mention_count": 10
+  },
+  {
+   "id": "method:f23067b91d68fd45",
+   "name": "PDF parsing",
+   "type": "method",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "released": null
+   },
+   "doc_count": 1,
+   "mention_count": 1
   },
   {
    "id": "method:f29640689c00531f",
@@ -3255,8 +3293,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 2,
-   "mention_count": 21
+   "doc_count": 3,
+   "mention_count": 26
   },
   {
    "id": "method:fd168b3a288e6573",
@@ -3270,8 +3308,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 4,
-   "mention_count": 11
+   "doc_count": 5,
+   "mention_count": 13
   },
   {
    "id": "method:fd7707e736f10d6e",
@@ -3493,19 +3531,6 @@
    "mention_count": 1
   },
   {
-   "id": "model:7a0174f1a2da562a",
-   "name": "Claude",
-   "type": "model",
-   "aliases": [],
-   "description": null,
-   "properties": {
-    "country": null,
-    "released": null
-   },
-   "doc_count": 2,
-   "mention_count": 2
-  },
-  {
    "id": "model:821286d2552955c4",
    "name": "Claude Sonnet",
    "type": "model",
@@ -3711,8 +3736,20 @@
    "properties": {
     "country": "US"
    },
-   "doc_count": 7,
-   "mention_count": 18
+   "doc_count": 6,
+   "mention_count": 9
+  },
+  {
+   "id": "organization:a4981ab1179e47b3",
+   "name": "Pydantic",
+   "type": "organization",
+   "aliases": [],
+   "description": null,
+   "properties": {
+    "country": null
+   },
+   "doc_count": 1,
+   "mention_count": 1
   },
   {
    "id": "organization:b821d46d39722abd",
@@ -3850,18 +3887,6 @@
    },
    "doc_count": 2,
    "mention_count": 6
-  },
-  {
-   "id": "person:ce2ac1b6c36e096f",
-   "name": "Matt Pocock",
-   "type": "person",
-   "aliases": [],
-   "description": null,
-   "properties": {
-    "country": null
-   },
-   "doc_count": 1,
-   "mention_count": 1
   },
   {
    "id": "person:d26e66c7a4cf5f27",
@@ -4164,8 +4189,8 @@
    "aliases": [],
    "description": "a buffer that holds input the instant it arrives and injects it only at a safe boundary, before the next model call and never mid-tool-call",
    "properties": {},
-   "doc_count": 2,
-   "mention_count": 7
+   "doc_count": 3,
+   "mention_count": 8
   },
   {
    "id": "system:421fdf1fdd3c6bd1",
@@ -4213,8 +4238,8 @@
    ],
    "description": "The mechanism that allows the agent to see what's happening in the environment or take actions within it, the LLM's hands and senses.",
    "properties": {},
-   "doc_count": 8,
-   "mention_count": 311
+   "doc_count": 10,
+   "mention_count": 325
   },
   {
    "id": "system:48a6c8684a3e1adc",
@@ -4227,6 +4252,16 @@
    "properties": {},
    "doc_count": 1,
    "mention_count": 5
+  },
+  {
+   "id": "system:4c8f44ebd033992d",
+   "name": "workflow orchestrator",
+   "type": "system",
+   "aliases": [],
+   "description": null,
+   "properties": {},
+   "doc_count": 1,
+   "mention_count": 3
   },
   {
    "id": "system:4d2396f6033baf43",
@@ -4294,6 +4329,18 @@
    "properties": {},
    "doc_count": 1,
    "mention_count": 3
+  },
+  {
+   "id": "system:664db7f5927de299",
+   "name": "application layer",
+   "type": "system",
+   "aliases": [
+    "app layer"
+   ],
+   "description": "Layer that orchestrates domain elements into workflows and business use cases",
+   "properties": {},
+   "doc_count": 2,
+   "mention_count": 13
   },
   {
    "id": "system:689d96959eeb8d23",
@@ -4512,8 +4559,8 @@
    ],
    "description": "An orchestrator agent plans the research by decomposing the query into sub-questions, then reviews the results and initiates further research cycles if needed.",
    "properties": {},
-   "doc_count": 6,
-   "mention_count": 30
+   "doc_count": 5,
+   "mention_count": 27
   },
   {
    "id": "system:8d6aec77d001ab01",
@@ -4527,16 +4574,6 @@
    "properties": {},
    "doc_count": 2,
    "mention_count": 11
-  },
-  {
-   "id": "system:907b49c6be34c6db",
-   "name": "unified memory",
-   "type": "system",
-   "aliases": [],
-   "description": "an agent's memory that maps naturally to a knowledge graph, tracking preferences, experiences and todos over time",
-   "properties": {},
-   "doc_count": 3,
-   "mention_count": 27
   },
   {
    "id": "system:9233acb0d4f5b32f",
@@ -4624,11 +4661,14 @@
    "id": "system:a2c52c5e5e53a964",
    "name": "swarm of agents",
    "type": "system",
-   "aliases": [],
+   "aliases": [
+    "swarms of agents",
+    "swarms of remote agents"
+   ],
    "description": "many agents running in parallel on a cloud platform for automation such as picking up tasks from the backlog or PR reviews",
    "properties": {},
-   "doc_count": 1,
-   "mention_count": 2
+   "doc_count": 2,
+   "mention_count": 4
   },
   {
    "id": "system:a8f8ff986d4bf543",
@@ -4649,12 +4689,13 @@
    "name": "personal assistant",
    "type": "system",
    "aliases": [
+    "personal AI assistant",
     "personal assistants"
    ],
    "description": "the assistant the author is building, for which Preferences attach only to the Person",
    "properties": {},
-   "doc_count": 3,
-   "mention_count": 6
+   "doc_count": 4,
+   "mention_count": 8
   },
   {
    "id": "system:af7b39d7c69d1c99",
@@ -4716,16 +4757,6 @@
    "properties": {},
    "doc_count": 1,
    "mention_count": 6
-  },
-  {
-   "id": "system:b44bfec77a0c250a",
-   "name": "memory layer",
-   "type": "system",
-   "aliases": [],
-   "description": "a layer over the author's research, writing and content creation built from entities and relationships instead of files",
-   "properties": {},
-   "doc_count": 4,
-   "mention_count": 13
   },
   {
    "id": "system:b57c53a486330c5d",
@@ -4811,14 +4842,16 @@
    "mention_count": 32
   },
   {
-   "id": "system:c6bd81d1e086e604",
-   "name": "composite resolver",
+   "id": "system:cbac34e13bf136c7",
+   "name": "AI coding assistant",
    "type": "system",
-   "aliases": [],
-   "description": "the component held by the resolution/ module that canonicalizes mentions against existing nodes",
+   "aliases": [
+    "AI coding assistants"
+   ],
+   "description": null,
    "properties": {},
    "doc_count": 1,
-   "mention_count": 2
+   "mention_count": 1
   },
   {
    "id": "system:ce5f3a37a390a188",
@@ -4892,6 +4925,18 @@
    "mention_count": 1
   },
   {
+   "id": "system:d59bd8fc8d3229ca",
+   "name": "agentic CLI",
+   "type": "system",
+   "aliases": [
+    "agentic CLIs"
+   ],
+   "description": null,
+   "properties": {},
+   "doc_count": 1,
+   "mention_count": 1
+  },
+  {
    "id": "system:ddd712a97f684d38",
    "name": "memory/ folder",
    "type": "system",
@@ -4938,8 +4983,21 @@
    ],
    "description": "a system where an LLM dynamically decides the sequence of steps to achieve a goal, reasoning and planning from the task and feedback from its environment",
    "properties": {},
-   "doc_count": 16,
-   "mention_count": 283
+   "doc_count": 19,
+   "mention_count": 320
+  },
+  {
+   "id": "system:e4361ea046c4b92a",
+   "name": "unified memory layer",
+   "type": "system",
+   "aliases": [
+    "memory layer",
+    "unified memory"
+   ],
+   "description": "an agent's memory that maps naturally to a knowledge graph, tracking preferences, experiences and todos over time",
+   "properties": {},
+   "doc_count": 5,
+   "mention_count": 40
   },
   {
    "id": "system:e5f3d6bc78975b15",
@@ -5332,18 +5390,6 @@
    "mention_count": 3
   },
   {
-   "id": "tool:26b863da1c6894eb",
-   "name": "Global Ontology",
-   "type": "tool",
-   "aliases": [],
-   "description": "the digital twin's ontology of six entity types, split into a Document Ontology and a Person Ontology",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 2
-  },
-  {
    "id": "tool:2b05eb796d126a6c",
    "name": "Decode",
    "type": "tool",
@@ -5388,8 +5434,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 2,
-   "mention_count": 7
+   "doc_count": 1,
+   "mention_count": 3
   },
   {
    "id": "tool:3340f482f0e4fcd5",
@@ -5402,20 +5448,6 @@
    },
    "doc_count": 1,
    "mention_count": 1
-  },
-  {
-   "id": "tool:339bf5ff69d06bb1",
-   "name": "Resource Description Framework",
-   "type": "tool",
-   "aliases": [
-    "RDF"
-   ],
-   "description": "a framework that attaches each piece of metadata as another triplet, so the graph explodes in size",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 8
   },
   {
    "id": "tool:35fe143696787c9d",
@@ -5498,8 +5530,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 7,
-   "mention_count": 20
+   "doc_count": 6,
+   "mention_count": 14
   },
   {
    "id": "tool:3f583c71afdb591d",
@@ -5600,18 +5632,6 @@
    },
    "doc_count": 1,
    "mention_count": 6
-  },
-  {
-   "id": "tool:4de8904568107022",
-   "name": "Document Ontology",
-   "type": "tool",
-   "aliases": [],
-   "description": "the sub-ontology the data pipeline constructs deterministically, with DOCUMENT and CHUNK nodes and PART_OF, NEXT, REFERENCED and MENTIONS edges",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 3
   },
   {
    "id": "tool:532717378938901b",
@@ -5936,8 +5956,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 2,
-   "mention_count": 12
+   "doc_count": 1,
+   "mention_count": 11
   },
   {
    "id": "tool:992777a81bbc8bde",
@@ -6119,18 +6139,6 @@
    },
    "doc_count": 1,
    "mention_count": 8
-  },
-  {
-   "id": "tool:a4912e3f6785b113",
-   "name": "Person Ontology",
-   "type": "tool",
-   "aliases": [],
-   "description": "the sub-ontology the LLM extracts, with PERSON, TASK, EPISODE and PREFERENCE nodes and RELATED_TO, TODO, EXPERIENCED and HAS edges",
-   "properties": {
-    "released": null
-   },
-   "doc_count": 1,
-   "mention_count": 4
   },
   {
    "id": "tool:a9cc2e83435e8df4",
@@ -6527,8 +6535,8 @@
    "properties": {
     "released": null
    },
-   "doc_count": 2,
-   "mention_count": 3
+   "doc_count": 1,
+   "mention_count": 1
   },
   {
    "id": "tool:f5eed94002001a65",
@@ -6647,6 +6655,13 @@
     "confidence": 0.85
    },
    {
+    "id": "mentions:f32db5d32f3df792",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:424c7cc3ec3024a8",
+    "count": 2,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:c8ea0b330b782fcd",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "method:4d12234b484b01b2",
@@ -6675,13 +6690,6 @@
     "confidence": 0.85
    },
    {
-    "id": "mentions:bd02efb8cfcd3c44",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "method:552894d1e5af7f21",
-    "count": 1,
-    "confidence": 0.6
-   },
-   {
     "id": "mentions:f7b1641f461bfa81",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "method:561d80e6815de420",
@@ -6694,6 +6702,13 @@
     "entity_id": "method:566407ec81b5e555",
     "count": 2,
     "confidence": 0.8
+   },
+   {
+    "id": "mentions:6a6163604fd1e023",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:5ba942bca6d1d302",
+    "count": 3,
+    "confidence": 1.0
    },
    {
     "id": "mentions:1787c044a4ff334d",
@@ -6731,6 +6746,13 @@
     "confidence": 0.85
    },
    {
+    "id": "mentions:7df08e8ae5bc8c8b",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:873d96d16fb5ad15",
+    "count": 2,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:4bed7a041dcc8a92",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "method:888b4fa886f72ad8",
@@ -6743,6 +6765,13 @@
     "entity_id": "method:98cfdab3ae9a926c",
     "count": 1,
     "confidence": 0.85
+   },
+   {
+    "id": "mentions:d3a7f06cdf9da335",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:9d63924e6bf3c96a",
+    "count": 4,
+    "confidence": 1.0
    },
    {
     "id": "mentions:e3b6231b2ff72955",
@@ -6778,6 +6807,20 @@
     "entity_id": "method:c5d4e5dae9b152b7",
     "count": 2,
     "confidence": 0.85
+   },
+   {
+    "id": "mentions:670b69b75d57fc84",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:cc536a5beba617cf",
+    "count": 2,
+    "confidence": 0.6
+   },
+   {
+    "id": "mentions:6b6952b1926916e5",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "method:db5a2bc359833e50",
+    "count": 10,
+    "confidence": 1.0
    },
    {
     "id": "mentions:51707f5ff8cb8325",
@@ -6913,13 +6956,6 @@
     "confidence": 0.8
    },
    {
-    "id": "mentions:c2a6e29650410ee3",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "system:907b49c6be34c6db",
-    "count": 4,
-    "confidence": 0.85
-   },
-   {
     "id": "mentions:a9848ae1644633e5",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "system:9233acb0d4f5b32f",
@@ -6941,18 +6977,18 @@
     "confidence": 0.85
    },
    {
-    "id": "mentions:6851a96603db7dbb",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "system:b44bfec77a0c250a",
-    "count": 3,
-    "confidence": 0.8
-   },
-   {
     "id": "mentions:4c54a45b14b232c3",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "system:e31495dcf0baa3e4",
     "count": 23,
     "confidence": 0.9
+   },
+   {
+    "id": "mentions:ed6486bc270fdb0b",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "entity_id": "system:e4361ea046c4b92a",
+    "count": 7,
+    "confidence": 0.85
    },
    {
     "id": "mentions:1d327ed350a87eb7",
@@ -6997,32 +7033,11 @@
     "confidence": 0.65
    },
    {
-    "id": "mentions:e838e75268582347",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "tool:26b863da1c6894eb",
-    "count": 2,
-    "confidence": 0.6
-   },
-   {
-    "id": "mentions:4e9e93abb64ee33a",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "tool:339bf5ff69d06bb1",
-    "count": 8,
-    "confidence": 0.9
-   },
-   {
     "id": "mentions:ebaf3473a868a3fe",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "entity_id": "tool:3f3a89a05090dd05",
     "count": 1,
     "confidence": 0.7
-   },
-   {
-    "id": "mentions:5bdcf22bfe905146",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "tool:4de8904568107022",
-    "count": 3,
-    "confidence": 0.6
    },
    {
     "id": "mentions:1726e2b24b19bf73",
@@ -7037,13 +7052,6 @@
     "entity_id": "tool:992777a81bbc8bde",
     "count": 2,
     "confidence": 0.85
-   },
-   {
-    "id": "mentions:5af9c4e31da57770",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "entity_id": "tool:a4912e3f6785b113",
-    "count": 4,
-    "confidence": 0.6
    },
    {
     "id": "mentions:632dc8f1e43249a5",
@@ -8089,13 +8097,6 @@
     "confidence": 0.85
    },
    {
-    "id": "mentions:1c3f22980cfae525",
-    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
-    "entity_id": "method:29c7a4b83f3d5b3a",
-    "count": 2,
-    "confidence": 0.85
-   },
-   {
     "id": "mentions:4959e3bc619e02db",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "entity_id": "method:539fc0f5d0f926e3",
@@ -8115,13 +8116,6 @@
     "entity_id": "method:a8436c889aa40896",
     "count": 2,
     "confidence": 0.7
-   },
-   {
-    "id": "mentions:b6777d68e650fb35",
-    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
-    "entity_id": "method:af1148104a2de26e",
-    "count": 1,
-    "confidence": 0.8
    },
    {
     "id": "mentions:832cd9fc80927702",
@@ -8215,6 +8209,13 @@
     "confidence": 0.85
    },
    {
+    "id": "mentions:7cf2bcadf4b967d6",
+    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
+    "entity_id": "system:664db7f5927de299",
+    "count": 1,
+    "confidence": 0.8
+   },
+   {
     "id": "mentions:edf08dfd682d2e3d",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "entity_id": "system:68cae0882e1e4ca9",
@@ -8234,6 +8235,13 @@
     "entity_id": "system:8d002eb4681b0778",
     "count": 7,
     "confidence": 0.85
+   },
+   {
+    "id": "mentions:82a95be64b716cac",
+    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
+    "entity_id": "system:a2c52c5e5e53a964",
+    "count": 2,
+    "confidence": 1.0
    },
    {
     "id": "mentions:b049b9587e92df59",
@@ -8276,6 +8284,13 @@
     "entity_id": "system:e2542f938d5a5c8a",
     "count": 10,
     "confidence": 0.8
+   },
+   {
+    "id": "mentions:7251d2f1ad4e8644",
+    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
+    "entity_id": "system:e31495dcf0baa3e4",
+    "count": 6,
+    "confidence": 1.0
    },
    {
     "id": "mentions:4e499f67db489286",
@@ -8551,6 +8566,13 @@
     "confidence": 0.7
    },
    {
+    "id": "mentions:9953687169057ed0",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "entity_id": "method:ef296fe63e483be7",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:b87e5b3b53cac3eb",
     "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
     "entity_id": "method:f8698d3d4a17596d",
@@ -8719,6 +8741,13 @@
     "confidence": 1.0
    },
    {
+    "id": "mentions:487b98466eb2607c",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "entity_id": "method:81ceac18e842c150",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:19f5cf34711490ef",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "entity_id": "method:84b41dd46119be57",
@@ -8731,13 +8760,6 @@
     "entity_id": "method:aa6185f24c07052c",
     "count": 1,
     "confidence": 0.85
-   },
-   {
-    "id": "mentions:260ae7c2b106c1db",
-    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
-    "entity_id": "method:af1148104a2de26e",
-    "count": 12,
-    "confidence": 0.9
    },
    {
     "id": "mentions:266920bd0dd9df63",
@@ -8773,6 +8795,13 @@
     "entity_id": "method:e6967ff529ca9e78",
     "count": 1,
     "confidence": 0.75
+   },
+   {
+    "id": "mentions:ae73dc910ce2e1db",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "entity_id": "method:ef296fe63e483be7",
+    "count": 2,
+    "confidence": 1.0
    },
    {
     "id": "mentions:e22502ec2550c5ae",
@@ -8815,6 +8844,13 @@
     "entity_id": "system:2a1e1af6867fe72d",
     "count": 6,
     "confidence": 1.0
+   },
+   {
+    "id": "mentions:e9b72d30822878f6",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "entity_id": "system:664db7f5927de299",
+    "count": 12,
+    "confidence": 0.9
    },
    {
     "id": "mentions:5a16823b4718c4d2",
@@ -8969,13 +9005,6 @@
     "entity_id": "tool:e67606d42ed03c4c",
     "count": 14,
     "confidence": 0.95
-   },
-   {
-    "id": "mentions:a3708171f6c99579",
-    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
-    "entity_id": "tool:f56cb74aafcc975b",
-    "count": 2,
-    "confidence": 0.7
    },
    {
     "id": "mentions:b00bb9e8e9dc5129",
@@ -9251,6 +9280,13 @@
     "confidence": 0.9
    },
    {
+    "id": "mentions:e1fd3a18f9cddfe1",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "entity_id": "method:080c31d1306c4518",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:68ffcefe351fe07a",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "method:0f4427927213d61c",
@@ -9270,13 +9306,6 @@
     "entity_id": "method:144bd32a94f86b67",
     "count": 7,
     "confidence": 0.9
-   },
-   {
-    "id": "mentions:7381a1172b22cb9a",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "method:1d45a3e71d348284",
-    "count": 3,
-    "confidence": 0.8
    },
    {
     "id": "mentions:4afe09067474b4aa",
@@ -9314,6 +9343,13 @@
     "confidence": 0.8
    },
    {
+    "id": "mentions:6a696c33815a990c",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "entity_id": "method:33920df7a84bc818",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:2c873446cb1b3967",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "method:3f433fb9f7e772cb",
@@ -9345,7 +9381,7 @@
     "id": "mentions:6c94c0f74801e208",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "method:541e2634100f3be2",
-    "count": 2,
+    "count": 5,
     "confidence": 0.85
    },
    {
@@ -9426,9 +9462,9 @@
     "confidence": 0.95
    },
    {
-    "id": "mentions:a320d180c51e1770",
+    "id": "mentions:cec2cbf50ccbf7e0",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "method:b715beaf28d1847b",
+    "entity_id": "method:b8e3dee152c1341d",
     "count": 3,
     "confidence": 0.85
    },
@@ -9538,13 +9574,6 @@
     "confidence": 0.9
    },
    {
-    "id": "mentions:82ca207bf6f0c590",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "model:7a0174f1a2da562a",
-    "count": 1,
-    "confidence": 0.6
-   },
-   {
     "id": "mentions:06a55ef656d8c831",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "organization:26f8b8f154e91b00",
@@ -9580,6 +9609,13 @@
     "confidence": 1.0
    },
    {
+    "id": "mentions:31a3a21fe171f96f",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "entity_id": "system:4c8f44ebd033992d",
+    "count": 3,
+    "confidence": 0.85
+   },
+   {
     "id": "mentions:159e6d86c375e54d",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "system:5ab368ad712ae406",
@@ -9613,20 +9649,6 @@
     "entity_id": "system:890e4dfc50956bae",
     "count": 6,
     "confidence": 0.8
-   },
-   {
-    "id": "mentions:869d52bb1c6f2f6b",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "system:8d002eb4681b0778",
-    "count": 3,
-    "confidence": 0.85
-   },
-   {
-    "id": "mentions:55f52f6a853654eb",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "system:907b49c6be34c6db",
-    "count": 10,
-    "confidence": 0.95
    },
    {
     "id": "mentions:b01c8acaf4886d36",
@@ -9671,13 +9693,6 @@
     "confidence": 0.7
    },
    {
-    "id": "mentions:70653d71be566885",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "entity_id": "system:b44bfec77a0c250a",
-    "count": 3,
-    "confidence": 0.85
-   },
-   {
     "id": "mentions:63c3bd8e19d96696",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "entity_id": "system:c2d4cf58984459cf",
@@ -9697,6 +9712,13 @@
     "entity_id": "system:e31495dcf0baa3e4",
     "count": 8,
     "confidence": 0.7
+   },
+   {
+    "id": "mentions:d1b16bcfcb5ff0e9",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "entity_id": "system:e4361ea046c4b92a",
+    "count": 13,
+    "confidence": 0.95
    },
    {
     "id": "mentions:efe689425e6855b4",
@@ -9937,6 +9959,13 @@
     "confidence": 0.9
    },
    {
+    "id": "mentions:22158f1200ca165f",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "entity_id": "method:d010652daed4ae6b",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:c7d984b6203c8a55",
     "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
     "entity_id": "method:e9c036795ff0ef04",
@@ -10103,6 +10132,13 @@
     "entity_id": "system:deca393355806717",
     "count": 1,
     "confidence": 0.75
+   },
+   {
+    "id": "mentions:5423ec6c5149099e",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "entity_id": "system:e31495dcf0baa3e4",
+    "count": 19,
+    "confidence": 1.0
    },
    {
     "id": "mentions:6e3281e85e7f6fe5",
@@ -10385,13 +10421,6 @@
     "confidence": 0.85
    },
    {
-    "id": "mentions:e6cc553e79d2dedf",
-    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
-    "entity_id": "method:3c916fc1fd99bd37",
-    "count": 1,
-    "confidence": 0.7
-   },
-   {
     "id": "mentions:2164db57cf70a6b6",
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "entity_id": "method:4dbc378de0a0e996",
@@ -10439,13 +10468,6 @@
     "entity_id": "method:e305be2fceb6ad46",
     "count": 1,
     "confidence": 0.85
-   },
-   {
-    "id": "mentions:3c5c4bc3041c7059",
-    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
-    "entity_id": "method:e8e8b086a755d8fb",
-    "count": 1,
-    "confidence": 0.55
    },
    {
     "id": "mentions:55f813c00510283c",
@@ -10532,13 +10554,6 @@
     "confidence": 0.95
    },
    {
-    "id": "mentions:b6e180f7dc2175b9",
-    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
-    "entity_id": "system:b44bfec77a0c250a",
-    "count": 2,
-    "confidence": 0.8
-   },
-   {
     "id": "mentions:38635b574526b517",
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "entity_id": "system:c1e2938242716a5e",
@@ -10571,6 +10586,13 @@
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "entity_id": "system:e31495dcf0baa3e4",
     "count": 8,
+    "confidence": 0.8
+   },
+   {
+    "id": "mentions:59a14354756c4e94",
+    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
+    "entity_id": "system:e4361ea046c4b92a",
+    "count": 2,
     "confidence": 0.8
    },
    {
@@ -10833,6 +10855,13 @@
     "confidence": 0.95
    },
    {
+    "id": "mentions:7e46d36eda22033d",
+    "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
+    "entity_id": "method:e8c6d15f92e02d56",
+    "count": 2,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:b60700bbae18f9c8",
     "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
     "entity_id": "method:e9c036795ff0ef04",
@@ -10851,6 +10880,13 @@
     "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
     "entity_id": "method:f9266306e48a9c70",
     "count": 3,
+    "confidence": 1.0
+   },
+   {
+    "id": "mentions:f868ef45f7fa9401",
+    "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
+    "entity_id": "method:fd168b3a288e6573",
+    "count": 2,
     "confidence": 1.0
    },
    {
@@ -10887,6 +10923,13 @@
     "entity_id": "system:45db2ef0712d6b5d",
     "count": 11,
     "confidence": 0.85
+   },
+   {
+    "id": "mentions:ecf38702997ffee8",
+    "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
+    "entity_id": "system:4800a0239555893d",
+    "count": 9,
+    "confidence": 1.0
    },
    {
     "id": "mentions:9d0cdc35e07055c0",
@@ -11113,18 +11156,18 @@
     "confidence": 0.7
    },
    {
-    "id": "mentions:777ce92b8315ff5b",
-    "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
-    "entity_id": "system:b44bfec77a0c250a",
-    "count": 5,
-    "confidence": 0.85
-   },
-   {
     "id": "mentions:5024406f8ca0d78b",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "entity_id": "system:d2fea37766e45fef",
     "count": 2,
     "confidence": 0.65
+   },
+   {
+    "id": "mentions:b574218b8c27ab8a",
+    "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
+    "entity_id": "system:e4361ea046c4b92a",
+    "count": 5,
+    "confidence": 0.85
    },
    {
     "id": "mentions:2ce406fea15ce233",
@@ -11180,6 +11223,13 @@
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "entity_id": "method:0f579aefa1bf226a",
     "count": 1,
+    "confidence": 1.0
+   },
+   {
+    "id": "mentions:78f7554b2125792c",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "entity_id": "method:144bd32a94f86b67",
+    "count": 3,
     "confidence": 1.0
    },
    {
@@ -11302,6 +11352,13 @@
     "confidence": 0.9
    },
    {
+    "id": "mentions:6c191d4d332d685e",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "entity_id": "method:f23067b91d68fd45",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:e146b4530784e3dd",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "entity_id": "organization:1faa9b1b33e8dd14",
@@ -11365,11 +11422,25 @@
     "confidence": 0.9
    },
    {
+    "id": "mentions:079ee2748b9c5a82",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "entity_id": "system:cbac34e13bf136c7",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:cdbaf5a9b7247e13",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "entity_id": "system:ce5f3a37a390a188",
     "count": 1,
     "confidence": 0.7
+   },
+   {
+    "id": "mentions:995cbe705e638b9c",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "entity_id": "system:d59bd8fc8d3229ca",
+    "count": 1,
+    "confidence": 1.0
    },
    {
     "id": "mentions:d6183d6463645a82",
@@ -11694,25 +11765,11 @@
     "confidence": 0.85
    },
    {
-    "id": "mentions:51e22e99c17f0172",
-    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
-    "entity_id": "model:7a0174f1a2da562a",
-    "count": 1,
-    "confidence": 0.55
-   },
-   {
     "id": "mentions:287f3e9a12fbb787",
     "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
     "entity_id": "model:821286d2552955c4",
     "count": 1,
     "confidence": 0.7
-   },
-   {
-    "id": "mentions:25713e5d00f25588",
-    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
-    "entity_id": "person:ce2ac1b6c36e096f",
-    "count": 1,
-    "confidence": 0.75
    },
    {
     "id": "mentions:86c37bf4fb66981a",
@@ -11727,6 +11784,13 @@
     "entity_id": "system:45db2ef0712d6b5d",
     "count": 2,
     "confidence": 0.7
+   },
+   {
+    "id": "mentions:6bf63a4d9e8a50ab",
+    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
+    "entity_id": "system:4800a0239555893d",
+    "count": 5,
+    "confidence": 1.0
    },
    {
     "id": "mentions:b0128938550ad839",
@@ -12254,6 +12318,13 @@
     "confidence": 0.85
    },
    {
+    "id": "mentions:34fc7ec2cf2cddf1",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "entity_id": "organization:a4981ab1179e47b3",
+    "count": 1,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:5af496bd660fc6d9",
     "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
     "entity_id": "organization:fe5f0d8eb1d0b06f",
@@ -12266,6 +12337,13 @@
     "entity_id": "person:d26e66c7a4cf5f27",
     "count": 1,
     "confidence": 0.95
+   },
+   {
+    "id": "mentions:ae0623ae67fa7ea7",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "entity_id": "system:3facbb9e23dd3f38",
+    "count": 1,
+    "confidence": 1.0
    },
    {
     "id": "mentions:e1b84a2a06c4d8ff",
@@ -12681,13 +12759,6 @@
     "confidence": 0.9
    },
    {
-    "id": "mentions:8b58118fc0e7b120",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "entity_id": "system:907b49c6be34c6db",
-    "count": 13,
-    "confidence": 0.9
-   },
-   {
     "id": "mentions:d02238e5b39b1fc9",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "entity_id": "system:9233acb0d4f5b32f",
@@ -12709,6 +12780,13 @@
     "confidence": 0.85
    },
    {
+    "id": "mentions:3d3431e390d3520b",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "entity_id": "system:aac519d8b503fa40",
+    "count": 2,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:f2f62f5704a792ba",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "entity_id": "system:c461911716a0a329",
@@ -12728,6 +12806,13 @@
     "entity_id": "system:e31495dcf0baa3e4",
     "count": 19,
     "confidence": 0.85
+   },
+   {
+    "id": "mentions:cec3c71653401b5a",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "entity_id": "system:e4361ea046c4b92a",
+    "count": 13,
+    "confidence": 0.9
    },
    {
     "id": "mentions:c94cead2becb6cc4",
@@ -12847,13 +12932,6 @@
     "entity_id": "tool:77e14c41c83188a0",
     "count": 4,
     "confidence": 0.95
-   },
-   {
-    "id": "mentions:565f338e7b8a6a87",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "entity_id": "tool:98537f01383d47e1",
-    "count": 1,
-    "confidence": 0.8
    },
    {
     "id": "mentions:6c460076a1adadd7",
@@ -13199,6 +13277,13 @@
     "confidence": 0.95
    },
    {
+    "id": "mentions:b5744c2b9883e0bc",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "entity_id": "method:618a75f1405f8540",
+    "count": 4,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:2a818e61f4b414f0",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "entity_id": "method:870c4e03a9adace3",
@@ -13262,6 +13347,13 @@
     "confidence": 1.0
    },
    {
+    "id": "mentions:dc609529fa325ae2",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "entity_id": "method:fb28cb461fa5708c",
+    "count": 5,
+    "confidence": 1.0
+   },
+   {
     "id": "mentions:1a5465bd0cbdb5c9",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "entity_id": "method:fe32b363d9dcf80e",
@@ -13281,13 +13373,6 @@
     "entity_id": "model:b8043c7431d0b35b",
     "count": 1,
     "confidence": 0.8
-   },
-   {
-    "id": "mentions:930e1d8234c2ed5e",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "entity_id": "organization:73cb08f73ae0eefc",
-    "count": 9,
-    "confidence": 0.9
    },
    {
     "id": "mentions:dc8149067bbc220f",
@@ -13367,13 +13452,6 @@
     "confidence": 1.0
    },
    {
-    "id": "mentions:3f279dbfbbfe65a0",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "entity_id": "system:c6bd81d1e086e604",
-    "count": 2,
-    "confidence": 0.8
-   },
-   {
     "id": "mentions:753a86df1ea1024c",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "entity_id": "system:d2fea37766e45fef",
@@ -13385,6 +13463,13 @@
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "entity_id": "system:deca393355806717",
     "count": 1,
+    "confidence": 1.0
+   },
+   {
+    "id": "mentions:2685cc8ee4be2b39",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "entity_id": "system:e31495dcf0baa3e4",
+    "count": 12,
     "confidence": 1.0
    },
    {
@@ -13428,20 +13513,6 @@
     "entity_id": "tool:1cd15c07a8549982",
     "count": 1,
     "confidence": 0.7
-   },
-   {
-    "id": "mentions:17b42bed6b594005",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "entity_id": "tool:2eb5f6c533545aff",
-    "count": 4,
-    "confidence": 0.85
-   },
-   {
-    "id": "mentions:bc8d27d4bbadb358",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "entity_id": "tool:3f3a89a05090dd05",
-    "count": 6,
-    "confidence": 0.85
    },
    {
     "id": "mentions:1bde78572adcccd0",
@@ -13532,6 +13603,30 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:1286d11cd8ebeed3",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:3054d1de92e7fa6a",
+    "target_id": "method:424c7cc3ec3024a8",
+    "semantic_type": "supports",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:b43c5cac3f5335be",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:3054d1de92e7fa6a",
+    "target_id": "method:4dbc378de0a0e996",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:fa97281b4aa20c6a",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:3054d1de92e7fa6a",
+    "target_id": "method:873d96d16fb5ad15",
+    "semantic_type": "supports",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:2195b53caf25b7f1",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "method:3054d1de92e7fa6a",
@@ -13604,6 +13699,14 @@
     "confidence": 0.7
    },
    {
+    "id": "related_to:2f1f82103007dc6a",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:4dbc378de0a0e996",
+    "target_id": "system:aac519d8b503fa40",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:2f06108d0f62a624",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "method:4f8631d77dd1db5d",
@@ -13628,14 +13731,6 @@
     "confidence": 0.6
    },
    {
-    "id": "related_to:a79b7b5f6c5bdacf",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "method:52c4ba41bae6da25",
-    "target_id": "tool:4de8904568107022",
-    "semantic_type": "used_for",
-    "confidence": 0.75
-   },
-   {
     "id": "related_to:3934597950fa8c06",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "method:561d80e6815de420",
@@ -13650,6 +13745,14 @@
     "target_id": "method:612a5df03b36c49c",
     "semantic_type": "used_for",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:b65018a6d12f730f",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:5ba942bca6d1d302",
+    "target_id": "method:cc536a5beba617cf",
+    "semantic_type": "part_of",
+    "confidence": 1.0
    },
    {
     "id": "related_to:88b78a1f0934eaa6",
@@ -13716,12 +13819,12 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:3879eba27960bad2",
+    "id": "related_to:6ec865a2a56cd9c6",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "method:98cfdab3ae9a926c",
-    "target_id": "tool:a4912e3f6785b113",
-    "semantic_type": "uses",
-    "confidence": 0.7
+    "source_id": "method:9d63924e6bf3c96a",
+    "target_id": "method:cc536a5beba617cf",
+    "semantic_type": "part_of",
+    "confidence": 1.0
    },
    {
     "id": "related_to:02e8357d22fc3f50",
@@ -13738,6 +13841,14 @@
     "target_id": "method:05e5eb0521f66e61",
     "semantic_type": "constrains",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:140866a4d37525a5",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:af58108a18c1d434",
+    "target_id": "method:4dbc378de0a0e996",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:deb775632a3c0879",
@@ -13762,6 +13873,38 @@
     "target_id": "system:fefdd0fbd4cdead4",
     "semantic_type": "part_of",
     "confidence": 0.85
+   },
+   {
+    "id": "related_to:ed414b9759e461e7",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:cc536a5beba617cf",
+    "target_id": "method:af58108a18c1d434",
+    "semantic_type": "instance_of",
+    "confidence": 0.85
+   },
+   {
+    "id": "related_to:737d649140a117dc",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:cc536a5beba617cf",
+    "target_id": "system:eb4eda82510f0be3",
+    "semantic_type": "designed_for",
+    "confidence": 0.75
+   },
+   {
+    "id": "related_to:d876ee748f787b4d",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:db5a2bc359833e50",
+    "target_id": "method:129518d048e8ab3c",
+    "semantic_type": "compared_with",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:a1908906cd545a17",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:e305be2fceb6ad46",
+    "target_id": "method:69c848f8e34f6ddb",
+    "semantic_type": "uses",
+    "confidence": 1.0
    },
    {
     "id": "related_to:6712a26a54b64f7a",
@@ -13836,6 +13979,14 @@
     "confidence": 0.75
    },
    {
+    "id": "related_to:5b8b8cf02d56ccc1",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:e8e8b086a755d8fb",
+    "target_id": "method:69c848f8e34f6ddb",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:ec7aea7927d8f307",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "method:e8e8b086a755d8fb",
@@ -13876,10 +14027,18 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:c416d115ff095192",
+    "id": "related_to:0a50ef78248b3718",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "method:e8e8b086a755d8fb",
-    "target_id": "system:b44bfec77a0c250a",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:cae1c5788a7a4799",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:e8e8b086a755d8fb",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "used_for",
     "confidence": 1.0
    },
@@ -13898,14 +14057,6 @@
     "target_id": "method:561d80e6815de420",
     "semantic_type": "special_case_of",
     "confidence": 0.6
-   },
-   {
-    "id": "related_to:8999f3d8c47b6c0e",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "method:ed9b1f95cfc76ad9",
-    "target_id": "method:552894d1e5af7f21",
-    "semantic_type": "uses",
-    "confidence": 0.7
    },
    {
     "id": "related_to:ff55aaa0dac54f18",
@@ -13929,6 +14080,14 @@
     "source_id": "method:fd168b3a288e6573",
     "target_id": "method:69c848f8e34f6ddb",
     "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:22d55ddfe16b6976",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "method:fd168b3a288e6573",
+    "target_id": "method:e8e8b086a755d8fb",
+    "semantic_type": "part_of",
     "confidence": 1.0
    },
    {
@@ -13980,10 +14139,10 @@
     "confidence": 0.55
    },
    {
-    "id": "related_to:d3dbf0b48cce80b7",
+    "id": "related_to:187a2dde59a83cf3",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "system:2c4456e53d8cb76d",
-    "target_id": "system:b44bfec77a0c250a",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "used_for",
     "confidence": 0.75
    },
@@ -14012,22 +14171,6 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:4a713a66ddd3ad44",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:4dbc378de0a0e996",
-    "semantic_type": "built_on",
-    "confidence": 0.8
-   },
-   {
-    "id": "related_to:8acf589b8182f8b7",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "system:aac519d8b503fa40",
-    "semantic_type": "part_of",
-    "confidence": 0.75
-   },
-   {
     "id": "related_to:c1df487d1f70adb8",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "system:9233acb0d4f5b32f",
@@ -14044,10 +14187,10 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:7fd579d2192c967c",
+    "id": "related_to:c124d592add3da30",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "system:9233acb0d4f5b32f",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "provides",
     "confidence": 0.7
    },
@@ -14068,11 +14211,11 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:fcf8b188650106fa",
+    "id": "related_to:371c1cd9f301de7e",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "system:9429a7afd1552cf7",
-    "target_id": "tool:4de8904568107022",
-    "semantic_type": "builds",
+    "source_id": "system:e31495dcf0baa3e4",
+    "target_id": "method:129518d048e8ab3c",
+    "semantic_type": "uses",
     "confidence": 1.0
    },
    {
@@ -14100,6 +14243,22 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:ab85711cbbef5aac",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:4dbc378de0a0e996",
+    "semantic_type": "built_on",
+    "confidence": 0.8
+   },
+   {
+    "id": "related_to:53156a277dab822e",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:aac519d8b503fa40",
+    "semantic_type": "part_of",
+    "confidence": 0.75
+   },
+   {
     "id": "related_to:18903afa8802a754",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "system:fefdd0fbd4cdead4",
@@ -14113,6 +14272,14 @@
     "source_id": "system:fefdd0fbd4cdead4",
     "target_id": "method:4dbc378de0a0e996",
     "semantic_type": "generates",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:b97192d76832dfdf",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "tool:08392d0647216172",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "uses",
     "confidence": 1.0
    },
    {
@@ -14140,6 +14307,14 @@
     "confidence": 0.6
    },
    {
+    "id": "related_to:9bb5bea9e1ecd8f7",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "tool:0d3f3e3f0ad817be",
+    "target_id": "method:e8e8b086a755d8fb",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:c560c3c0d16b402e",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "tool:0d3f3e3f0ad817be",
@@ -14156,6 +14331,14 @@
     "confidence": 0.7
    },
    {
+    "id": "related_to:21e802f47298c07d",
+    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
+    "source_id": "tool:1cd15c07a8549982",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:7b3a9cff98f1cb26",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "tool:1cd15c07a8549982",
@@ -14164,52 +14347,12 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:ec19d52fc59a98bf",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:26b863da1c6894eb",
-    "target_id": "method:af58108a18c1d434",
-    "semantic_type": "instance_of",
-    "confidence": 0.85
-   },
-   {
-    "id": "related_to:b36b603978f1fcac",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:26b863da1c6894eb",
-    "target_id": "system:eb4eda82510f0be3",
-    "semantic_type": "designed_for",
-    "confidence": 0.75
-   },
-   {
-    "id": "related_to:4426997161c9a9fa",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:339bf5ff69d06bb1",
-    "target_id": "method:129518d048e8ab3c",
-    "semantic_type": "compared_with",
-    "confidence": 1.0
-   },
-   {
     "id": "related_to:a1eaec50334a1d10",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
     "source_id": "tool:3f3a89a05090dd05",
     "target_id": "system:68cae0882e1e4ca9",
     "semantic_type": "instance_of",
     "confidence": 0.8
-   },
-   {
-    "id": "related_to:9aeebf33ec7faeeb",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:4de8904568107022",
-    "target_id": "method:af58108a18c1d434",
-    "semantic_type": "instance_of",
-    "confidence": 0.85
-   },
-   {
-    "id": "related_to:c0679d29a9aa5d80",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:4de8904568107022",
-    "target_id": "tool:26b863da1c6894eb",
-    "semantic_type": "part_of",
-    "confidence": 0.9
    },
    {
     "id": "related_to:a4156a5daf9c999b",
@@ -14228,20 +14371,12 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:bd22afa50b0c47bd",
+    "id": "related_to:2dd8a328d8a8114c",
     "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:a4912e3f6785b113",
-    "target_id": "method:af58108a18c1d434",
-    "semantic_type": "instance_of",
-    "confidence": 0.85
-   },
-   {
-    "id": "related_to:d0b2e35c7b1d1e19",
-    "doc_uri": "https://www.decodingai.com/p/agentic-graphrag",
-    "source_id": "tool:a4912e3f6785b113",
-    "target_id": "tool:26b863da1c6894eb",
-    "semantic_type": "part_of",
-    "confidence": 0.9
+    "source_id": "tool:e32f6e95b1b3a4a7",
+    "target_id": "method:e8e8b086a755d8fb",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:1adf65dee516f09c",
@@ -15172,6 +15307,14 @@
     "confidence": 0.75
    },
    {
+    "id": "related_to:b5e7070d57ed4701",
+    "doc_uri": "https://www.decodingai.com/p/building-a-coding-agent-from-scratch-system-design",
+    "source_id": "system:a2c52c5e5e53a964",
+    "target_id": "tool:0807d7b886779ccd",
+    "semantic_type": "runs_in",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:21ad22060e1ff94b",
     "doc_uri": "https://www.decodingai.com/p/building-a-coding-agent-from-scratch-system-design",
     "source_id": "system:a2c52c5e5e53a964",
@@ -15796,14 +15939,6 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:aef3565e2c5d54d9",
-    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
-    "source_id": "method:af1148104a2de26e",
-    "target_id": "method:1d2d9ffdfc77e6b0",
-    "semantic_type": "part_of",
-    "confidence": 0.75
-   },
-   {
     "id": "related_to:b0ee4707be700f70",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "source_id": "method:e168d3d10ea92353",
@@ -15828,10 +15963,10 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:89b4ff803124acf1",
+    "id": "related_to:89a4dfbf04665d2b",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "source_id": "method:fdba552f5f072e23",
-    "target_id": "method:af1148104a2de26e",
+    "target_id": "system:664db7f5927de299",
     "semantic_type": "part_of",
     "confidence": 1.0
    },
@@ -15908,11 +16043,11 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:ee5220bfc3afd45f",
+    "id": "related_to:c99a0ef7caee98d0",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "source_id": "system:3facbb9e23dd3f38",
     "target_id": "method:fdba552f5f072e23",
-    "semantic_type": "adds_to",
+    "semantic_type": "integrates_with",
     "confidence": 1.0
    },
    {
@@ -15988,6 +16123,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:37182a048ef42808",
+    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
+    "source_id": "system:664db7f5927de299",
+    "target_id": "method:1d2d9ffdfc77e6b0",
+    "semantic_type": "part_of",
+    "confidence": 0.75
+   },
+   {
     "id": "related_to:830de4561fac873e",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "source_id": "system:68cae0882e1e4ca9",
@@ -16002,14 +16145,6 @@
     "target_id": "method:1d2d9ffdfc77e6b0",
     "semantic_type": "part_of",
     "confidence": 0.75
-   },
-   {
-    "id": "related_to:3dab19ecd6cc0922",
-    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
-    "source_id": "system:890e4dfc50956bae",
-    "target_id": "method:29c7a4b83f3d5b3a",
-    "semantic_type": "implements",
-    "confidence": 1.0
    },
    {
     "id": "related_to:b85f5b1953d1cbf2",
@@ -16039,6 +16174,14 @@
     "id": "related_to:3207f81c3c93a801",
     "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
     "source_id": "system:8d002eb4681b0778",
+    "target_id": "tool:0807d7b886779ccd",
+    "semantic_type": "runs_in",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:b81aa312d4e3c31b",
+    "doc_uri": "https://www.decodingai.com/p/coding-agents-in-remote-headless",
+    "source_id": "system:a2c52c5e5e53a964",
     "target_id": "tool:0807d7b886779ccd",
     "semantic_type": "runs_in",
     "confidence": 1.0
@@ -16508,6 +16651,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:38769a1af818ccd1",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:190cd2d77afcdef6",
+    "target_id": "system:4800a0239555893d",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:d13957515d2ce3a3",
     "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
     "source_id": "system:28006e51a6dcdff6",
@@ -16524,12 +16675,28 @@
     "confidence": 0.9
    },
    {
+    "id": "related_to:da4b970fa589ee16",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:2a671091b2bb5c39",
+    "target_id": "system:4800a0239555893d",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:b10137d321c70c0f",
     "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
     "source_id": "system:2a671091b2bb5c39",
     "target_id": "system:7faeef95b982a889",
     "semantic_type": "part_of",
     "confidence": 0.9
+   },
+   {
+    "id": "related_to:ae48cf040d38771d",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:2a671091b2bb5c39",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
    },
    {
     "id": "related_to:09c82bd863de908d",
@@ -16660,6 +16827,14 @@
     "confidence": 0.55
    },
    {
+    "id": "related_to:79e8366a86b91fdc",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:4800a0239555893d",
+    "target_id": "method:ef296fe63e483be7",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:8ae7682012d3d9b4",
     "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
     "source_id": "system:7faeef95b982a889",
@@ -16689,6 +16864,14 @@
     "source_id": "system:bbfa26a7d93db2d1",
     "target_id": "system:e31495dcf0baa3e4",
     "semantic_type": "compared_with",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:35a0275b92b08951",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:e31495dcf0baa3e4",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "uses",
     "confidence": 1.0
    },
    {
@@ -16722,6 +16905,14 @@
     "target_id": "system:7faeef95b982a889",
     "semantic_type": "part_of",
     "confidence": 0.9
+   },
+   {
+    "id": "related_to:2c60680332e08f78",
+    "doc_uri": "https://www.decodingai.com/p/from-12-agents-to-1-ai-agent-architecture-decision-guide",
+    "source_id": "system:f51202935af6312a",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
    },
    {
     "id": "related_to:0fe0f1fe730faf3d",
@@ -16804,28 +16995,20 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:3954fb5db4de4986",
+    "id": "related_to:bb61d78252ece985",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
-    "source_id": "method:af1148104a2de26e",
-    "target_id": "method:1d2d9ffdfc77e6b0",
-    "semantic_type": "part_of",
-    "confidence": 0.8
-   },
-   {
-    "id": "related_to:0a163729f3206438",
-    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
-    "source_id": "method:af1148104a2de26e",
-    "target_id": "method:444ead58e8a29fc4",
-    "semantic_type": "uses",
+    "source_id": "method:d4cb7214a8869c9a",
+    "target_id": "system:190cd2d77afcdef6",
+    "semantic_type": "affects",
     "confidence": 1.0
    },
    {
-    "id": "related_to:159797721b2ba791",
+    "id": "related_to:a3f09022e2ba6bf2",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
-    "source_id": "method:af1148104a2de26e",
-    "target_id": "tool:600c74a08decf2ab",
-    "semantic_type": "uses",
-    "confidence": 0.7
+    "source_id": "method:d4cb7214a8869c9a",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "affects",
+    "confidence": 1.0
    },
    {
     "id": "related_to:3c6b7a2e1c030b63",
@@ -16900,12 +17083,52 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:30e8702f55a3f5ca",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "model:8bdbb1e9722955b9",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:3cbd370b1380a6be",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "organization:1faa9b1b33e8dd14",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "provides",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:134ee61521137357",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "source_id": "system:190cd2d77afcdef6",
     "target_id": "system:bbfa26a7d93db2d1",
     "semantic_type": "type_of",
     "confidence": 1.0
+   },
+   {
+    "id": "related_to:1fdd25276ee89a9b",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:664db7f5927de299",
+    "target_id": "method:1d2d9ffdfc77e6b0",
+    "semantic_type": "part_of",
+    "confidence": 0.8
+   },
+   {
+    "id": "related_to:77234064d90d9caf",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:664db7f5927de299",
+    "target_id": "method:444ead58e8a29fc4",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:3144deafbe4c48ce",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:664db7f5927de299",
+    "target_id": "tool:600c74a08decf2ab",
+    "semantic_type": "uses",
+    "confidence": 0.7
    },
    {
     "id": "related_to:1c9d1cd97e34cd87",
@@ -16964,6 +17187,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:2ef831a72bdedf4a",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:f51202935af6312a",
+    "target_id": "method:05e5eb0521f66e61",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:c60322248e48b93f",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "source_id": "system:f51202935af6312a",
@@ -16988,6 +17219,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:b4f7d57f7d78a323",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:f51202935af6312a",
+    "target_id": "method:ef296fe63e483be7",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:88051e68e950680c",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "source_id": "system:f51202935af6312a",
@@ -17002,6 +17241,14 @@
     "target_id": "system:9233acb0d4f5b32f",
     "semantic_type": "uses",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:b6972fcaf159aa09",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:f51202935af6312a",
+    "target_id": "tool:1cd15c07a8549982",
+    "semantic_type": "uses",
+    "confidence": 1.0
    },
    {
     "id": "related_to:6c5da8a103ea17bc",
@@ -17028,12 +17275,28 @@
     "confidence": 0.7
    },
    {
+    "id": "related_to:54876733dfa9b171",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "system:f51202935af6312a",
+    "target_id": "tool:92ea33f11aea89fe",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:e4ae713ff7c6480e",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "source_id": "tool:0f2afdbfcde84d39",
     "target_id": "system:f51202935af6312a",
     "semantic_type": "part_of",
     "confidence": 0.55
+   },
+   {
+    "id": "related_to:a52a70a14299f455",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "tool:18ab3db319dec856",
+    "target_id": "method:81ceac18e842c150",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:df01eacac9bffd4d",
@@ -17044,12 +17307,28 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:277b5ae407e3adf7",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "tool:600c74a08decf2ab",
+    "target_id": "method:81ceac18e842c150",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:e43fd33e3852e87b",
     "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
     "source_id": "tool:600c74a08decf2ab",
     "target_id": "system:190cd2d77afcdef6",
     "semantic_type": "used_for",
     "confidence": 0.8
+   },
+   {
+    "id": "related_to:a89bb933bf441bbb",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "tool:73ddbd4fa44834d3",
+    "target_id": "method:81ceac18e842c150",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:ea81dc86facab53c",
@@ -17066,6 +17345,22 @@
     "target_id": "system:d308d16fa0d38076",
     "semantic_type": "instance_of",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:5b794d55327f0911",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "tool:8e06761f85f8e5c0",
+    "target_id": "tool:992777a81bbc8bde",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:188899e5fb86fbc0",
+    "doc_uri": "https://www.decodingai.com/p/how-to-design-python-ai-projects",
+    "source_id": "tool:9cf0786f634512d3",
+    "target_id": "model:8bdbb1e9722955b9",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:a530e7c4b9f2e771",
@@ -17113,6 +17408,14 @@
     "source_id": "method:0e16d9628c65c83c",
     "target_id": "method:bb29ee2906f59553",
     "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:ccfbf98d92a669aa",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "method:0e16d9628c65c83c",
+    "target_id": "system:6e5d14832fb18f53",
+    "semantic_type": "measures",
     "confidence": 1.0
    },
    {
@@ -17292,6 +17595,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:5b21a2d43ee8dfb3",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "method:f5bde452341cc113",
+    "target_id": "system:6e5d14832fb18f53",
+    "semantic_type": "measures",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:cf946a097c62a5d1",
     "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
     "source_id": "method:f91c4d08d2354c68",
@@ -17314,6 +17625,14 @@
     "target_id": "method:f5bde452341cc113",
     "semantic_type": "computed_from",
     "confidence": 0.85
+   },
+   {
+    "id": "related_to:07a5d0d73e8eae4f",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "method:f91c4d08d2354c68",
+    "target_id": "system:6e5d14832fb18f53",
+    "semantic_type": "measures",
+    "confidence": 1.0
    },
    {
     "id": "related_to:e78ce8583fb02c9a",
@@ -17460,6 +17779,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:3fc0aeff0405652b",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "system:6e5d14832fb18f53",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:b10cc5d00adc65b3",
     "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
     "source_id": "system:e31495dcf0baa3e4",
@@ -17468,12 +17795,28 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:f531fba772dd1853",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "tool:0f2afdbfcde84d39",
+    "target_id": "method:f91c4d08d2354c68",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:d1594385561db3d2",
     "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
     "source_id": "tool:0f2afdbfcde84d39",
     "target_id": "system:6e5d14832fb18f53",
     "semantic_type": "uses",
     "confidence": 0.8
+   },
+   {
+    "id": "related_to:886c2daf6dfa1a81",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "tool:0f2afdbfcde84d39",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
    },
    {
     "id": "related_to:9288079115d0d2f6",
@@ -17490,6 +17833,22 @@
     "target_id": "system:09e20ac4717fd5c1",
     "semantic_type": "used_for",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:14790df4f9739665",
+    "doc_uri": "https://www.decodingai.com/p/how-to-evaluate-the-evaluator-validate-llm-judge",
+    "source_id": "tool:483dc55495b82ee6",
+    "target_id": "system:6e5d14832fb18f53",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:be83dcddcaef7518",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "method:080c31d1306c4518",
+    "target_id": "method:5ddf81a457535fb9",
+    "semantic_type": "applied_to",
+    "confidence": 1.0
    },
    {
     "id": "related_to:d93dc0dca3c57d41",
@@ -17524,10 +17883,10 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:481074324347425d",
+    "id": "related_to:709ba49a263a5a7e",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "method:208923e5da8cac9a",
-    "target_id": "method:1d45a3e71d348284",
+    "target_id": "method:541e2634100f3be2",
     "semantic_type": "part_of",
     "confidence": 1.0
    },
@@ -17620,14 +17979,6 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:83216f33b3d05760",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "method:541e2634100f3be2",
-    "target_id": "method:1d45a3e71d348284",
-    "semantic_type": "type_of",
-    "confidence": 0.8
-   },
-   {
     "id": "related_to:c6ef8d6ecdf6aa61",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "method:541e2634100f3be2",
@@ -17660,11 +18011,11 @@
     "confidence": 0.75
    },
    {
-    "id": "related_to:acffc127cdae82da",
+    "id": "related_to:e8cd2dc69a09a96d",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "method:5ddf81a457535fb9",
     "target_id": "method:af58108a18c1d434",
-    "semantic_type": "type_of",
+    "semantic_type": "instance_of",
     "confidence": 0.7
    },
    {
@@ -17724,11 +18075,11 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:cece00d928d7736d",
+    "id": "related_to:de0e8cf7af0b962c",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "method:a2248ca5df674527",
     "target_id": "method:3054d1de92e7fa6a",
-    "semantic_type": "built_on",
+    "semantic_type": "computed_from",
     "confidence": 0.7
    },
    {
@@ -17748,25 +18099,25 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:3b3dfa230c61866a",
+    "id": "related_to:05905f30a3cc99b5",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "method:af58108a18c1d434",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.65
    },
    {
-    "id": "related_to:a9ac0f53ddf019f0",
+    "id": "related_to:6c8c080952d4812e",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "method:b715beaf28d1847b",
+    "source_id": "method:b8e3dee152c1341d",
     "target_id": "method:144bd32a94f86b67",
     "semantic_type": "compared_with",
     "confidence": 0.8
    },
    {
-    "id": "related_to:b731810532dbe1a2",
+    "id": "related_to:ce2a7f046336496e",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "method:b715beaf28d1847b",
+    "source_id": "method:b8e3dee152c1341d",
     "target_id": "system:fefdd0fbd4cdead4",
     "semantic_type": "part_of",
     "confidence": 1.0
@@ -17900,26 +18251,26 @@
     "confidence": 0.75
    },
    {
-    "id": "related_to:12357072d2db9e8b",
+    "id": "related_to:bee1f844eb695dd4",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:0180b0ef85af6a2e",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.7
    },
    {
-    "id": "related_to:492454cab2d2b44a",
+    "id": "related_to:a2fbe59cbbfad4e4",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:2a1e1af6867fe72d",
     "target_id": "system:890e4dfc50956bae",
-    "semantic_type": "used_for",
+    "semantic_type": "type_of",
     "confidence": 0.55
    },
    {
-    "id": "related_to:a9bacad1e04a6b9a",
+    "id": "related_to:c8587b661fd625b1",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:33cf4715f43ca79f",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.7
    },
@@ -17932,92 +18283,44 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:2f55f9527727b760",
+    "id": "related_to:be78d4f719fa4342",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:5fe50dcce3888306",
-    "target_id": "system:890e4dfc50956bae",
-    "semantic_type": "used_for",
-    "confidence": 0.55
-   },
-   {
-    "id": "related_to:278807b09eebae8a",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:6bba77a98f0104d5",
-    "target_id": "system:907b49c6be34c6db",
-    "semantic_type": "part_of",
-    "confidence": 0.7
-   },
-   {
-    "id": "related_to:eccdea6be6747ce1",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:890e4dfc50956bae",
-    "target_id": "system:907b49c6be34c6db",
-    "semantic_type": "part_of",
-    "confidence": 0.7
-   },
-   {
-    "id": "related_to:592b4a0e2f8f1e03",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:8d002eb4681b0778",
+    "source_id": "system:4c8f44ebd033992d",
     "target_id": "system:9429a7afd1552cf7",
     "semantic_type": "used_for",
     "confidence": 0.8
    },
    {
-    "id": "related_to:58386a3915703afc",
+    "id": "related_to:367ddeaf23b41841",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:8d002eb4681b0778",
+    "source_id": "system:4c8f44ebd033992d",
     "target_id": "system:fefdd0fbd4cdead4",
     "semantic_type": "used_for",
     "confidence": 0.8
    },
    {
-    "id": "related_to:4ee7860f9cd1ad4e",
+    "id": "related_to:ba7b4579100fbac1",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:0f4427927213d61c",
-    "semantic_type": "supports",
-    "confidence": 0.65
+    "source_id": "system:5fe50dcce3888306",
+    "target_id": "system:890e4dfc50956bae",
+    "semantic_type": "type_of",
+    "confidence": 0.55
    },
    {
-    "id": "related_to:59fee3a1532aa656",
+    "id": "related_to:c4bdeea020d72e4b",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:4dbc378de0a0e996",
-    "semantic_type": "built_on",
-    "confidence": 0.75
+    "source_id": "system:6bba77a98f0104d5",
+    "target_id": "system:e4361ea046c4b92a",
+    "semantic_type": "part_of",
+    "confidence": 0.7
    },
    {
-    "id": "related_to:d635daf0cfb6ef05",
+    "id": "related_to:9a379909f3ea6817",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:96a5b39f6ac17aee",
-    "semantic_type": "uses",
-    "confidence": 1.0
-   },
-   {
-    "id": "related_to:6b9dd66844607497",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "system:68cae0882e1e4ca9",
-    "semantic_type": "integrates_with",
-    "confidence": 1.0
-   },
-   {
-    "id": "related_to:ad78518e2b4df444",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "system:fc3949ddbf8d42aa",
-    "semantic_type": "special_case_of",
-    "confidence": 0.6
-   },
-   {
-    "id": "related_to:45a2f90029d5c64c",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "tool:0d3f3e3f0ad817be",
-    "semantic_type": "built_on",
-    "confidence": 0.85
+    "source_id": "system:890e4dfc50956bae",
+    "target_id": "system:e4361ea046c4b92a",
+    "semantic_type": "part_of",
+    "confidence": 0.7
    },
    {
     "id": "related_to:d6ac6e4e94164df7",
@@ -18052,18 +18355,26 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:e393fafdfe339bd5",
+    "id": "related_to:321e0dbedc72b3fa",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:9233acb0d4f5b32f",
     "target_id": "system:890e4dfc50956bae",
-    "semantic_type": "used_for",
+    "semantic_type": "type_of",
     "confidence": 0.65
    },
    {
-    "id": "related_to:470b18c28e04da5c",
+    "id": "related_to:d90384d4ee69c7ec",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:9233acb0d4f5b32f",
+    "target_id": "tool:e05322c7f624372e",
+    "semantic_type": "built_on",
+    "confidence": 0.7
+   },
+   {
+    "id": "related_to:8840788eac244bda",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:9429a7afd1552cf7",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.6
    },
@@ -18100,6 +18411,54 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:6b16a00fee24a87b",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:0f4427927213d61c",
+    "semantic_type": "supports",
+    "confidence": 0.65
+   },
+   {
+    "id": "related_to:1340e8dea0747d09",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:4dbc378de0a0e996",
+    "semantic_type": "built_on",
+    "confidence": 0.75
+   },
+   {
+    "id": "related_to:47af7ff88ecff8a4",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:96a5b39f6ac17aee",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:8eef0c24edb187fd",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:68cae0882e1e4ca9",
+    "semantic_type": "integrates_with",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:e71c02e2d20f8bad",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:fc3949ddbf8d42aa",
+    "semantic_type": "special_case_of",
+    "confidence": 0.6
+   },
+   {
+    "id": "related_to:6071b54424be4347",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "tool:0d3f3e3f0ad817be",
+    "semantic_type": "built_on",
+    "confidence": 0.85
+   },
+   {
     "id": "related_to:b835d991194c51c6",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:f49d5642395f09d0",
@@ -18116,10 +18475,10 @@
     "confidence": 0.6
    },
    {
-    "id": "related_to:9429d69d1faf3403",
+    "id": "related_to:02f4147e7fb0d8e0",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "system:fefdd0fbd4cdead4",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.7
    },
@@ -18156,6 +18515,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:0f5da43bec9e00bd",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "tool:0d3f3e3f0ad817be",
+    "target_id": "method:33920df7a84bc818",
+    "semantic_type": "provides",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:44a5faf0d354e226",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "tool:0d3f3e3f0ad817be",
@@ -18188,10 +18555,10 @@
     "confidence": 0.9
    },
    {
-    "id": "related_to:ea24b7e7b6b39eda",
+    "id": "related_to:11fa45623f882826",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "tool:18ab3db319dec856",
-    "target_id": "system:8d002eb4681b0778",
+    "target_id": "system:4c8f44ebd033992d",
     "semantic_type": "instance_of",
     "confidence": 0.7
    },
@@ -18260,10 +18627,10 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:d3745897d3aa23a5",
+    "id": "related_to:47e13891dcc66ecd",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "tool:73ddbd4fa44834d3",
-    "target_id": "system:8d002eb4681b0778",
+    "target_id": "system:4c8f44ebd033992d",
     "semantic_type": "instance_of",
     "confidence": 0.7
    },
@@ -18276,20 +18643,20 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:f05d625956bb7e72",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "tool:77e14c41c83188a0",
-    "target_id": "system:b44bfec77a0c250a",
-    "semantic_type": "provides",
-    "confidence": 0.8
-   },
-   {
     "id": "related_to:7856c22e09669586",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "tool:a04535dcfb35dc68",
     "target_id": "system:fc3949ddbf8d42aa",
     "semantic_type": "used_for",
     "confidence": 0.6
+   },
+   {
+    "id": "related_to:575ecdc5e87e11a2",
+    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "source_id": "tool:bb2d824f223fa8f1",
+    "target_id": "method:144bd32a94f86b67",
+    "semantic_type": "uses",
+    "confidence": 1.0
    },
    {
     "id": "related_to:19090d81c61b1d89",
@@ -18308,12 +18675,12 @@
     "confidence": 0.65
    },
    {
-    "id": "related_to:40080b0c4d1f8791",
+    "id": "related_to:ecec74336f4a8609",
     "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
     "source_id": "tool:bb2d824f223fa8f1",
-    "target_id": "model:7a0174f1a2da562a",
+    "target_id": "method:bd1dd49c36f4721d",
     "semantic_type": "uses",
-    "confidence": 0.6
+    "confidence": 1.0
    },
    {
     "id": "related_to:998151681602c07b",
@@ -18346,14 +18713,6 @@
     "target_id": "system:fc3949ddbf8d42aa",
     "semantic_type": "used_for",
     "confidence": 1.0
-   },
-   {
-    "id": "related_to:de7684e3cc0bccca",
-    "doc_uri": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
-    "source_id": "tool:e05322c7f624372e",
-    "target_id": "system:9233acb0d4f5b32f",
-    "semantic_type": "used_for",
-    "confidence": 0.7
    },
    {
     "id": "related_to:0686b836f31744fa",
@@ -18500,6 +18859,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:63c1ca640c95a999",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:3f5f006be4288867",
+    "target_id": "method:c0c47a35fc7dd603",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:8c63efc4b57c1983",
     "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
     "source_id": "system:3f5f006be4288867",
@@ -18522,6 +18889,14 @@
     "target_id": "system:2c4456e53d8cb76d",
     "semantic_type": "uses",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:2aaa7ae3dab49fbe",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:3f5f006be4288867",
+    "target_id": "system:341a1f5b050b3ab3",
+    "semantic_type": "avoids",
+    "confidence": 1.0
    },
    {
     "id": "related_to:422ec1941d8e904c",
@@ -18652,6 +19027,38 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:f2732c6288a803e7",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:45db2ef0712d6b5d",
+    "target_id": "method:e9c036795ff0ef04",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:138aaa82e4161f52",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:45db2ef0712d6b5d",
+    "target_id": "tool:0652444a56b68224",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:cdfc86477fa62aa5",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:45db2ef0712d6b5d",
+    "target_id": "tool:cb540a4b319b54d9",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:ff151c412ccfd504",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "system:45db2ef0712d6b5d",
+    "target_id": "tool:e21d083ab7f2b51d",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:affa0b78062d614c",
     "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
     "source_id": "system:53b1bb39def19990",
@@ -18762,6 +19169,14 @@
     "target_id": "system:9233acb0d4f5b32f",
     "semantic_type": "develops",
     "confidence": 0.65
+   },
+   {
+    "id": "related_to:8fb0f3652f4613ff",
+    "doc_uri": "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "source_id": "tool:0652444a56b68224",
+    "target_id": "system:2a1e1af6867fe72d",
+    "semantic_type": "provides",
+    "confidence": 1.0
    },
    {
     "id": "related_to:355de74c47397dfc",
@@ -18988,14 +19403,6 @@
     "confidence": 0.65
    },
    {
-    "id": "related_to:c144fff20d42bc60",
-    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
-    "source_id": "method:3c916fc1fd99bd37",
-    "target_id": "method:4dbc378de0a0e996",
-    "semantic_type": "compared_with",
-    "confidence": 0.7
-   },
-   {
     "id": "related_to:95a812273f8d3240",
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "source_id": "organization:c9f76e59e8a15af1",
@@ -19084,12 +19491,28 @@
     "confidence": 0.85
    },
    {
+    "id": "related_to:1799471a693b3655",
+    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
+    "source_id": "system:8d6aec77d001ab01",
+    "target_id": "tool:03d408426d76439c",
+    "semantic_type": "integrates_with",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:9221bb616583bfb7",
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "source_id": "system:8d6aec77d001ab01",
     "target_id": "tool:0652444a56b68224",
     "semantic_type": "integrates_with",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:53c7f532a68d4c00",
+    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
+    "source_id": "system:8d6aec77d001ab01",
+    "target_id": "tool:583dea4508e778ed",
+    "semantic_type": "integrates_with",
+    "confidence": 1.0
    },
    {
     "id": "related_to:f07d69555bc76ea7",
@@ -19152,6 +19575,14 @@
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "source_id": "system:9d942dd54781bf15",
     "target_id": "tool:0df2d39c58ff31db",
+    "semantic_type": "built_on",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:f9da0d06d7f6e048",
+    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
+    "source_id": "system:9d942dd54781bf15",
+    "target_id": "tool:386f4402dd1a82ea",
     "semantic_type": "built_on",
     "confidence": 1.0
    },
@@ -19324,14 +19755,6 @@
     "confidence": 0.85
    },
    {
-    "id": "related_to:5f976830ec68f32e",
-    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
-    "source_id": "tool:45ca8600bcf930d3",
-    "target_id": "system:b44bfec77a0c250a",
-    "semantic_type": "instance_of",
-    "confidence": 0.85
-   },
-   {
     "id": "related_to:5b1baa3916460ae9",
     "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
     "source_id": "tool:45ca8600bcf930d3",
@@ -19346,6 +19769,14 @@
     "target_id": "system:d2fea37766e45fef",
     "semantic_type": "integrates_with",
     "confidence": 0.8
+   },
+   {
+    "id": "related_to:f4b2d07b0188cc12",
+    "doc_uri": "https://www.decodingai.com/p/llm-wiki-agent-memory",
+    "source_id": "tool:45ca8600bcf930d3",
+    "target_id": "system:e4361ea046c4b92a",
+    "semantic_type": "instance_of",
+    "confidence": 0.85
    },
    {
     "id": "related_to:e654d4c19af93bd2",
@@ -19564,6 +19995,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:fc0f94531fcee31c",
+    "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
+    "source_id": "method:7c21e3464a9d9163",
+    "target_id": "method:e8c6d15f92e02d56",
+    "semantic_type": "compared_with",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:a3e7ca6dacc8ef39",
     "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
     "source_id": "method:7c21e3464a9d9163",
@@ -19682,6 +20121,14 @@
     "target_id": "method:573b0b3c6a7d1150",
     "semantic_type": "evaluated_on",
     "confidence": 0.6
+   },
+   {
+    "id": "related_to:9fddbea0bb69fee7",
+    "doc_uri": "https://www.decodingai.com/p/recursive-language-models",
+    "source_id": "model:ddd722dd9cb71fcc",
+    "target_id": "tool:e67606d42ed03c4c",
+    "semantic_type": "uses",
+    "confidence": 1.0
    },
    {
     "id": "related_to:3292a4d5b3509744",
@@ -19860,10 +20307,10 @@
     "confidence": 0.6
    },
    {
-    "id": "related_to:326753024c06ba97",
+    "id": "related_to:3521d5b9b5f4df29",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "source_id": "method:4dbc378de0a0e996",
-    "target_id": "system:b44bfec77a0c250a",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "used_for",
     "confidence": 0.75
    },
@@ -19948,10 +20395,10 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:3e9bc42990b60e28",
+    "id": "related_to:b8f6983e2c486b23",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "source_id": "method:618a75f1405f8540",
-    "target_id": "system:b44bfec77a0c250a",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "used_for",
     "confidence": 1.0
    },
@@ -20012,6 +20459,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:0ae2f7fa51e209bf",
+    "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
+    "source_id": "method:fb28cb461fa5708c",
+    "target_id": "method:fd168b3a288e6573",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:e67479af87b380f3",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "source_id": "method:fb28cb461fa5708c",
@@ -20044,14 +20499,6 @@
     "confidence": 0.9
    },
    {
-    "id": "related_to:09046765fa274db4",
-    "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
-    "source_id": "system:b44bfec77a0c250a",
-    "target_id": "system:aac519d8b503fa40",
-    "semantic_type": "used_for",
-    "confidence": 0.6
-   },
-   {
     "id": "related_to:9adc7bc880fa4d04",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "source_id": "system:d2fea37766e45fef",
@@ -20076,12 +20523,20 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:aa08d3297cbaeac8",
+    "id": "related_to:e999b70a1ff6ab16",
     "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
     "source_id": "system:d2fea37766e45fef",
     "target_id": "tool:e21d083ab7f2b51d",
-    "semantic_type": "runs_in",
+    "semantic_type": "built_on",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:cb783d89de34b57a",
+    "doc_uri": "https://www.decodingai.com/p/ship-a-knowledge-graph-ontology-in-5-minutes",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:aac519d8b503fa40",
+    "semantic_type": "used_for",
+    "confidence": 0.6
    },
    {
     "id": "related_to:ab0aef6381cdc067",
@@ -20156,6 +20611,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:3ee187a9a0d6366e",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "method:7d5eb80d9caad8f5",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "applied_to",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:22e2e39054e4498c",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "method:8da643b0287a5d40",
@@ -20176,6 +20639,22 @@
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "method:9518d4214b74eb25",
     "target_id": "method:73c5c3bed57f88e7",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:f84242b7cfb364ed",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "method:e305be2fceb6ad46",
+    "target_id": "method:77aaaf0c21c4d200",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
+    "id": "related_to:648c3a2085e54db7",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "method:e305be2fceb6ad46",
+    "target_id": "method:b48f5df221dde8b7",
     "semantic_type": "uses",
     "confidence": 1.0
    },
@@ -20396,6 +20875,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:7c7bbf911813d2de",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "system:9dde7947b71216c0",
+    "target_id": "system:c461911716a0a329",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:0027e4f10a7bc3ee",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "system:9dde7947b71216c0",
@@ -20436,6 +20923,14 @@
     "confidence": 0.65
    },
    {
+    "id": "related_to:cc18861b92083687",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "system:e31495dcf0baa3e4",
+    "target_id": "method:e305be2fceb6ad46",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:a560aeea4f2743f7",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "tool:0d3f3e3f0ad817be",
@@ -20450,6 +20945,14 @@
     "target_id": "system:c461911716a0a329",
     "semantic_type": "instance_of",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:78a21e510f19899a",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "tool:1bac6bf6f42faa7c",
+    "target_id": "tool:a3c35bedc4829052",
+    "semantic_type": "compared_with",
+    "confidence": 1.0
    },
    {
     "id": "related_to:a8bddaf5b6347636",
@@ -20522,6 +21025,14 @@
     "target_id": "organization:1faa9b1b33e8dd14",
     "semantic_type": "integrates_with",
     "confidence": 0.85
+   },
+   {
+    "id": "related_to:67e189d5956eddd3",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "tool:257167ec3d25bc8a",
+    "target_id": "system:6e5d14832fb18f53",
+    "semantic_type": "provides",
+    "confidence": 1.0
    },
    {
     "id": "related_to:8a85402615d1a379",
@@ -20716,6 +21227,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:c2011942d650f08e",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "tool:77e14c41c83188a0",
+    "target_id": "system:d59bd8fc8d3229ca",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:935d8f8acf55ade1",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "tool:77e14c41c83188a0",
@@ -20796,6 +21315,14 @@
     "confidence": 0.7
    },
    {
+    "id": "related_to:7f98a9b6766574b0",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "tool:b0fdc31d593b97f6",
+    "target_id": "system:e31495dcf0baa3e4",
+    "semantic_type": "used_for",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:97d29bc78b17c6cc",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "tool:b0fdc31d593b97f6",
@@ -20820,6 +21347,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:932e9ee4ffea77b4",
+    "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
+    "source_id": "tool:d75f39bab41f2eea",
+    "target_id": "system:d59bd8fc8d3229ca",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:dee29152d26d0245",
     "doc_uri": "https://www.decodingai.com/p/ship-rag-with-weave-cli",
     "source_id": "tool:d75f39bab41f2eea",
@@ -20834,6 +21369,14 @@
     "target_id": "method:b302722ce88ecf8b",
     "semantic_type": "compared_with",
     "confidence": 0.9
+   },
+   {
+    "id": "related_to:33d9a70cdd24d3ec",
+    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
+    "source_id": "method:288dadc5ea0f7af2",
+    "target_id": "system:68cae0882e1e4ca9",
+    "semantic_type": "applied_to",
+    "confidence": 1.0
    },
    {
     "id": "related_to:c34cf3225ec5df6c",
@@ -20932,6 +21475,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:3ba5f4f6432e4bb7",
+    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
+    "source_id": "system:45db2ef0712d6b5d",
+    "target_id": "model:1e802a88806a49fa",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:2a42541d596cad57",
     "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
     "source_id": "system:5fe50dcce3888306",
@@ -20978,6 +21529,14 @@
     "target_id": "method:ef1aa8e88d661dc5",
     "semantic_type": "type_of",
     "confidence": 0.6
+   },
+   {
+    "id": "related_to:09ee2db37ebc92c9",
+    "doc_uri": "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026",
+    "source_id": "tool:0df2d39c58ff31db",
+    "target_id": "system:5fe50dcce3888306",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:aa76f1334110c251",
@@ -21444,6 +22003,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:78b1a8f2fc7d8f20",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "source_id": "model:8bdbb1e9722955b9",
+    "target_id": "system:7d9f7c5e0c1bb0ad",
+    "semantic_type": "instance_of",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:da8818cd27ee1057",
     "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
     "source_id": "model:c1783872b4485cc8",
@@ -21490,6 +22057,14 @@
     "target_id": "tool:9ce0d0bb87d1ddf5",
     "semantic_type": "inspired_by",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:6dfde1a8d961b8d1",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "source_id": "organization:a4981ab1179e47b3",
+    "target_id": "tool:ce07931408ab9f4d",
+    "semantic_type": "develops",
+    "confidence": 0.8
    },
    {
     "id": "related_to:68d96cf7db55a225",
@@ -21660,14 +22235,6 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:a8d32500c79e8e15",
-    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
-    "source_id": "tool:1cd15c07a8549982",
-    "target_id": "tool:ce07931408ab9f4d",
-    "semantic_type": "develops",
-    "confidence": 0.8
-   },
-   {
     "id": "related_to:2ca7f2f042bd0fd0",
     "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
     "source_id": "tool:2b05eb796d126a6c",
@@ -21724,6 +22291,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:9516db5df4c4ec12",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "source_id": "tool:2b05eb796d126a6c",
+    "target_id": "method:ef296fe63e483be7",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:9d78f24a30b86f5a",
     "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
     "source_id": "tool:2b05eb796d126a6c",
@@ -21762,6 +22337,14 @@
     "target_id": "model:ddd722dd9cb71fcc",
     "semantic_type": "uses",
     "confidence": 0.7
+   },
+   {
+    "id": "related_to:275399a64eeeb1f3",
+    "doc_uri": "https://www.decodingai.com/p/the-coding-agent-loop",
+    "source_id": "tool:2b05eb796d126a6c",
+    "target_id": "system:3facbb9e23dd3f38",
+    "semantic_type": "uses",
+    "confidence": 1.0
    },
    {
     "id": "related_to:5a3657d477c7f917",
@@ -22076,19 +22659,11 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:804e583e1106aa16",
+    "id": "related_to:93319b568e60b187",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "method:3054d1de92e7fa6a",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
-    "confidence": 0.7
-   },
-   {
-    "id": "related_to:4168a61e8b18c5e9",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "method:3c916fc1fd99bd37",
-    "target_id": "method:e8e8b086a755d8fb",
-    "semantic_type": "special_case_of",
     "confidence": 0.7
    },
    {
@@ -22116,10 +22691,10 @@
     "confidence": 0.9
    },
    {
-    "id": "related_to:0d7b32610e7cfb3a",
+    "id": "related_to:9c34da3295434a6f",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "method:a2248ca5df674527",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "part_of",
     "confidence": 0.7
    },
@@ -22140,11 +22715,11 @@
     "confidence": 0.85
    },
    {
-    "id": "related_to:9611c79120130eb8",
+    "id": "related_to:94d1232c4292b0b2",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "organization:c9f76e59e8a15af1",
     "target_id": "tool:22258486a6b37f4f",
-    "semantic_type": "develops",
+    "semantic_type": "publishes",
     "confidence": 0.8
    },
    {
@@ -22220,38 +22795,6 @@
     "confidence": 0.9
    },
    {
-    "id": "related_to:be3601284315891d",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:0f4427927213d61c",
-    "semantic_type": "supports",
-    "confidence": 0.7
-   },
-   {
-    "id": "related_to:33b5345f4c88cdc2",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "method:4dbc378de0a0e996",
-    "semantic_type": "combines",
-    "confidence": 0.85
-   },
-   {
-    "id": "related_to:2e1133c4ef4a17f4",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "system:2c4456e53d8cb76d",
-    "semantic_type": "combines",
-    "confidence": 0.85
-   },
-   {
-    "id": "related_to:94682f4850fbd421",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "system:907b49c6be34c6db",
-    "target_id": "system:2c96c676e814e25b",
-    "semantic_type": "part_of",
-    "confidence": 0.9
-   },
-   {
     "id": "related_to:38460f787fa04bdd",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "system:9233acb0d4f5b32f",
@@ -22284,20 +22827,52 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:3ad94f6a1b44147c",
+    "id": "related_to:18653432d9b48788",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "system:9d942dd54781bf15",
     "target_id": "tool:0df2d39c58ff31db",
-    "semantic_type": "uses",
+    "semantic_type": "built_on",
     "confidence": 0.75
    },
    {
-    "id": "related_to:550d68e61c91a351",
+    "id": "related_to:cd7b91687e128b33",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "system:9d942dd54781bf15",
     "target_id": "tool:386f4402dd1a82ea",
-    "semantic_type": "uses",
+    "semantic_type": "built_on",
     "confidence": 0.75
+   },
+   {
+    "id": "related_to:8b2469a3a796bdfb",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:0f4427927213d61c",
+    "semantic_type": "supports",
+    "confidence": 0.7
+   },
+   {
+    "id": "related_to:ee26e43ead9afade",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "method:4dbc378de0a0e996",
+    "semantic_type": "combines",
+    "confidence": 0.85
+   },
+   {
+    "id": "related_to:5f5af457fb49800c",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:2c4456e53d8cb76d",
+    "semantic_type": "combines",
+    "confidence": 0.85
+   },
+   {
+    "id": "related_to:67be0bbca71575ca",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "system:e4361ea046c4b92a",
+    "target_id": "system:2c96c676e814e25b",
+    "semantic_type": "part_of",
+    "confidence": 0.9
    },
    {
     "id": "related_to:dcc755de1aa9b3f9",
@@ -22356,14 +22931,6 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:9ec23defd61554fa",
-    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
-    "source_id": "tool:0d3f3e3f0ad817be",
-    "target_id": "system:907b49c6be34c6db",
-    "semantic_type": "used_for",
-    "confidence": 0.85
-   },
-   {
     "id": "related_to:cea78dcb1e1ad39e",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:0d3f3e3f0ad817be",
@@ -22378,6 +22945,14 @@
     "target_id": "system:c461911716a0a329",
     "semantic_type": "replaces",
     "confidence": 1.0
+   },
+   {
+    "id": "related_to:01931a96c0cea773",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "tool:0d3f3e3f0ad817be",
+    "target_id": "system:e4361ea046c4b92a",
+    "semantic_type": "used_for",
+    "confidence": 0.85
    },
    {
     "id": "related_to:1797eaee8634262d",
@@ -22396,26 +22971,26 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:56046441804ae194",
+    "id": "related_to:1cb3ff48589e83bf",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:22258486a6b37f4f",
     "target_id": "tool:0df2d39c58ff31db",
-    "semantic_type": "uses",
+    "semantic_type": "built_on",
     "confidence": 0.8
    },
    {
-    "id": "related_to:bb1f3e8db31e7258",
+    "id": "related_to:d670f98bd4372353",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:22258486a6b37f4f",
     "target_id": "tool:386f4402dd1a82ea",
-    "semantic_type": "uses",
+    "semantic_type": "built_on",
     "confidence": 0.8
    },
    {
-    "id": "related_to:48b4afd13eaf1388",
+    "id": "related_to:05972cbc9765f7b6",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:22a20d502d0e0524",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -22476,6 +23051,14 @@
     "confidence": 0.85
    },
    {
+    "id": "related_to:6481d891e7c88d0c",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "tool:4d37c8a02f4758ce",
+    "target_id": "method:888b4fa886f72ad8",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:eae5ec2dc1080f9d",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:4d37c8a02f4758ce",
@@ -22492,6 +23075,14 @@
     "confidence": 0.8
    },
    {
+    "id": "related_to:0aa6513cb43fba13",
+    "doc_uri": "https://www.decodingai.com/p/the-context-layer",
+    "source_id": "tool:4d37c8a02f4758ce",
+    "target_id": "system:4388f2e1afbb7c69",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:9390e88defede5af",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:4d37c8a02f4758ce",
@@ -22500,10 +23091,10 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:290f24b80acd21c6",
+    "id": "related_to:f88c9df11d74d4c2",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:4d37c8a02f4758ce",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -22540,10 +23131,10 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:b4d2ee846662f776",
+    "id": "related_to:48f2882adeaadf39",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:551f38e0224f5de8",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -22564,11 +23155,11 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:037480e8ce8dc8be",
+    "id": "related_to:72e0be0ca9274bce",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:61452680888722ac",
     "target_id": "system:d2fea37766e45fef",
-    "semantic_type": "covers",
+    "semantic_type": "built_on",
     "confidence": 0.7
    },
    {
@@ -22628,10 +23219,10 @@
     "confidence": 1.0
    },
    {
-    "id": "related_to:ea4b42d7135055de",
+    "id": "related_to:18cb69dbcbe3ccd2",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:ca9c089b722ddc4e",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -22652,10 +23243,10 @@
     "confidence": 0.75
    },
    {
-    "id": "related_to:c62fdd2f710608e4",
+    "id": "related_to:891b10763849e84d",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:e0c1edafdbfb23c1",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -22668,10 +23259,10 @@
     "confidence": 0.75
    },
    {
-    "id": "related_to:bfbb7a9245af4d6e",
+    "id": "related_to:2425068fccd4d02e",
     "doc_uri": "https://www.decodingai.com/p/the-context-layer",
     "source_id": "tool:ebf5b772059fad0d",
-    "target_id": "system:907b49c6be34c6db",
+    "target_id": "system:e4361ea046c4b92a",
     "semantic_type": "implements",
     "confidence": 1.0
    },
@@ -23140,14 +23731,6 @@
     "confidence": 0.7
    },
    {
-    "id": "related_to:949e69810ed5ccbd",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "source_id": "organization:73cb08f73ae0eefc",
-    "target_id": "tool:77e14c41c83188a0",
-    "semantic_type": "develops",
-    "confidence": 0.9
-   },
-   {
     "id": "related_to:fde988fb38507d95",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "source_id": "person:0ac2aeab4e9ed824",
@@ -23268,6 +23851,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:7ce038bbb0af7082",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "source_id": "system:8d6aec77d001ab01",
+    "target_id": "tool:cb540a4b319b54d9",
+    "semantic_type": "uses",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:2faae1e804ad69c9",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "source_id": "system:9233acb0d4f5b32f",
@@ -23282,14 +23873,6 @@
     "target_id": "tool:e05322c7f624372e",
     "semantic_type": "built_on",
     "confidence": 0.75
-   },
-   {
-    "id": "related_to:207da9aad2d1db97",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "source_id": "system:c6bd81d1e086e604",
-    "target_id": "method:b8e3dee152c1341d",
-    "semantic_type": "implements",
-    "confidence": 0.7
    },
    {
     "id": "related_to:da076d5216724d45",
@@ -23364,22 +23947,6 @@
     "confidence": 0.8
    },
    {
-    "id": "related_to:efff9d990b31d0c2",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "source_id": "tool:77e14c41c83188a0",
-    "target_id": "tool:2eb5f6c533545aff",
-    "semantic_type": "related_to",
-    "confidence": 0.6
-   },
-   {
-    "id": "related_to:6715ecc043fcd79b",
-    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
-    "source_id": "tool:77e14c41c83188a0",
-    "target_id": "tool:3f3a89a05090dd05",
-    "semantic_type": "related_to",
-    "confidence": 0.6
-   },
-   {
     "id": "related_to:33aae0fd890053fd",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "source_id": "tool:7c11a8b212545e60",
@@ -23404,6 +23971,14 @@
     "confidence": 1.0
    },
    {
+    "id": "related_to:6ce91f58a19a2121",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "source_id": "tool:e0c1edafdbfb23c1",
+    "target_id": "method:618a75f1405f8540",
+    "semantic_type": "provides",
+    "confidence": 1.0
+   },
+   {
     "id": "related_to:79507689f0234738",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "source_id": "tool:e0c1edafdbfb23c1",
@@ -23418,6 +23993,14 @@
     "target_id": "method:96d134605c8cd430",
     "semantic_type": "implements",
     "confidence": 0.85
+   },
+   {
+    "id": "related_to:296289d6e1638fc6",
+    "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
+    "source_id": "tool:e0c1edafdbfb23c1",
+    "target_id": "method:fb28cb461fa5708c",
+    "semantic_type": "provides",
+    "confidence": 1.0
    },
    {
     "id": "related_to:eade01f2c8f8106a",
@@ -23468,12 +24051,12 @@
     "confidence": 0.85
    },
    {
-    "id": "related_to:bc4e32eb1134101a",
+    "id": "related_to:9d6b399e72b92d77",
     "doc_uri": "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system",
     "source_id": "tool:e0c1edafdbfb23c1",
-    "target_id": "system:c6bd81d1e086e604",
-    "semantic_type": "provides",
-    "confidence": 0.8
+    "target_id": "system:fc3949ddbf8d42aa",
+    "semantic_type": "used_for",
+    "confidence": 1.0
    },
    {
     "id": "related_to:40d4d9056ae1c0f2",

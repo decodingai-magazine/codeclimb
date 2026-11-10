@@ -122,6 +122,37 @@
     "Qwen/Qwen3.6-35B-A3B-FP8"
    ],
    "why": "the Hugging Face model id of the same Decode default model"
+  },
+  {
+   "type": "system",
+   "keep": "unified memory layer",
+   "absorb": [
+    "memory layer",
+    "unified memory"
+   ],
+   "why": "one component: the unified memory layer an agent reads and writes, called by either half of its name",
+   "in_log": "folded: every mention row of either surface was renamed to unified memory layer, keeping both names as aliases, and the two rows in agentic-graphrag and how-to-implement-a-unified-memory-from-scratch became one; no same_as row"
+  },
+  {
+   "type": "method",
+   "keep": "resolution",
+   "absorb": [
+    "name resolution"
+   ],
+   "why": "the same write-path step: canonical-name matching before deduplication",
+   "in_log": "folded: the name resolution row in how-to-implement-a-unified-memory-from-scratch was renamed to resolution, keeping name resolution as an alias; no same_as row"
+  },
+  {
+   "type": "method",
+   "keep": "NL query",
+   "absorb": [
+    "agentic search"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch"
+   ],
+   "why": "the article names one read mode both ways: 'NL query is agentic search'",
+   "in_log": "folded in how-to-implement-a-unified-memory-from-scratch: one row, agentic search an alias; the type_of row between them removed"
   }
  ],
  "kept_separate": [
@@ -208,6 +239,15 @@
     "single knowledge graph collection"
    ],
    "why": "two different designs from two articles"
+  },
+  {
+   "type": "organization",
+   "names": [
+    "Neo4j",
+    "Neo4j-Labs",
+    "Neo4j Labs"
+   ],
+   "why": "the company and its labs team; Neo4j-Labs and Neo4j Labs are one team spelled two ways"
   }
  ],
  "retypes": [
@@ -234,6 +274,27 @@
    "from": "tool",
    "to": "organization",
    "why": "the author's newsletter, the publication typed organization as Decoding AI Magazine"
+  },
+  {
+   "name": "Global Ontology",
+   "from": "tool",
+   "to": "method",
+   "why": "an ontology is a data model the article designs, not software"
+  },
+  {
+   "name": "application layer",
+   "from": "method",
+   "to": "system",
+   "why": "an architecture layer, like the serving layer"
+  },
+  {
+   "name": "Pydantic",
+   "from": "tool",
+   "to": "organization",
+   "docs": [
+    "https://www.decodingai.com/p/the-coding-agent-loop"
+   ],
+   "why": "the company develops Logfire; the tool keeps its own entity"
   }
  ],
  "drops": [
@@ -491,6 +552,118 @@
     "Weave stack"
    ],
    "why": "an internal component of a system, not a piece of software of its own"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Document Ontology",
+    "Person Ontology",
+    "Resource Description Framework"
+   ],
+   "why": "an ontology or a data model the article describes, not a piece of software; typed method where the article engages with it (Global Ontology, its Person and Document sub-ontologies, RDF)"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "FastAPI"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-design-python-ai-projects"
+   ],
+   "why": "named only in lists of examples"
+  },
+  {
+   "type": "method",
+   "names": [
+    "data partitioning"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/agentic-graphrag"
+   ],
+   "why": "a verb in passing; sharding carries the practice"
+  },
+  {
+   "type": "person",
+   "names": [
+    "Matt Pocock"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026"
+   ],
+   "why": "a credit aside"
+  },
+  {
+   "type": "system",
+   "names": [
+    "composite resolver"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "an internal component of neo4j-labs/agent-memory"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Codex",
+    "Gemini CLI"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "sample entities inside the worked memory-graph example, not tools the article engages with"
+  },
+  {
+   "type": "organization",
+   "names": [
+    "Anthropic"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "a sample Organization node inside the worked example"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Squid"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/the-context-layer"
+   ],
+   "why": "named only in a bullet list of the author's skills"
+  },
+  {
+   "type": "method",
+   "names": [
+    "GraphRAG",
+    "agentic GraphRAG"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/llm-wiki-agent-memory"
+   ],
+   "why": "only the topic of a demo's links and question"
+  },
+  {
+   "type": "model",
+   "names": [
+    "Claude"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026"
+   ],
+   "why": "'my Claude subscription' names the plan, not weights"
+  },
+  {
+   "type": "method",
+   "names": [
+    "harness interface"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/coding-agents-in-remote-headless"
+   ],
+   "why": "Decode's internal interface, defined as two code symbols"
   }
  ],
  "renames": [
@@ -725,6 +898,11 @@
    "type": "system",
    "name": "file-backed memory",
    "why": "'a file-backed design'"
+  },
+  {
+   "type": "system",
+   "name": "workflow orchestrator",
+   "why": "the pipeline orchestrator (Prefect, DBOS), kept apart from the agent orchestrator; the body writes only 'orchestrator'"
   }
  ],
  "relabels": [

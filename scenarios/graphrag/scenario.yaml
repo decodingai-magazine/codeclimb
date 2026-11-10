@@ -13,7 +13,7 @@ scan: uv run python scripts/scan_text.py --text {text} --out {report}
 # The metrics every round reports, per stage. The night config's thresholds decide a keep.
 headline:
   - extraction.mentions.f1
-  - extraction.relations.directed.f1
+  - extraction.relations.undirected.f1
   - graph.b_cubed.recall
   - retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean
   - retrieval.by_kind.single_hop.metrics.answer_mrr.mean
@@ -23,7 +23,7 @@ headline:
 # it is everything the evaluators report.
 diagnostics:
   - '^extraction\.mentions\.(precision|recall)$'
-  - '^extraction\.relations\.directed\.(precision|recall)$'
+  - '^extraction\.relations\.undirected\.(precision|recall)$'
   - '^extraction\.relations\.unresolved_ends$'
   - '^extraction\.documents\.(empty|predicted_rows_outside_held_out)$'
   - '^graph\.baselines\.history_only\.recall$'

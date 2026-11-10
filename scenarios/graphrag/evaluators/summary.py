@@ -26,7 +26,7 @@ HEADLINE = {
         "mentions.f1",
         "mentions.precision",
         "mentions.recall",
-        "relations.directed.f1",
+        "relations.undirected.f1",
     ],
     "graph": [
         "b_cubed.precision",

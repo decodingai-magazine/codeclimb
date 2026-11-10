@@ -129,21 +129,26 @@ def resolve_end(name: str, kind: str | None, pred: list[MentionPrediction]) -> i
     return hits[0] if hits else None
 
 
+def undirected(a, b) -> tuple:
+    """A relation as its two ends in a fixed order: `A -> B` and `B -> A` are one claim."""
+    return tuple(sorted((a, b), key=repr))
+
+
 def score_document(gold_m: list[dict], gold_r: list[dict], pred_m: list, pred_r: list, coined: set) -> dict:
     """Counts for one document; `coined` holds the indexes of its coined gold rows."""
     typed = match_mentions(gold_m, pred_m, typed=True)
     untyped = match_mentions(gold_m, pred_m, typed=False)
     index = {g["surface_id"]: i for i, g in enumerate(gold_m)}
 
-    gold_pairs = {(index[r["source_id"]], index[r["target_id"]]) for r in gold_r}
+    gold_pairs = {undirected(index[r["source_id"]], index[r["target_id"]]) for r in gold_r}
     pred_pairs, unresolved = set(), 0
     for r in pred_r:
         a, b = resolve_end(r.source_name, r.source_type, pred_m), resolve_end(r.target_name, r.target_type, pred_m)
         unresolved += (a is None) + (b is None)
         if a in typed and b in typed:
-            pair = (typed[a], typed[b])
+            pair = undirected(typed[a], typed[b])
         else:  # an end with no matched mention: a false positive, kept distinct by its surfaces
-            pair = (("x", normalize(r.source_name), r.source_type), ("x", normalize(r.target_name), r.target_type))
+            pair = undirected(("x", normalize(r.source_name), r.source_type), ("x", normalize(r.target_name), r.target_type))
         pred_pairs.add(pair)
     matched_gold = set(typed.values())
     return {
@@ -155,7 +160,7 @@ def score_document(gold_m: list[dict], gold_r: list[dict], pred_m: list, pred_r:
             "predicted": len(pred_m),
             "gold_strict": len(gold_m) - len(coined),
         },
-        "directed": (len(pred_pairs & gold_pairs), len(pred_pairs), len(gold_pairs)),
+        "undirected": (len(pred_pairs & gold_pairs), len(pred_pairs), len(gold_pairs)),
         "unresolved_ends": unresolved,
         "pairs": (gold_pairs, pred_pairs),
     }
@@ -274,15 +279,15 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool, ski
         doc_coined = {i for i, g in enumerate(gm) if (u, g["surface_id"]) in coined}
         s = score_document(gm, gold_r[u], pred_m[u], pred_r[u], doc_coined)
         totals.update(s["mentions"])
-        tp, pr, go = s["directed"]
-        totals.update({"directed_tp": tp, "directed_predicted": pr, "directed_gold": go, "unresolved_ends": s["unresolved_ends"]})
+        tp, pr, go = s["undirected"]
+        totals.update({"undirected_tp": tp, "undirected_predicted": pr, "undirected_gold": go, "unresolved_ends": s["unresolved_ends"]})
         if details:
             per_doc[u] = document_details(gm, pred_m[u], pred_r[u], gold_r[u], s, doc_coined)
             groups.update(error_groups(s))
 
     p_m = ratio(totals["tp"], totals["predicted"])
     r_m = ratio(totals["tp_strict"], totals["gold_strict"])
-    directed = prf(totals["directed_tp"], totals["directed_predicted"], totals["directed_gold"])
+    undirected_prf = prf(totals["undirected_tp"], totals["undirected_predicted"], totals["undirected_gold"])
     report = {
         **split_header(split_name),
         "documents": {
@@ -297,17 +302,17 @@ def score(split_name: str, predictions: Path, out_path: Path, details: bool, ski
             "note": "precision counts a match to any gold row; recall leaves the coined rows (labels absent from the body) out",
         },
         "relations": {
-            "directed": {k: directed[k] for k in ("precision", "recall", "f1")},
+            "undirected": {k: undirected_prf[k] for k in ("precision", "recall", "f1")},
             "unresolved_ends": totals["unresolved_ends"],
-            "note": "relation labels are ignored; an end that names no predicted mention is unresolved",
+            "note": "a relation is its pair of ends, either way round; labels are ignored; an end that names no predicted mention is unresolved",
         },
-        "not_measured": ["types apart from matching", "relation labels", "count", "confidence", "domain", "released", "country", "description (needs a judge)"],
+        "not_measured": ["types apart from matching", "relation direction", "relation labels", "count", "confidence", "domain", "released", "country", "description (needs a judge)"],
     }
     if details:
         report["details"] = {"summary": dict(sorted(groups.items())), **per_doc}
     write_report(out_path, report)
     logger.info(
-        f"mentions P={fmt(p_m)} R={fmt(r_m)} F1={fmt(f1(p_m, r_m))}; relations directed F1={fmt(report['relations']['directed']['f1'])} "
+        f"mentions P={fmt(p_m)} R={fmt(r_m)} F1={fmt(f1(p_m, r_m))}; relations undirected F1={fmt(report['relations']['undirected']['f1'])} "
         f"over {len(held)} documents -> {out_path}"
     )
 
@@ -326,7 +331,6 @@ def error_groups(s: dict) -> Counter:
             "missed_relations_both_ends_extracted": ends[2],
             "missed_relations_one_end_extracted": ends[1],
             "missed_relations_no_end_extracted": ends[0],
-            "missed_relations_predicted_reversed": sum((b, a) in pred_pairs for a, b in missed),
             "false_positive_relations": len(wrong),
             "false_positive_relations_both_ends_gold": sum(isinstance(a, int) and isinstance(b, int) for a, b in wrong),
         }
@@ -345,9 +349,9 @@ def document_details(gm, pm, pr, gr, s, doc_coined) -> dict:
         "type_errors": [
             f"{gm[i]['name']}: gold {gm[i]['type']}, predicted {pm[j].type}" for j, i in untyped.items() if gm[i]["type"] != pm[j].type
         ],
-        "missed_relations": sorted(f"{gm[a]['name']} -> {gm[b]['name']}" for a, b in gold_pairs - pred_pairs),
+        "missed_relations": sorted(f"{gm[a]['name']} -- {gm[b]['name']}" for a, b in gold_pairs - pred_pairs),
         "false_positive_relations": sorted(
-            f"{gm[a]['name']} -> {gm[b]['name']}" if isinstance(a, int) and isinstance(b, int) else f"{a[1]} -> {b[1]}"
+            f"{gm[a]['name']} -- {gm[b]['name']}" if isinstance(a, int) and isinstance(b, int) else f"{a[1]} -- {b[1]}"
             for a, b in pred_pairs - gold_pairs
         ),
         "matched": {label(i): pm[j].name for i, j in sorted(by_gold.items())},

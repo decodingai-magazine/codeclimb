@@ -35,7 +35,6 @@ from common import (
 from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
-COMPARING = {"compared_with", "alternative_to"}
 RETURNED_SHOWN = 10
 """Nodes, edges and docs per query in `--details`: the ones a ranked metric reads."""
 SCORED = "single_hop"
@@ -106,8 +105,8 @@ def matchers(ex: dict, entity_keys: dict) -> tuple:
     def edge_hit(e: Edge, x: dict) -> bool:
         src, tgt = normalize(e.source), normalize(e.target)
         forward = src in by_name[x["source"]] and tgt in by_name[x["target"]]
-        backward = x["semantic_type"] in COMPARING and src in by_name[x["target"]] and tgt in by_name[x["source"]]
-        return forward or backward
+        backward = src in by_name[x["target"]] and tgt in by_name[x["source"]]
+        return forward or backward  # an edge counts either way round
 
     return node_hit, edge_hit
 
