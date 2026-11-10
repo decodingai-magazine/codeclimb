@@ -2,7 +2,8 @@
 // parent commit) until it says done, hits `timeouts.experiment_min` or
 // `budget_usd.experiment`, or goes quiet past the idle watchdog (→ abort()). A coder
 // that stops too soon (tasks still open in /tmp/tasks.json, no train measurement in
-// /tmp/train-score.json, or most of its time and budget left) is sent back, twice at most. Then the
+// /tmp/train-score.json, or before the last RESERVE of its time and budget) is sent back, one measured
+// change per turn; at the reserve it is told to stop changing code and wrap up. Then the
 // orchestrator commits /repo and pulls the commit back as a bundle, with the coder's
 // notes for later rounds, before destroying the sandbox.
 //
@@ -289,14 +290,36 @@ export function trainRegression(text: string | null): string {
     : "";
 }
 
-/** How many times a coder that stops too soon is sent back. */
-export const MAX_SEND_BACKS = 2;
+/**
+ * The share of its time and budget a coder keeps for wrapping up. Before it, a coder that stops is sent
+ * back to work: coders stopped at about half their time, and the old rule (more than half of both left)
+ * never fired. Inside it, the coder changes no more code: a session cut at the timeout is committed as it
+ * stands, mid-edit and with no notes or train measurement.
+ */
+export const RESERVE = 0.2;
+
+/** A runaway guard on send-backs, for a coder that stops at once each turn; the reserve ends the loop first. */
+export const MAX_SEND_BACKS = 8;
+
+/** Whether a coder has reached its reserve: less than RESERVE of its time or of its budget left. */
+export const inReserve = (s: { minutesLeft: number; minutes: number; usdLeft: number; usd: number }): boolean =>
+  s.minutesLeft <= s.minutes * RESERVE || s.usdLeft <= s.usd * RESERVE;
+
+/** Saves the code a change starts from, and puts it back when the change loses. */
+const CHECKPOINT = "git -C /repo add -A && git -C /repo commit -qm checkpoint";
+const RESTORE = "git -C /repo reset -q --hard && git -C /repo clean -qfd";
+
+/** What a coder hears when its reserve starts: stop changing code, leave /repo at its best measured version. */
+export const WRAP_UP =
+  `The last ${RESERVE * 100}% of your time or budget has started: change no more code. If you committed a checkpoint and the change since has not beaten it on train, restore it (\`${RESTORE}\`). ` +
+  `Then make sure every task in /tmp/tasks.json ends "done", or "dropped" with a note, that /tmp/train-score.json scores the code /repo holds now against the code you started from, and that /tmp/notes.md is current. Do step 4 (Review) again, and end with the APPROACH line.`;
 
 /**
  * Why a coder that stopped goes back for one more turn; empty when it doesn't. Open tasks, a missing
- * train measurement where train exists, or more than half of both its time and its budget left. For the
- * last, the next step is named: another way to raise `target`, the metric with the largest weighted
- * shortfall, since "keep going" alone sent coders back to stopping a minute later.
+ * train measurement where train exists, or time and budget left before its reserve. For the last, the
+ * next step is named, since "keep going" alone sent coders back to stopping a minute later, and it is one
+ * change, measured against a checkpoint and kept only if it wins: unmeasured stacked changes undo each
+ * other and hide which one moved dev.
  */
 export function sendBack(s: {
   tasks: string | null;
@@ -312,7 +335,7 @@ export function sendBack(s: {
   hypothesis?: boolean;
 }): string {
   const why = [openTasks(s.tasks), s.hasTrain ? trainScoreProblem(s.trainScore) || trainRegression(s.trainScore) : ""];
-  if (s.minutesLeft > s.minutes / 2 && s.usdLeft > s.usd / 2) {
+  if (!inReserve(s)) {
     // Not "another way to raise the metric furthest below": that metric's errors often start in an
     // earlier step, and coders sent at it spent whole rounds on changes that could not reach them.
     const next = s.hypothesis
@@ -320,7 +343,11 @@ export function sendBack(s: {
       : s.target
         ? `Next: read the worst train items for ${s.target}, the metric furthest below its threshold, and add a task that fixes the largest kind of error you find. Its cause may sit in an earlier step of the program than the one the metric scores. Measure it on train against your current code, and keep the better.`
         : "Next: read the worst train items and add a task that fixes the largest kind of error you find, measured on train against your current code.";
-    why.push(`You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left. ${next} Stop only when that finds nothing more, and say why in APPROACH.`);
+    why.push(
+      `You stopped with ${Math.round(s.minutesLeft)} of ${Math.round(s.minutes)} minutes and $${s.usdLeft.toFixed(2)} of $${s.usd.toFixed(2)} left, before your last ${RESERVE * 100}%. ${next} ` +
+        `Make it one change: first commit the current code as a checkpoint (\`${CHECKPOINT}\`), then build the change as one task and measure it on train against the checkpoint. ` +
+        `Keep it only if it scores better; otherwise restore the checkpoint (\`${RESTORE}\`) and mark the task "dropped" with both scores. Stop only when that finds nothing more, and say why in APPROACH.`,
+    );
   }
   return why.filter(Boolean).join(" ");
 }
@@ -475,10 +502,10 @@ export function coderPrompt(
       "- The sandbox has internet access and uv. For a package the image lacks, run `uv venv --system-site-packages` and `uv add <package>` in /repo (`uv init --bare` first if there is no pyproject.toml), and commit pyproject.toml and uv.lock: the evaluation builds that environment from uv.lock. Run the program with .venv/bin/python.",
       "- Simpler is better: remove what your change makes unnecessary, and don't add code for a gain too small to measure.",
       "- Before you stop, write to /tmp/notes.md what the next coder should know, kept in the night's history even if this round is reverted: facts you checked in the sandbox, such as how a tool, library or model endpoint behaves, limits you hit, runtimes, train measurements, and what failed and why. You can't see dev or test, so make no claim about them: the reviewer adds what the evaluation showed. At most 20 lines, plain lines with no heading, no plan and no summary of your diff. It stays outside /repo.",
-      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. If a metric is lower after, add "why": what makes the change worth it. A coder that stops without it, or with more than half its time and budget left, is sent back, twice at most.`,
+      `- Before you stop, write ${TRAIN_SCORE_FILE} if /spec/train exists: {"before": {<metric>: <score>}, "after": {<metric>: <score>}, "command": "<how you scored>"}, the code you started from and your change, scored the same way on train. If a metric is lower after, add "why": what makes the change worth it. A coder that stops without it, or before the last ${RESERVE * 100}% of its time and budget, is sent back to keep improving, one measured change at a time.`,
       "- Train items your few-shot examples come from score high by construction, so a train gain over them says little about the hidden split. Score on train items no example is drawn from: leave each one's examples out while scoring it (leave one out), or hold out a few items the examples never use, and say which in the command.",
       "- Send a long run's output to a file and read it with grep or tail: everything your shell prints costs tokens.",
-      "- Do not commit: the harness commits everything in /repo when you finish.",
+      "- Commit only as a checkpoint to return to: the harness commits the files in /repo as they are when you finish, onto the code you started from.",
       `- You have about ${minutes} minutes: use them.${endsAt ? ` The round ends at ${new Date(endsAt).toISOString()}; \`date -u\` in your shell tells the time now. Check it before you decide to stop.` : ""} Once the change works, score it on train if you can, read the worst items, the longest and the empty ones first, and fix what you find within this hypothesis and the targets. If a target shows no clear gain over the code you started from and time and budget remain, try another way to raise it. Stop when that finds nothing more, and say in APPROACH if the change still shows no gain.`,
       "- End your final message with one line: `APPROACH: <one-sentence summary of what you changed and why>`.",
     ].join("\n"),
@@ -646,6 +673,22 @@ export async function runCoder(
   const deadline = state.startedAt + cfg.timeouts.experiment_min * 60_000;
   const remainingMs = deadline - Date.now();
   const timer = setTimeout(() => abortWith("timeout"), Math.max(remainingMs, 0));
+  const left = () => ({
+    minutesLeft: (deadline - Date.now()) / 60_000,
+    minutes: cfg.timeouts.experiment_min,
+    usdLeft: cfg.budget_usd.experiment - state!.coderUsd - (state!.devUsd ?? 0),
+    usd: cfg.budget_usd.experiment,
+  });
+  // A coder still working when its reserve starts hears WRAP_UP mid-turn; one sent back to keep working
+  // that stopped inside the reserve gets it as one more turn.
+  let workedOn = false;
+  let wrapped = false;
+  const wrapUp = () => {
+    if (wrapped || stop || !session.isStreaming) return;
+    wrapped = true;
+    void session.steer(WRAP_UP).catch(() => {});
+  };
+  const reserveTimer = setTimeout(wrapUp, Math.max(remainingMs - cfg.timeouts.experiment_min * RESERVE * 60_000, 0));
   // Model tokens and tool output both count as life; a provider stream that hangs gives neither.
   let lastEventAt = Date.now();
   let toolsRunning = 0;
@@ -669,6 +712,7 @@ export async function runCoder(
       if (token) state!.devUsd = devBefore + proxy!.spent(token);
       save();
       if (state!.coderUsd + state!.devUsd! >= cfg.budget_usd.experiment) abortWith("budget");
+      else if (inReserve(left())) wrapUp();
     }
   });
   const untrace = traceSession(session, {
@@ -694,8 +738,8 @@ export async function runCoder(
               ci: input.standingCi,
             }, metered ? { models: cfg.allowed_models, budgetUsd: cfg.budget_usd.experiment } : undefined, cfg.timeouts.eval_min, input.failures, rejectedDiffs(paths.bundleDir), input.repair, input.direction, deadline),
       );
-      // Stopped too soon: open tasks, no train measurement, or most of its time and budget unused. Up to
-      // MAX_SEND_BACKS more turns. A repair writes no plan and fixes a failure, so it goes on as it is.
+      // Stopped too soon: open tasks, no train measurement, or time and budget left before the reserve.
+      // A repair writes no plan and fixes a failure, so it goes on as it is.
       const target = Object.keys(cfg.thresholds ?? {}).length
         ? unmet(cfg.thresholds, input.standing, cfg.weights)[0]?.split(":")[0]
         : undefined;
@@ -704,17 +748,20 @@ export async function runCoder(
           tasks: await readSandbox("/tmp/tasks.json"),
           trainScore: await readSandbox(TRAIN_SCORE_FILE),
           hasTrain: existsSync(join(paths.bundleDir, "train")),
-          minutesLeft: (deadline - Date.now()) / 60_000,
-          minutes: cfg.timeouts.experiment_min,
-          usdLeft: cfg.budget_usd.experiment - state.coderUsd - (state.devUsd ?? 0),
-          usd: cfg.budget_usd.experiment,
+          ...left(),
           target,
           hypothesis: !!input.hypothesis,
         });
         if (!back) break;
+        // Sent back to keep working: it wraps up at the reserve, whether it is then working or stopped.
+        if (!inReserve(left())) workedOn = true;
         await session.prompt(
           `${back} Every task must end "done", or "dropped" with a note saying why. Do step 4 (Review) again, and end with the APPROACH line.`,
         );
+      }
+      if (workedOn && !wrapped && !stop && deadline - Date.now() >= MIN_FOLLOW_UP_MS) {
+        wrapped = true;
+        await session.prompt(WRAP_UP);
       }
     } else {
       stop = "timeout";
@@ -724,6 +771,7 @@ export async function runCoder(
     if (isCreditError(agentError)) outOfCredits({ who: "coder", model: input.model, message: agentError });
   } finally {
     clearTimeout(timer);
+    clearTimeout(reserveTimer);
     clearInterval(watchdog);
     closeDev();
     unsubscribe();

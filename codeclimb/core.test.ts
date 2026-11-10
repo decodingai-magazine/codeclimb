@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { coderPrompt, formatTrajectory, fragile, notesDir, openTasks, parseApproach, readTrajectory, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW } from "./coder";
+import { coderPrompt, formatTrajectory, fragile, inReserve, notesDir, openTasks, parseApproach, readTrajectory, met, rejectedDiffs, sendBack, trainScoreProblem, unmet, CODER_REVIEW, WORKFLOW, WRAP_UP } from "./coder";
 import { checkSandboxLimits, efficiencyMetrics, mockConfig, type NightConfig, parseConfig, relativeConfig, resolveDeadline, rootConfig } from "./config";
 import { ExperimentRepo } from "./git";
 import { nightPaths } from "./paths";
@@ -645,7 +645,7 @@ test("a coder's task list: every task done, or dropped with a note", () => {
   assert.match(WORKFLOW, /\/tmp\/tasks\.json[^]*"status": "todo"[^]*Change only a task's status/);
 });
 
-test("a coder that stops too soon goes back once: open tasks, no train measurement, most of its time and budget left", () => {
+test("a coder that stops too soon goes back: open tasks, no train measurement, or time and budget left before its reserve", () => {
   const done = '[{"task": "a", "status": "done"}]';
   const score = '{"before": {"f1": 0.5}, "after": {"f1": 0.6}, "command": "x"}';
   const base = { tasks: done, trainScore: score, hasTrain: true, minutesLeft: 5, minutes: 25, usdLeft: 2, usd: 2.5 };
@@ -653,7 +653,11 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.match(sendBack({ ...base, trainScore: null }), /wrote no \/tmp\/train-score\.json/);
   assert.equal(sendBack({ ...base, trainScore: null, hasTrain: false }), "");
   assert.match(sendBack({ ...base, trainScore: '{"before": {}, "after": {"f1": 1}}' }), /needs a "before" and an "after"/);
-  assert.match(sendBack({ ...base, minutesLeft: 20 }), /20 of 25 minutes and \$2\.00 of \$2\.50 left/);
+  assert.match(sendBack({ ...base, minutesLeft: 20 }), /20 of 25 minutes and \$2\.00 of \$2\.50 left, before your last 20%/);
+  // Coders stopped at about half their time (night n20261109-204916): past half, it still goes back.
+  assert.match(sendBack({ ...base, minutesLeft: 11, usdLeft: 1 }), /11 of 25 minutes/);
+  // One change per turn, against a checkpoint it can return to.
+  assert.match(sendBack({ ...base, minutesLeft: 20 }), /commit the current code as a checkpoint[^]*Keep it only if it scores better; otherwise restore the checkpoint[^]*"dropped" with both scores/);
   assert.match(sendBack({ ...base, minutesLeft: 20 }), /Next: read the worst train items/);
   assert.match(sendBack({ ...base, minutesLeft: 20, target: "f1" }), /Next: read the worst train items for f1, the metric furthest below[^]*may sit in an earlier step/);
   // With a reviewer's hypothesis the coder goes back to its untested parts, not to the weakest metric.
@@ -661,7 +665,11 @@ test("a coder that stops too soon goes back once: open tasks, no train measureme
   assert.match(back, /Next: go back to the hypothesis\. Add a task for each part of it you have not built and measured/);
   assert.doesNotMatch(back, /for f1/);
   assert.match(coderPrompt("s", "", null, 10), /leave one out/);
-  assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 1 }), ""); // half the budget spent: it worked
+  assert.equal(sendBack({ ...base, minutesLeft: 20, usdLeft: 0.5 }), ""); // its budget reserve reached
+  assert.equal(sendBack({ ...base, minutesLeft: 5 }), ""); // its time reserve reached
+  assert.ok(inReserve({ minutesLeft: 5, minutes: 25, usdLeft: 2, usd: 2.5 }) && !inReserve({ minutesLeft: 6, minutes: 25, usdLeft: 2, usd: 2.5 }));
+  // At the reserve it changes no more code and leaves /repo at its best measured version.
+  assert.match(WRAP_UP, /change no more code[^]*restore it[^]*train-score\.json scores the code \/repo holds now[^]*APPROACH/);
   assert.match(sendBack({ ...base, tasks: '[{"task": "a", "status": "todo"}]' }), /not done/);
   assert.match(trainScoreProblem("nope"), /not valid JSON/);
   // Its own train check got worse and it shipped anyway, with no reason given.
