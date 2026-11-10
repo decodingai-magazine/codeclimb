@@ -6,7 +6,8 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   run from the repository root. Keep that entry point; everything behind it is yours.
 - **Python 3.14** with `numpy`, `networkx`, `openai`, `pydantic`, `ladybug` and `rank-bm25`
   installed (pinned versions), plus `uv`. That's a starting point, not a limit: the sandbox has
-  internet access.
+  internet access, for installing packages. Nothing outside the bundle is yours to read
+  (`train.md`).
 - **Other packages.** Add what you need with uv, when you need it:
 
   ```bash
@@ -35,7 +36,7 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
       print(rows.get_next())
   ```
 
-  A schema that fits the gold graph, and one query shape per query kind (`task.md`, 3. Retrieval):
+  A schema that fits the gold graph, and the query shapes the kinds need (`task.md`, 3. Retrieval):
 
   ```sql
   CREATE NODE TABLE Entity(id STRING PRIMARY KEY, name STRING, type STRING, aliases STRING[], description STRING, embedding FLOAT[])
@@ -55,13 +56,13 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
   MATCH (d:Document)-[:MENTIONS]->(e:Entity) WHERE e.id = $e AND d.published >= $from AND d.published <= $to RETURN d
   ```
 
-  Check the syntax against the installed version; write your own ids into `Entity.id` and keep the
-  gold's names and aliases for the envelope.
+  Check the syntax against the installed version; `Entity.id` is any unique id (the starter uses the gold's); keep the gold's names and aliases
+  for the envelope.
 - **Models.** Call models only through the OpenAI-compatible endpoint in `OPENAI_BASE_URL` with
   `OPENAI_API_KEY`, and only the models the prompt lists. Every call is metered and capped; a call
   past the cap fails. The prompt names the caps. The evaluation's cap covers all three stages
   together. A request body can be at most 16 MB.
-  - **Errors.** The endpoint doesn't retry. Retry a 429 or 502 with backoff, and catch it: one
+  - **Errors.** The endpoint doesn't retry. Retry a 429, 500, 502 or 503 with backoff, and catch it: one
     unhandled failure ends the run. A 402 means the money is spent, so stop calling and write the
     rows you have. A 400 or 403 is a bad request and won't pass on retry. Bound the calls a query
     can make: a burst of reranks overloads the provider, and those calls fail after every retry.

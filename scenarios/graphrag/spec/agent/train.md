@@ -36,8 +36,9 @@ python /spec/scorer/evaluators/retrieval.py score --split train --predictions ou
 
 `--details` adds the per-item errors; for extraction its `summary` counts the relation errors by
 cause, so read it first. A document your few-shot examples come from scores high by construction:
-leave it out with `--skip-doc <doc_uri>` (repeatable) on extraction, and score a change that way. Your system can't use this directory: the evaluator doesn't have it. Train
-is few-shot material, so a score here is a check on the code, not a forecast of dev.
+leave it out with `--skip-doc <doc_uri>` (repeatable) on extraction, and score a change that way. Your system can't use
+`/spec/scorer`: the evaluator doesn't have it. Train is small and its gold is sparser than the
+held-out gold, so a score here checks a change; it does not forecast dev.
 
 The evaluation runs your system with `PYTHONHASHSEED=0`: do the same, so a run is comparable with the
 last one. The chat model is not deterministic, even at temperature 0 with a seed, but the model
@@ -49,7 +50,7 @@ once and rescore each variant offline. Report precision, recall and row counts b
 alone: a mention change that lowers train precision by more than 0.05 is a regression whatever it
 does to recall.
 
-Before you stop, run extraction once on a held-out-sized input: two train articles joined into one,
+Before you stop, run extraction once on a held-out-sized input (the stress run): two train articles joined into one,
 with every train gold entity as its `known_entities`. Its rows per 1000 characters should stay near
 the single articles'. Far more means a loop or a flooded canon; far fewer means a dropped section.
 
@@ -93,8 +94,7 @@ A frozen system (one commit) with one command per stage, which the evaluator run
 reads nothing else, and writes one prediction line per input item. `/spec` doesn't exist when
 evaluated, and `--root` holds only `corpus/`: copy any few-shot rows the system uses into your
 repository, and list them in `fewshot.json`. Run it on `train/inputs/` to
-check it end to end: that run checks the plumbing, not the quality, because train is your few-shot
-material and scores high by construction.
+check it end to end. A document your few-shot examples come from scores high by construction.
 
 ## Inputs and predictions
 
@@ -159,8 +159,7 @@ its own entity; a missing history surface keeps the given history.
 ### Retrieval
 
 Input: `{"id", "query"}` per line. Predictions: one envelope per query (`task.md`, 3. Retrieval). A
-missing envelope counts as empty. If your lists carry no order, say so with the submission: the
-evaluator then drops the metrics that read order.
+missing envelope counts as empty. Every list is read in order, best first.
 
 ## Feedback
 
@@ -175,7 +174,7 @@ submission, scored fresh. Feedback is never an example: every few-shot example s
   document's entities, and retrieval's graph holds every article's, both far more than train's.
   Train's multi-hop queries all take 2 hops; `task.md` allows 3. Check cost, latency and recall
   beyond train's scale, and don't tune to train's size.
-  Train is also the sparse end (`task.md`, Density): tune what to extract and how, not how many.
+  Train is also the sparse end (`task.md`, 1. Extraction, Density): tune what to extract and how, not how many.
 
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.

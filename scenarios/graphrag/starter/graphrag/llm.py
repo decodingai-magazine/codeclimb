@@ -1,7 +1,7 @@
 """Model calls through the OpenAI-compatible endpoint (runtime.md, Models; models.md has a card per model).
 
 `OPENAI_BASE_URL` and `OPENAI_API_KEY` configure the client; without them every call returns nothing
-and says so once, so a stage still writes what it has. A 429 or 502 is retried with backoff, a 402
+and says so once, so a stage still writes what it has. A 429, 500, 502 or 503 is retried with backoff, a 402
 stops every later call (the money is spent), a 400 or 403 is not retried. Calls run concurrently
 through `map`, which keeps the input order.
 """

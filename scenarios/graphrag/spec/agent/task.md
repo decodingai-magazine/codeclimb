@@ -6,7 +6,8 @@ graph the nodes, edges and documents a query needs. Nothing generates or judges 
 retrieval returns evidence, and the evidence is scored.
 
 **The score is the goal; the rest is suggestions.** Only the evaluation is fixed: its commands, its
-prediction schema, the models and caps it allows, and keeping dev and test out of your system.
+prediction schema, the models and caps it allows, the `fewshot.json` manifest (`train.md`), and
+keeping dev and test out of your system.
 Everything else in this spec about how to build it is a suggestion. A reference shape is given below
 (Reference architecture) and is the recommended starting point: it is what a working system of this
 kind looks like, and the spec names where its rules were wrong for this corpus. Depart from it when
@@ -89,11 +90,12 @@ in general terms. The data shows it:
 ## The pipeline
 
 Three stages. Each is scored on its own, fed gold input, so an error is charged to the stage that
-made it. In your own pipeline each stage feeds the next:
+made it. The evaluation never runs your stages end to end: what your extraction writes reaches
+no other scored stage. In the system the graph is for, each stage feeds the next:
 
-| stage | input when evaluated | input in your pipeline | output |
+| stage | input when evaluated | input in the real system | output |
 |---|---|---|---|
-| 1. extraction | one document, `ontology.md`, and the gold entities of every earlier document | one document, `ontology.md`, and your own entities so far | the document's `entity_mention` and `related_to` rows (`domain` is not scored) |
+| 1. extraction | one document, `ontology.md`, and the gold entities of every earlier document | one document, `ontology.md`, and your own entities so far | the document's `entity_mention` and `related_to` rows |
 | 2. graph building | the gold extraction rows, in order, with the history's merges | your own extraction rows, in order | each surface assigned to an entity |
 | 3. retrieval | a query, the corpus and the gold graph | the same | an envelope of nodes, edges and documents |
 
@@ -102,7 +104,8 @@ errors, and both as retrieval errors, and you couldn't tell which stage to fix.
 
 **Why order matters:** documents arrive in order (by `published`, then `uri`), like new articles
 landing in a live graph. A document is extracted and resolved with only earlier documents in view,
-and the first surface of an entity decides its canonical name.
+and the first surface of an entity (a surface is one `(type, name)` as a document wrote it)
+decides its canonical name.
 
 ### The log
 
@@ -132,15 +135,16 @@ What the log's shape asks of your system:
 Not scored on its own; the stage time limits are the only check. It is still what the system is
 for, so prefer the design that holds when the pile is a thousand times larger:
 
-- **Extraction reads one document and a bounded canon,** never the whole history (Extraction data
-  flow).
+- **Extraction reads one document and a bounded canon** (the known entities shown to the
+  extractor), never the whole history (Extraction data flow).
 - **Graph building resolves a surface against an index.** A key lookup, or a nearest-neighbour
   lookup for embeddings, then a decision on a few candidates. Never compare every pair of
   entities, and never ask a model about all of them.
 - **Replaying the log is one pass.** The evaluation rebuilds from the whole log because nothing
   persists between stages; the pass itself should do per row what a live system would do when the
   row arrives.
-- **Retrieval starts from anchors.** A query touches the anchors' neighbourhood, not the graph.
+- **Retrieval starts from anchors,** the entities a query names. A query touches their
+  neighbourhood, not the graph.
 
 ### 1. Extraction
 
@@ -156,19 +160,21 @@ between two of them:
 
 - **Scored fields:** `kind`, `doc_uri`, `name`, `type` and `aliases` on a mention; `source_name` and
   `target_name` on a relation. `semantic_type` is not scored. `description`,
-  `properties`, `count`, `confidence` and the document's `domain` are part of the ontology but not
-  scored; the gold has them for every entity. Extract `description` and `properties` for every
-  entity anyway if you can: they give your merging and retrieval something to compare. Count
-  with care too: `count` is how often the body names the entity, by name or any alias, and it is
-  what separates a document's subject from a thing it names once (What the graph is for).
+  `properties`, `count` and `confidence` are part of the ontology but not scored, and no scored
+  stage reads yours: graph building and retrieval get the gold's. They matter for the system the
+  graph is for (`count` separates a document's subject from a thing it names once; What the graph
+  is for), so write them when it costs nothing, and never trade a scored field for them. The
+  document's `domain` has no row in the prediction schema: don't write it.
 - **No frequency floor.** Every gold row counts, including entities named once, so a row you leave
   out for being rare is a missed row.
 - **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each,
-  about 0.9 mentions per 1000 characters of body text. Held-out gold is denser, because the gold
-  engages with every named thing. A system that returns train-like counts on a held-out document
-  has stopped early. Measure recall by section on train, not by total.
-- **A wrong type is a miss and a false positive.** Mentions match only on equal type. Type accuracy
-  is measured apart, over the pairs that match when type is ignored.
+  about 0.9 mentions per 1000 characters of body text. Held-out gold is denser: more rows
+  per 1000 characters. A system that returns train-like counts on a held-out document has stopped
+  early. On train, read the missed mentions under `--details` by where they sit in the article,
+  not only the total.
+- **A wrong type is a miss and a false positive.** Mentions match only on equal type. The pairs
+  that match when type is ignored are listed per document under `--details` (`type_errors`); the
+  report has no type-accuracy number.
 - **Unnamed things.** When an article describes a method or system without naming it, the gold row
   carries a short descriptive label. Recall leaves those gold rows out (no extractor can guess the
   label); a label you coin counts as a true positive only if it keys to a gold row, else as a false
@@ -181,18 +187,22 @@ between two of them:
   where otherwise graph building must. The gold does both: most rows reuse known names, and some
   keep their own variant (`RAG`, `LLMs`, `AI agent`), joined later by a merge decision.
 - **`related_to` ends** name two mentions of the same document (by name or alias), in the direction
-  the claim reads: "Anthropic develops Claude Code", not the reverse. Write the claim as it reads:
-  component `part_of` whole, instance `instance_of` class, organization `develops` product, tool
-  `used_for` method, method `applied_to` system.
+  the claim reads: "Anthropic develops Claude Code", not the reverse. The gold reads component
+  `part_of` whole, instance `instance_of` class, organization `develops` product, tool `used_for`
+  method, method `applied_to` system. That describes the gold; as rules in the extractor's
+  prompt, direction lists did not help (`lessons.md`, Failed, more than once). The starter's
+  claims prompt carries one.
 - **Claims are subject-centred and span sentences.** An article's central subject is one end of a
   large share of its claims; that is the gold, not a defect to suppress. A claim is any relation the
   article states between two entities you extracted, wherever the two are named: a list item, a
   comparison table, a sentence two paragraphs after the subject was introduced. Filters on claims
-  cost recall here (`lessons.md`, Failed, more than once).
+  cost recall here, and so did giving a section's claims call ends from outside that section
+  (`lessons.md`, Failed, more than once): the starter asks per section, between that section's
+  entities.
 - **One label per claim.** Reuse a `semantic_type` you already wrote in earlier documents rather
-  than rewording it (`applied_to`, never `applies_to` beside it). The gold labels are never shown to
-  you. **Why:** labels are not scored, but a graph with two
-  spellings for one claim can't be queried by label. Train's claims use 26 labels, and eight
+  than rewording it (`applied_to`, never `applies_to` beside it). Held-out gold labels are never
+  shown to you; train's are in `train/examples/extraction.jsonl`. **Why:** labels are not scored,
+  but a graph with two spellings for one claim can't be queried by label. Train's claims use 26 labels, and eight
   of them (`uses`, `used_for`, `instance_of`, `implements`, `compared_with`, `applied_to`, `supports`,
   `integrates_with`) cover most claims. Reuse before coining.
 
@@ -203,7 +213,8 @@ extractor wrote it; an entity is one referent. Two surfaces are one entity only 
 same thing (`ontology.md`, Identity).
 
 When evaluated, the input is extraction rows that each carry a `surface_id`, plus, in
-history, merge rows (`same_as`: `from_id` is the same entity as `to_id`). Return one line per
+history, merge rows (`same_as`: `from_id` is the same entity as `to_id`; a merge whose reason is
+`ruling` is one a curator decided, which no key explains). Return one line per
 surface: its `surface_id` and an `entity_id` of your own. Only which surfaces share an `entity_id`
 matters; the strings are yours.
 
@@ -211,14 +222,15 @@ matters; the strings are yours.
   `surface_id`, already one entity. Every other merge, `json schema` onto `JSON Schema` included, is
   a decision you make and is scored. A surface first seen in history is a history surface; your
   line for it, if any, overrides the given history.
-- **The official mode is `gold-history`** (the history's merges given). `end-to-end` gives none and
-  is a diagnostic: its gap to `gold-history` is the error your own history carries in.
+- **The evaluation runs `gold-history`** (the history's merges given). The scorer's other mode,
+  `end-to-end`, gives none; train has no history, so on train the two are the same and there is
+  nothing to compare.
 - **Keys, aliases and acronyms are the baseline; three bands are the addition.** Merging by rule,
   with no model, found nearly every merge on the articles so far: keep it. For the surfaces the
   rules leave, embeddings give each candidate pair a similarity, and two thresholds cut it in
   three: merge, new entity, or ask the decision model (Graph data flow). Finding a duplicate
-  matters enough here to pay for those calls, but the addition stays only if it finds merges the
-  rules missed and adds no wrong one.
+  matters enough here to pay for those calls, but like every suggestion here the addition stays
+  only if it is measured: it finds merges the rules missed and adds no wrong one.
 - **A wrong merge is worse than a wrong split.** **Why:** a later merge heals a split; nothing heals
   a merge that destroyed a distinction (`tool calls` folded into `tool calling` loses the request
   apart from the practice).
@@ -239,8 +251,12 @@ matters; the strings are yours.
   - compared within one `type` only.
 - **A key can't link an acronym to its expansion** (`LLM` and `Large Language Model` share no
   token). Only an alias claim or your own resolution logic joins them.
-- **An alias that narrows a name is not an alias.** A claim that adds a content word to the name
-  (an invented `Pydantic for Agents` on `Pydantic`) names a variant: a second entity.
+- **An alias that narrows a name is not an alias.** A longer name that denotes a narrower thing
+  (an invented `Pydantic for Agents` on `Pydantic`, `Wikipedia research agent` on `research
+  agent`) is a variant: a second entity. A longer name the corpus uses as shorthand for the same
+  thing is an alias (`orchestrator agent` for `orchestrator`; `ontology.md`, Identity). The
+  strings alone don't tell the two apart: the starter's check treats every added word as
+  narrowing, so it drops the second kind, which train's gold has.
 - **Watch short generic aliases.** Once `agent` or `workflow` is an alias of one entity, every
   later bare use resolves there.
 
@@ -255,9 +271,9 @@ retrieval alone and compare across systems. Use the graph's `documents`, `entiti
 
 **What a one-hop query is for:** a reader has a topic and asks what the pile says about it. The
 answer is the topic's own edges that bear on the question, each a claim some document made, with
-the entity at the other end. So the edge is the unit that is scored, a wrong edge is a wrong claim
-shown to the reader, and precision counts as much as recall: ten edges around the anchor are not an
-answer to a question about one of them.
+the entity at the other end. So the edge is the unit that is scored, and a wrong edge is a wrong claim
+shown to the reader: ten edges around the anchor are not an answer to a question about one of
+them. Edge precision is reported beside the primary metrics for that reason.
 
 ```json
 {"id": "tr-mh-001",
@@ -281,22 +297,23 @@ answer to a question about one of them.
   is an artifact of how the set was built. **Why:** a real query carries no kind, so a system that
   reads it from the id scores what it can't do.
 - **Order is your ranking.** Best first in each list.
-- **Anchors** are the entities the query names. Returning them is expected and counts toward
-  precision, but the primary metrics score what the query asked for: the edges that connect the
-  anchors to the answer, and the answer nodes and documents. In the gold each expected node has a
-  `role`: `anchor` (named in the query), `bridge` (a hop on the way) or `answer`; subgraph precision
-  counts every role as expected.
+- **Anchors** are the entities the query names. In the gold each expected node has a `role`:
+  `anchor` (named in the query), `bridge` (a hop on the way) or `answer`. Nothing scores a
+  returned anchor. Answer MRR reads the rank of the first `answer` node in `nodes`, so list answer
+  nodes above anchors; the starter lists anchors first.
 - **An edge is found only when both ends and the direction are right.** `compared_with` and
   `alternative_to` count either way; the label is not required to match. **Why:** a node can come
   back for the wrong reason, an edge can't.
-- **Return what answers the query, not its neighbourhood.** Subgraph precision is the share of
-  returned nodes and edges that are in the query's expected set (anchors included); documents are
-  scored by R-precision instead. It is reported beside the count of nodes, edges and documents
-  returned.
-- **`passage_tokens`** is optional and reported, not scored: the tokens of text your engine would
-  hand a reader for this query, in any tokenizer you name. It makes the cost of an answer visible.
-- **Abstain.** Some queries name nothing the corpus holds. Abstention scores 1 only when `nodes`,
-  `edges` and `docs` are all empty; anything returned for such a query is a false retrieval.
+- **Return what answers the query, not its neighbourhood.** Edge recall reads only your first 5
+  edges. Edge precision is the share of all returned edges that are expected: a diagnostic, with
+  no threshold. Returned documents are not scored.
+- **`passage_tokens`** is optional: the tokens of text your engine would hand a reader for this
+  query. The schema allows it and the scorer ignores it.
+- **Abstain, carefully.** Some queries name nothing the corpus holds, and the right envelope for
+  them has `nodes`, `edges` and `docs` all empty. Those queries are not scored, so an abstention
+  check can only cost points: every `single_hop` answer it wrongly empties is lost. Abstain when
+  no anchor resolves; before adding a model check, count the `single_hop` queries it empties on
+  train.
 
 Query kinds, and what a good answer holds. Every kind is answered and must return a valid
 envelope; only `single_hop` is scored (What you're optimizing):
@@ -321,7 +338,7 @@ layout, wired end to end and runnable (its README says what each module does out
 ```
 graphrag/
   __main__.py        CLI: extraction | graph | retrieval
-  config.py          every threshold and size, loaded from config.toml
+  config.py          thresholds and sizes, loaded from config.toml
   contracts.py       pydantic models for rows and model replies
   jsonl.py           rows in and out
   llm.py             chat, embeddings, rerank, decisions; retries; concurrency
@@ -334,7 +351,7 @@ graphrag/
     critic.py        optional second pass over the document's rows
   graph/
     keys.py          the scorer's normalized key (with text_normalize.py beside it)
-    resolve.py       exact, alias; narrowing check; collision drop; a hook for acronym, fuzzy and embedding nominations
+    resolve.py       exact, alias; narrowing check; collision drop; a hook for acronym, fuzzy and embedding nominations (not called yet)
     materialize.py   log rows to entity assignments
   retrieval/
     store.py         Ladybug schema and loader
@@ -350,11 +367,11 @@ sections, never fewer characters), then per section one call that returns entiti
 returns the claims between them, with the canon injected: the known entities the section names,
 matched by whole key tokens, under one rule, "write these names". Parse the reply into a typed
 model and treat a looping reply as `runtime.md` says (Typed replies), with a row cap as a second
-sign of a loop, then a
-deterministic filter with a closed list of reasons (the starter's: `unknown_type`, `blank_name`,
-`type_conflict`, `endpoint_not_mentioned`, `self_loop`, `duplicate_claim`; never a count floor),
-then the union across sections into one row per `(type, key)` per document: counts summed, aliases
-joined, one type per key within the document. Keep the rejected rows in a file of your own: reading
+sign of a loop, then a deterministic filter with a closed list of reasons (the starter's:
+`unknown_type`, `blank_name`, `type_conflict`, `endpoint_not_mentioned`, `self_loop`,
+`duplicate_claim`, and `critic_drop` when the critic is on; never a count floor), then the union
+across sections into one row per key per document: counts summed, aliases joined, one type per
+key. Keep the rejected rows in a file of your own: reading
 them on train is how you tune the filter.
 Log one line per document on stderr: sections, looping replies split or given up, rows kept, rows
 rejected by reason. A document far denser or sparser than the others is the first thing to read.
@@ -368,13 +385,14 @@ can't be found (`lessons.md`, The lever for relations).
    entity of the type. No model. This is the baseline.
 2. **Candidates.** For a surface no rule places: the few entities of the same `type` nearest to
    it by embedding (the name with its type and description), from an index.
-3. **Vetoes.** A version or family member, a name that adds a content word to the other, a
-   practice against the artifact it produces (`ontology.md`, Identity). An embedding reads these
+3. **Vetoes.** A version or family member, a longer name for a narrower thing, a practice
+   against the artifact it produces (`ontology.md`, Identity). An embedding reads these
    as near-identical and they are two entities, so check them in code and drop the candidate
    before any band.
 4. **Three bands on the similarity.** Above `high`: merge. Below `low`: a new entity. Between
-   them: ask the decision model whether the two are one referent, with both descriptions and the
-   sentence each name came from in `state`, and merge only above its own threshold.
+   them: ask the decision model whether the two are one referent, with both names, types,
+   aliases and descriptions in `state`, and merge only above its own threshold. Use what the log
+   rows carry: the graph stage is not given the articles.
 5. **The assignment.**
 
 Set `low`, `high` and the decision threshold on train's merges and non-merges, in `config.toml`.
@@ -383,7 +401,7 @@ entities; if nothing is left above such a value, the high band is empty and ever
 `low` goes to the decision model. Score steps 2 to 4 against step 1 alone: the merges the rules
 missed so far were curated rulings, and the bands are for those and for the paraphrases a larger,
 more varied pile brings. The starter has the key and alias rules; its hook for acronym, fuzzy and
-embedding candidates returns nothing. The scorer's key is `normalize` in
+embedding candidates returns nothing and is not called yet. The scorer's key is `normalize` in
 `/spec/scorer/scripts/compile.py`; your repository ships the same function as
 `graphrag/graph/keys.py`, because `/spec` does not exist when evaluated (`train.md`, What you
 submit).
@@ -391,15 +409,15 @@ submit).
 **Retrieval data flow.** The gold graph into Ladybug tables (`Entity`, `Document`, `MENTIONS`,
 `RELATED_TO` with `semantic_type` and `doc_uri`; `runtime.md` has a schema), anchors from the query
 (a key match on names and aliases, then embeddings), the anchor's edges as candidates, a shortlist
-by BM25 and embeddings, a rerank of the shortlist, and abstention when no anchor resolves or the
-decision model says the query names nothing the corpus holds (never a threshold on rerank scores). That is `single_hop`, the scored kind. The other kinds each take one more Cypher
-template (`runtime.md` has one per kind): answer them, but spend rounds on them only after the
-scored metrics pass. The starter has the templates for an anchor's edges, paths and common
+by BM25 and embeddings, a rerank of the shortlist, and an empty envelope when no anchor resolves (never
+a threshold on rerank scores; 3. Retrieval, Abstain, carefully). That is `single_hop`, the scored
+kind. The other kinds each take one more Cypher template (`runtime.md` has them): answer them, but
+spend rounds on them only after the scored metrics pass. The starter has the templates for an anchor's edges, paths and common
 neighbours, returns an anchor's documents without a window, ranks by fixed scores and abstains only
 when no anchor resolves.
 
 **Knobs belong in `config.toml`,** read at start: section size, candidate counts, thresholds,
-concurrency, model names. Tune them on train; never edit a constant in code to try a value.
+concurrency, model names. Tune them on train, and move a constant into the config before you try a second value for it.
 
 ## Where models help
 
@@ -411,7 +429,7 @@ so try a change on train and keep what raises a metric there.
 |---|---|---|
 | extraction | the chat model writes the log: rows from each section, with the canon of known entities the section names; a critic pass over the document's rows (keep, drop, fix type) | Chat |
 | graph building | rules first, with no model; then, as an addition to measure, embeddings score candidate pairs of the same `type` into three bands and the decision model settles the middle one (Graph data flow) | Embedding, Decision |
-| retrieval | embeddings link query phrases to anchors and, with BM25, shortlist an anchor's edges; the reranker orders the shortlist; the decision model says whether the query names anything the corpus holds | Embedding, Reranker, Decision |
+| retrieval | embeddings link query phrases to anchors and, with BM25, shortlist an anchor's edges; the reranker orders the shortlist; the decision model can say whether a query names anything the corpus holds, which is unscored (3. Retrieval, Abstain, carefully) | Embedding, Reranker, Decision |
 
 ## Open hypotheses
 
@@ -425,9 +443,10 @@ moves, and say in your notes which way it went.
 1. **Narrowed variants as their own entity.** **Problem:** the canon says "write these names", so a
    qualified variant (a multi-agent form of the agent class, a family member of a base model) is
    written as an alias of the broader known entity. The article's own entity goes missing and its
-   claims land on the broad one (`lessons.md`, The lever for relations). **Try:** show each known
-   name as a candidate with its description, and say that a name which adds a content word to a
-   known name is a new entity, never an alias (2. Graph building has the same rule for merges).
+   claims land on the broad one (`lessons.md`, The lever for relations). **Try:** present the known
+   names as candidates, not as names to write (the input gives no description for them), and say
+   that a longer name for a narrower thing is a new entity, never an alias (2. Graph building has
+   the same rule for merges).
    **Measure:** on train's documents that have known entities, the count of rows whose alias adds a
    word to a known name, with mention precision and recall beside it. The count should fall and
    recall should not.
@@ -436,10 +455,11 @@ moves, and say in your notes which way it went.
    train's gold types differently and why (a method against a system that implements it, a tool
    against a system). These are type examples, not a section with its gold rows, which was flat
    (Domain knowledge). List the documents they come from in
-   `fewshot.json`. **Measure:** type accuracy over the pairs that match when type is ignored, which
-   the extraction report gives, on the documents the examples do not come from.
+   `fewshot.json`. **Measure:** the count of `type_errors` under `--details`, on the documents the
+   examples do not come from.
 3. **Code masking.** **Problem:** code symbols typed as tools or systems are a named source of false
-   positives; the identifier rule drops them after the fact. **Try:** in the entities call only,
+   positives; a rule that drops single code-style identifiers removes them after the fact
+   (`lessons.md`; the starter has no such rule). **Try:** in the entities call only,
    replace each fenced code block with a one-line placeholder, and leave the claims call's text
    whole. **Measure:** mention precision, and recall on the gold entities a document names only
    inside code (an import, a client class): if those are lost, mask the block's body and keep its
@@ -447,7 +467,7 @@ moves, and say in your notes which way it went.
 4. **Section context.** **Problem:** a section read alone doesn't say what "the framework" or "this
    approach" refers to. The starter's calls carry the title and the section's own heading. **Try:**
    (a) the full heading path, parents included; (b) the same plus one sentence on what the article
-   is about. **Measure:** mention recall by section, and the false-positive claims that have the
+   is about. **Measure:** the missed mentions under `--details`, section by section, and the false-positive claims that have the
    article's subject as one end. Variant (b) is the risky one: prompts framed around the subject
    linked it to everything near it (`lessons.md`, Failed, more than once), so drop it if those
    claims rise.

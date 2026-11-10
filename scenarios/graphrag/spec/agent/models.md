@@ -20,8 +20,9 @@ routes each call to one of several providers, and they differ in price and speed
 **For:** extraction (the entities call, the claims call), the critic pass, and any step that reads
 prose and writes rows.
 
-**Call:** text messages only, no streaming or tools. `response_format`, `seed`, `top_p`, `stop` and
-`reasoning` pass through; every other field is dropped before the provider sees it.
+**Call:** text messages only, no streaming or tools. `temperature`, `max_tokens`,
+`response_format`, `seed`, `top_p`, `stop` and `reasoning` pass through; every other field is
+dropped before the provider sees it.
 
 ```python
 client.chat.completions.create(
@@ -100,8 +101,9 @@ short candidates is about $0.0005 and under a second.
 ## Decision: `jev-1.14`
 
 **For:** a yes or no with a probability, where the design is a threshold: whether a candidate pair
-in the middle band of graph building is one referent (`task.md`, Graph data flow), and whether a
-query names anything the corpus holds (abstention; `lessons.md`, Worked).
+in the middle band of graph building is one referent (`task.md`, Graph data flow). It also
+handled unanswerable queries (`lessons.md`, Worked), which the evaluation does not score
+(`task.md`, 3. Retrieval).
 
 **Call:** it refuses chat. Your repository already wraps it: `Client.decide(state, questions)` in
 `graphrag/llm.py` returns one probability per question name. Underneath, the `openai` client has no
@@ -131,8 +133,8 @@ probability per name.
   cases, and set it high where a wrong yes costs more than a wrong no.
 - **Write the criteria.** `criteria` says what each answer means; "two things" and "one thing" tell
   it more than "no" and "yes".
-- **It judges what `state` says, not what it knows.** Put the evidence in: both descriptions, the
-  sentence each name came from.
+- **It judges what `state` says, not what it knows.** Put the evidence in: both names, types,
+  aliases and descriptions.
 - **Where it failed:** as an entity filter, and as a verifier, gate or direction check on claims. It
   cannot tell a stated claim from co-occurrence (`lessons.md`, Failed, more than once). On the
   articles so far no model improved graph building over keys and acronyms (`lessons.md`, Worked):
@@ -145,8 +147,9 @@ $0.0004 and under half a second.
 
 Work it out before you add a call, then check it against the caps the prompt names.
 
-- **A train extraction run** is 6 articles, about 35 sections, and two chat calls per section: about
-  70 calls, $0.05 to $0.10, and under a minute at 8 calls in flight. The experiment's cap pays for
+- **A train extraction run** is 6 articles, 76 sections at the starter's section size, and two
+  chat calls per section: about 150 calls, $0.05 to $0.15, and about a minute at 8 calls in
+  flight. The experiment's cap pays for
   dozens of fresh runs, and a rerun pays only for the calls your change reached.
 - **Each call you add per section** adds half of that again. A call per document (a critic) adds
   6. A call per candidate pair or per claim adds hundreds: batch them, or ask the decision model

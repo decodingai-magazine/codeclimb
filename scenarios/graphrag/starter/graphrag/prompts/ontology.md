@@ -15,7 +15,7 @@ One per file in `corpus/`. `title`, `published`, `author` and `type` come from t
 | `title`, `published`, `author`, `type` | frontmatter |
 | `origin_id`, `origin_kind` | the normalized host (`decodingai.com`) and the kind of source (`newsletter`) |
 | `length` | character count of the original article, before sponsor, promo and trailer sections were removed (not the frontmatter's `length`) |
-| `domain` | extracted: zero to two ordered labels for the field the document belongs to, in lowercase snake_case (`ai_engineering`, `career`) |
+| `domain` | in the gold only (the prediction schema has no row for it): zero to two ordered labels for the field the document belongs to, in lowercase snake_case (`ai_engineering`, `career`) |
 
 ## Entity
 
@@ -124,8 +124,7 @@ develops Claude Code". Background knowledge does not count, even when true.
   A byline or the author's "I" is not a mention of the author.
 - **The corpus's own subject is extracted too.** AI agents and LLMs are never skipped.
 - **No frequency floor.** An entity named once is still extracted. Each mention carries `count`,
-  the number of times the body names it (by name or any alias), so a floor can be applied at
-  scoring time.
+  the number of times the body names it (by name or any alias).
 
 ## Identity
 
