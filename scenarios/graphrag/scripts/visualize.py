@@ -2,6 +2,7 @@
 
     uv run python scripts/visualize.py                         # the latest finished night's kept experiment
     uv run python scripts/visualize.py --night <id> --exp <exp_id> --split dev --out /tmp/graphs
+    uv run python scripts/visualize.py --diff                  # dev against gold: dev-diff.html
 
 The graph is the program's own extraction (`extraction/outputs/predictions.jsonl` of an eval),
 never gold. Dev comes from the experiment's own eval, the one its keep decision scored; test from
@@ -11,6 +12,12 @@ the night's test eval, which exists only for the experiment the night tested.
   key (`normalize`, README.md, Identity). The shown name is the most frequent surface.
 - **Relations.** Every `related_to` row, collapsed to one edge per directed pair. Its label is the
   most frequent `semantic_type`, its weight the number of documents behind it.
+
+`--diff` marks the graph against gold with the extraction evaluator's own matching, document by
+document, so its colors agree with the score: each predicted entity is matched, of the wrong type or
+not in gold, each gold entity no predicted row matched is added as missed, and each relation is
+matched, not in gold or missed. Coined gold rows (labels absent from the body) are never missed, as
+in the score. Dev only: test is scored once, without reading its errors (`evaluators/common.py`).
 
 The page loads sigma, graphology and d3-force from jsdelivr at pinned versions with SRI hashes, so it
 needs a network connection; everything else is inline.
@@ -26,7 +33,12 @@ import click
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evaluators"))
+# The scorers' own gold loading and matching, so the diff agrees with the score.
+from common import graph as gold_graph
+from common import held_out, log_rows, read_predictions, terminal_of
 from compile import normalize  # the dataset's key function, from the scripts dir above
+from extraction import Prediction, coined_rows, resolve_end, score_document
 
 SCENARIO = Path(__file__).resolve().parent.parent
 RUNS = SCENARIO.parent.parent / "runs" / "graphrag-cloud"
@@ -192,6 +204,137 @@ def build_graph(eval_dir: Path) -> dict:
     return {"documents": list(docs.values()), "nodes": nodes, "edges": edges}
 
 
+def add_diff(graph: dict, eval_dir: Path, split: str) -> dict:
+    """Mark `graph` against `split`'s gold and add what gold has that it lacks; returns the counts."""
+    _, held = held_out(split)
+    gold_m, gold_r = defaultdict(list), defaultdict(list)
+    for r in log_rows():
+        if r.get("doc_uri") in held and r["kind"] in ("entity_mention", "related_to"):
+            (gold_m if r["kind"] == "entity_mention" else gold_r)[r["doc_uri"]].append(
+                r
+            )
+    pred_m, pred_r = defaultdict(list), defaultdict(list)
+    path = eval_dir / "extraction" / "outputs" / "predictions.jsonl"
+    for p in (x.root for x in read_predictions(path, Prediction)):
+        (pred_m if p.kind == "entity_mention" else pred_r)[p.doc_uri].append(p)
+    coined, terminal = coined_rows(), terminal_of(list(log_rows()))
+    gold_entities = {e["id"]: e for e in gold_graph()["entities"]}
+
+    rows: dict[str, Counter] = defaultdict(
+        Counter
+    )  # node -> matched / wrong_type / extra rows
+    gold_type: dict[str, str] = {}
+    node_of: dict[
+        str, str
+    ] = {}  # gold entity id -> the predicted node that matched it somewhere
+    missed: dict[str, set] = defaultdict(
+        set
+    )  # gold entity id -> documents it was missed in
+    edge_rows: dict[tuple[str, str], Counter] = defaultdict(Counter)
+    missed_pairs: list[
+        tuple[str, str, str, str]
+    ] = []  # (source, target, label, document)
+    for u in held:
+        gm, pm = gold_m[u], pred_m[u]
+        doc_coined = {i for i, g in enumerate(gm) if (u, g["surface_id"]) in coined}
+        sc = score_document(gm, gold_r[u], pm, pred_r[u], doc_coined)
+        typed, untyped = sc["typed"], sc["untyped"]
+        here: dict[int, str] = {}  # gold row -> predicted node, in this document
+        for j, m in enumerate(pm):
+            k = key(m.type, m.name)
+            if j in typed:
+                rows[k]["matched"] += 1
+                here[typed[j]] = k
+            elif j in untyped and gm[untyped[j]]["type"] != m.type:
+                rows[k]["wrong_type"] += 1
+                gold_type[k] = gm[untyped[j]]["type"]
+                here.setdefault(untyped[j], k)
+            else:
+                rows[k]["extra"] += 1
+        for i, g in enumerate(gm):
+            eid = terminal(g["surface_id"])
+            if i in here:
+                node_of.setdefault(eid, here[i])
+            elif i not in doc_coined:
+                missed[eid].add(u)
+        gold_pairs, pred_pairs = sc["pairs"]
+        for r in pred_r[u]:
+            a = resolve_end(r.source_name, r.source_type, pm)
+            b = resolve_end(r.target_name, r.target_type, pm)
+            hit = a in typed and b in typed and (typed[a], typed[b]) in gold_pairs
+            ends = (
+                key(r.source_type or "", r.source_name),
+                key(r.target_type or "", r.target_name),
+            )
+            edge_rows[ends]["matched" if hit else "extra"] += 1
+        index = {g["surface_id"]: i for i, g in enumerate(gm)}
+        label = {
+            (index[r["source_id"]], index[r["target_id"]]): r["semantic_type"]
+            for r in gold_r[u]
+        }
+        for a, b in gold_pairs - pred_pairs:
+            ends = [
+                here.get(i) or f"gold:{terminal(gm[i]['surface_id'])}" for i in (a, b)
+            ]
+            missed_pairs.append((ends[0], ends[1], label[(a, b)], u))
+
+    for n in graph["nodes"]:
+        c = rows[n["id"]]
+        n["status"] = (
+            "matched" if c["matched"] else "wrong_type" if c["wrong_type"] else "extra"
+        )
+        n["rows"] = dict(c)
+        if n["id"] in gold_type:
+            n["gold_type"] = gold_type[n["id"]]
+        n["pick"] = False
+    for eid in sorted(set(missed) - set(node_of)):
+        e = gold_entities[eid]
+        graph["nodes"].append(
+            {
+                "id": f"gold:{eid}",
+                "name": e["name"],
+                "type": e["type"],
+                "aliases": e["aliases"],
+                "description": e.get("description") or "",
+                "mentions": 0,
+                "docs": sorted(missed[eid]),
+                "pick": False,
+                "status": "missed",
+            }
+        )
+    for e in graph["edges"]:
+        e["status"] = (
+            "matched" if edge_rows[(e["source"], e["target"])]["matched"] else "extra"
+        )
+    have = {(e["source"], e["target"]) for e in graph["edges"]}
+    # A coined gold row is never missed, so a missed relation to one has no node to end on.
+    ids = {n["id"] for n in graph["nodes"]}
+    gone: dict[tuple[str, str], dict] = {}
+    for a, b, lab, u in missed_pairs:
+        s, t = (node_of.get(n[5:], n) if n.startswith("gold:") else n for n in (a, b))
+        if s == t or (s, t) in have or s not in ids or t not in ids:
+            continue
+        m = gone.setdefault((s, t), {"labels": Counter(), "docs": set()})
+        m["labels"][lab] += 1
+        m["docs"].add(u)
+    graph["edges"] += [
+        {
+            "source": s,
+            "target": t,
+            "label": m["labels"].most_common(1)[0][0],
+            "labels": dict(m["labels"]),
+            "weight": len(m["docs"]),
+            "docs": sorted(m["docs"]),
+            "status": "missed",
+        }
+        for (s, t), m in gone.items()
+    ]
+    return {
+        "entities": dict(Counter(n["status"] for n in graph["nodes"])),
+        "relations": dict(Counter(e["status"] for e in graph["edges"])),
+    }
+
+
 def render(graph: dict, meta: dict) -> str:
     data = json.dumps({"graph": graph, "meta": meta}, ensure_ascii=False).replace(
         "</", "<\\/"
@@ -224,8 +367,12 @@ def render(graph: dict, meta: dict) -> str:
     "splits",
     type=click.Choice(["dev", "test"]),
     multiple=True,
-    default=("dev", "test"),
-    show_default=True,
+    help="Default: dev and test; dev with --diff.",
+)
+@click.option(
+    "--diff",
+    is_flag=True,
+    help="Mark the graph against gold and add what it missed, to <split>-diff.html. Dev only.",
 )
 @click.option(
     "--out",
@@ -237,8 +384,14 @@ def main(
     night: str | None,
     exp: str | None,
     splits: tuple[str, ...],
+    diff: bool,
     out: Path | None,
 ) -> None:
+    splits = splits or (("dev",) if diff else ("dev", "test"))
+    if diff and "test" in splits:
+        raise click.UsageError(
+            "--diff is for dev only: test is scored once, without reading its errors"
+        )
     runs = runs.resolve()
     night, kept = kept_night(runs, night)
     exp = exp or kept
@@ -251,7 +404,8 @@ def main(
                 f"{exp} has no successful {split} eval in night {night}; skipped"
             )
             continue
-        graph = build_graph(runs / "nights" / night / "evals" / evals[split])
+        eval_dir = runs / "nights" / night / "evals" / evals[split]
+        graph = build_graph(eval_dir)
         meta = {
             "split": split,
             "night": night,
@@ -259,7 +413,15 @@ def main(
             "eval": evals[split],
             "kept": exp == kept,
         }
-        path = out / f"{split}.html"
+        if diff:
+            report = json.loads((eval_dir / "extraction" / "report.json").read_text())
+            meta["diff"] = add_diff(graph, eval_dir, split)
+            meta["scores"] = {
+                "mentions": report["mentions"],
+                "relations": report["relations"]["directed"],
+            }
+            logger.info(f"{split} against gold: {meta['diff']}")
+        path = out / f"{split}{'-diff' if diff else ''}.html"
         path.write_text(render(graph, meta))
         logger.info(
             f"{split}: {len(graph['nodes'])} entities, {len(graph['edges'])} relations, {len(graph['documents'])} documents -> {path}"

@@ -538,7 +538,10 @@ answer at rank 2 halves that row's MRR; a reversed edge misses unless it is `com
   `extraction/outputs/predictions.jsonl`, never gold. Entities merge on type plus `normalize`,
   relations collapse to one edge per directed pair, and each entity type is one cluster. The page
   (`scripts/graph_template.html`) loads sigma, graphology and d3-force from jsdelivr, so it needs a
-  network connection.
+  network connection. **`--diff`** writes `dev-diff.html` instead: the graph marked against gold with
+  the extraction evaluator's own per-document matching (matched, wrong type, not in gold), plus the
+  gold entities and relations it missed. Coined rows are never missed, as in the score. Dev only:
+  test is scored once, without reading its errors.
 
 After any edit to `gold/`: run `compile.py`, `split.py` and `retrieval_gold.py check` (expect
 `failing=0`).

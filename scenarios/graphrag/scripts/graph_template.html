@@ -52,6 +52,11 @@
   .types button:focus-visible { outline: 1px solid var(--fg-3); }
   .types button[aria-pressed="false"] { opacity: 0.35; }
   .types .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .types .dot.hollow { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--fg-2); }
+  .types .dot.ringed { box-shadow: 0 0 0 1.5px var(--accent); }
+  .types .bar { width: 10px; height: 2px; border-radius: 1px; }
+  #diff .eyebrow { margin: var(--space-4) 0 var(--space-2); }
+  #diff .scores { font-size: var(--text-xs); color: var(--fg-3); line-height: 1.6; margin-bottom: var(--space-2); }
   .types .n { color: var(--fg-3); font-variant-numeric: tabular-nums; }
   .search { width: 100%; margin-top: var(--space-3); padding: 6px 8px; background: var(--bg); color: var(--fg); font: inherit; font-size: var(--text-sm);
     border: 1px solid var(--border-strong); border-radius: 4px; }
@@ -107,6 +112,7 @@ $cdn_scripts
   <div class="eyebrow">Entity types</div>
   <ul class="types" id="types"></ul>
   <input class="search" id="search" type="search" placeholder="Find an entity…" aria-label="Find an entity">
+  <div id="diff"></div>
   <label class="toggle"><input type="checkbox" id="docs"> Show documents</label>
 </section>
 <nav class="card" id="zoom" aria-label="Zoom"></nav>
@@ -136,6 +142,15 @@ $cdn_scripts
   };
   var DIM = "#1f1f23", RING = "#f4f4f5", EDGE = "#2a2a2f", EDGE_DOC = "#24262a";
   var LABEL_RATIO = 0.5;  // entity labels from 2x zoom up
+  // A diff page marks each entity and relation against gold (scripts/visualize.py --diff).
+  var DIFF = META.diff || null;
+  var STATUS = {
+    matched: {label: "Matched gold", edge: "#2f5a43", hot: "#7cc68a"},
+    wrong_type: {label: "Wrong type", edge: null, hot: null},
+    extra: {label: "Not in gold", edge: "#5a2824", hot: "#e8574c"},
+    missed: {label: "Missed", edge: "#2a3a5e", hot: "#6f8ff0"}
+  };
+  var EXTRA_FILL = "#e8574c";
   var PRESETS = [1, 2, 4, 8, 16];
 
   function el(tag, props, kids) {
@@ -154,7 +169,7 @@ $cdn_scripts
 
   // --- Header ------------------------------------------------------------------------
   document.getElementById("count").textContent = G.nodes.length.toLocaleString();
-  document.getElementById("headline").textContent = "entities in the " + META.split + " graph";
+  document.getElementById("headline").textContent = "entities in the " + META.split + " graph" + (DIFF ? ", against gold" : "");
   document.getElementById("meta").textContent = "night " + META.night + " · " + META.exp + (META.kept ? " (kept)" : "") + " · eval " + META.eval +
     " · " + plural(G.edges.length, "relation", "relations") + " · " + plural(G.documents.length, "document", "documents");
 
@@ -181,11 +196,17 @@ $cdn_scripts
   G.nodes.forEach(function (n, i) {
     info[n.id] = n;
     var c = centre[n.type], r = radius[n.type] * Math.sqrt(rand(i + 1)), a = 2 * Math.PI * rand(i + 7.3);
-    graph.addNode(n.id, {
-      label: n.name, x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a), size: 1.3 + 0.6 * Math.sqrt(n.mentions),
-      color: (TYPES[n.type] || TYPES.document).color, borderColor: n.pick ? RING : (TYPES[n.type] || TYPES.document).color,
-      borderSize: n.pick ? 0.12 : 0, kind: n.type
-    });
+    var color = (TYPES[n.type] || TYPES.document).color;
+    var look = {color: color, borderColor: n.pick ? RING : color, borderSize: n.pick ? 0.12 : 0};
+    // On a diff page: missed is hollow in its gold type's color, not in gold is red, a wrong type keeps
+    // its predicted type's color inside a red ring.
+    if (n.status === "missed") look = {color: "#0b0b0c", borderColor: color, borderSize: 0.3};
+    else if (n.status === "extra") look = {color: EXTRA_FILL, borderColor: EXTRA_FILL, borderSize: 0};
+    else if (n.status === "wrong_type") look = {color: color, borderColor: EXTRA_FILL, borderSize: 0.22};
+    graph.addNode(n.id, Object.assign({
+      label: n.name, x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a), size: 1.3 + 0.6 * Math.sqrt(n.mentions || 2),
+      kind: n.type, status: n.status || null
+    }, look));
   });
   var docIndex = {};
   G.documents.forEach(function (d, i) {
@@ -196,7 +217,8 @@ $cdn_scripts
       borderColor: TYPES.document.color, borderSize: 0, kind: "document"});
   });
   G.edges.forEach(function (e) {
-    graph.addEdge(e.source, e.target, {kind: "related_to", label: e.label + (e.weight > 1 ? " ×" + e.weight : ""), size: 0.25 + 0.2 * e.weight, color: EDGE});
+    graph.addEdge(e.source, e.target, {kind: "related_to", label: e.label + (e.weight > 1 ? " ×" + e.weight : ""), size: 0.25 + 0.2 * e.weight,
+      color: e.status ? STATUS[e.status].edge : EDGE, status: e.status || null});
   });
   G.nodes.forEach(function (n) {
     n.docs.forEach(function (uri) {
@@ -223,12 +245,13 @@ $cdn_scripts
   Object.keys(centroid).forEach(function (k) { centroid[k].x /= centroid[k].n; centroid[k].y /= centroid[k].n; });
 
   // --- State -------------------------------------------------------------------------
-  var hiddenTypes = {};
+  var hiddenTypes = {}, hiddenStatus = {}, hiddenEdgeStatus = {};
   var showDocs = false;
   var pinned = null, hovered = null, ratio = 1;
   function shown(node) {
     var k = graph.getNodeAttribute(node, "kind");
-    return k === "document" ? showDocs : !hiddenTypes[k];
+    if (k === "document") return showDocs;
+    return !hiddenTypes[k] && !hiddenStatus[graph.getNodeAttribute(node, "status")];
   }
   function focus() { return pinned || hovered; }
 
@@ -249,12 +272,12 @@ $cdn_scripts
   function edgeReducer(edge, data) {
     var out = Object.assign({}, data, {size: data.size * Math.min(ratio, 1)});
     var s = graph.source(edge), t = graph.target(edge);
-    if (!shown(s) || !shown(t)) { out.hidden = true; return out; }
+    if (!shown(s) || !shown(t) || hiddenEdgeStatus[data.status]) { out.hidden = true; return out; }
     var f = focus();
     if (!f) { out.label = undefined; return out; }
     if (s !== f && t !== f) { out.hidden = true; return out; }
     var other = s === f ? t : s;
-    out.color = (TYPES[graph.getNodeAttribute(other, "kind")] || TYPES.document).color;
+    out.color = data.status ? STATUS[data.status].hot : (TYPES[graph.getNodeAttribute(other, "kind")] || TYPES.document).color;
     out.size = (data.size + 0.6) * Math.min(ratio, 1);
     out.zIndex = 1;
     return out;
@@ -367,8 +390,40 @@ $cdn_scripts
     showDocs = e.target.checked;
     renderer.refresh({skipIndexation: true});
   });
-  document.getElementById("ringNote").textContent = "In the most documents (top " + G.nodes.filter(function (n) { return n.pick; }).length +
-    ") · hover to trace · click to pin · double-click for details · scroll to zoom";
+  if (DIFF) {
+    var diffBox = document.getElementById("diff");
+    var sc = META.scores;
+    var pr = function (m) { return "P " + m.precision.toFixed(3) + " · R " + m.recall.toFixed(3) + " · F1 " + m.f1.toFixed(3); };
+    var toggle = function (hidden, k, mark, n) {
+      var b = el("button", {type: "button", "aria-pressed": "true", onclick: function () {
+        hidden[k] = !hidden[k];
+        b.setAttribute("aria-pressed", String(!hidden[k]));
+        refresh();
+      }}, [mark, el("span", {text: STATUS[k].label}), el("span", {class: "n", text: (n || 0).toLocaleString()})]);
+      return el("li", null, [b]);
+    };
+    var dotFor = function (k) {
+      var d = el("span", {class: "dot" + (k === "missed" ? " hollow" : k === "wrong_type" ? " ringed" : "")});
+      d.style.background = k === "extra" ? EXTRA_FILL : "#c8c8cd";
+      return d;
+    };
+    var barFor = function (k) { var b = el("span", {class: "bar"}); b.style.background = STATUS[k].hot; return b; };
+    diffBox.appendChild(el("div", {class: "eyebrow", text: "Entities against gold"}));
+    diffBox.appendChild(el("div", {class: "scores", text: "mentions " + pr(sc.mentions)}));
+    diffBox.appendChild(el("ul", {class: "types"}, ["matched", "wrong_type", "extra", "missed"].map(function (k) {
+      return toggle(hiddenStatus, k, dotFor(k), DIFF.entities[k]);
+    })));
+    diffBox.appendChild(el("div", {class: "eyebrow", text: "Relations against gold"}));
+    diffBox.appendChild(el("div", {class: "scores", text: "directed " + pr(sc.relations)}));
+    diffBox.appendChild(el("ul", {class: "types"}, ["matched", "extra", "missed"].map(function (k) {
+      return toggle(hiddenEdgeStatus, k, barFor(k), DIFF.relations[k]);
+    })));
+    document.querySelector("#hint .ring").style.display = "none";
+  }
+  document.getElementById("ringNote").textContent = (DIFF
+    ? "Colors are the extraction evaluator's matching, per document; coined gold rows are never missed"
+    : "In the most documents (top " + G.nodes.filter(function (n) { return n.pick; }).length + ")") +
+    " · hover to trace · click to pin · double-click for details · scroll to zoom";
 
   // --- Hover, pin, details -------------------------------------------------------------
   function refresh() { renderer.refresh({skipIndexation: true}); }
@@ -414,18 +469,24 @@ $cdn_scripts
     } else {
       if (n.aliases.length) kids.push(el("p", {text: "Also: " + n.aliases.join(", ")}));
       if (n.description) kids.push(el("p", {text: n.description}));
-      kids.push(el("p", {text: plural(n.mentions, "mention", "mentions") + " in " + plural(n.docs.length, "document", "documents") + (n.pick ? " · ringed" : "")}));
-      kids.push(el("h3", {class: "eyebrow", text: "Documents"}));
+      if (n.status === "missed") kids.push(el("p", {text: "Missed: gold has it in " + plural(n.docs.length, "document", "documents") + ", and no predicted row matched it."}));
+      else kids.push(el("p", {text: plural(n.mentions, "mention", "mentions") + " in " + plural(n.docs.length, "document", "documents") + (n.pick ? " · ringed" : "")}));
+      if (n.status === "extra") kids.push(el("p", {text: "Not in gold: no gold row of its type shares a name or alias with it."}));
+      if (n.status === "wrong_type") kids.push(el("p", {text: "Wrong type: gold has it as a " + n.gold_type + "."}));
+      if (n.status === "matched" && n.rows && (n.rows.extra || n.rows.wrong_type)) {
+        kids.push(el("p", {text: "Matched in " + plural(n.rows.matched, "row", "rows") + "; " + ((n.rows.extra || 0) + (n.rows.wrong_type || 0)) + " more did not match."}));
+      }
+      kids.push(el("h3", {class: "eyebrow", text: n.status === "missed" ? "Missed in" : "Documents"}));
       kids.push(el("ul", null, n.docs.map(function (uri) {
         var d = docIndex[uri];
         return el("li", null, [el("a", {href: uri, target: "_blank", rel: "noopener noreferrer", text: d ? d.title : uri})]);
       })));
       var rels = [];
-      graph.forEachOutEdge(id, function (edge, a, s, target) { if (a.kind === "related_to") rels.push(["→", a.label, target]); });
-      graph.forEachInEdge(id, function (edge, a, source) { if (a.kind === "related_to") rels.push(["←", a.label, source]); });
+      graph.forEachOutEdge(id, function (edge, a, s, target) { if (a.kind === "related_to") rels.push(["→", a.label, target, a.status]); });
+      graph.forEachInEdge(id, function (edge, a, source) { if (a.kind === "related_to") rels.push(["←", a.label, source, a.status]); });
       kids.push(el("h3", {class: "eyebrow", text: plural(rels.length, "relation", "relations")}));
       kids.push(el("ul", null, rels.map(function (r) {
-        return el("li", null, [el("span", {class: "rel", text: r[0] + " " + r[1] + " "}), nodeLink(r[2])]);
+        return el("li", null, [el("span", {class: "rel", text: r[0] + " " + r[1] + " "}), nodeLink(r[2]), r[3] ? el("span", {class: "rel", text: " · " + STATUS[r[3]].label.toLowerCase()}) : null]);
       })));
     }
     panel.replaceChildren.apply(panel, kids);
