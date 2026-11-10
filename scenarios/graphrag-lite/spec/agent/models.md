@@ -50,8 +50,9 @@ input of every call.
 
 ## Embedding: `qwen3-embedding-4b`
 
-**For:** finding candidates: surfaces that may be one entity, entities a query phrase may name,
-edges and passages near a query.
+**For:** two jobs. In graph building, scoring candidate pairs of the same type into the three
+bands (`task.md`, Graph data flow). In retrieval, finding the entities a query phrase names and
+the edges and passages near a query.
 
 **Call:** `client.embeddings.create(model=..., input=[...])`. Vectors have 2560 dimensions and unit
 length, so the dot product is the cosine. Read the size from the reply, don't write it in code. One
@@ -99,9 +100,9 @@ short candidates is about $0.0005 and under a second.
 
 ## Decision: `jev-1.14`
 
-**For:** a yes or no with a probability, where the design is a threshold: whether a query names
-anything the corpus holds (abstention; `lessons.md`, Worked), whether a candidate pair is one
-referent.
+**For:** a yes or no with a probability, where the design is a threshold: whether a candidate pair
+in the middle band of graph building is one referent (`task.md`, Graph data flow), and whether a
+query names anything the corpus holds (abstention; `lessons.md`, Worked).
 
 **Call:** it refuses chat. Your repository already wraps it: `Client.decide(state, questions)` in
 `graphrag/llm.py` returns one probability per question name. Underneath, the `openai` client has no
@@ -134,8 +135,9 @@ probability per name.
 - **It judges what `state` says, not what it knows.** Put the evidence in: both descriptions, the
   sentence each name came from.
 - **Where it failed:** as an entity filter, and as a verifier, gate or direction check on claims. It
-  cannot tell a stated claim from co-occurrence (`lessons.md`, Failed, more than once). No model
-  improved graph building over keys and acronyms (`lessons.md`, Worked).
+  cannot tell a stated claim from co-occurrence (`lessons.md`, Failed, more than once). On the
+  articles so far no model improved graph building over keys and acronyms (`lessons.md`, Worked):
+  measure the middle band against that baseline, and count the wrong merges it adds.
 
 **Cost:** about $0.04 per million input tokens, output free: a call with a long `state` is about
 $0.0004 and under half a second.

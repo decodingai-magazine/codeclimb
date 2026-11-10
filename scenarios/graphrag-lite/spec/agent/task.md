@@ -21,6 +21,65 @@ frozen system on them. Dev's report comes back to you as feedback after each sub
 scored once, at the end. `lessons.md` holds what earlier attempts learned while building this
 system: read it before you plan.
 
+## What the graph is for
+
+The graph exists to show the main topics of a large pile of documents that keeps growing: which
+methods, systems, tools and models the pile engages with, how much, and what it says about each.
+The pile is thousands to tens of thousands of items about AI engineering practice: newsletter
+articles like the ones in your bundle, and later video transcripts and social media posts. The
+evaluation runs on a few articles; the system is meant for all of that. The metrics below measure
+the parts of that job, and this section says why each part matters, so you can rank two errors the
+metrics count the same.
+
+A reader brings two questions to the graph:
+
+- **What can I compare this to?** Given a tool, system, organization or method, the similar ones
+  the pile sets beside it: its `compared_with` and `alternative_to` edges, and the entities that
+  share its class.
+- **What are the latest, most frequent and most important topics?** The entities the most
+  documents engage with, in a time window: document counts from `mentions`, dates from
+  `published`.
+
+Both are read off the ontology as it is; no new field or type is needed.
+
+Two things are built, in order, and each has its own measure:
+
+- **The log first.** Extraction writes it, so extraction's metrics are the log's quality.
+- **Then the graph, from the log alone.** Graph building and retrieval measure it. The graph can't
+  be better than the log it is built from, so the log's quality matters as much as the graph's.
+
+- **A topic is an entity many documents engage with.** Its weight is the number of documents that
+  mention it in the merged graph, with `count` saying how much each one does. Nothing is clustered
+  or summarized: the topics are read off the graph.
+- **Extraction decides which topics exist.** An entity no document's rows hold is a topic nobody
+  can find. A row for a thing the document does not engage with (a code symbol, a name in a list)
+  is a topic that isn't there. Most topics are `method` and `system` entities, the two types
+  extraction misses most (`lessons.md`, The lever for relations).
+- **Merging decides what each topic weighs.** A wrong split shares one topic's documents between
+  two entities, and both look minor. A wrong merge adds two topics' documents together and shows
+  one that doesn't exist. That is why a wrong merge is worse than a wrong split (2. Graph
+  building).
+- **The log makes it trustworthy.** Every row is an observation from one document and is never
+  rewritten, so each topic and each claim can be traced to the documents behind it (The log).
+- **One hop answers "what does the pile say about this topic".** A topic's edges are the claims
+  made about it, each from the document that made it (3. Retrieval).
+- **It must stay cheap as the pile grows.** The work a new document costs must not grow with the
+  number of documents before it (Built to grow).
+
+## Domain knowledge
+
+What counts as an entity here is a judgment about AI engineering, and the ontology states it only
+in general terms. The data shows it:
+
+- **Read the train articles beside their gold rows before you design anything.** See which named
+  things the gold keeps and which it leaves out, how it types a method against a system, and what
+  a claim looks like. `train/examples/extraction.jsonl` has each article's rows.
+- **Give the extractor that knowledge.** The ontology is its system prompt; train's gold rows are
+  its few-shot examples. Choose examples that show a judgment the ontology leaves open, and list
+  the documents they come from in `fewshot.json` (`train.md`, Few-shot examples).
+- **Train is the only sample you may read.** The other articles of the same publication are dev
+  and test: don't look the publication up.
+
 ## The pipeline
 
 Three stages. Each is scored on its own, fed gold input, so an error is charged to the stage that
@@ -39,6 +98,37 @@ errors, and both as retrieval errors, and you couldn't tell which stage to fix.
 landing in a live graph. A document is extracted and resolved with only earlier documents in view,
 and the first surface of an entity decides its canonical name.
 
+### The log
+
+The stages share one data model: an append-only log, ordered by `seq`. Extraction appends a
+document's rows; graph building reads the log in order. Graph building's input is this log
+(`train.md`, Graph building), and `train/examples/graph.jsonl` is train's.
+
+- **Rows are observations.** An `entity_mention` or `related_to` row says what one document
+  states. It is never rewritten, corrected or deleted afterwards, and nothing is merged inside it.
+- **A merge is a row of its own.** `same_as` says one surface is the same entity as another. It is
+  appended after the rows it joins, so the graph is the log replayed: the same log always gives the
+  same graph, and a merge can be traced to the row that made it.
+- **A mistake is fixed by appending.** A split heals when a later `same_as` joins the two surfaces.
+  A merge has no undo that restores what the two entities each held, so decide it only on evidence.
+- **Each claim keeps its document.** Two documents making the same claim are two rows. That count
+  is what says how widely a claim is made.
+
+### Built to grow
+
+Not scored on its own; the stage time limits are the only check. It is still what the system is
+for, so prefer the design that holds when the pile is a thousand times larger:
+
+- **Extraction reads one document and a bounded canon.** The known entities in the prompt are the
+  ones the section names, up to a cap, never the whole history.
+- **Graph building resolves a surface against an index.** A key lookup, or a nearest-neighbour
+  lookup for embeddings, then a decision on a few candidates. Never compare every pair of
+  entities, and never ask a model about all of them.
+- **Replaying the log is one pass.** The evaluation rebuilds from the whole log because nothing
+  persists between stages; the pass itself should do per row what a live system would do when the
+  row arrives.
+- **Retrieval starts from anchors.** A query touches the anchors' neighbourhood, not the graph.
+
 ### 1. Extraction
 
 **What:** per document, one row per entity the document engages with, and one per claim it makes
@@ -55,7 +145,9 @@ between two of them:
   `target_name` on a relation. `semantic_type` is not scored. `description`,
   `properties`, `count`, `confidence` and the document's `domain` are part of the ontology but not
   scored; the gold has them for every entity. Extract `description` and `properties` for every
-  entity anyway if you can: they give your merging and retrieval something to compare.
+  entity anyway if you can: they give your merging and retrieval something to compare. Count
+  with care too: `count` is how often the body names the entity, by name or any alias, and it is
+  what separates a document's subject from a thing it names once (What the graph is for).
 - **No frequency floor.** Every gold row counts, including entities named once, so a row you leave
   out for being rare is a missed row.
 - **Density.** Train's documents carry 19 to 33 mentions and 21 to 37 claims each,
@@ -109,9 +201,11 @@ matters; the strings are yours.
 - **The official mode is `gold-history`** (the history's merges given). `end-to-end` gives none and
   is a diagnostic: its gap to `gold-history` is the error your own history carries in.
 
-- **Explore how to merge.** Normalized keys, alias claims, embeddings of names and descriptions,
-  and the decision model on candidate pairs each catch different merges (`models.md`). Try
-  more than one, alone and combined.
+- **Merge in three bands.** Keys and alias claims first: they are identity and need no model.
+  For the surfaces they leave, embeddings give each candidate pair a similarity, and two
+  thresholds cut it in three: above the high one, merge; below the low one, a new entity; between
+  them, the decision model decides (Graph data flow). Finding a duplicate matters enough here to
+  pay for those calls.
 - **A wrong merge is worse than a wrong split.** **Why:** a later merge heals a split; nothing heals
   a merge that destroyed a distinction (`tool calls` folded into `tool calling` loses the request
   apart from the practice).
@@ -145,6 +239,12 @@ real Cypher rather than by walking the JSON. Retrieval is always scored on the g
 `train/graph.json`; when evaluated, the full one over every article), so its numbers measure
 retrieval alone and compare across systems. Use the graph's `documents`, `entities` and
 `relationships` (`mentions`, `related_to`) as given; never feed it to extraction or graph building.
+
+**What a one-hop query is for:** a reader has a topic and asks what the pile says about it. The
+answer is the topic's own edges that bear on the question, each a claim some document made, with
+the entity at the other end. So the edge is the unit that is scored, a wrong edge is a wrong claim
+shown to the reader, and precision counts as much as recall: ten edges around the anchor are not an
+answer to a question about one of them.
 
 ```json
 {"id": "tr-mh-001",
@@ -248,11 +348,29 @@ rejected by reason. A document far denser or sparser than the others is the firs
 Relation work goes through this stage's mention recall: a claim whose end was never extracted
 can't be found (`lessons.md`, The lever for relations).
 
-**Graph data flow.** Rows in `seq` order, a key index per type, and for each surface: an exact key
-hit (identity), an alias key hit (identity, unless the alias narrows the name or another entity of
-the type already owns it), an acronym match (a nomination), fuzzy (a nomination; a gray band goes to
-a verdict, which prefers "new"), then the assignment. The starter has the exact and alias steps;
-its hook for acronym, fuzzy and embedding nominations returns nothing. Rebuild from the whole log
+**Graph data flow.** Rows in `seq` order, a key index per type, and for each surface:
+
+1. **Identity by key.** An exact key hit, then an alias key hit (unless the alias narrows the name
+   or another entity of the type already owns it). No model.
+2. **Candidates.** For a surface no key places: the entities of the same `type` nearest to it by
+   embedding (the name with its type and description), plus an acronym match. A few candidates per
+   surface, from an index, never every pair.
+3. **Three bands on the similarity.** Above `high`: the same entity, merge. Below `low`: a new
+   entity. Between them: ask the decision model whether the two are one referent, with both
+   descriptions and the sentence each name came from in `state`, and merge only above its own
+   threshold.
+4. **Vetoes, in every band.** A version or family member, a name that adds a content word to the
+   other, a practice against the artifact it produces (`ontology.md`, Identity): these read as
+   near-identical to an embedding and are two entities. Check them in code before any merge.
+5. **The assignment.**
+
+Set `low`, `high` and the decision threshold on train's merges and non-merges, in `config.toml`.
+Put `high` above every train pair that is two entities; if no such value leaves pairs above it,
+the high band is empty and every candidate above `low` goes to the decision model. On the articles
+so far, keys and acronyms alone found nearly every merge, and the ones they missed were curated
+rulings (`lessons.md`): the bands are for those, and for the paraphrases a larger and more varied
+pile brings. The starter has step 1; its hook for acronym, fuzzy and embedding candidates returns
+nothing. Rebuild from the whole log
 each run; nothing persists. The scorer's key is `normalize` in `/spec/scorer/scripts/compile.py`;
 your repository ships the same function as `graphrag/graph/keys.py`, because `/spec` does not
 exist when evaluated (`train.md`, What you submit).
@@ -278,9 +396,9 @@ so try a change on train and keep what raises a metric there.
 
 | stage | where a model fits | card in `models.md` |
 |---|---|---|
-| extraction | rows from each section, with the canon of known entities the section names; a critic pass over the document's rows (keep, drop, fix type) | Chat |
-| graph building | normalized keys first, with no model; embeddings to find likely pairs of the same `type`; a yes or no on a pair, with a high threshold, because a wrong merge is worse than a wrong split | Embedding, Decision |
-| retrieval | BM25 and embeddings to shortlist an anchor's edges, a rerank of the shortlist, and a yes or no on whether the query names anything the corpus holds | Embedding, Reranker, Decision |
+| extraction | the chat model writes the log: rows from each section, with the canon of known entities the section names and few-shot examples from train; a critic pass over the document's rows (keep, drop, fix type) | Chat |
+| graph building | keys first, with no model; embeddings score candidate pairs of the same `type` into three bands; the decision model settles the middle band (Graph data flow) | Embedding, Decision |
+| retrieval | embeddings link query phrases to anchors and, with BM25, shortlist an anchor's edges; the reranker orders the shortlist; the decision model says whether the query names anything the corpus holds | Embedding, Reranker, Decision |
 
 ## Open hypotheses
 
