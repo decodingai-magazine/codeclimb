@@ -300,20 +300,19 @@ If `scenario.yaml`, the evaluators or the gold changed since the last run, one e
 A new night can start from an ended night's kept commit instead of the scenario's starter:
 
 ```bash
-npm run run-night:cloud -- --config configs/graphrag-lite.yaml --seed best
+npm run run-night:cloud -- --config configs/graphrag.yaml --seed best
 ```
 
 `--seed` (or `seed:` in the config) takes a night id, `latest` (the newest that ended) or `best` (the highest weighted dev score among the nights scored by the scenario's current evaluators and gold; test scores never count). The night gets its own id, budget and trajectory, and only the code and the dev scores it was kept on carry over: its first round must beat them. What the earlier night learned reaches it through the scenario's lessons, so a seed from a night that applies lessons waits until its distill has written them. If the evaluation changed since, one extra round scores the seed again first. Coders and reviewers read a `<start>` note naming the night it came from. `continue` is the other way on: the same night, with its whole trajectory.
 
 ### Multi-stage scenario: `graphrag`
 
-`scenarios/graphrag` is a GraphRAG system over 56 articles, scored in three stages, each on gold input: extraction (mention and relation F1), graph building (B-cubed precision and recall) and retrieval (per query kind). Its own `README.md` documents the gold data and every metric; `docs/scenario-contract.md` records how it plugs into codeclimb.
+`scenarios/graphrag` is a GraphRAG system over 22 Decoding AI articles, scored in three stages, each on gold input: extraction (mention and relation F1), graph building (B-cubed precision and recall) and retrieval (per query kind). Its own `README.md` documents the gold data and every metric; `docs/scenario-contract.md` records how it plugs into codeclimb.
 
-- **Local data.** `corpus/` and `gold/` are gitignored, so a fresh clone lacks them and a night fails at the bundle step. Copy them from scrabble's `datasets/graphrag` into `scenarios/graphrag/`.
 - **Host side.** The evaluators run through `uv` with the scenario's `pyproject.toml` (click, loguru, pydantic). `uv` must be on the worker's PATH.
 - **Train scorer.** The bundle's `scorer/` holds the official scorers with a gold of train alone, so a coder can score its work on train; the evaluator doesn't have it.
 - **Sandbox side.** The program is `python -m graphrag <stage> --root --inputs --out [--graph]` in the `codeclimb-graphrag` image, which adds the fixed `requirements.txt` to `codeclimb-python`. The starter writes empty predictions.
-- **Bundle.** The coder gets `spec/agent/`, the 12 train articles, train's gold graph, and train examples and inputs per stage. The export fails if any file names a dev or test document.
+- **Bundle.** The coder gets `spec/agent/`, the 6 train articles, train's gold graph, and train examples and inputs per stage. The export fails if any file names a dev or test document.
 - **Metrics.** Each stage's report is flattened with the stage in front, such as `extraction.mentions.f1`, `graph.b_cubed.recall` and `retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean`.
 
 ```bash
@@ -357,7 +356,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 | `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
 | `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night) and `graphrag.yaml` (4 rounds on Inngest Cloud) |
+| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night) and `graphrag.yaml` (6 rounds on Inngest Cloud) |
 
 ### Deviations from the spec in this iteration
 

@@ -1,7 +1,7 @@
 // lessons: a scenario's lessons.md across nights (codeclimb/lessons.ts).
-//   npm run lessons -- distill --config configs/graphrag-lite.yaml --night ID [--apply]   propose from one night (a paid model call)
-//   npm run lessons -- apply --config configs/graphrag-lite.yaml --night ID              the night's newest proposal into the scenario
-//   npm run lessons -- format --config configs/graphrag-lite.yaml [--check]              lessons.md in its one layout, after a hand edit
+//   npm run lessons -- distill --config configs/graphrag.yaml --night ID [--apply]   propose from one night (a paid model call)
+//   npm run lessons -- apply --config configs/graphrag.yaml --night ID              the night's newest proposal into the scenario
+//   npm run lessons -- format --config configs/graphrag.yaml [--check]              lessons.md in its one layout, after a hand edit
 import "../codeclimb/env";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

@@ -1,38 +1,16 @@
-# GraphRAG evaluation dataset, lite cut
+# GraphRAG evaluation dataset
 
-A lighter copy of `../graphrag`: 22 of its 56 articles, 6 train, 8 dev and 8 test, with their gold
-and the 130 retrieval queries they still answer. The format, scripts, evaluators and scoring are the
-full dataset's; only `corpus/`, `gold/` and the counts in `spec/` differ. Sections after this one
-are the full dataset's README: their counts describe the 56 articles, not this cut.
+22 Decoding AI articles, 6 train, 8 dev and 8 test, with their gold and the 130 retrieval queries
+they answer. They were cut from a private 56-article dataset with the same format, scripts,
+evaluators and scoring; sections from "The source dataset" on are its README, and their counts
+describe the 56 articles, not these 22.
 
-## Lite cut
+## Documents
 
-Written by `../graphrag/scripts/lite.py` (its docstring has the rules); the chosen documents are in
-`../graphrag/gold/lite-docs.json`:
-
-```bash
-cd ../graphrag
-uv run python scripts/lite.py select --train 6 --dev 8 --test 8 --min dev:multi_hop:10 \
-  --pin test --pin-from gold/lite-docs.json --out gold/lite-docs.json
-uv run python scripts/lite.py build --docs gold/lite-docs.json --out ../graphrag-lite
-```
-
-- **Selection.** Each part's documents come from the same part of the full dataset, so the cut
-  keeps the time order. A set is scored jointly: the queries it keeps (hard counts most), the
-  `kind` x `difficulty` strata each part covers, the extraction load, the merge decisions, and the
-  extraction traps each part covers (alias-only rows, merged variants, coined labels, kept-apart
-  siblings, names typed twice, ruled aliases, renames, retypes, dropped tool-like names in the body,
-  isolated mentions, every entity type). Greedy, then one-for-one swaps. Dev must keep at least
-  10 `multi_hop` queries, so one query moves that metric by at most 10 points. Test is pinned to
-  the first cut's 8 documents, so later cuts keep its scores comparable.
-- **Log.** The kept documents' rows. Identity is the full dataset's: each full entity, restricted
-  to its kept surfaces, stays one entity. Original `same_as` rows whose two surfaces survive are
-  kept; a chain broken by a dropped surface is rejoined to the entity's root.
-- **Graph.** `scripts/compile.py` over that log.
-- **Queries.** Path rows (`multi_hop`, `intersection`) stay only when every document survives;
-  the other kinds keep the expected items in kept documents. Names move to the lite canonical name,
-  difficulty is recomputed, and every row passes `scripts/retrieval_gold.py check`. Two
-  `unanswerable` rows per part. Queries keep their original part.
+Each part's documents come from the same part of the source dataset, so the split keeps the time
+order. Identity is the source dataset's: each entity, restricted to its kept surfaces, stays one
+entity. Dev keeps at least 10 `multi_hop` queries, so one query moves that metric by at most 10
+points.
 
 | part | documents | mentions | relations | merge decisions | queries (easy / medium / hard) |
 |---|---|---|---|---|---|
@@ -48,15 +26,13 @@ Extraction traps per part (mention rows; `not_a_tool` counts dropped tool-like n
 | dev | 24 | 17 | 7 | 5 | 5 | 3 | 2 | 0 | 89 | 20 | 6 of 6 |
 | test | 41 | 14 | 5 | 13 | 13 | 7 | 5 | 4 | 117 | 12 | 6 of 6 |
 
-Test's documents are the first cut's, but 6 of its queries left with the dev documents their
-paths needed, and a merge moved to history. The
-`spec/agent/` examples were re-picked for this cut: every example entity is one the lite train
-articles write, every example query is a lite train query, and the rest are marked *invented*
+The `spec/agent/` examples were picked for these documents: every example entity is one the train
+articles write, every example query is a train query, and the rest are marked *invented*
 (`Kestrel`, `Lumen Weekly`, `ReportWriter`, `FactChecker`, `Atlas Bot`). Names that still match
 dev or test entities are the spec's own vocabulary (`embedding`, `ontology`, `Cypher`, `Bash`),
-as in the full dataset.
+as in the source dataset.
 
-## The full dataset
+## The source dataset
 
 56 Decoding AI articles with a gold extraction, a gold entity resolution, a gold graph and 230 gold
 retrieval queries. They score a GraphRAG system's three stages separately: extraction, graph
@@ -457,8 +433,8 @@ test set of the earlier splits unchanged (dev's third third was the earlier trai
 
 ## Scoring
 
-(Lite cut: the counts in this section, such as the no-merge baseline and the query tiers, are the
-full dataset's; the metrics and rules are the same.)
+(The counts in this section, such as the no-merge baseline and the query tiers, are the source
+dataset's; the metrics and rules are the same.)
 
 Gold ids are hashes and a system mints its own, so nothing matches on ids: everything matches on
 type plus the key of any name or alias.

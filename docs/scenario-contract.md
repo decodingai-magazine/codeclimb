@@ -1,6 +1,6 @@
 # Scenario contract and the graphrag scenario
 
-Agreed design, 2026-11-05. `scenarios/graphrag` is a copy of scrabble's `datasets/graphrag` (commit `61cf63e1`); from here on it belongs to codeclimb and is not synced back. Its `corpus/` and `gold/` stay out of git, because this repository is public: they exist only on machines that hold a local copy.
+Agreed design, 2026-11-05. `scenarios/graphrag` began as a copy of scrabble's `datasets/graphrag` (commit `61cf63e1`); it belongs to codeclimb and is not synced back. It is now a 22-article cut of that dataset, tracked in git with its corpus and gold.
 
 ## Why the contract changes
 

@@ -108,8 +108,8 @@ test("lessons: parse and serialize round-trip, wrapping at 100 columns and leavi
   assert.throws(() => parseLessons("# T\n\n## S\n\nloose text\n"), /only "- " bullets/);
 });
 
-test("lessons: the shipped graphrag-lite lessons.md is in layout and keeps the headings task.md cites", () => {
-  const dir = join(ROOT, "scenarios", "graphrag-lite", "spec", "agent");
+test("lessons: the shipped graphrag lessons.md is in layout and keeps the headings task.md cites", () => {
+  const dir = join(ROOT, "scenarios", "graphrag", "spec", "agent");
   const md = readFileSync(join(dir, "lessons.md"), "utf8");
   assert.equal(serializeLessons(parseLessons(md)), md, "lessons.md is out of layout: run `npm run lessons -- format`");
   const cited = citedHeadings(readFileSync(join(dir, "task.md"), "utf8"), parseLessons(md));
@@ -272,7 +272,7 @@ test("lessons: config defaults to apply when the scenario declares lessons, and 
   assert.equal(parseConfig(YAML, ROOT).lessons, "off");
   assert.throws(() => parseConfig(`${YAML}lessons: apply\n`, ROOT), /declares no lessons/);
   assert.throws(() => parseConfig(`${YAML}lessons: always\n`, ROOT), /lessons must be/);
-  const lite = parseConfig(YAML.replace("scenarios/capitals", "scenarios/graphrag-lite"), ROOT);
-  assert.equal(lite.lessons, "apply");
-  assert.equal(lite.scenario.lessons, "spec/agent/lessons.md");
+  const graphrag = parseConfig(YAML.replace("scenarios/capitals", "scenarios/graphrag"), ROOT);
+  assert.equal(graphrag.lessons, "apply");
+  assert.equal(graphrag.scenario.lessons, "spec/agent/lessons.md");
 });

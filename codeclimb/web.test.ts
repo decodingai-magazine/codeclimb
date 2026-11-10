@@ -7,8 +7,8 @@ const repos = ["decodingai-magazine/codeclimb"];
 test("the project's own repository is off limits on every GitHub host; other repos and non-http schemes are not let through", () => {
   for (const url of [
     "https://github.com/decodingai-magazine/codeclimb",
-    "https://github.com/DecodingAI-Magazine/codeclimb/blob/main/scenarios/graphrag-lite/gold/log.jsonl",
-    "https://raw.githubusercontent.com/decodingai-magazine/codeclimb/main/scenarios/graphrag-lite/gold/graph.json",
+    "https://github.com/DecodingAI-Magazine/codeclimb/blob/main/scenarios/graphrag/gold/log.jsonl",
+    "https://raw.githubusercontent.com/decodingai-magazine/codeclimb/main/scenarios/graphrag/gold/graph.json",
     "https://codeload.github.com/decodingai-magazine/codeclimb/zip/refs/heads/main",
     "https://api.github.com/repos/decodingai-magazine/codeclimb/contents/scenarios",
   ]) {

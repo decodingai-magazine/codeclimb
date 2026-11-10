@@ -1,8 +1,8 @@
-# graphrag-lite: graphrag cut to 22 hard documents (6 train, 8 dev, 8 test; README.md, Lite cut).
+# graphrag: 22 Decoding AI documents (6 train, 8 dev, 8 test; README.md, Documents).
 # Extraction, graph building and retrieval, each scored on gold input (README.md, Scoring).
 # Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
-name: graphrag-lite
-image: codeclimb-graphrag          # npm run build:image:graphrag (same requirements.txt as graphrag)
+name: graphrag
+image: codeclimb-graphrag          # npm run build:image:graphrag
 inngest_image: codeclimb-graphrag:v2   # the same image, linux/amd64, published to the Inngest workspace
 bundle: uv run python scripts/export_agent.py --out {out}
 protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
