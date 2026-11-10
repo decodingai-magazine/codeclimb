@@ -5,12 +5,20 @@ articles, turns them into a knowledge graph that follows `ontology.md`, and retr
 graph the nodes, edges and documents a query needs. Nothing generates or judges a written answer:
 retrieval returns evidence, and the evidence is scored.
 
-**The score is the goal; the rest is suggestions.** Only the evaluation is fixed: its commands, its
-prediction schema, the models and caps it allows, the `fewshot.json` manifest (`train.md`), not
-routing on a query's id (3. Retrieval), and keeping dev and test out of your system, the
-publication's other articles included (Domain knowledge).
-Everything else in this spec about how to build it is a suggestion. A reference shape is given below
-(Reference architecture) and is the recommended starting point: it is what a working system of this
+**The score is the goal; the rest is suggestions.** Only the evaluation is fixed:
+
+- its commands and its prediction schema (`train.md`);
+- the models and caps it allows, each stage's time limit, and the `uv.lock` build (`runtime.md`);
+- the `fewshot.json` manifest (`train.md`);
+- no routing on a query's id, and the gold graph never fed to extraction or graph building
+  (3. Retrieval);
+- dev and test kept out of your system, the publication's other articles included (Domain
+  knowledge).
+
+A program checks the first three, and that no dev or test id is in your repository. The reviewer
+reads your code for the rest: id routing, the gold graph, the publication. Everything else in this
+spec about how to build it is a suggestion. A reference shape is given below (Reference
+architecture) and is the recommended starting point: it is what a working system of this
 kind looks like, and the spec names where its rules were wrong for this corpus. Depart from it when
 train and the feedback back the change: try different ways to extract, merge and retrieve, install
 what you need (`runtime.md`), use the allowed models where each fits (`models.md`), and keep what
@@ -398,8 +406,8 @@ can't be found (`lessons.md`, The lever for relations).
 4. **Three bands on the similarity.** Above `high`: merge. Below `low`: a new entity. Between
    them: ask the decision model whether the two are one referent, with both names, types,
    aliases and descriptions in `state`, and merge only above its own threshold. Use what the log
-   rows carry: on train `--root` holds the articles, but the evaluation gives the graph stage
-   none.
+   rows carry: on train `--root` holds the articles, but the evaluation does not mount them for
+   the graph stage, so don't depend on them there.
 5. **The assignment.** Write the surface's `entity_id`: the entity it merged into, or a new one.
 
 Set `low`, `high` and the decision threshold on train's merges and non-merges, in `config.toml`.
@@ -442,14 +450,18 @@ so try a change on train and keep what raises a metric there.
 
 ## Open hypotheses
 
-Changes to extraction that no earlier attempt has tested, in a suggested order. Extraction is where
-the metrics fall short. Earlier attempts passed graph building and `single_hop` retrieval with the
-recipes in `lessons.md`. The starter does not have them yet (no acronym rule, fixed-score ranking,
-anchors listed first): build those first. The one addition to measure there is the three bands
-(Graph data flow).
-Each is a hypothesis, not a rule: it names the train measurement that
-decides it. Measure paired (`train.md`, Scoring your work on train), keep it only if the measurement
-moves, and say in your notes which way it went.
+Changes to extraction that no earlier attempt has tested, in a suggested order. Each is a
+hypothesis, not a rule: it names the train measurement that decides it. Measure paired
+(`train.md`, Scoring your work on train), keep it only if the measurement moves, and say in your
+notes which way it went.
+
+They cover extraction only. For graph building and `single_hop` retrieval, the recipes in
+`lessons.md` passed in earlier attempts and the starter does not have them yet (no acronym rule,
+fixed-score ranking, anchors listed first): they are the cheapest gains for those two stages, in
+whatever order your targets put them. The one addition to measure there is the three bands (Graph
+data flow).
+
+The extraction hypotheses:
 
 1. **Narrowed variants as their own entity.** **Problem:** the canon says "write these names", so a
    qualified variant (a multi-agent form of the agent class, a family member of a base model) is

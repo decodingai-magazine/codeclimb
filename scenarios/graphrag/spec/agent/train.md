@@ -50,8 +50,8 @@ answers still carry noise: an unpaired rerun on
 train moved mention F1 by up to about 0.045 and relation F1 by up to about 0.1. Compare two versions
 paired: rerun under replay so only the calls your change reached are fresh, or save the raw replies
 once and rescore each variant offline. Report precision, recall and row counts beside F1, never F1
-alone: so far a mention change that lowered train precision by more than 0.05 lost on dev,
-whatever it did to recall (`lessons.md`).
+alone: so far a drop in train mention precision carried over to dev every time (`lessons.md`), and
+a change that lowered it by more than 0.05 lost there whatever it did to recall.
 
 Before you stop, run extraction once on a held-out-sized input (the stress run): two train articles joined into one,
 with every train gold entity as its `known_entities`. Its rows per 1000 characters should stay near
@@ -94,7 +94,7 @@ A frozen system (one commit) with one command per stage, which the evaluator run
 
 `--root` is the directory holding `corpus/` (your bundle; the full dataset when evaluated); every
 `path` in an input file is relative to it. `--graph` is the gold graph retrieval loads. The command
-reads nothing else, and writes one prediction line per input item. `/spec` doesn't exist when
+reads nothing else, and writes its predictions to `--out` in the shape each stage has below. `/spec` doesn't exist when
 evaluated, and `--root` holds only `corpus/`: copy any few-shot rows the system uses into your
 repository, and list them in `fewshot.json`. Run it on `train/inputs/` to
 check that every stage runs.
@@ -186,8 +186,8 @@ submission, scored fresh. Feedback is never an example: every few-shot example s
 - **Every choice made on dev fits dev a little.** The final report sets test beside dev; the gap
   between them shows how much.
 - **Few merges.** Train holds 7 merge decisions, so one decision is 14 points
-  of them, and the held-out parts are small too. The report has only B-cubed; the scorer logs
-  the merges found as a count: read it.
+  of them, and the held-out parts are small too. With `--details` the report
+  names the missed and the wrong merges: read them, not only B-cubed.
 - **The feedback names kinds; train's details name items.** After a dropped round, run extraction
   on train with `--details` and read the per-item errors of the kind the feedback names, then change
   the filter or the prompt where those items show it.
