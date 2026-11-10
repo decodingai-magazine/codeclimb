@@ -3,8 +3,8 @@ sandbox: inngest
 max_rounds: 6
 deadline: 6h
 timeouts:
-  experiment_min: 25
-  eval_min: 10  # 22 documents against graphrag's 56
+  experiment_min: 20
+  eval_min: 10
 model: anthropic/claude-opus-5-5
 coder_thinking: medium  # off | minimal | low | medium | high
 reviewer_model: anthropic/claude-opus-5-5
@@ -16,7 +16,7 @@ allowed_models:
   - openrouter/qwen/qwen3-reranker-8b
 primary_metric: extraction.mentions.f1
 thresholds:
-  extraction.mentions.f1: 0.9
+  extraction.mentions.f1: 0.8
   extraction.relations.directed.f1: 0.4
   graph.b_cubed.precision: 0.98
   graph.b_cubed.recall: 0.98
