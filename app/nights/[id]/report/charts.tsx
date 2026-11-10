@@ -1,7 +1,7 @@
 "use client";
 // The night's two charts, each with a table view: how the night converged (every experiment's
 // primary score per round, the kept step line, threshold and test), and the
-// per-family heatmap of the share of items wrong. Ported from codeclimb/report/client.js.
+// per-family heatmap of the share of items wrong.
 import { useRef, useState } from "react";
 import { f3, signed } from "../../../worker";
 import { type Derived, families, niceTicks, type Row, shortId } from "./derive";

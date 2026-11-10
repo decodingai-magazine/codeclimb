@@ -17,7 +17,6 @@ import { bundleLessonsSha } from "./lessons";
 import { isMetered, meterBaseUrl } from "./meter";
 import { checkNightModels } from "./meter/backends";
 import { nightPaths } from "./paths";
-import { writeReport } from "./report/html";
 import { appendRows, type ResultRow, rowSpend } from "./results";
 import { type BranchSummary, type HypothesisLogEntry, logLine, type ReviewInput, reviewerPrompt, runReview, type ReviewOutput } from "./reviewer";
 import { hostCommand, maskTerms, readProtocol, type RepoCheck, type Scan } from "./scenario";
@@ -701,6 +700,5 @@ export async function finishNight(b: RowBase & {
     finished_at: new Date().toISOString(),
   };
   writeFileSync(nightPaths(b.cfg, b.nightId).doneJson, JSON.stringify(summary, null, 2));
-  await writeReport(b.cfg);
   return summary;
 }

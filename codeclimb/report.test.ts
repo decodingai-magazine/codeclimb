@@ -7,7 +7,6 @@ import { test } from "node:test";
 import { exportExperiment, resolveExpId, validateBranch, validateExpId, validateRemote } from "./export";
 import { ExperimentRepo } from "./git";
 import { buildReportData, nightSpend } from "./report/data";
-import { renderReport } from "./report/html";
 import { spendBreakdown } from "../app/nights/[id]/report/derive";
 import type { ResultRow } from "./results";
 
@@ -94,12 +93,6 @@ test("report data reads every night, saved reviews and done.json; best resolves 
   assert.equal(data.nights[1].spend_usd, 0.25); // done.json wins
   assert.deepEqual(data.nights[1].reviews, [{ round: 1, model: undefined, feedback: "f", hypothesis: "x" }]);
   assert.equal(resolveExpId(root, "best"), "b-r1-e0");
-
-  // LLM text can't close the data script tag and inject markup.
-  const html = renderReport(data);
-  const boot = /<script id="cc-boot" type="application\/json">([\s\S]*?)<\/script>/.exec(html)![1];
-  assert.ok(!boot.includes("<"));
-  assert.equal(JSON.parse(boot).data.nights[0].rows[0].hypothesis, "</script><script>alert(1)</script>");
 });
 
 test("a resumed experiment's bundle also carries its parent, to squash onto", async () => {

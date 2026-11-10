@@ -1,8 +1,8 @@
 "use client";
 // One night, live and after the fact: status and Stop, KPIs (kept score, test,
 // round, spend against budget, time against deadline), the current round's branches while it
-// runs, then the report: convergence, metric families, experiments, extra evals, reviewer
-// feedback, and the selected experiment's detail and export. `/live` is polled every 5 s;
+// runs, then the report: convergence, metric families, and the selected experiment's detail and
+// export. `/live` is polled every 5 s;
 // the report data is refetched whenever a new result row lands.
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,8 +12,7 @@ import { api, duration, f3, type Live, usd } from "../../worker";
 import { ConvergenceChart, ConvergenceTable, FamilyHeatmap, FamilyTable } from "./report/charts";
 import { derive, families, type Row, spendBreakdown } from "./report/derive";
 import { DetailCard, ExportCard } from "./report/side";
-import { KindHeatmap, kindAxes, StageTables, stageHeadlines } from "./report/stages";
-import { EvalsTable, ExperimentsTable, Reviews } from "./report/tables";
+import { StageTables, stageHeadlines } from "./report/stages";
 
 function Card({ title, sub, tools, children }: { title: string; sub?: string; tools?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -118,7 +117,6 @@ export default function NightPage() {
   const [heatTable, setHeatTable] = useState(false);
   const [heatMode, setHeatMode] = useState<"lineage" | "all">("lineage");
   const [chartMetric, setChartMetric] = useState<string | null>(null);
-  const [kindRow, setKindRow] = useState<"selected" | "test">("selected");
   const [now, setNow] = useState(() => Date.now());
   const rowsSeen = useRef(-1);
 
@@ -287,19 +285,6 @@ export default function NightPage() {
                   ? <ConvergenceTable nightId={id} v={chart!} primary={shownMetric} />
                   : <ConvergenceChart nightId={id} v={chart!} primary={shownMetric} selected={sel} onSelect={setSelected} />}
               </Card>
-              {kindAxes(v.exps[0]?.metrics).kinds.length > 0 && (
-                <Card title="Retrieval by Kind" sub="Each metric per query kind: darker means more left to fix."
-                  tools={
-                    <div className="seg">
-                      <button type="button" aria-pressed={kindRow === "selected"} onClick={() => setKindRow("selected")}>Selected</button>
-                      <button type="button" aria-pressed={kindRow === "test"} onClick={() => setKindRow("test")}>Test</button>
-                    </div>
-                  }>
-                  {kindRow === "test"
-                    ? <KindHeatmap row={v.lastTest ?? undefined} label="test" />
-                    : <KindHeatmap row={sel ? v.byId.get(sel) : undefined} label={sel ? sel.replace(`${id}-`, "") : "nothing selected"} />}
-                </Card>
-              )}
               {families(v).length > 0 && <Card title="Metric Families" sub="Share of items wrong per input family: darker means more left to fix."
                 tools={
                   <>
@@ -314,17 +299,6 @@ export default function NightPage() {
                   ? <FamilyTable nightId={id} v={v} mode={heatMode} />
                   : <FamilyHeatmap nightId={id} v={v} mode={heatMode} selected={sel} onSelect={setSelected} />}
               </Card>}
-              <Card title="Experiments" sub="Click a row to inspect it and pick it for export.">
-                <ExperimentsTable night={night} v={v} primary={primary} selected={sel} onSelect={setSelected} />
-              </Card>
-              {v.rows.some((r) => r.kind !== "experiment") && (
-                <Card title="Extra Evaluations" sub="Re-scores and the one test score.">
-                  <EvalsTable nightId={id} v={v} primary={primary} />
-                </Card>
-              )}
-              <Card title="Reviewer Feedback" sub={night.config?.reviewer_model}>
-                <Reviews night={night} />
-              </Card>
             </div>
             <aside className="side">
               <DetailCard night={night} v={v} primary={primary} selected={sel} diff={sel ? report!.diffs[sel] : undefined} />

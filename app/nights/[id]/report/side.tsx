@@ -26,7 +26,7 @@ export function DetailCard({ night, v, primary, selected, diff }: {
   diff: string | undefined;
 }) {
   const e = selected ? v.byId.get(selected) : undefined;
-  if (!e) return <section className="card detail"><div className="empty">Select an experiment in the chart or the table.</div></section>;
+  if (!e) return <section className="card detail"><div className="empty">Select an experiment in the chart.</div></section>;
   const ps = v.parentScore(e);
   const parent = e.parent_id ? v.byId.get(e.parent_id) : undefined;
   const metricKeys = Object.keys(e.metrics ?? {}).sort((a, b) =>

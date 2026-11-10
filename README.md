@@ -165,7 +165,6 @@ All output lands under `dirname(results_path)`:
 | `nights/<id>/reviews/r<N>.json` | The reviewer's feedback and hypotheses for round N. |
 | `nights/<id>/pause.json` | Where a paused night stopped. Removed on resume. |
 | `nights/<id>/pauses.jsonl` | Every pause of the night, with its resume time. |
-| `report.html` | Interactive report over every night in `results.jsonl`, rebuilt after each round and at the end of a night. |
 | `nights/<id>/exps/<exp_id>/session/*.jsonl` | Pi session transcripts, reopened to resume after a crash. |
 | `nights/<id>/evals/<eval_id>/` | Items with gold (host only), raw outputs, the runner's `timings.jsonl`, `meter.jsonl` (the program's model calls) and `metrics.json`. |
 
@@ -213,7 +212,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 The Next.js app (`npm run dev`, on `127.0.0.1:3000`) is the browser front end for a worker, with light and dark themes. Nights start only from the CLI (`npm run run-night`); the app watches, stops and exports them. It never runs Pi or sandboxes: every page reads the worker's API through `/api/worker/*`, which adds the worker token on the server.
 
 - **Nights** (`/`): every night on the worker's disk with status, round, best score against the threshold, and spend against the budget.
-- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's experiment every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap, experiments by round, extra evaluations, reviewer feedback), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
+- **Live night** (`/nights/<id>`): status, round, spend and elapsed time against budget and deadline, **Stop**, the current round's experiment every 5 s (phase, elapsed, coder and dev spend, tokens), KPIs (kept score, validation, test), and the report rendered natively in the app (convergence chart, metric-family heatmap), refreshed when a result lands. Selecting an experiment shows its metrics, hypothesis and diff. **Export** works on kept commits (the best is selected by default): **Download git repo** gives a `.tar.gz` of a ready git repository, the files checked out on `codeclimb/<exp_id>` with the kept lineage as history. For a folder or a git remote, use `POST /api/nights/:id/export/:exp` or `npm run export` (below).
 
 The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) next to `connect()`, plus the metering proxy at `/v1` on the same port:
 
@@ -322,22 +321,9 @@ npm run build:image:graphrag     # codeclimb-python, then codeclimb-graphrag
 npm run run-night -- --config configs/graphrag-smoke.yaml
 ```
 
-### Report and export
+### Export
 
-Each night rewrites `report.html` next to `results.jsonl` after every round. It is one self-contained file in the Decoding AI design system and opens offline. It covers every night in the results file:
-
-- **All Nights:** stop reason, rounds, kept accuracy, test, spend and wall time per night.
-- **How the Night Converged:** each experiment's score per round, the kept step line, the threshold, and the final test score. Click a point to select that experiment.
-- **Metric Families:** a heatmap of the share of items wrong per family, along the kept lineage or across all experiments, with ▲/▼ where a kept commit moved a family.
-- **Experiments:** every experiment grouped by round, with its hypothesis, score, change from its parent, keep or revert, and cost. The extra evaluations and the reviewer's feedback each round follow.
-- **Detail and export:** the selected experiment's metrics and diff against its parent, and an export panel. The night's best kept commit is selected by default.
-
-```bash
-npm run report -- --config configs/datenorm.yaml           # rebuild runs/datenorm/report.html
-npm run report -- --config configs/datenorm.yaml --serve   # http://127.0.0.1:7420 with a working Export button
-```
-
-Opened from disk, the export panel's button copies the matching CLI command instead. The same export from the terminal:
+The night page's Export panel downloads a kept commit as a git repository. The same export from the terminal:
 
 ```bash
 npm run export -- --config configs/datenorm.yaml --exp best --to-dir ../datenorm-solution                  # plain files
@@ -362,9 +348,9 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 | `app/` | The Next.js app: Nights, the night page with its report (`app/nights/[id]/report/`), and the `/api/worker` proxy |
 | `codeclimb/` | Config, keep rule and statistics, git, eval, coder, reviewer, results schema, tracing |
 | `codeclimb/sandbox/` | `SandboxBackend` interface, Docker and Inngest backends, and git-bundle transfer |
-| `codeclimb/report/` | Report data, the HTML renderer, the page's CSS and JS, and the two logo lockups |
+| `codeclimb/report/` | The night page's data, read from what a night leaves on disk, and the two logo lockups |
 | `codeclimb/export.ts` | Export an experiment to a folder or a git remote, with the argument checks |
-| `scripts/report.ts`, `scripts/export.ts` | `report` (write or `--serve`) and `export` CLIs |
+| `scripts/export.ts` | `export` CLI |
 | `codeclimb/pi/` | Isolated Pi sessions and the read/write/edit/bash adapters that run inside the sandbox |
 | `scenarios/<name>/` | One scenario ([contract](docs/scenario-contract.md)): `scenario.yaml`, `starter/` (the round-0 repo), `spec/agent/` (the coder's spec), `gold/` (`items.jsonl`, `splits.json`), `evaluators/` (host CLI, runner, scorer) and `scripts/` (dataset builder, bundle export) |
 | `docker/python.Dockerfile` | The `codeclimb-python` image every scenario uses on Docker |

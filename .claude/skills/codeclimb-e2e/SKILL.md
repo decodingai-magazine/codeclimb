@@ -45,7 +45,6 @@ Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, pass only i
 - `nights/<id>/exps/*/train-score.json` exists, and the session holds two send-backs ("You stopped with N of N minutes"): the mock stops at once.
 - `nights/<id>/exps/*/tasks.json` holds the mock's done task, and `nights/<id>/bundle/history/notes/` has one `<round>-e<n>.md` per experiment, with a `mock note` coder part and, where the round was reviewed, a `mock verdict` reviewer part.
 - Every experiment row has a `decision_reason`. `datenorm-smoke`'s starter scores above 0, so round 1 is kept, a `noise` row follows it and `nights/<id>/noise.json` exists; `capitals-smoke` scores 0 and keeps nothing.
-- `report.html` exists next to `results.jsonl`.
 - `done.json` has `spend_usd: 0`.
 - For `capitals-smoke`: `nights/<id>/evals/*/meter.jsonl` lists the program's calls, with no `error`.
 - `docker ps` shows no `cc-<id>` container.

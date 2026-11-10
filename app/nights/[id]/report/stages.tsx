@@ -1,8 +1,7 @@
 "use client";
-// Views of a multi-stage scenario: one headline table per stage, and the per-kind heatmap of the
-// stage that reports `by_kind` metrics. Both read the flattened metrics of the result rows.
+// Views of a multi-stage scenario: one headline table per stage, read from the flattened metrics of
+// the result rows.
 import { f3 } from "../../../worker";
-import { bin } from "./charts";
 import { type Derived, type Row, shortId } from "./derive";
 
 /** The stage a headline metric belongs to: its first segment, or the only stage of the scenario. */
@@ -59,49 +58,6 @@ export function StageTables({ nightId, v, headline, stages, onSelect }: {
           </table>
         </div>
       ))}
-    </div>
-  );
-}
-
-const BY_KIND = /^(.+)\.by_kind\.([^.]+)\.metrics\.([^.]+)\.mean$/;
-
-/** Kinds and metrics of the `by_kind` metrics in a row. */
-export function kindAxes(metrics: Row["metrics"] | undefined) {
-  const parsed = Object.keys(metrics ?? {}).map((k) => BY_KIND.exec(k)).filter((m) => !!m);
-  return { prefix: parsed[0]?.[1] ?? "", kinds: [...new Set(parsed.map((m) => m[2]))], names: [...new Set(parsed.map((m) => m[3]))] };
-}
-
-export function KindHeatmap({ row, label }: { row: Row | undefined; label: string }) {
-  const { prefix, kinds, names } = kindAxes(row?.metrics);
-  const value = (kind: string, n: string) => row?.metrics[`${prefix}.by_kind.${kind}.metrics.${n}.mean`];
-  // Only rates get color: token and item counts have no "left to fix".
-  const isRate = (n: string) => kinds.every((kind) => (value(kind, n) ?? 0) <= 1);
-  if (!kinds.length) return <div className="empty">No per-kind metrics in {label}.</div>;
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr><th>{label}</th>{names.map((n) => <th key={n} className="num">{n}</th>)}</tr>
-        </thead>
-        <tbody>
-          {kinds.map((kind) => (
-            <tr key={kind}>
-              <td>{kind}</td>
-              {names.map((n) => {
-                const key = `${prefix}.by_kind.${kind}.metrics.${n}.mean`;
-                const val = value(kind, n);
-                const b = isRate(n) ? bin(val) : -1;
-                return (
-                  <td key={n} className="num" title={withInterval(row?.metrics, key)}
-                    style={b < 0 ? undefined : { background: `var(--heat-${b})`, color: `var(--heat-ink-${b})` }}>
-                    {val == null ? "–" : f3(val)}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

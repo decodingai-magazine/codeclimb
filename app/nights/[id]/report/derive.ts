@@ -1,5 +1,5 @@
 // Views derived from one night's report data: experiments in order, the kept lineage per round,
-// the test row, and the counts the KPI tiles show. Ported from codeclimb/report/client.js.
+// the test row, and the counts the KPI tiles show.
 import type { ReportNight } from "../../../../codeclimb/report/data";
 import type { ResultRow } from "../../../../codeclimb/results";
 

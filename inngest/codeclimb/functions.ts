@@ -35,7 +35,6 @@ import {
   reviewRound, scanText, smokeTest, noteOutcome, writeNote,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
-import { writeReport } from "../../codeclimb/report/html";
 import type { HypothesisLogEntry, ReviewOutput } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
 import { ccInngest, nightFinished, nightResume, nightStart, nightStop } from "./client";
@@ -345,11 +344,7 @@ export const runNight = ccInngest.createFunction(
         break;
       }
       const row = { ...decision.row, reviewer_usd: review.reviewer_usd, t_review: review.t_review };
-      await step.run(`r${round}-record`, async () => {
-        const n = recordRows(cfg, [row]);
-        await writeReport(cfg); // live report after every round; never throws
-        return n;
-      });
+      await step.run(`r${round}-record`, async () => recordRows(cfg, [row]));
 
       maxEvalUsd = Math.max(maxEvalUsd, row.program_usd, failed?.row.program_usd ?? 0);
       const roundSpend = decision.spend + review.reviewer_usd + (failed?.spend ?? 0);
