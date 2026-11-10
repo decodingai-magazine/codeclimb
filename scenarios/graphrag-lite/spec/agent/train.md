@@ -13,7 +13,7 @@ third-party evaluator, who runs your frozen system on them:
 
 | path | what |
 |---|---|
-| `spec/` | `task.md`, `ontology.md`, `runtime.md` (how codeclimb runs your system), `lessons.md` (what earlier attempts learned) and this file |
+| `spec/` | `task.md`, `ontology.md`, `runtime.md` (how codeclimb runs your system), `models.md` (the allowed models and how to use each), `lessons.md` (what earlier attempts learned) and this file |
 | `corpus/` | the 6 train articles, one markdown file each |
 | `train/graph.json` | the gold graph of the train articles: `documents`, `entities`, `relationships` (`mentions`, `related_to`) |
 | `train/examples/<stage>.jsonl` | train's gold for each stage, below |

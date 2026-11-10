@@ -61,8 +61,8 @@ as in the full dataset.
 56 Decoding AI articles with a gold extraction, a gold entity resolution, a gold graph and 230 gold
 retrieval queries. They score a GraphRAG system's three stages separately: extraction, graph
 building and retrieval. Paths are relative to this directory; run every command with `uv run python …`, which uses this
-directory's `pyproject.toml`. The key function's base, Pulse's `_normalize`, is vendored in
-`scripts/pulse_normalize.py`.
+directory's `pyproject.toml`. The key function's base, `_normalize`, is in
+`scripts/text_normalize.py`.
 
 This README is for whoever maintains the dataset or judges a system. A coding agent building a
 system gets only the bundle `scripts/export_agent.py` writes: `spec/agent/`, the train documents and
@@ -79,7 +79,7 @@ gold/         the answers; the agent sees only train's slice, through its bundle
   retrieval.jsonl 230 retrieval queries with the nodes, edges and documents each expects
   splits.json     the train/dev/test split, for documents and retrieval queries
 spec/
-  agent/          the spec in the agent's bundle: ontology.md (also the extractor's prompt), task.md, train.md, runtime.md, lessons.md
+  agent/          the spec in the agent's bundle: ontology.md (also the extractor's prompt), task.md, train.md, runtime.md, models.md, lessons.md
   evaluator/      the third-party evaluator's protocol, for dev and test: evaluate.md
 evaluators/   one CLI per stage (extraction.py, graph.py, retrieval.py), summary.py over all split
               parts, common.py shared by them: they load the gold themselves and write JSON reports
@@ -247,7 +247,7 @@ review log and can't be recomputed from the current log, which holds only the re
 
 Resolution and alias cleaning compare `key(name)`, never the raw string; compiling the graph never
 uses it (the `same_as` rows already record every decision). The gold key is `normalize` in
-`scripts/compile.py`: acronym plurals folded, symbols spelled as words, then Pulse's normalizer,
+`scripts/compile.py`: acronym plurals folded, symbols spelled as words, then the base normalizer,
 tokens joined by `-` (`We use LLMs and tool-calling` → `we-use-llm-and-tool-calling`). Any function
 that meets these requirements and passes the checks works:
 

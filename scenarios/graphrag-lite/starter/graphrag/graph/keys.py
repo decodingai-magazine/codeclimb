@@ -1,5 +1,5 @@
 """The normalized key (task.md, When two strings are the same name), the scorer's own: acronym plurals
-folded, symbols spelled as words, then Pulse's `_normalize`, tokens joined by `-`. Copied from the
+folded, symbols spelled as words, then `_normalize`, tokens joined by `-`. Copied from the
 bundle's scorer (`scorer/scripts/compile.py`), which the evaluator does not ship.
 
     normalize("JSON Schemas") == normalize("json-schema") == "json-schema"
@@ -9,7 +9,7 @@ bundle's scorer (`scorer/scripts/compile.py`), which the evaluator does not ship
 import re
 import unicodedata
 
-from .pulse_normalize import _normalize
+from .text_normalize import _normalize
 
 SEPARATORS = set("-_–,():.'’")
 """Characters that only separate words; with whitespace they split the key into tokens."""

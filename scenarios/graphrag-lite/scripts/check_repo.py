@@ -77,7 +77,7 @@ def dev_only_names() -> set[str]:
     names = {e["name"] for e in through_dev["entities"] if e["type"] in NAMED_TYPES and e["name"] not in known and len(e["name"]) >= MIN_NAME_LENGTH}
     # what the bundle holds as text: train documents, the agent's spec, and the scorer code it ships
     # (export_agent.py, write_scorer), which a coder may copy: a name there is no sign of fitting dev
-    scorer = [HERE / "evaluators" / f"{n}.py" for n in ("common", "extraction", "graph", "retrieval")] + [HERE / "scripts" / f"{n}.py" for n in ("compile", "pulse_normalize")]
+    scorer = [HERE / "evaluators" / f"{n}.py" for n in ("common", "extraction", "graph", "retrieval")] + [HERE / "scripts" / f"{n}.py" for n in ("compile", "text_normalize")]
     bundle = [HERE / d["path"] for d in train["documents"]] + sorted((HERE / "spec" / "agent").glob("*.md")) + scorer
     in_bundle = {m.lower() for path in bundle for m in pattern(names, re.IGNORECASE).findall(path.read_text(encoding="utf-8"))}
     return {n for n in names if n.lower() not in in_bundle}

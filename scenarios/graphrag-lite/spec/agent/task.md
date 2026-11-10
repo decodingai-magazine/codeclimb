@@ -11,7 +11,8 @@ Everything else in this spec about how to build it is a suggestion. A reference 
 (Reference architecture) and is the recommended starting point: it is what a working system of this
 kind looks like, and the spec names where its rules were wrong for this corpus. Depart from it when
 train and the feedback back the change: try different ways to extract, merge and retrieve, install
-what you need (`runtime.md`), and keep what the metrics back.
+what you need (`runtime.md`), use the allowed models where each fits (`models.md`), and keep what
+the metrics back.
 
 **What you have:** your bundle (`train.md`): this spec, the 6 earliest articles (**train**), and
 their gold, which you may read in full and sample as few-shot examples. The later articles are
@@ -109,7 +110,7 @@ matters; the strings are yours.
   is a diagnostic: its gap to `gold-history` is the error your own history carries in.
 
 - **Explore how to merge.** Normalized keys, alias claims, embeddings of names and descriptions,
-  and the decision model on candidate pairs each catch different merges (Where models help). Try
+  and the decision model on candidate pairs each catch different merges (`models.md`). Try
   more than one, alone and combined.
 - **A wrong merge is worse than a wrong split.** **Why:** a later merge heals a split; nothing heals
   a merge that destroyed a distinction (`tool calls` folded into `tool calling` loses the request
@@ -184,7 +185,8 @@ retrieval alone and compare across systems. Use the graph's `documents`, `entiti
 - **Abstain.** Some queries name nothing the corpus holds. Abstention scores 1 only when `nodes`,
   `edges` and `docs` are all empty; anything returned for such a query is a false retrieval.
 
-Query kinds, and what a good answer holds:
+Query kinds, and what a good answer holds. Every kind is answered and must return a valid
+envelope; only `single_hop` is scored (What you're optimizing):
 
 | kind | example | a good envelope |
 |---|---|---|
@@ -218,7 +220,7 @@ graphrag/
     filter.py        deterministic: closed rejection reasons, duplicate fold, endpoint check
     critic.py        optional second pass over the document's rows
   graph/
-    keys.py          the scorer's normalized key (with pulse_normalize.py beside it)
+    keys.py          the scorer's normalized key (with text_normalize.py beside it)
     resolve.py       exact, alias; narrowing check; collision drop; a hook for acronym, fuzzy and embedding nominations
     materialize.py   log rows to entity assignments
   retrieval/
@@ -257,44 +259,66 @@ exist when evaluated (`train.md`, What you submit).
 
 **Retrieval data flow.** The gold graph into Ladybug tables (`Entity`, `Document`, `MENTIONS`,
 `RELATED_TO` with `semantic_type` and `doc_uri`; `runtime.md` has a schema), anchors from the query
-(a key match on names and aliases, then embeddings), one Cypher template per shape (the edges of an
-anchor; `*1..3` paths between two anchors; the common neighbour of two anchors; documents by
-`MENTIONS` inside a `published` window), then ranking with BM25 and embeddings, a rerank of the
-short list, and abstention when no anchor resolves and the top score is low. The starter has the
-first three templates, returns an anchor's documents without a window, ranks by fixed scores and
-abstains only when no anchor resolves.
+(a key match on names and aliases, then embeddings), the anchor's edges as candidates, a shortlist
+by BM25 and embeddings, a rerank of the shortlist, and abstention when no anchor resolves and the
+top score is low. That is `single_hop`, the scored kind. The other kinds each take one more Cypher
+template (`runtime.md` has one per kind): answer them, but spend rounds on them only after the
+scored metrics pass. The starter has the templates for an anchor's edges, paths and common
+neighbours, returns an anchor's documents without a window, ranks by fixed scores and abstains only
+when no anchor resolves.
 
 **Knobs belong in `config.toml`,** read at start: section size, candidate counts, thresholds,
 concurrency, model names. Tune them on train; never edit a constant in code to try a value.
 
 ## Where models help
 
-Starting points, not requirements. `runtime.md` lists the models and their endpoints. Every call
-costs time and money, so try a change on train and keep what raises a metric there.
+Starting points, not requirements. `models.md` has one card per model: how to call it, what it
+costs, and where it failed here. Every call costs time and money (`models.md`, The cost of a run),
+so try a change on train and keep what raises a metric there.
 
-- **Chat model: read text.** Use it to extract rows, with few-shot examples from train.
-- **Extraction cost.** The sections (Extraction data flow) can serve as passages for retrieval too.
-  The cost is one or two calls per section: time one section call on train, multiply by sections
-  and calls, divide by concurrency, and keep the part's total under the stage's time limit. A critic
-  pass adds one call per document; a gray-band verdict adds one decision call per candidate pair.
-- **Embedding model: find candidates cheaply.** Embed names with their descriptions, edges as short
-  sentences, and passages, then compare by cosine similarity. Send texts in batches.
-- **Decision model: answer yes or no with a probability.** Use it where a threshold is the design:
-  one question per candidate, and several questions in one call. Set the threshold on train.
-- **Reranking model: order a short list.** Take about 20 candidates from BM25 and embeddings, write
-  each as text, and rerank them against the query. It orders candidates but doesn't say which to
-  keep: use the decision model for a yes or no. Reranking the whole graph is too slow and too costly.
+| stage | where a model fits | card in `models.md` |
+|---|---|---|
+| extraction | rows from each section, with the canon of known entities the section names; a critic pass over the document's rows (keep, drop, fix type) | Chat |
+| graph building | normalized keys first, with no model; embeddings to find likely pairs of the same `type`; a yes or no on a pair, with a high threshold, because a wrong merge is worse than a wrong split | Embedding, Decision |
+| retrieval | BM25 and embeddings to shortlist an anchor's edges, a rerank of the shortlist, and a yes or no on whether the query names anything the corpus holds | Embedding, Reranker, Decision |
 
-Per stage:
+## Open hypotheses
 
-| stage | where a model fits |
-|---|---|
-| extraction | the canon holds only the known entities a section names (Extraction data flow), so a growing history doesn't fill the prompt; a critic pass over the document's rows (keep, drop, fix type) catches roles, code identifiers and list-only names |
-| graph building | compare by normalized key first; embed surfaces to find likely pairs of the same `type`; ask the decision model whether a pair is one referent, with a high threshold, because a wrong merge is worse than a wrong split |
-| retrieval | combine BM25 and embeddings to rank nodes, edges and documents; rerank the top candidates; ask the decision model whether a query names anything the corpus holds, to decide when to abstain; link query phrases to entities by embedding to find anchors, then walk the graph from them, with Cypher paths for example, for `multi_hop` and `intersection` |
+Changes to extraction that no earlier attempt has tested, in a suggested order. Extraction is where
+the metrics fall short; graph building and `single_hop` retrieval already have a recipe that works
+(`lessons.md`). Each is a hypothesis, not a rule: it names the train measurement that
+decides it. Measure paired (`train.md`, Scoring your work on train), keep it only if the measurement
+moves, and say in your notes which way it went.
 
-**Run calls concurrently.** One call per document or candidate in sequence can overrun a stage's
-time limit, and a stage that overruns fails the whole submission (`runtime.md`, Evaluation).
+1. **Narrowed variants as their own entity.** **Problem:** the canon says "write these names", so a
+   qualified variant (a multi-agent form of the agent class, a family member of a base model) is
+   written as an alias of the broader known entity. The article's own entity goes missing and its
+   claims land on the broad one (`lessons.md`, The lever for relations). **Try:** show each known
+   name as a candidate with its description, and say that a name which adds a content word to a
+   known name is a new entity, never an alias (2. Graph building has the same rule for merges).
+   **Measure:** on train's documents that have known entities, the count of rows whose alias adds a
+   word to a known name, with mention precision and recall beside it. The count should fall and
+   recall should not.
+2. **Type contrast.** **Problem:** a wrong type is a miss and a false positive, and most missed
+   relation ends are methods or systems. **Try:** beside the ontology's definitions, show pairs that
+   train's gold types differently and why (a method against a system that implements it, a tool
+   against a system). These are type examples, not a section with its gold rows, which was flat
+   (`lessons.md`). List the documents they come from in
+   `fewshot.json`. **Measure:** type accuracy over the pairs that match when type is ignored, which
+   the extraction report gives, on the documents the examples do not come from.
+3. **Code masking.** **Problem:** code symbols typed as tools or systems are a named source of false
+   positives; the identifier rule drops them after the fact. **Try:** in the entities call only,
+   replace each fenced code block with a one-line placeholder, and leave the claims call's text
+   whole. **Measure:** mention precision, and recall on the gold entities a document names only
+   inside code (an import, a client class): if those are lost, mask the block's body and keep its
+   import lines.
+4. **Section context.** **Problem:** a section read alone doesn't say what "the framework" or "this
+   approach" refers to. The starter's calls carry the title and the section's own heading. **Try:**
+   (a) the full heading path, parents included; (b) the same plus one sentence on what the article
+   is about. **Measure:** mention recall by section, and the false-positive claims that have the
+   article's subject as one end. Variant (b) is the risky one: prompts framed around the subject
+   linked it to everything near it (`lessons.md`, Failed, more than once), so drop it if those
+   claims rise.
 
 ## What you're optimizing
 

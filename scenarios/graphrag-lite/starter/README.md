@@ -2,7 +2,7 @@
 
 A GraphRAG system: extraction, graph building and retrieval, one command per stage. The spec is in
 `/spec/spec/` (`task.md`, `ontology.md`, `train.md`, `runtime.md`,
-`lessons.md`); train data is in `/spec/train/` and
+`models.md`, `lessons.md`); train data is in `/spec/train/` and
 `/spec/corpus/`.
 
 ```bash

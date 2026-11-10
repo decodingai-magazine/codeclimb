@@ -67,34 +67,8 @@ How codeclimb runs your system. It adds to `train.md`, What you submit.
     can make: a burst of reranks overloads the provider, and those calls fail after every retry.
     When calls still fail, log it and write what you have. A fallback that hides the failure
     looks like a bad result, and nobody can tell why it scored low.
-  - `POST /chat/completions`: text messages only, no streaming or tools; `response_format`, `seed`,
-    `top_p`, `stop` and `reasoning` pass through, and a model that doesn't support one ignores it.
-    `max_tokens` counts a model's reasoning too: when reasoning uses it up, the reply has empty
-    `content` and `finish_reason: "length"`, with the call still paid for. Check `finish_reason`,
-    and turn reasoning off with `"reasoning": {"enabled": false}` (through the `openai` client,
-    `extra_body={"reasoning": {"enabled": False}}`) unless the task needs it.
-  - `POST /embeddings`: `openrouter/qwen/qwen3-embedding-4b`. Read the vector size from the reply.
-  - `POST /rerank`: `openrouter/qwen/qwen3-reranker-8b` takes `{"model", "query", "documents"}`, where
-    `documents` is a list of strings, plus an optional `top_n`. It returns
-    `{"results": [{"index": 0, "relevance_score": 0.05}]}`, best first, where `index` points into
-    `documents`. Scores can be tiny and aren't probabilities: sort by them. The `openai` client has
-    no method for it: call `client.post("/rerank", body=…, cast_to=dict)` or plain HTTP.
-  - `POST /decisions`: `openrouter/typesafe/jev-1.14` is a decisions model and refuses chat. It takes
-    `{"model", "state", "questions"}`, where `state` is a string holding the facts to decide on, and
-    `questions` maps a name of your own to one question. It returns one probability per name. The
-    `openai` client has no method for it: call `client.post("/decisions", body=…, cast_to=dict)` or
-    plain HTTP.
-
-    ```json
-    {"model": "openrouter/typesafe/jev-1.14",
-     "state": "Surface A: tool calling (method). Surface B: tool-calling (method).",
-     "questions": {"same": {"type": "noul", "instructions": "Do A and B name one referent?",
-                            "criteria": {"false": "two things", "true": "one thing"}}}}
-    ```
-
-    ```json
-    {"answers": {"same": {"type": "noul", "noul": 0.72}}}
-    ```
+  - **Endpoints.** `POST /chat/completions`, `/embeddings`, `/rerank` and `/decisions`, one model
+    each. `models.md` has a card per model: the request, the reply, what it costs and how to use it.
   - **Typed replies.** Ask for JSON (`response_format`) and parse into a pydantic model with a
     strict envelope and lenient rows: an unknown row field is dropped, a row that fails validation
     is dropped, the rest is kept. Re-ask once with the error message when the envelope fails.

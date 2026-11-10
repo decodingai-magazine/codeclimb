@@ -26,6 +26,7 @@ class Llm(Strict):
     max_retries: int = 4
     max_tokens: int = 8000
     seed: int = 0
+    embed_batch: int = 256
 
 
 class Extraction(Strict):

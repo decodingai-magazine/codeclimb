@@ -1,4 +1,4 @@
-"""Model calls through the OpenAI-compatible endpoint (runtime.md, Models).
+"""Model calls through the OpenAI-compatible endpoint (runtime.md, Models; models.md has a card per model).
 
 `OPENAI_BASE_URL` and `OPENAI_API_KEY` configure the client; without them every call returns nothing
 and says so once, so a stage still writes what it has. A 429 or 502 is retried with backoff, a 402
@@ -85,16 +85,27 @@ class Client:
 
         return self._call("chat", go)
 
-    def embed(self, texts: list[str]) -> list[list[float]] | None:
-        """One vector per text, in order."""
-        if not texts:
-            return []
+    def embed(self, texts: list[str], instruction: str = "") -> list[list[float]] | None:
+        """One unit-length vector per text, in order, sent `cfg.llm.embed_batch` texts per call.
 
-        def go() -> list[list[float]]:
-            r = self._client.embeddings.create(model=self.cfg.models.embedding, input=texts)
+        `instruction` is the task line the model takes on the query side only (models.md, Embedding):
+        pass it for queries, never for the documents they are compared with.
+        """
+        if instruction:
+            texts = [f"Instruct: {instruction}\nQuery: {t}" for t in texts]
+        size = max(1, self.cfg.llm.embed_batch)
+
+        def go(batch: list[str]) -> list[list[float]]:
+            r = self._client.embeddings.create(model=self.cfg.models.embedding, input=batch)
             return [d.embedding for d in sorted(r.data, key=lambda d: d.index)]
 
-        return self._call("embeddings", go)
+        out: list[list[float]] = []
+        for i in range(0, len(texts), size):
+            vectors = self._call("embeddings", lambda batch=texts[i : i + size]: go(batch))
+            if vectors is None:
+                return None
+            out.extend(vectors)
+        return out
 
     def rerank(self, query: str, documents: list[str], top_n: int | None = None) -> list[tuple[int, float]] | None:
         """(index into documents, relevance) best first. Scores are not probabilities: sort by them."""
@@ -110,14 +121,18 @@ class Client:
 
         return self._call("rerank", go)
 
-    def decide(self, state: str, questions: dict[str, str]) -> dict[str, float] | None:
-        """One probability per question name, from the decisions model: `state` holds the facts."""
+    def decide(self, state: str, questions: dict[str, str], false: str = "no", true: str = "yes") -> dict[str, float] | None:
+        """One probability per question name, from the decisions model, in one call: `state` holds the facts.
+
+        `false` and `true` say what each answer means ("two things", "one thing"). The probabilities
+        sit close together: set every threshold on train (models.md, Decision).
+        """
         if not questions:
             return {}
         body = {
             "model": self.cfg.models.decisions,
             "state": state,
-            "questions": {name: {"type": "noul", "instructions": q, "criteria": {"false": "no", "true": "yes"}} for name, q in questions.items()},
+            "questions": {name: {"type": "noul", "instructions": q, "criteria": {"false": false, "true": true}} for name, q in questions.items()},
         }
 
         def go() -> dict[str, float]:

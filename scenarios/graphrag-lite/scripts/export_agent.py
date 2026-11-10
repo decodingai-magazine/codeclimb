@@ -6,7 +6,7 @@ evaluator's reports.
 
 Layout of `<dir>`:
 
-    spec/                       task.md, ontology.md, train.md, runtime.md, lessons.md
+    spec/                       task.md, ontology.md, train.md, runtime.md, models.md, lessons.md
     corpus/                     the train documents
     train/graph.json            the gold graph of the train documents only
     train/examples/<stage>.jsonl  train gold per stage (few-shot material); retrieval rows without
@@ -56,7 +56,7 @@ def write_scorer(out: Path, train: list[str], train_graph: dict) -> None:
     (out / "gold").mkdir()
     for name in ("common", "extraction", "graph", "retrieval"):
         shutil.copy(HERE / "evaluators" / f"{name}.py", out / "evaluators")
-    for name in ("compile", "pulse_normalize"):
+    for name in ("compile", "text_normalize"):
         shutil.copy(HERE / "scripts" / f"{name}.py", out / "scripts")
     for package in (click, loguru):
         source = Path(package.__file__).parent

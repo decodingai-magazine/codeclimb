@@ -16,7 +16,7 @@ from pathlib import Path
 import click
 from loguru import logger
 
-from pulse_normalize import _normalize  # vendored from scrabble's pulse
+from text_normalize import _normalize
 
 HERE = Path(__file__).resolve().parent.parent  # the dataset root
 PROPERTIES = {  # spec/agent/ontology.md: the keys each type declares
@@ -49,7 +49,7 @@ def _spell(symbol: str) -> str:
 
 def normalize(name: str) -> str:
     """The name key (README.md, Identity): acronym plurals folded, symbols spelled out as words,
-    then Pulse's `_normalize`, tokens joined by `-`."""
+    then `_normalize`, tokens joined by `-`."""
     spelled = re.sub(r"[^\w\s]|_", lambda m: _spell(m.group()), ACRONYM_PLURAL.sub(r"\1", name))
     return "-".join(_normalize(spelled).split())
 

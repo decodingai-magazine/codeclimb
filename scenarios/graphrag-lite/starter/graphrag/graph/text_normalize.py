@@ -1,6 +1,5 @@
-"""Pulse's `_normalize`, vendored from scrabble (`src/pulse`) so the dataset's
-key no longer needs the scrabble project. Behaviour is unchanged; `scripts/compile.py` builds the
-dataset key (README.md, Identity) on top of it. The copy is codeclimb's: it is not synced back.
+"""The base text normalizer, `_normalize`: `scripts/compile.py` builds the dataset key (README.md,
+Identity) on top of it.
 
     _normalize(" Word-Lists ") == "word list"
 

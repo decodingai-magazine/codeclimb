@@ -12,6 +12,7 @@ concurrency = 8      # model calls in flight at once
 max_retries = 4      # on 429, 500, 502 and 503, with backoff
 max_tokens = 8000    # per chat reply; reasoning is off, so this is all output
 seed = 0
+embed_batch = 256   # texts per embeddings call
 
 [extraction]
 section_max_chars = 6000   # a longer section is cut at paragraph breaks, never dropped
