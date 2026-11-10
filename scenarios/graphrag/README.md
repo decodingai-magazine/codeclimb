@@ -531,6 +531,14 @@ answer at rank 2 halves that row's MRR; a reversed edge misses unless it is `com
   seeds for new queries; `--graph` seeds from another graph, such as a bundle's `train/graph.json`.
 - **`scripts/export_agent.py --out <dir>`** writes the coding agent's bundle (Splits) and fails if
   any of it names a dev or test document.
+- **`scripts/visualize.py [--runs] [--night] [--exp] [--split dev|test] [--out]`** renders the graph
+  a night's kept experiment extracted, one standalone page per split, to
+  `runs/graphrag-cloud/nights/<id>/graphs/{dev,test}.html` by default. Dev comes from the
+  experiment's own eval and test from the night's test eval; both read its
+  `extraction/outputs/predictions.jsonl`, never gold. Entities merge on type plus `normalize`,
+  relations collapse to one edge per directed pair, and each entity type is one cluster. The page
+  (`scripts/graph_template.html`) loads sigma, graphology and d3-force from jsdelivr, so it needs a
+  network connection.
 
 After any edit to `gold/`: run `compile.py`, `split.py` and `retrieval_gold.py check` (expect
 `failing=0`).
