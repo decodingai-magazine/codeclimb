@@ -1,13 +1,14 @@
 # Models
 
 The four models the evaluation allows, one card each: what it is for, how to call it, what it costs,
-and where it failed here. Everything below is a starting point, not a requirement; `runtime.md`
+and where it failed here. The list in the prompt is the authority: if it differs from this file,
+follow the prompt. Everything below is a starting point, not a requirement; `runtime.md`
 (Models) has the rules every call follows (the endpoint, the caps, errors, typed replies).
 
 | model | endpoint | use it to | don't use it to |
 |---|---|---|---|
 | `openrouter/deepseek/deepseek-v4.1-flash` | `POST /chat/completions` | read text and write rows | decide between two close candidates: it gives no probability |
-| `openrouter/qwen/qwen3-embedding-4b` | `POST /embeddings` | find candidates cheaply, by cosine similarity | make the final choice: it ranks by topic, not by identity |
+| `openrouter/qwen/qwen3-embedding-4b` | `POST /embeddings` | find candidates cheaply, by cosine similarity | decide identity alone: two entities can have near-identical vectors (two versions, a practice and its artifact), so a merge on similarity needs the vetoes and a threshold set on train (`task.md`, Graph data flow) |
 | `openrouter/qwen/qwen3-reranker-8b` | `POST /rerank` | order a short list against a query | say which candidates to keep: its scores are not probabilities |
 | `openrouter/typesafe/jev-1.14` | `POST /decisions` | answer yes or no with a probability, where a threshold is the design | filter entities or claims (`lessons.md`, Failed, more than once) |
 
@@ -92,8 +93,6 @@ plus an optional `top_n`; no other field passes through. It returns
   types and descriptions. The reranker sees only the string.
 - **Shortlist first.** Rerank about 20 to 100 candidates from BM25 and embeddings, never the whole
   graph. Bound the calls a query can make: a burst overloads the provider (`runtime.md`, Errors).
-- **Task instruction.** A task line can be written into the query string, as for embeddings. It
-  changes the scores; whether it changes the order for the better is not measured.
 
 **Cost:** about $0.20 per million tokens of query and documents together: a call with a few dozen
 short candidates is about $0.0005 and under a second.
@@ -153,8 +152,7 @@ Work it out before you add a call, then check it against the caps the prompt nam
   6. A call per candidate pair or per claim adds hundreds: batch them, or ask the decision model
   several questions at once.
 - **The evaluation is larger than train.** Held-out documents are longer and their canon is larger,
-  so a stage costs and takes more there than on train (`train.md`, Feedback). Time one section call,
-  multiply by sections and calls, divide by concurrency, and keep the total well under the stage's
-  time limit: a stage that overruns fails the whole submission.
-- **Run calls concurrently.** One call per document or candidate in sequence can overrun the limit
-  on its own.
+  so a stage costs and takes more there than on train (`train.md`, Feedback). Run calls
+  concurrently, time one section call, multiply by sections and calls, divide by concurrency, and
+  keep the total well under the stage's time limit: a stage that overruns fails the whole
+  submission.
