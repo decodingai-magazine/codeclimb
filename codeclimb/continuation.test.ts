@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
@@ -116,6 +116,28 @@ test("reopening adds rounds and a run's budget, keeps the end files beside the n
   const second = reopenNight(saved.config, "n1", 1);
   assert.deepEqual([second.config.max_rounds, second.config.budget_usd.night], [4, 8]);
   assert.ok(!existsSync(p.stopJson) && existsSync(join(p.nightDir, "stop-r3.json")));
+});
+
+test("reopening sets aside the files of a round that never got its row, so it reruns from scratch", () => {
+  const cfg = config();
+  night(cfg, "n1", 1);
+  appendRows(cfg.results_path, [row("n1", 1, 0, "keep", 0.5), row("n1", 2, 0, "revert", 0.4)]);
+  const p = nightPaths(cfg, "n1");
+  // Round 3 ran its coder, evaluation and review prompt, then the night failed before its row.
+  const kept = [p.expDir("n1-r2-e0"), p.evalDir("n1-r2-e0-eval"), p.evalDir("n1-r1-e0-noise-r2")];
+  const left = [p.expDir("n1-r3-e0"), p.evalDir("n1-r3-e0-eval"), p.evalDir("n1-r1-e0-noise-r3")];
+  for (const d of [...kept, ...left]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(p.expDir("n1-r3-e0"), "code-state.json"), JSON.stringify({ startedAt: 0, stop: "done" }));
+  writeFileSync(p.reviewJson(2), "{}");
+  writeFileSync(p.reviewPrompt(3), "r3");
+  reopenNight(cfg, "n1", 1);
+  for (const d of [...kept, p.reviewJson(2)]) assert.ok(existsSync(d), d);
+  for (const d of [...left, p.reviewPrompt(3)]) assert.ok(!existsSync(d), d);
+  const [aside] = readdirSync(join(p.nightDir, "unfinished"));
+  assert.match(aside, /^after-r2-\d+$/);
+  assert.ok(existsSync(join(p.nightDir, "unfinished", aside, "exps", "n1-r3-e0", "code-state.json")));
+  assert.deepEqual(readdirSync(join(p.nightDir, "unfinished", aside, "evals")).sort(), ["n1-r1-e0-noise-r3", "n1-r3-e0-eval"]);
+  assert.deepEqual(readdirSync(join(p.nightDir, "unfinished", aside, "reviews")), ["r3.prompt.md"]);
 });
 
 test("changed scorers add a round that scores the kept commit again; with no scores to redo, none", () => {

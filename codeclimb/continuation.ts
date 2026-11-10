@@ -7,7 +7,7 @@
 // with only the code and the dev scores it was kept on. What that night learned reaches the new one
 // through the scenario's lessons.
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
 import { distilledThrough, pendingRounds } from "./lessons";
@@ -166,15 +166,42 @@ export const lastRound = (cfg: NightConfig, id: string): number => Math.max(0, .
 /** What the night has spent so far. */
 export const spentBy = (cfg: NightConfig, id: string): number => nightSpend(readRows(cfg.results_path).filter((r) => r.night_id === id));
 
+/** The round a night file belongs to: `<id>-r5-e0`, `<id>-r5-e0-eval` and `r5.json` to 5, a noise run `<id>-r4-e0-noise-r5` to the round it ran in. */
+function fileRound(id: string, name: string): number | null {
+  const m = /-noise-r(\d+)$/.exec(name) ?? (name.startsWith(`${id}-`) ? /^-r(\d+)-/.exec(name.slice(id.length)) : /^r(\d+)\./.exec(name));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Moves the files of rounds past `last` to `unfinished/after-r<last>-<time>/`. A night that fails between a
+ * round's work and its row leaves them behind, and the round's rerun would pick them up: its coder resumed the
+ * old clock and stopped at once on `timeout`, recorded as "no code change".
+ */
+function setAsideUnfinished(nightDir: string, id: string, last: number): void {
+  const aside = join(nightDir, "unfinished", `after-r${last}-${Date.now()}`);
+  for (const sub of ["exps", "evals", "reviews"]) {
+    const dir = join(nightDir, sub);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      const round = fileRound(id, name);
+      if (round === null || round <= last) continue;
+      mkdirSync(join(aside, sub), { recursive: true });
+      renameSync(join(dir, name), join(aside, sub, name));
+    }
+  }
+}
+
 /**
  * Makes an ended night a running one again, with `rounds` more rounds and the budget of one more run.
- * Returns the config to start it with. Its done or stop file stays beside the night, under its last round.
+ * Returns the config to start it with. Its done or stop file stays beside the night, under its last round,
+ * and the files of a round that never got its row are set aside, so the round reruns from scratch.
  */
 export function reopenNight(cfg: NightConfig, id: string, rounds: number = cfg.max_rounds): { config: NightConfig; rescore: boolean } {
   checkSource(cfg, id);
   const paths = nightPaths(cfg, id);
   const night = readNight(cfg, id);
   const last = lastRound(cfg, id);
+  setAsideUnfinished(paths.nightDir, id, last);
   const hashes = scoringHashes(cfg);
   const rescore = !sameScoring(hashes, night.metric_script_sha256) && keptOf(cfg, id).metrics !== null;
   const runBudget = night.run_budget_usd ?? cfg.budget_usd.night;
