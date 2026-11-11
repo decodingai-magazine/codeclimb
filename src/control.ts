@@ -26,6 +26,14 @@ export async function startNight(input: NightInput): Promise<StartResult> {
 	return { started: true, threadId };
 }
 
+/** A continued variation: a new thread (a random UUID, so it never meets the saved steps of the variation before), then its server run. */
+export async function startVariation(input: NightInput): Promise<string> {
+	const c = client();
+	const thread = await c.threads.create({ metadata: { kind: "night", night_id: input.night_id, run: input.variation ?? 0 } });
+	await c.runs.create(thread.thread_id, "night", { input: { ...input }, multitaskStrategy: "reject" });
+	return thread.thread_id;
+}
+
 /** The night's threads, newest first. */
 export async function nightThreads(nightId: string): Promise<{ thread_id: string; status: string; variation: number }[]> {
 	const threads = await client().threads.search({ metadata: { kind: "night", night_id: nightId }, sortBy: "created_at", sortOrder: "desc", limit: 100 });

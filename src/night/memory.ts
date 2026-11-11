@@ -6,6 +6,7 @@ import type { Decision } from "../decision.ts";
 import { weightedScore } from "../decision.ts";
 import { type Review, TRAJECTORY_CHARS, type TrajectoryRound, trajectory } from "../review/evidence.ts";
 import { readJson } from "./files.ts";
+import type { NightJson, SeedInfo } from "./types.ts";
 
 export const NOTE_REASON_CHARS = 300;
 export const HISTORY_ERROR_CHARS = 300;
@@ -79,8 +80,19 @@ export interface HistoryEntry {
 	line: string;
 }
 
-/** Rounds 1..N-1 with their notes and the reviewer's feedback, read from disk. */
+/** A seeded night's trajectory opens with where it came from, even before its first round. */
+export function startNote(seed: SeedInfo): string {
+	return `<start>\nThis night starts from night ${seed.night}: its kept experiment ${seed.exp_id} (after round ${seed.round}), kept on a dev primary of ${seed.primary}. Round 1 must beat those dev metrics.\n</start>`;
+}
+
+/** Rounds 1..N-1 with their notes and the reviewer's feedback, read from disk; a seeded night's `<start>` note first. */
 export function buildTrajectory(bundleDir: string, nightDir: string, history: HistoryEntry[], budget = TRAJECTORY_CHARS): string {
+	const seed = readJson<NightJson>(join(nightDir, "night.json"))?.seed;
+	const rounds = roundsTrajectory(bundleDir, nightDir, history, budget - (seed ? startNote(seed).length + 2 : 0));
+	return seed ? [startNote(seed), rounds].filter(Boolean).join("\n\n") : rounds;
+}
+
+function roundsTrajectory(bundleDir: string, nightDir: string, history: HistoryEntry[], budget: number): string {
 	const rounds: TrajectoryRound[] = history.map((h) => {
 		const notes = [1, 0].map((e) => readNote(notePath(bundleDir, h.round, e)));
 		const note = notes.find((n) => n.coder || n.verdict) ?? { coder: "", verdict: "" };

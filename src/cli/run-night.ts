@@ -1,12 +1,13 @@
 // `run-night`: start, stop, resume or continue a night through the Agent Server, and follow it (spec: CLI).
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { type NightConfig, loadNightConfig } from "../config.ts";
-import { nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
+import { nightThreads, resumeNight, serverUrl, startNight, startVariation, stopNight } from "../control.ts";
+import { endedNights, reopenNight, resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
 import { defaultNightId, isValidNightId } from "../ids.ts";
-import { findNightDir, type NightPaths, nightPaths, readJson } from "../night/files.ts";
+import { findNightDir, type NightPaths, nightPaths, readJson, writeStopIfMissing } from "../night/files.ts";
 import { type NightInput, type NightJson, serverRoot } from "../night/types.ts";
 
 const FOLLOW_MS = 5_000;
@@ -99,7 +100,7 @@ async function start(argv: string[]): Promise<void> {
 	if (!values.config) die("--config <yaml> is required");
 	if (values["mock-offline"] !== undefined && !values.mock) die("--mock-offline only with --mock");
 	if (values.sandbox !== undefined && values.sandbox !== "docker") console.log(`note: --sandbox ${values.sandbox} is read as docker on this stack`);
-	if (values.seed !== undefined) die("--seed is not built yet");
+
 	const nightId = values["night-id"] ?? defaultNightId(new Date());
 	if (!isValidNightId(nightId)) die(`night id \`${nightId}\` must be 1 to 48 letters, digits or hyphens, not starting with a hyphen`);
 	let config: NightConfig;
@@ -114,6 +115,14 @@ async function start(argv: string[]): Promise<void> {
 		config.max_rounds = n;
 	}
 	const input: NightInput = { night_id: nightId, config, mock: values.mock };
+	if (values.seed !== undefined) {
+		// Resolved to an id before the night starts; a rescore adds its round.
+		const seed = resolveSeed(root, config, values.seed);
+		if ("refused" in seed) die(seed.refused);
+		input.seed = seed.id;
+		if (seed.rescore) config.max_rounds += 1;
+		console.log(`seed: night ${seed.id}${seed.rescore ? " (the scoring changed: a rescore round first)" : ""}`);
+	}
 	if (values["mock-offline"] !== undefined) {
 		const n = Number(values["mock-offline"]);
 		if (!Number.isInteger(n) || n < 1) die("--mock-offline must be an integer ≥ 1");
@@ -145,6 +154,66 @@ async function stop(argv: string[]): Promise<void> {
 	if (stopJson) console.log(JSON.stringify(stopJson, null, 2));
 }
 
+async function continueNight(argv: string[]): Promise<void> {
+	const { values } = parseArgs({
+		args: argv,
+		options: { config: { type: "string" }, night: { type: "string" }, direction: { type: "string" }, rounds: { type: "string" }, seed: { type: "string" }, "no-wait": { type: "boolean", default: false } },
+	});
+	if (!values.config) die("--config <yaml> is required");
+	if (values.seed !== undefined) die("--seed never goes with continue");
+	let rounds: number | undefined;
+	if (values.rounds !== undefined) {
+		rounds = Number(values.rounds);
+		if (!Number.isInteger(rounds) || rounds < 1) die("--rounds must be an integer ≥ 1");
+	}
+	// A mock night lives under runs/mock/: the night's folder says which one it is.
+	const plain = loadOrDie(values.config, false);
+	const mockConfig = loadOrDie(values.config, true);
+	const candidates = [
+		...endedNights(nightPaths(root, plain.results_path, "_").resultsDir).map((n) => ({ ...n, mock: false })),
+		...endedNights(nightPaths(root, mockConfig.results_path, "_").resultsDir).map((n) => ({ ...n, mock: true })),
+	].sort((a, b) => Date.parse(b.night.startedAt) - Date.parse(a.night.startedAt));
+	let nightId = values.night;
+	let mock: boolean;
+	if (nightId) {
+		const dir = findNightDir(root, nightId);
+		if (!dir) die(`night ${nightId} not found under ${join(root, "runs")}`);
+		mock = dir.includes(`${sep}runs${sep}mock${sep}`);
+	} else {
+		const newest = candidates[0];
+		if (!newest) die(`no ended night under the results of ${values.config}`);
+		nightId = newest.id;
+		mock = newest.mock;
+	}
+	try {
+		await fetch(`${serverUrl()}/ok`);
+	} catch {
+		die(`the Agent Server at ${serverUrl()} is not reachable (is \`npm run server\` running?)`);
+	}
+	const config = mock ? mockConfig : plain;
+	const input = reopenNight(root, nightId, config, { mock, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
+	if ("refused" in input) die(input.refused);
+	const paths = nightPaths(root, config.results_path, nightId);
+	try {
+		const thread = await startVariation(input);
+		console.log(`continued night ${nightId} as variation ${input.variation} (thread ${thread}): rounds up to ${input.config.max_rounds}${input.continue?.rescore ? ", a rescore round first" : ""}`);
+	} catch (error) {
+		// The night reads as running from the rewritten night.json: end it, so it can be continued again.
+		writeStopIfMissing(paths.nightDir, "failed");
+		die(`cannot start the variation on the Agent Server: ${(error as Error).message}`);
+	}
+	if (values["no-wait"]) return;
+	await follow(paths, nightId, config.primary_metric);
+}
+
+function loadOrDie(file: string, mock: boolean): NightConfig {
+	try {
+		return loadNightConfig(file, { cwd, root, mock });
+	} catch (error) {
+		die((error as Error).message);
+	}
+}
+
 async function resume(argv: string[]): Promise<void> {
 	const { values } = parseArgs({ args: argv, options: { night: { type: "string" }, "no-wait": { type: "boolean", default: false } } });
 	if (!values.night) die("--night <id> is required");
@@ -161,5 +230,5 @@ async function resume(argv: string[]): Promise<void> {
 const [command, ...rest] = process.argv.slice(2);
 if (command === "stop") await stop(rest);
 else if (command === "resume") await resume(rest);
-else if (command === "continue") die(`${command} is not built yet`);
+else if (command === "continue") await continueNight(rest);
 else await start(process.argv.slice(2));

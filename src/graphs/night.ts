@@ -11,7 +11,7 @@ import { type Checkpoint, evaluationRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
 import { runEvaluation } from "./parts.ts";
 import { NightStopped, Pauses } from "./pause.ts";
-import { type RoundState, runRound } from "./round.ts";
+import { type RoundState, runRescore, runRound } from "./round.ts";
 import { mockCredit, mockOffline } from "../pi/models.ts";
 import { VARIATION_TIMEOUT_S } from "../night/pause.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
@@ -31,11 +31,20 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		}, { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		// The variation backstop: a timer due in 4 days that stops the variation unless it ended or a newer one began.
 		await step("variation-timer", () => startTimer(id, { variation: input.variation ?? 0 }, VARIATION_TIMEOUT_S))();
-		const pauses = new Pauses(id, paths, init.deadlineMs);
-		let round = 0;
+		const start = init.start;
+		const pauses = new Pauses(id, paths, init.deadlineMs, start.pauses);
+		let round = start.lastRound;
 		let stopReason: string;
-		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [], noise: { runs: 0, measured: false, remeasureOn: null, base: null } };
-		let loop: LoopState = emptyLoop();
+		let state: RoundState = { checkpoint: start.checkpoint, guidance: start.guidance, history: start.history, noise: start.noise, ...(start.direction ? { direction: start.direction } : {}) };
+		// Tokens, plateau and the costliest round and evaluation start at zero per variation; the spend carries over.
+		let loop: LoopState = { ...emptyLoop(), spentUsd: start.spentUsd };
+		if (start.rescore) {
+			// The scoring changed since the checkpoint was scored: one extra round first, no stop check, coder or review.
+			round++;
+			const r = await runRescore(root, id, config, paths, input.mock, round, state.checkpoint, loop.spentUsd, pauses);
+			state = { ...state, checkpoint: r.checkpoint, noise: { runs: 0, measured: false, remeasureOn: null, base: null } };
+			loop = { ...loop, spentUsd: loop.spentUsd + r.spendUsd };
+		}
 		for (;;) {
 			const next = round + 1;
 			const check = await step(`r${next}/stop-check`, async () => stopCheck(paths, config, pauses.deadlineMs, next, loop))();
@@ -54,7 +63,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				maxEvalUsd: Math.max(loop.maxEvalUsd, r.maxEvalUsd),
 				roundsWithoutKeep: r.kept ? 0 : loop.roundsWithoutKeep + 1,
 			};
-			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, noise: r.noise, ...(r.failures ? { failures: r.failures } : {}) };
+			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, noise: r.noise, ...(r.failures ? { failures: r.failures } : {}), ...(state.direction ? { direction: state.direction } : {}) };
 			if (thresholdsMet(config, state.checkpoint.metrics)) {
 				stopReason = "thresholds";
 				break;

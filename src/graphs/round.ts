@@ -10,7 +10,8 @@ import { type ReviewResult, runReview } from "../review/reviewer.ts";
 import { step } from "../runtime/step.ts";
 import { rethrowControl, runEvaluation, runExperiment } from "./parts.ts";
 import { aaMove, type NoiseState, noiseDue, weightedScore } from "../decision.ts";
-import { noiseEvalId, sandboxPrefix } from "../ids.ts";
+import { devEvalId, experimentId, noiseEvalId, sandboxPrefix } from "../ids.ts";
+import { RESCORE_HYPOTHESIS } from "../night/variation.ts";
 import { writeJson } from "../night/files.ts";
 import type { Pauses } from "./pause.ts";
 import { existsSync } from "node:fs";
@@ -23,6 +24,8 @@ export interface RoundState {
 	history: HistoryEntry[];
 	failures?: string;
 	noise: NoiseState & { base: number | null };
+	/** The operator's direction on a continued night, masked: every coder and reviewer of the variation reads it. */
+	direction?: string;
 }
 
 export interface RoundResult extends RoundState {
@@ -69,7 +72,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		s = { ...s, noise: n.noise };
 		noiseUsd = n.spendUsd;
 	}
-	const base = { aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0, round, pauses, checkpoint: s.checkpoint, mock, history: s.history };
+	const base = { aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0, round, pauses, checkpoint: s.checkpoint, mock, history: s.history, ...(s.direction ? { direction: s.direction } : {}) };
 	const e0 = await runExperiment(root, night, config, paths, { ...base, spentUsd: spentUsd + noiseUsd, hypothesis: s.guidance.hypothesis, ...(s.failures ? { failures: s.failures } : {}) });
 	let exp = e0;
 	let repaired: { usd: number; tokens: number; programUsd: number } | null = null;
@@ -125,6 +128,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 							...(exp.errors ? { evalError: exp.errors } : {}),
 						},
 						trajectory: buildTrajectory(paths.bundle, paths.nightDir, s.history),
+						...(s.direction ? { direction: s.direction } : {}),
 					},
 					ctx.signal,
 				),
@@ -170,4 +174,32 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		tokens: roundTokens,
 		maxEvalUsd: Math.max(noiseUsd, facts.programUsd, repaired?.programUsd ?? 0),
 	};
+}
+
+/**
+ * The rescore round: the kept commit under a new name `<night>-r<N>-e0`, evaluated on dev, recorded as `keep` with the
+ * new metrics (the old ones if the evaluation failed), so a later continuation finds the commit (spec: Rescore).
+ */
+export async function runRescore(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, cp: Checkpoint, spentUsd: number, pauses: Pauses): Promise<{ checkpoint: Checkpoint; spendUsd: number }> {
+	const expId = experimentId(night, round);
+	const evalId = devEvalId(expId);
+	await step(`${expId}/alias`, async () => {
+		await (await ExperimentRepo.open(paths.repo)).alias(expId, cp.commit);
+		return true;
+	})();
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-rescore`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, round, pauses });
+	const metrics = e.ok ? e.metrics : cp.metrics;
+	const checkpoint: Checkpoint = { exp_id: expId, commit: cp.commit, metrics };
+	await step(`${evalId}/record`, async () =>
+		appendRow(paths.results, {
+			...evaluationRow(night, config, "noise", evalId, round, checkpoint, e),
+			kind: "experiment",
+			hypothesis: RESCORE_HYPOTHESIS,
+			metrics,
+			decision: "keep",
+			score: weightedScore(metrics, config.thresholds, config.weights),
+			decision_reason: e.ok ? "rescore: the scoring changed since the commit was scored" : "rescore: the evaluation failed; the old metrics stand",
+		}),
+	)();
+	return { checkpoint, spendUsd: e.program_usd };
 }

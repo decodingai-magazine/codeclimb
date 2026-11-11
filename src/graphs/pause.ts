@@ -14,11 +14,12 @@ export class NightStopped extends Error {
 
 /** The night's pauses: their count and the loop's deadline, which every ended pause moves forward. */
 export class Pauses {
-	private count = 0;
 	constructor(
 		private readonly night: string,
 		private readonly paths: NightPaths,
 		public deadlineMs: number,
+		/** Pause numbers used by earlier variations: numbers never repeat within a night. */
+		private count = 0,
 	) {}
 
 	/**

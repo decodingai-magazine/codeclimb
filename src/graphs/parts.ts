@@ -148,6 +148,8 @@ export interface ExperimentSpec {
 	/** The night's spend so far. */
 	spentUsd: number;
 	pauses: Pauses;
+	/** The operator's direction, masked. */
+	direction?: string;
 	/** A repair `e1`: it starts from the failed commit, and its leak scan covers what it adds over it. */
 	repairOf?: { commit: string };
 }
@@ -213,6 +215,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 							checkpointMetrics: checkpoint.metrics,
 							trajectory: buildTrajectory(paths.bundle, paths.nightDir, spec.history),
 							...(spec.failures ? { failures: spec.failures } : {}),
+							...(spec.direction ? { direction: spec.direction } : {}),
 						},
 						ctx.signal,
 					);

@@ -13,6 +13,19 @@ export interface NightInput {
 	/** The variation number: 0 at start, +1 per continue. */
 	variation?: number;
 	continue?: { rescore: boolean; direction?: string };
+	/** `--seed`, resolved by the CLI to a night id. */
+	seed?: string;
+}
+
+/** night.json's `seed`: what a seeded night starts from. */
+export interface SeedInfo {
+	night: string;
+	exp_id: string;
+	commit: string;
+	round: number;
+	primary: number;
+	metrics: Record<string, number>;
+	rescore: boolean;
 }
 
 export interface NightJson {
@@ -20,11 +33,17 @@ export interface NightJson {
 	startedAt: string;
 	deadlineMs: number;
 	round0: { exp_id: string; sha: string };
-	seed: null;
+	seed: SeedInfo | null;
 	config: NightConfig;
 	metric_script_sha256: Record<string, string>;
 	/** One per variation: the lessons.md its coders read. */
 	lessons_sha256: string[];
+	/** The config's `budget_usd.night` at the first continuation: every continuation adds it to the night's spend. */
+	run_budget_usd?: number;
+	/** The variation number: 0 at start, +1 per continue. */
+	variation?: number;
+	/** The last pause whose time was added to `deadlineMs`. */
+	pausesApplied?: number;
 }
 
 export interface DoneJson {

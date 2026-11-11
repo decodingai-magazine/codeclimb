@@ -47,6 +47,8 @@ export interface CodeRequest {
 	trajectory?: string;
 	/** The last experiment's errors, when it was never scored. */
 	failures?: string;
+	/** The operator's direction on a continued night, masked. */
+	direction?: string;
 	/** A repair attempt: no send-backs, no wrap-up turn. */
 	repair?: boolean;
 	/** The commit the sandbox starts from when it is not the parent: a repair starts from the failed commit. */
@@ -292,6 +294,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			rejectedDiffs: rejectedDiffs(req.bundleDir),
 			...(req.failures ? { failures: req.failures } : {}),
 			...(req.repair ? { repair: true } : {}),
+			...(req.direction ? { direction: req.direction } : {}),
 		});
 		if (!signal.aborted) await session.prompt(reopen ? RESTART_PROMPT : prompt);
 		const hasTrain = existsSync(join(req.bundleDir, "train"));
