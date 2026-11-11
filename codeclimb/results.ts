@@ -73,7 +73,7 @@ export const RESULT_ROW_SCHEMA = {
     exp_id: str,
     parent_id: nullable("string"),
     round: { type: "integer", minimum: 0 },
-    stack: { type: "string", enum: ["inngest", "langchain"] },
+    stack: { type: "string", enum: ["inngest"] },
     split: { type: "string", enum: ["dev", "test", "noise"] },
     model: nullable("string"),
     reviewer_model: str,
