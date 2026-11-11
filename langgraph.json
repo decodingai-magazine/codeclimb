@@ -3,5 +3,5 @@
   "graphs": {
     "hello": "./src/hello.ts:graph"
   },
-  "env": ".env.local"
+  "env": ".env"
 }

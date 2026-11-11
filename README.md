@@ -17,7 +17,7 @@ Requires Node.js 24+.
 
 ```bash
 npm install --ignore-scripts
-cp .env.example .env.local   # set LANGSMITH_API_KEY
+cp .env.example .env         # set LANGSMITH_API_KEY
 npm run dev                  # Agent Server at http://127.0.0.1:2024, Studio link in the output
 ```
 

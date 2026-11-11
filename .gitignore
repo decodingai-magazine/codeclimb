@@ -5,8 +5,8 @@ node_modules/
 *.tsbuildinfo
 
 # env
-.env*.local
-.env
+.env*
+!.env.example
 
 # logs
 npm-debug.log*
