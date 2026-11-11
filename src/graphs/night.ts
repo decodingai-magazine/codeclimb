@@ -1,7 +1,8 @@
 // The `night` graph: init, rounds, finish; any failure ends in the stop operation (spec: Round loop; Cleanup).
 import { existsSync } from "node:fs";
 import { entrypoint, getConfig, isGraphInterrupt } from "@langchain/langgraph";
-import { runStopGraph, startTimer } from "../control.ts";
+import { runStopGraph, startLessons, startTimer } from "../control.ts";
+import { lessonsOn } from "../lessons.ts";
 import { nightPaths, writeStopIfMissing } from "../night/files.ts";
 import { initNight } from "../night/init.ts";
 import { emptyLoop, finishNight, type LoopState, stopCheck, thresholdsMet } from "../night/loop.ts";
@@ -84,6 +85,8 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				spendUsd: loop.spentUsd + test.program_usd,
 			}),
 		)();
+		// The lessons run starts once done.json is written; a stopped night's lessons start in the stop cleanup.
+		if (done && lessonsOn(config)) await step("lessons", () => startLessons({ night_id: id, scenario: config.scenario, config }))();
 		return done ?? { night_id: id, stopped: true };
 	} catch (error) {
 		// A pause travels as a thrown GraphInterrupt: never clean up on it.

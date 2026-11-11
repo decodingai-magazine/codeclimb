@@ -3,7 +3,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "@langchain/langgraph-sdk";
-import { nightThreadId, stopThreadId, timerThreadId } from "./ids.ts";
+import type { NightConfig } from "./config.ts";
+import { lessonsThreadId, nightThreadId, stopThreadId, timerThreadId } from "./ids.ts";
 import { findNightDir, type StopReason, writeStopIfMissing } from "./night/files.ts";
 import type { NightInput } from "./night/types.ts";
 
@@ -109,6 +110,20 @@ export async function runStopGraph(nightId: string, reason?: StopReason): Promis
 	const threadId = stopThreadId(nightId);
 	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "stop", night_id: nightId } });
 	await c.runs.create(threadId, "stop", { input: { night_id: nightId, ...(reason ? { reason } : {}) }, multitaskStrategy: "enqueue" });
+}
+
+export interface LessonsInput {
+	night_id: string;
+	scenario: string;
+	config: NightConfig;
+}
+
+/** The lessons operation: a server run of `lessons` on the scenario's lessons thread (created if missing), queued behind any in flight. */
+export async function startLessons(input: LessonsInput): Promise<void> {
+	const c = client();
+	const threadId = lessonsThreadId(input.scenario);
+	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "lessons", scenario: input.scenario } });
+	await c.runs.create(threadId, "lessons", { input: { ...input }, multitaskStrategy: "enqueue" });
 }
 
 /** The stop operation: write `stop.json` (the first stop wins), then the stop graph. */

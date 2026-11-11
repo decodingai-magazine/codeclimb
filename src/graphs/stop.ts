@@ -2,11 +2,12 @@
 import { entrypoint } from "@langchain/langgraph";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { cancelNightRuns, nightThreads, pendingPause, type TimerGuard } from "../control.ts";
+import { cancelNightRuns, nightThreads, pendingPause, startLessons, type TimerGuard } from "../control.ts";
+import { lessonsOn } from "../lessons.ts";
 import { sandboxPrefix } from "../ids.ts";
-import { findNightDir, type StopReason, writeStopIfMissing } from "../night/files.ts";
+import { findNightDir, readJson, type StopReason, writeStopIfMissing } from "../night/files.ts";
 import { sandboxes } from "../night/sandboxes.ts";
-import { serverRoot } from "../night/types.ts";
+import { type NightJson, serverRoot } from "../night/types.ts";
 import { abortNight } from "../runtime/registry.ts";
 import { step } from "../runtime/step.ts";
 
@@ -45,5 +46,13 @@ export const stop = entrypoint("stop", async (input: StopInput) => {
 		const dir = findNightDir(serverRoot(), id);
 		return dir ? writeStopIfMissing(dir, input.reason ?? "failed") : false;
 	})();
-	return { night_id: id, cancelled, aborted, swept, wrote_stop_json: wrote };
+	// A night that didn't finish distills its lessons here, with the config from its night.json.
+	const lessons = await step("lessons", async () => {
+		const dir = findNightDir(serverRoot(), id);
+		const night = dir ? readJson<NightJson>(join(dir, "night.json")) : null;
+		if (!dir || !night || existsSync(join(dir, "done.json")) || !lessonsOn(night.config)) return false;
+		await startLessons({ night_id: id, scenario: night.config.scenario, config: night.config });
+		return true;
+	})();
+	return { night_id: id, cancelled, aborted, swept, wrote_stop_json: wrote, lessons };
 });

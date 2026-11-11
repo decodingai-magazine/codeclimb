@@ -8,7 +8,7 @@ import { appendRow, type ResultRow } from "../results.ts";
 import { nightPaths, readJson, writeJson } from "./files.ts";
 import { scoringHashes } from "./init.ts";
 import type { NightJson } from "./types.ts";
-import { continuedBudget, keptOf, lastRound, reopenNight, spendOf } from "./variation.ts";
+import { continuedBudget, keptOf, lastRound, reopenNight, resolveSeed, spendOf } from "./variation.ts";
 
 const ROOT = process.cwd();
 
@@ -123,6 +123,31 @@ test("reopen: refuses a running night; moves the files of an unfinished round as
 		assert.ok(!("refused" in again));
 		assert.equal(Math.round(again.config.budget_usd.night * 100) / 100, 11.85);
 		assert.ok(existsSync(join(paths.nightDir, "done-r1.json")));
+	} finally {
+		rmSync(dirname(paths.results), { recursive: true, force: true });
+	}
+});
+
+test("seed: refused while the seed night applies lessons that lessons.md doesn't hold yet; a mock night never is", () => {
+	const id = `tl${randomBytes(3).toString("hex")}`;
+	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: false });
+	const config: NightConfig = { ...base, results_path: `runs/${id}/results.jsonl` };
+	const ran: NightConfig = { ...config, lessons: "apply", scenario_spec: { ...config.scenario_spec, lessons: "spec/lessons.md" } };
+	const paths = nightPaths(ROOT, config.results_path, id);
+	try {
+		mkdirSync(join(paths.bundle, "history", "notes"), { recursive: true });
+		writeFileSync(join(paths.bundle, "history", "notes", "r1-e0.md"), "note");
+		writeJson(paths.nightJson, { night_id: id, startedAt: "2026-01-01T00:00:00Z", deadlineMs: 0, round0: { exp_id: `${id}-r0-starter`, sha: "c0" }, seed: null, config: ran, metric_script_sha256: {}, lessons_sha256: [] } satisfies NightJson);
+		writeJson(paths.doneJson, { stop_reason: "max_rounds" });
+		appendRow(paths.results, row({ night_id: id, exp_id: `${id}-r1-e0`, eval_id: `${id}-r1-e0-eval`, decision: "keep" }));
+		assert.match((resolveSeed(ROOT, config, id) as { refused: string }).refused, /not in lessons.md yet/);
+		// Once a proposal through round 1 is applied, the seed resolves (the changed hashes ask for a rescore).
+		writeJson(join(paths.resultsDir, "lessons", `${id}-r1`, "proposal.json"), { applied: true });
+		assert.deepEqual(resolveSeed(ROOT, config, id), { id, rescore: true });
+		// A mock night's lessons are never applied, so they never block a seed.
+		writeJson(join(paths.resultsDir, "lessons", `${id}-r1`, "proposal.json"), { applied: false });
+		writeJson(paths.nightJson, { ...readJson<NightJson>(paths.nightJson), config: { ...ran, results_path: `runs/mock/${id}/results.jsonl` } });
+		assert.equal("refused" in resolveSeed(ROOT, config, id), false);
 	} finally {
 		rmSync(dirname(paths.results), { recursive: true, force: true });
 	}

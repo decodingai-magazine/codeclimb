@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from "no
 import { dirname, join, relative } from "node:path";
 import { deadlineAt, type NightConfig } from "../config.ts";
 import { weightedScore } from "../decision.ts";
+import { isMockConfig, pendingRounds } from "../lessons.ts";
 import { type ResultRow, readRows } from "../results.ts";
 import { type NightPaths, nightPaths, readJson, writeJson } from "./files.ts";
 import type { PauseJson, PauseLogEntry } from "./pause.ts";
@@ -110,6 +111,11 @@ export function resolveSeed(root: string, config: NightConfig, which: string): {
 	} else pick = ended.find((n) => n.id === which);
 	if (!pick) return { refused: which === "latest" || which === "best" ? `no ended night under ${paths.resultsDir} to seed from (${which})` : `night ${which} is not an ended night under ${paths.resultsDir}` };
 	if (!kept(pick).kept) return { refused: `seed night ${pick.id} kept nothing` };
+	// Its coders' lessons would be lost: the night applies lessons that lessons.md doesn't hold yet.
+	const sc = pick.night.config;
+	if (sc.lessons === "apply" && !isMockConfig(sc) && sc.scenario_spec.lessons && pendingRounds(root, sc, pick.id) > 0) {
+		return { refused: `seed night ${pick.id} applies lessons that are not in lessons.md yet: run \`npm run lessons -- distill --config … --night ${pick.id} --apply\` first` };
+	}
 	return { id: pick.id, rescore: !sameHashes(pick.night.metric_script_sha256, current) };
 }
 
