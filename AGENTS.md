@@ -3,6 +3,7 @@
 ## Teck stack
 
 - LangChain ecosystem (TypeScript); Full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
+    - Use the TypeScript pages, not the Python ones: the two APIs differ (Python's `retry_policy` is `retry` on a JS task)
     - LangGraph JS (`@langchain/langgraph`): graphs, durable execution, checkpoints, interrupts
     - Agent Server: `npm run dev` (`langgraphjs dev`) serves the graphs in `langgraph.json` at http://127.0.0.1:2024
     - LangSmith (`langsmith`): tracing, feedback, Sandboxes (`langsmith/sandbox`)
