@@ -10,8 +10,8 @@ next-env.d.ts
 *.tsbuildinfo
 
 # env
-.env*.local
-.env
+.env*
+!.env.example
 
 # logs
 npm-debug.log*

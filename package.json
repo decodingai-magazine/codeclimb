@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 127.0.0.1",
+    "dev": "INNGEST_DEV=1 next dev -H 127.0.0.1",
     "dev:inngest": "npx --ignore-scripts=false --allow-scripts=inngest-cli inngest-cli@latest dev",
     "build": "next build",
     "start": "next start -H 127.0.0.1",

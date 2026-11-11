@@ -17,10 +17,10 @@ Run the Inngest Dev Server and the app in two terminals:
 npm run dev:inngest
 
 # Terminal 2: Next.js app (http://localhost:3000)
-INNGEST_DEV=1 npm run dev
+npm run dev
 ```
 
-- `INNGEST_DEV=1` puts the Inngest SDK in local mode. Without it, the v4 SDK runs in cloud mode and fails because it has no Inngest Cloud signing key. To skip the prefix, add `INNGEST_DEV=1` to `.env.local`.
+- `npm run dev` sets `INNGEST_DEV=1`, which puts the Inngest SDK in local mode. Without it, the v4 SDK runs in cloud mode, using the Inngest Cloud keys if `.env` has them. Never put `INNGEST_DEV` in `.env`, which cloud mode shares. `npm run start` does not set it.
 - The Dev Server reads `inngest.json`, which points it at `http://localhost:3000/api/inngest` and turns off auto-discovery.
 - `dev:inngest` passes both `--ignore-scripts=false` and `--allow-scripts=inngest-cli` to `npx`. The CLI downloads its binary in a postinstall script, and npm 12 needs `--allow-scripts` to run it.
 
@@ -78,7 +78,7 @@ Pi runs in the worker on the host, never in a sandbox, so credentials stay on th
 | OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | `openrouter/anthropic/claude-haiku-4.5` |
 
 - `/login` writes `~/.pi/agent/auth.json`. Set `CODECLIMB_PI_AUTH_PATH` to use another file.
-- Put env keys in `.env.local` (gitignored). `npm run worker`, `npm run run-night` and the smoke script load it, and variables already set in the shell win. Zen and Go share one `OPENCODE_API_KEY`.
+- Put env keys in `.env` (gitignored; `cp .env.example .env`), one file for local and cloud mode. `npm run worker`, `npm run run-night` and the smoke script load it, and variables already set in the shell win. Zen and Go share one `OPENCODE_API_KEY`.
 - The same model has different ids per provider: Copilot uses dots (`claude-haiku-5.5`), Anthropic and OpenCode use dashes (`claude-haiku-5-5`). `npx pi --list-models <search>` lists the ids of every provider that has credentials.
 - `reviewer_model` is compared to `model` as a string. `anthropic/claude-haiku-5-5` as the reviewer and `github-copilot/claude-haiku-5.5` as a coder pass validation, but they are the same model critiquing its own work.
 - `coder_thinking` (default `medium`) and `reviewer_thinking` (default `low`) set Pi's effort. A reviewer on a coder's exact model needs an explicit, different `reviewer_thinking`.
@@ -172,10 +172,10 @@ All output lands under `dirname(results_path)`:
 
 The same worker and CLI can use Inngest Cloud instead of the dev server, with Docker sandboxes on your machine or Inngest Sandboxes (`--sandbox inngest`). Local nights always run on Docker: `npm run run-night` turns a config's `sandbox: inngest` into Docker and says so. Results land in the same `runs/` folders.
 
-1. Put the production keys in `.env.cloud.local` (gitignored):
+1. Add the production keys to `.env`:
    - `INNGEST_EVENT_KEY`: create one under **Manage → Event Keys** in the Inngest dashboard.
    - `INNGEST_SIGNING_KEY`: under **Manage → Signing Key**.
-2. Use the `:cloud` scripts. They set `CODECLIMB_ENV=cloud`, which loads `.env.cloud.local` before `.env.local`:
+2. Use the `:cloud` scripts. They set `CODECLIMB_ENV=cloud`, which requires both keys and pins the proxy port:
 
 ```bash
 npm run worker:cloud                                                          # terminal 1: connect() worker on Inngest Cloud
@@ -185,6 +185,7 @@ npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --sandbox innges
 ```
 
 - Cloud mode refuses to start if a key is missing or if `INNGEST_DEV` is set, because the SDK would quietly use the dev server instead.
+- The other scripts that load `.env` through `codeclimb/env.ts` (`worker`, `run-night`, `lessons`, the smoke and sandbox scripts) default `INNGEST_DEV=1` without `CODECLIMB_ENV=cloud`, so the keys in the shared `.env` never switch them to Inngest Cloud.
 - Runs, traces and scores appear in the Inngest dashboard under the `codeclimb-worker` app.
 - The local and cloud workers can run at the same time, since each one only sees its own Inngest.
 - The worker runs the night, so the machine must stay on and online until it ends. On macOS the worker holds `caffeinate -i`, so the Mac doesn't idle-sleep (closing the lid still sleeps it). If the worker drops off, Inngest Cloud keeps the run and retries the step once it reconnects, and a coder resumes its Pi session. Its sandbox keeps running meanwhile, which counts against its hour.
