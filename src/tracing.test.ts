@@ -73,12 +73,10 @@ test("a root is its own trace with the night id; its spans nest under it; a span
 			const sb = tracedSandbox(fakeSandbox);
 			await sb.exec("ls");
 			await sb.writeFile("/a", "x");
-			programSpans([{ op: "predict", ms: 5 }, { op: "predict", ms: 7 }, { op: "load", ms: 1, warmup: true }], Date.now());
+			programSpans([{ op: "predict", ms: 5.25 }, { op: "predict", ms: 7.5 }, { op: "load", ms: 1, warmup: true }], Date.now());
 			return id;
 		});
 		assert.match(runId ?? "", /^[0-9a-f-]{36}$/);
-		await flushTracing();
-		await new Promise((r) => setTimeout(r, 200));
 		await flushTracing();
 
 		const posted = fake.seen.filter((s) => s.method === "POST" && s.path === "/runs").map((s) => s.body as Run);
@@ -97,6 +95,10 @@ test("a root is its own trace with the night id; its spans nest under it; a span
 			assert.equal(c.extra?.metadata?.night_id, "n", "children carry the root's metadata");
 		}
 		assert.equal(patched.length, posted.length, "every run is patched at its end");
+		for (const p of patched) {
+			const end = (p.body as { end_time?: unknown }).end_time;
+			assert.ok(typeof end !== "number" || Number.isInteger(end), `whole-millisecond end time, got ${String(end)}: the real API drops a batch with a fractional one`);
+		}
 
 		const metrics = { accuracy: 0.5, cost_usd: 0.01, zeta: 1, alpha: 2 };
 		assert.deepEqual(mirroredKeys(metrics, "accuracy", []), ["accuracy", "alpha", "cost_usd", "zeta"]);

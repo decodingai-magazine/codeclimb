@@ -54,9 +54,11 @@ class AlsContextManager implements ContextManager {
 	}
 }
 
-const ms = (t: TimeInput | undefined): number | undefined => (t === undefined ? undefined : t instanceof Date ? t.getTime() : Array.isArray(t) ? t[0] * 1000 + t[1] / 1e6 : t);
+/** Whole milliseconds: LangSmith answers 202 to a batch holding a fractional time, then drops the whole batch. */
+const ms = (t: TimeInput | undefined): number | undefined => (t === undefined ? undefined : Math.round(t instanceof Date ? t.getTime() : Array.isArray(t) ? t[0] * 1000 + t[1] / 1e6 : t));
 const hex = (uuid: string) => uuid.replaceAll("-", "");
-const runType = (name: string) => (name.startsWith("gen_ai.") ? "llm" : name.startsWith("tool.") ? "tool" : "chain");
+/** Run ends not yet sent, for `flushTracing`. */
+const pending = new Set<Promise<void>>();
 
 /** A span written as one LangSmith run: posted at start, patched at end. */
 class RunSpan implements Span {
@@ -130,16 +132,16 @@ class RunSpan implements Span {
 			if (this.attrs["gen_ai.response.model"] !== undefined) metadata.ls_model_name = this.attrs["gen_ai.response.model"];
 		}
 		const at = ms(endTime) ?? Date.now();
-		void this.posted
+		const done: Promise<void> = this.posted
 			.then(async () => {
 				await this.run.end(this.outputs(), this.error, at, metadata);
 				await this.run.patchRun();
 			})
-			.catch(() => {});
+			.catch(() => {})
+			.finally(() => pending.delete(done));
+		pending.add(done);
 	}
 }
-
-const DROPPED = () => trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
 
 class RunTreeTracer implements Tracer {
 	constructor(private readonly client: Client) {}
@@ -147,10 +149,10 @@ class RunTreeTracer implements Tracer {
 	startSpan(name: string, options: SpanOptions = {}, ctx: Context = context.active()): Span {
 		const parent = options.root ? undefined : trace.getSpan(ctx);
 		const start = ms(options.startTime) ?? Date.now();
-		const base = { name, run_type: runType(name), start_time: start, metadata: { ...options.attributes } };
+		const base = { name, run_type: name.startsWith("gen_ai.") ? "llm" : name.startsWith("tool.") ? "tool" : "chain", start_time: start, metadata: { ...options.attributes } };
 		if (parent instanceof RunSpan) return new RunSpan(parent.run.createChild(base));
 		// A span with no parent is written only as an explicit root: stray work opens no trace.
-		if (!options.root) return DROPPED();
+		if (!options.root) return trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
 		return new RunSpan(new RunTree({ ...base, project_name: projectName(), client: this.client, tracingEnabled: true }));
 	}
 
@@ -179,6 +181,7 @@ export function registerTracing(c?: Client): boolean {
 
 /** Wait until every queued run is sent (tests; the server sends in the background). */
 export async function flushTracing(): Promise<void> {
+	await Promise.all(pending);
 	await client?.awaitPendingTraceBatches();
 }
 

@@ -93,7 +93,7 @@ async function evaluateOnce(root: string, night: string, config: NightConfig, pa
 			...(await step(
 				`${spec.evalId}/evaluate${suffix}`,
 				(ctx) => withRoot(spec.evalId, { night_id: night, ...(spec.expId ? { exp_id: spec.expId } : {}) }, async (): Promise<EvalResult & { credit?: CreditStop }> => {
-					const r = await evaluateMetered(ctx.signal);
+					const r = await evaluateMetered(night, config, spec, req, ctx.signal);
 					// Never awaited: a feedback call that fails or hangs must not hold the step.
 					if (r.ok && spec.split === "dev" && spec.traceRun) void mirrorScores(spec.traceRun, spec.evalId, r.metrics, mirroredKeys(r.metrics, config.primary_metric, scenario.headline));
 					return r;
@@ -113,36 +113,38 @@ async function evaluateOnce(root: string, night: string, config: NightConfig, pa
 		return (Date.now() - t) / 1000;
 	})();
 	return { ...result, t_teardown: teardown };
+}
 
-	async function evaluateMetered(signal: AbortSignal): Promise<EvalResult & { credit?: CreditStop }> {
-					if (!config.allowed_models.length) return evaluate(sandboxes, req, signal);
-					const port = await proxyPort();
-					const checkMeterPath = () => ensureMeterPath(scenario.image, port);
-					await checkMeterPath();
-					// The first credit call ends the stage: the evaluation reports no score, and the night pauses.
-					let credit: CreditStop | undefined;
-					const stage = new AbortController();
-					const ledger = openLedger(night, {
-						id: spec.evalId,
-						allowedModels: config.allowed_models,
-						capUsd: spec.capUsd,
-						mock: spec.mock,
-						...(spec.noCache ? { noCache: true } : {}),
-						onCreditStop: (s) => {
-							credit ??= s;
-							stage.abort(new Error(`credit stop: ${s.message}`));
-						},
-					});
-					const creditResult = (): EvalResult & { credit: CreditStop } => ({ ok: false, metrics: {}, error: `credit stop: ${credit?.message}`, program_usd: ledger.spentUsd, t_provision: 0, t_eval: 0, instance: "", credit: credit as CreditStop });
-					try {
-						const r = await evaluate(sandboxes, { ...req, network: METER_NETWORK, meterEnv: meterEnv(ledger.token), ledgerCalls: () => closeLedger(ledger), checkMeterPath }, AbortSignal.any([signal, stage.signal]));
-						return credit ? creditResult() : r;
-					} catch (error) {
-						if (credit && !signal.aborted) return creditResult();
-						throw error;
-					} finally {
-						closeLedger(ledger);
-					}
+/** The evaluator run, through the metering proxy on a metered night; a credit stop ends it with no score. */
+async function evaluateMetered(night: string, config: NightConfig, spec: EvalSpec, req: EvalRequest, signal: AbortSignal): Promise<EvalResult & { credit?: CreditStop }> {
+	const scenario = config.scenario_spec;
+	if (!config.allowed_models.length) return evaluate(sandboxes, req, signal);
+	const port = await proxyPort();
+	const checkMeterPath = () => ensureMeterPath(scenario.image, port);
+	await checkMeterPath();
+	// The first credit call ends the stage: the evaluation reports no score, and the night pauses.
+	let credit: CreditStop | undefined;
+	const stage = new AbortController();
+	const ledger = openLedger(night, {
+		id: spec.evalId,
+		allowedModels: config.allowed_models,
+		capUsd: spec.capUsd,
+		mock: spec.mock,
+		...(spec.noCache ? { noCache: true } : {}),
+		onCreditStop: (s) => {
+			credit ??= s;
+			stage.abort(new Error(`credit stop: ${s.message}`));
+		},
+	});
+	const creditResult = (): EvalResult & { credit: CreditStop } => ({ ok: false, metrics: {}, error: `credit stop: ${credit?.message}`, program_usd: ledger.spentUsd, t_provision: 0, t_eval: 0, instance: "", credit: credit as CreditStop });
+	try {
+		const r = await evaluate(sandboxes, { ...req, network: METER_NETWORK, meterEnv: meterEnv(ledger.token), ledgerCalls: () => closeLedger(ledger), checkMeterPath }, AbortSignal.any([signal, stage.signal]));
+		return credit ? creditResult() : r;
+	} catch (error) {
+		if (credit && !signal.aborted) return creditResult();
+		throw error;
+	} finally {
+		closeLedger(ledger);
 	}
 }
 
