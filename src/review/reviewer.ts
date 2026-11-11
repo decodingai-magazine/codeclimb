@@ -11,6 +11,7 @@ import { mask, scanText } from "../night/scan.ts";
 import { writeFileAtomic } from "../night/memory.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
+import { traceSession } from "../spans.ts";
 import { trainProblem } from "../coder/sendback.ts";
 import { askForReview, CODER_PART_CHARS, parseReply, capItems, capRunLog, capText, DIFF_CHARS, type Review, SOURCE_CHARS } from "./evidence.ts";
 import { specFiles } from "../coder/prompt.ts";
@@ -227,6 +228,7 @@ export async function runReview(r: ReviewRequest, signal: AbortSignal): Promise<
 	let usd = 0;
 	let tokens = 0;
 	let credit: CreditStop | undefined;
+	const untrace = traceSession(session);
 	session.subscribe((ev) => {
 		if (ev.type === "message_end" && ev.message.role === "assistant") {
 			if (ev.message.stopReason === "error" && isCreditMessage(ev.message.errorMessage ?? "")) credit ??= { who: "reviewer", model: r.config.reviewer_model, message: ev.message.errorMessage ?? "" };
@@ -263,6 +265,7 @@ export async function runReview(r: ReviewRequest, signal: AbortSignal): Promise<
 		if (!signal.aborted && !credit && isCreditMessage(message)) credit = { who: "reviewer", model: r.config.reviewer_model, message };
 		if (!credit || signal.aborted) throw error;
 	} finally {
+		untrace();
 		signal.removeEventListener("abort", onAbort);
 		session.dispose();
 	}

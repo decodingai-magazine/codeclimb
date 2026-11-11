@@ -10,6 +10,7 @@ import { type CreditStop, isCreditMessage } from "../night/pause.ts";
 import { NonRetriableError } from "../runtime/step.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
+import { traceSession, tracedSandbox } from "../spans.ts";
 import type { Sandbox, SandboxBackend } from "../sandbox/types.ts";
 import { PARENT_BUNDLE, pullCommit } from "../sandbox/transfer.ts";
 import { coderPrompt, targetLines } from "./prompt.ts";
@@ -258,15 +259,17 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		const quiet = Date.now() - lastEvent;
 		if (quiet >= (toolsRunning > 0 ? IDLE_TOOL_MS : IDLE_QUIET_MS)) end("idle");
 	}, IDLE_CHECK_MS);
+	let untrace: (() => void) | undefined;
 	try {
 		session = await openSession({
 			model: await sessionModel(config.model, "coder", req.mock),
 			thinking: config.coder_thinking,
 			cwd: "/repo",
-			sandbox: sb,
+			sandbox: tracedSandbox(sb),
 			...(ledger ? { env: meterEnv(ledger.token) } : {}),
 			storage: { dir: sessionDir, ...(reopen ? { reopen } : {}) },
 		});
+		untrace = traceSession(session);
 		session.subscribe((e) => {
 			lastEvent = Date.now();
 			if (e.type === "tool_execution_start") toolsRunning++;
@@ -341,6 +344,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			}
 		}
 	} finally {
+		untrace?.();
 		clearTimeout(timer);
 		clearTimeout(reserveTimer);
 		clearInterval(idle);

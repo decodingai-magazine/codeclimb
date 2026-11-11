@@ -17,6 +17,7 @@ import type { Pauses } from "./pause.ts";
 import { existsSync } from "node:fs";
 import { type LoopState, softStop } from "../night/loop.ts";
 import { maskText, type Scanner } from "../night/scan.ts";
+import { withRoot } from "../spans.ts";
 
 export interface RoundState {
 	checkpoint: Checkpoint;
@@ -41,7 +42,7 @@ export interface RoundResult extends RoundState {
 async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState, mock: boolean, spentUsd: number, pauses: Pauses): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
 	const cp = s.checkpoint;
 	const evalId = noiseEvalId(cp.exp_id, round);
-	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, noCache: true, round, pauses });
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, noCache: true, round, pauses, expId: cp.exp_id });
 	const first = weightedScore(cp.metrics, config.thresholds, config.weights);
 	const second = e.ok ? weightedScore(e.metrics, config.thresholds, config.weights) : undefined;
 	const margin = e.ok ? aaMove(cp.metrics, e.metrics, config.thresholds, config.weights) : undefined;
@@ -103,7 +104,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 	for (let suffix = ""; ; ) {
 		review = null;
 		try {
-			review = await step(`${exp.expId}/review${suffix}`, (ctx) =>
+			review = await step(`${exp.expId}/review${suffix}`, (ctx) => withRoot(`${exp.expId}-review`, { night_id: night, exp_id: exp.expId }, () =>
 				runReview(
 					{
 						night,
@@ -131,7 +132,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 						...(s.direction ? { direction: s.direction } : {}),
 					},
 					ctx.signal,
-				),
+				)),
 			)();
 		} catch (error) {
 			rethrowControl(error);
@@ -187,7 +188,7 @@ export async function runRescore(root: string, night: string, config: NightConfi
 		await (await ExperimentRepo.open(paths.repo)).alias(expId, cp.commit);
 		return true;
 	})();
-	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-rescore`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, round, pauses });
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-rescore`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, round, pauses, expId: cp.exp_id });
 	const metrics = e.ok ? e.metrics : cp.metrics;
 	const checkpoint: Checkpoint = { exp_id: expId, commit: cp.commit, metrics };
 	await step(`${evalId}/record`, async () =>

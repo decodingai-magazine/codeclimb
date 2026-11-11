@@ -10,6 +10,9 @@ import { sandboxes } from "../night/sandboxes.ts";
 import { type NightJson, serverRoot } from "../night/types.ts";
 import { abortNight } from "../runtime/registry.ts";
 import { step } from "../runtime/step.ts";
+import { registerTracing } from "../tracing.ts";
+
+registerTracing();
 
 export interface StopInput {
 	night_id: string;

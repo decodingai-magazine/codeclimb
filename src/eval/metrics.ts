@@ -89,6 +89,13 @@ export interface LedgerCall {
 	cost_usd: number;
 	replayed_usd?: number;
 	rejected?: number;
+	/** For the metered-call spans. */
+	kind?: string;
+	model?: string;
+	input_tokens?: number;
+	output_tokens?: number;
+	ms?: number;
+	error?: string;
 }
 
 /** Cost metrics from a ledger's calls, refused calls excluded; all 0 without calls. A replayed call is priced as the call it stands for. */

@@ -6,6 +6,9 @@ import { lessonsOn, proposeLessons, writeProposal } from "../lessons.ts";
 import { scanText } from "../night/scan.ts";
 import { serverRoot } from "../night/types.ts";
 import { step } from "../runtime/step.ts";
+import { registerTracing } from "../tracing.ts";
+
+registerTracing();
 
 export const lessons = entrypoint("lessons", async (input: LessonsInput) => {
 	const { night_id: id, config } = input;

@@ -16,6 +16,9 @@ import { type RoundState, runRescore, runRound } from "./round.ts";
 import { mockCredit, mockOffline } from "../pi/models.ts";
 import { VARIATION_TIMEOUT_S } from "../night/pause.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
+import { registerTracing } from "../tracing.ts";
+
+registerTracing();
 
 export const night = entrypoint("night", async (input: NightInput) => {
 	const root = serverRoot();
@@ -73,7 +76,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const checkpoint: Checkpoint = state.checkpoint;
 		// After any soft stop: score the checkpoint on test, for the report only.
 		const testId = testEvalId(id, round);
-		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit, mock: input.mock, capUsd: config.budget_usd.night - loop.spentUsd, round, pauses });
+		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit, mock: input.mock, capUsd: config.budget_usd.night - loop.spentUsd, round, pauses, expId: checkpoint.exp_id });
 		await step(`${testId}/record`, async () => appendRow(paths.results, evaluationRow(id, config, "test", testId, round, checkpoint, test)))();
 		const done = await step("finish", () =>
 			finishNight(paths, {

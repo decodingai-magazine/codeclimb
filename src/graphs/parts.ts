@@ -19,6 +19,8 @@ import type { CreditStop } from "../night/pause.ts";
 import type { Pauses } from "./pause.ts";
 import { writeJson } from "../night/files.ts";
 import { addedLines, checkCommit, distinctNames, scanText } from "../night/scan.ts";
+import { withRoot } from "../spans.ts";
+import { mirroredKeys, mirrorScores } from "../tracing.ts";
 
 export interface EvalOutcome extends EvalResult {
 	/** A credit stop of this attempt: the night pauses and reruns the evaluation. */
@@ -41,6 +43,10 @@ export interface EvalSpec {
 	/** The round it runs in, for a pause. */
 	round: number;
 	pauses: Pauses;
+	/** The experiment it evaluates, for its trace root's metadata. */
+	expId?: string;
+	/** The experiment's trace root (a dev evaluation of an experiment): its scores are mirrored there as feedback. */
+	traceRun?: string;
 }
 
 /** An error that is a pause or an abort of the server run travels on; anything else becomes an outcome. */
@@ -86,8 +92,30 @@ async function evaluateOnce(root: string, night: string, config: NightConfig, pa
 			failed_out: false,
 			...(await step(
 				`${spec.evalId}/evaluate${suffix}`,
-				async (ctx): Promise<EvalResult & { credit?: CreditStop }> => {
-					if (!config.allowed_models.length) return evaluate(sandboxes, req, ctx.signal);
+				(ctx) => withRoot(spec.evalId, { night_id: night, ...(spec.expId ? { exp_id: spec.expId } : {}) }, async (): Promise<EvalResult & { credit?: CreditStop }> => {
+					const r = await evaluateMetered(ctx.signal);
+					// Never awaited: a feedback call that fails or hangs must not hold the step.
+					if (r.ok && spec.split === "dev" && spec.traceRun) void mirrorScores(spec.traceRun, spec.evalId, r.metrics, mirroredKeys(r.metrics, config.primary_metric, scenario.headline));
+					return r;
+				}),
+				{ backstopMin, live: { id: spec.evalId, night } },
+			)()),
+		};
+	} catch (error) {
+		rethrowControl(error);
+		const message = error instanceof Error ? error.message : String(error);
+		result = { ok: false, metrics: {}, error: message.slice(-2000), program_usd: 0, t_provision: 0, t_eval: 0, instance: "", failed_out: true };
+	}
+	const teardown = await step(`${spec.evalId}/destroy${suffix}`, async () => {
+		const t = Date.now();
+		const sb = await sandboxes.find(sandboxName);
+		await sb?.destroy();
+		return (Date.now() - t) / 1000;
+	})();
+	return { ...result, t_teardown: teardown };
+
+	async function evaluateMetered(signal: AbortSignal): Promise<EvalResult & { credit?: CreditStop }> {
+					if (!config.allowed_models.length) return evaluate(sandboxes, req, signal);
 					const port = await proxyPort();
 					const checkMeterPath = () => ensureMeterPath(scenario.image, port);
 					await checkMeterPath();
@@ -107,30 +135,15 @@ async function evaluateOnce(root: string, night: string, config: NightConfig, pa
 					});
 					const creditResult = (): EvalResult & { credit: CreditStop } => ({ ok: false, metrics: {}, error: `credit stop: ${credit?.message}`, program_usd: ledger.spentUsd, t_provision: 0, t_eval: 0, instance: "", credit: credit as CreditStop });
 					try {
-						const r = await evaluate(sandboxes, { ...req, network: METER_NETWORK, meterEnv: meterEnv(ledger.token), ledgerCalls: () => closeLedger(ledger), checkMeterPath }, AbortSignal.any([ctx.signal, stage.signal]));
+						const r = await evaluate(sandboxes, { ...req, network: METER_NETWORK, meterEnv: meterEnv(ledger.token), ledgerCalls: () => closeLedger(ledger), checkMeterPath }, AbortSignal.any([signal, stage.signal]));
 						return credit ? creditResult() : r;
 					} catch (error) {
-						if (credit && !ctx.signal.aborted) return creditResult();
+						if (credit && !signal.aborted) return creditResult();
 						throw error;
 					} finally {
 						closeLedger(ledger);
 					}
-				},
-				{ backstopMin, live: { id: spec.evalId, night } },
-			)()),
-		};
-	} catch (error) {
-		rethrowControl(error);
-		const message = error instanceof Error ? error.message : String(error);
-		result = { ok: false, metrics: {}, error: message.slice(-2000), program_usd: 0, t_provision: 0, t_eval: 0, instance: "", failed_out: true };
 	}
-	const teardown = await step(`${spec.evalId}/destroy${suffix}`, async () => {
-		const t = Date.now();
-		const sb = await sandboxes.find(sandboxName);
-		await sb?.destroy();
-		return (Date.now() - t) / 1000;
-	})();
-	return { ...result, t_teardown: teardown };
 }
 
 export interface ExperimentSpec {
@@ -169,7 +182,7 @@ export interface ExperimentOutcome {
 }
 
 /** A coder's result, with its tree compared to the commit its sandbox started from and to the checkpoint. */
-export type Coded = CodeResult & { unchanged: boolean; differs: boolean };
+export type Coded = CodeResult & { unchanged: boolean; differs: boolean; trace_run?: string };
 
 interface Checked {
 	errors: string[];
@@ -197,7 +210,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		try {
 			code = await step(
 				`${expId}/code${suffix}`,
-				async (ctx): Promise<Coded> => {
+				(ctx) => withRoot(expId, { night_id: night, exp_id: expId }, async (traceRun): Promise<Coded> => {
 					const result = await runCoder(
 						sandboxes,
 						{
@@ -221,8 +234,8 @@ export async function runExperiment(root: string, night: string, config: NightCo
 					);
 					const repo = await ExperimentRepo.open(paths.repo);
 					const tree = await repo.treeOf(result.commit);
-					return { ...result, unchanged: tree === (await repo.treeOf(startSha)), differs: tree !== (await repo.treeOf(checkpoint.commit)) };
-				},
+					return { ...result, unchanged: tree === (await repo.treeOf(startSha)), differs: tree !== (await repo.treeOf(checkpoint.commit)), ...(traceRun ? { trace_run: traceRun } : {}) };
+				}),
 				{ backstopMin: config.timeouts.experiment_min * 3 + 30, live: { id: expId, night } },
 			)();
 		} catch (error) {
@@ -265,7 +278,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 
 	let evaluation: EvalOutcome | null = null;
 	if (code && !code.unchanged && !blocked) {
-		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval${repair ? "1" : ""}`, split: "dev", commit: code.commit, mock: spec.mock, capUsd: config.budget_usd.night - spec.spentUsd - code.coderUsd - code.devUsd, round: spec.round, pauses: spec.pauses });
+		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval${repair ? "1" : ""}`, split: "dev", commit: code.commit, mock: spec.mock, capUsd: config.budget_usd.night - spec.spentUsd - code.coderUsd - code.devUsd, round: spec.round, pauses: spec.pauses, expId, ...(code.trace_run ? { traceRun: code.trace_run } : {}) });
 	}
 	const fired = evaluation?.ok ? guardrails(evaluation.metrics, config.gates, checked.heldOut) : [];
 	const { outcome, repairable } = outcomeOf(

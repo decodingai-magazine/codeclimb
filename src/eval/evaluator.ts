@@ -8,6 +8,7 @@ import { ExperimentRepo } from "../experiments.ts";
 import { fillPlaceholders, runHostCommand, tail } from "../hostcmd.ts";
 import type { SandboxBackend, Sandbox } from "../sandbox/types.ts";
 import { pushCommit } from "../sandbox/transfer.ts";
+import { meterSpans, programSpans, tracedSandbox } from "../spans.ts";
 import { costMetrics, flattenReport, type LedgerCall, latencyMetrics, type Metrics, parseTimings, type Timing } from "./metrics.ts";
 
 export interface EvalRequest {
@@ -82,6 +83,7 @@ export async function evaluate(backend: SandboxBackend, req: EvalRequest, signal
 	const t0 = Date.now();
 	let sb = await backend.find(req.sandboxName);
 	if (!sb) sb = await backend.create({ name: req.sandboxName, image: req.image, labels: { night: req.night, run: req.evalId }, ...(req.network ? { network: req.network } : {}) });
+	sb = tracedSandbox(sb);
 	await must(sb, RESET, "reset", RESET_TIMEOUT_MS, signal);
 	await pushCommit(sb, await ExperimentRepo.open(req.repoDir), req.commit);
 	const tProvision = (Date.now() - t0) / 1000;
@@ -93,6 +95,8 @@ export async function evaluate(backend: SandboxBackend, req: EvalRequest, signal
 	const finish = (ok: boolean, error?: string): EvalResult => {
 		const calls = req.ledgerCalls?.() ?? [];
 		Object.assign(metrics, latencyMetrics(timings), costMetrics(calls, items));
+		programSpans(timings, t1);
+		meterSpans(calls, t1);
 		const programUsd = calls.reduce((a, c) => a + c.cost_usd, 0);
 		const okNow = ok && typeof metrics[req.primary] === "number";
 		const result: EvalResult = { ok: okNow, metrics, program_usd: programUsd, t_provision: tProvision, t_eval: (Date.now() - t1) / 1000, instance: (sb as Sandbox).instanceId };
