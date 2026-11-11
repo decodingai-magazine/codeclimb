@@ -5,13 +5,13 @@
 - LangChain ecosystem (TypeScript); Full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
     - Use the TypeScript pages, not the Python ones: the two APIs differ (Python's `retry_policy` is `retry` on a JS task)
     - LangGraph JS (`@langchain/langgraph`): graphs, durable execution, checkpoints, interrupts
-    - Agent Server: `npm run dev` (`langgraphjs dev`) serves the graphs in `langgraph.json` at http://127.0.0.1:2024
-    - LangSmith (`langsmith`): tracing, feedback, Sandboxes (`langsmith/sandbox`)
+    - Agent Server: `npm run server` (`langgraphjs dev`, no hot reload: restart it after a code change) serves the graphs in `langgraph.json` at http://127.0.0.1:2024
+    - LangSmith (`langsmith`): tracing and feedback only; sandboxes are local Docker (docs/adr/0004)
 - Pi agent; Full docs: https://github.com/earendil-works/pi
 
 ## LangGraph debugging
 
-With `npm run dev` running, use the local Agent Server REST API:
+With `npm run server` running, use the local Agent Server REST API:
 
 - Health: `curl -s http://127.0.0.1:2024/ok`
 - Run a graph and wait: `curl -s -X POST http://127.0.0.1:2024/runs/wait -H 'content-type: application/json' -d '{"assistant_id":"<graph>","input":{...}}'`
@@ -20,7 +20,7 @@ With `npm run dev` running, use the local Agent Server REST API:
 - Runs on a thread: `curl -s http://127.0.0.1:2024/threads/<thread_id>/runs`
 
 Output is JSON. Use jq to filter.
-Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (link printed by `npm run dev`).
+Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (link printed by `npm run server`).
 If access is denied, ask the user to review the session's permissions.
 
 ## Conversational Style
