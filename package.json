@@ -10,7 +10,9 @@
     "build:image:graphrag": "npm run build:image && docker build -t codeclimb-graphrag -f docker/graphrag.Dockerfile scenarios/graphrag",
     "build:dataset": "python3 scenarios/datenorm/scripts/build_dataset.py --out scenarios/datenorm/gold",
     "build:dataset:hard": "python3 scenarios/datenorm-hard/scripts/build_dataset.py --out scenarios/datenorm-hard/gold",
-    "build:scenario:overfit": "python3 scenarios/datenorm/scripts/build_overfit.py --out runs/e2e/scenarios/datenorm-overfit"
+    "build:scenario:overfit": "python3 scenarios/datenorm/scripts/build_overfit.py --out runs/e2e/scenarios/datenorm-overfit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "run-night": "tsx src/cli/run-night.ts"
   },
   "dependencies": {
     "@langchain/core": "1.3.7",

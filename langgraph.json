@@ -1,7 +1,9 @@
 {
   "node_version": "24",
   "graphs": {
-    "hello": "./src/hello.ts:graph"
+    "night": "./src/graphs/night.ts:night",
+    "stop": "./src/graphs/stop.ts:stop",
+    "lessons": "./src/graphs/lessons.ts:lessons"
   },
   "env": ".env"
 }
