@@ -60,7 +60,7 @@ The Dev Server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` for listin
 
 CodeClimb is an optimization loop. Pi coding agents write a program inside sandboxes, and the loop keeps the best change each round until the program meets evaluation thresholds. This iteration has a few limits:
 
-- It runs on your machine in two modes: the **local Inngest dev server** with **Docker sandboxes**, or **Inngest Cloud** with **Inngest Sandboxes** (see [Run on Inngest Cloud](#run-on-inngest-cloud)). Inngest Cloud keeps a night durable, and the sandboxes run the coders' commands and the evaluations. [docs/cloud-migration.md](docs/cloud-migration.md) tracks the migration.
+- It runs on your machine in two modes: the **local Inngest dev server** with **Docker sandboxes**, or **Inngest Cloud** with **Inngest Sandboxes** (see [Run on Inngest Cloud](#run-on-inngest-cloud)). Inngest Cloud keeps a night durable, and the sandboxes run the coders' commands and the evaluations.
 - It's headless: the worker's API is the interface, and the Next.js app is one client of it (see [The app](#the-app-watch-stop-export)).
 - The coders and the reviewer are **models driven by Pi**: GitHub Copilot, Anthropic (API key), OpenCode Zen or OpenCode Go. The bundled configs use Copilot Haiku.
 - It uses small built-in scenarios: `datenorm`, which normalizes messy date strings to ISO dates, and `capitals`, whose program calls a model, to exercise cost metering.
