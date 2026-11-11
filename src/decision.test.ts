@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { aaMove, decide, guardrails, marginFor, noiseDue, weightedScore } from "./decision.ts";
+import { aaMove, type AttemptFacts, decide, guardrails, marginFor, noiseDue, outcomeOf, weightedScore } from "./decision.ts";
 
 const thresholds = { a: 0.8, b: 0.5 };
 const weights = { a: 3, b: 1 };
@@ -95,4 +95,30 @@ test("A/A due: a checkpoint with metrics, no noise yet or a remeasure on a new k
 	assert.equal(noiseDue({ runs: 1, measured: true, remeasureOn: "cp" }, "cp", true, undefined), false); // same checkpoint
 	assert.equal(noiseDue({ runs: 1, measured: true, remeasureOn: "cp" }, "cp2", true, undefined), true); // the next kept one
 	assert.equal(noiseDue({ runs: 2, measured: false, remeasureOn: null }, "cp", true, undefined), false);
+});
+
+const attempt = (over: Partial<AttemptFacts> = {}): AttemptFacts => ({ committed: true, unchanged: false, checkErrors: false, checkFailed: false, evaluation: { ok: true, failedOut: false, metrics: { f1: 0.5 } }, guardrails: [], ...over });
+
+test("repair: check errors or a failed evaluation are repairable; out of retries, a crashed check, unchanged or scored are not", () => {
+	const cp = { f1: 0.4 };
+	assert.deepEqual(outcomeOf(attempt({ checkErrors: true, evaluation: null }), cp), { outcome: { kind: "not_scored" }, repairable: true });
+	assert.equal(outcomeOf(attempt({ evaluation: { ok: false, failedOut: false, metrics: {} } }), cp).repairable, true);
+	assert.equal(outcomeOf(attempt({ evaluation: { ok: false, failedOut: true, metrics: {} } }), cp).repairable, false);
+	assert.equal(outcomeOf(attempt({ checkFailed: true, evaluation: null }), cp).repairable, false);
+	assert.equal(outcomeOf(attempt({ committed: false, evaluation: null }), cp).repairable, false);
+	assert.deepEqual(outcomeOf(attempt(), cp), { outcome: { kind: "scored", metrics: { f1: 0.5 }, guardrails: [] }, repairable: false });
+});
+
+test("repair: an e1 equal to its failed e0 is a revert, unchanged, with the checkpoint's metrics", () => {
+	const cp = { f1: 0.4 };
+	const { outcome } = outcomeOf(attempt({ unchanged: true, evaluation: null }), cp);
+	const d = decide({ outcome, primary: "f1", thresholds: { f1: 1 }, weights: { f1: 1 }, checkpointScore: 0.4, margin: 0, aaBase: 0, scaleByReplay: false });
+	assert.equal(d.decision, "revert");
+	assert.equal(d.unchanged, true);
+	assert.deepEqual(d.metrics, cp);
+});
+
+test("held-out names: one is only a note, two block the keep", () => {
+	assert.deepEqual(guardrails({}, {}, 1), []);
+	assert.equal(guardrails({}, {}, 2).length, 1);
 });

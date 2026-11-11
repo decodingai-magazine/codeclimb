@@ -10,13 +10,15 @@ import { closeLedger, openLedger, proxyPort } from "../meter/proxy.ts";
 import { ensureMeterPath, METER_NETWORK, meterEnv } from "../meter/relay.ts";
 import { type CodeResult, runCoder } from "../coder/coder.ts";
 import { checkpointScore } from "../coder/prompt.ts";
-import { type Decision, decide, guardrails, marginFor, type Outcome } from "../decision.ts";
+import { type Decision, decide, guardrails, marginFor, outcomeOf } from "../decision.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { devEvalId, experimentId, sandboxPrefix } from "../ids.ts";
 import type { Checkpoint, ExperimentFacts } from "../night/rows.ts";
 import { buildTrajectory, type HistoryEntry } from "../night/memory.ts";
 import type { CreditStop } from "../night/pause.ts";
 import type { Pauses } from "./pause.ts";
+import { writeJson } from "../night/files.ts";
+import { addedLines, checkCommit, distinctNames, scanText } from "../night/scan.ts";
 
 export interface EvalOutcome extends EvalResult {
 	/** A credit stop of this attempt: the night pauses and reruns the evaluation. */
@@ -134,38 +136,56 @@ async function evaluateOnce(root: string, night: string, config: NightConfig, pa
 export interface ExperimentSpec {
 	round: number;
 	checkpoint: Checkpoint;
-	/** The reviewer's hypothesis for the round; none in round 1. */
+	/** The reviewer's hypothesis for the round; none in round 1. A repair keeps its failed attempt's. */
 	hypothesis: string | null;
 	mock: boolean;
 	/** The history lines so far, for the trajectory. */
 	history: HistoryEntry[];
-	/** The last experiment's errors, when it was never scored. */
+	/** The last experiment's masked errors, when it was never scored; for a repair, its own. */
 	failures?: string;
 	/** The noise margin's base: `fixed`, else the A/A move, else 0. */
 	aaBase: number;
 	/** The night's spend so far. */
 	spentUsd: number;
 	pauses: Pauses;
+	/** A repair `e1`: it starts from the failed commit, and its leak scan covers what it adds over it. */
+	repairOf?: { commit: string };
 }
 
 export interface ExperimentOutcome {
 	expId: string;
 	evalId: string;
-	code: (CodeResult & { unchanged: boolean }) | null;
+	code: Coded | null;
 	evaluation: EvalOutcome | null;
 	guardrails: string[];
 	decision: Decision;
 	facts: ExperimentFacts;
 	/** The errors when it was never scored. */
 	errors?: string;
+	/** It has a commit, changed files, and `check` errors or a failed evaluation that was not out of retries. */
+	repairable: boolean;
 }
 
-/** One experiment: code, teardown, dev evaluation unless unchanged or uncommitted, decide (spec: Round loop). */
+/** A coder's result, with its tree compared to the commit its sandbox started from and to the checkpoint. */
+export type Coded = CodeResult & { unchanged: boolean; differs: boolean };
+
+interface Checked {
+	errors: string[];
+	notes: string[];
+	/** Distinct held-out names in the commit's added lines. */
+	heldOut: number;
+	/** The check command itself failed: an error with no repair. */
+	failed?: string;
+}
+
+/** One experiment: code, teardown, check and leak scan, dev evaluation unless unchanged or blocked, decide (spec: Round loop). */
 export async function runExperiment(root: string, night: string, config: NightConfig, paths: NightPaths, spec: ExperimentSpec): Promise<ExperimentOutcome> {
-	const expId = experimentId(night, spec.round);
+	const repair = spec.repairOf !== undefined;
+	const expId = experimentId(night, spec.round, repair);
 	const evalId = devEvalId(expId);
 	const { checkpoint } = spec;
-	type Coded = CodeResult & { unchanged: boolean };
+	const startSha = spec.repairOf?.commit ?? checkpoint.commit;
+	const scenarioDir = join(root, config.scenario);
 	let code: Coded | null = null;
 	let codeError: string | undefined;
 	let coderTeardown = 0;
@@ -183,6 +203,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 							expId,
 							round: spec.round,
 							parentSha: checkpoint.commit,
+							...(repair ? { startSha, repair: true } : {}),
 							repoDir: paths.repo,
 							bundleDir: paths.bundle,
 							expDir: join(paths.nightDir, "exps", expId),
@@ -196,7 +217,8 @@ export async function runExperiment(root: string, night: string, config: NightCo
 						ctx.signal,
 					);
 					const repo = await ExperimentRepo.open(paths.repo);
-					return { ...result, unchanged: (await repo.treeOf(result.commit)) === (await repo.treeOf(checkpoint.commit)) };
+					const tree = await repo.treeOf(result.commit);
+					return { ...result, unchanged: tree === (await repo.treeOf(startSha)), differs: tree !== (await repo.treeOf(checkpoint.commit)) };
 				},
 				{ backstopMin: config.timeouts.experiment_min * 3 + 30, live: { id: expId, night } },
 			)();
@@ -214,18 +236,46 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		suffix = await spec.pauses.pause(spec.round, `the experiment ${expId} of round ${spec.round}`, code.credit);
 	}
 
-	let evaluation: EvalOutcome | null = null;
+	// Check and leak scan, on the host: skipped with no commit or with unchanged files.
+	let checked: Checked = { errors: [], notes: [], heldOut: 0 };
 	if (code && !code.unchanged) {
-		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval`, split: "dev", commit: code.commit, mock: spec.mock, capUsd: config.budget_usd.night - spec.spentUsd - code.coderUsd - code.devUsd, round: spec.round, pauses: spec.pauses });
+		const commit = code.commit;
+		checked = await step(`${expId}/check`, async (ctx): Promise<Checked> => {
+			const repo = await ExperimentRepo.open(paths.repo);
+			const scenario = config.scenario_spec;
+			let report: Checked = { errors: [], notes: [], heldOut: 0 };
+			if (scenario.check) {
+				try {
+					report = { ...(await checkCommit(scenarioDir, scenario.check, repo, commit, ctx.signal)), heldOut: 0 };
+				} catch (error) {
+					if (ctx.signal.aborted) throw error;
+					report = { errors: [], notes: [], heldOut: 0, failed: `the check failed: ${error instanceof Error ? error.message : String(error)}` };
+				}
+			}
+			const found = await scanText({ scenarioDir, ...(scenario.scan ? { scan: scenario.scan } : {}), signal: ctx.signal }, await addedLines(repo, startSha, commit));
+			report.heldOut = distinctNames(found);
+			if (scenario.check || scenario.scan) writeJson(join(paths.nightDir, "exps", expId, "check.json"), { errors: report.errors, notes: report.notes, held_out_names: report.heldOut, ...(report.failed ? { failed: report.failed } : {}) });
+			return report;
+		})();
 	}
-	const fired = evaluation?.ok ? guardrails(evaluation.metrics, config.gates, 0) : [];
-	const outcome: Outcome = !code
-		? { kind: "failed" }
-		: code.unchanged
-			? { kind: "unchanged", checkpointMetrics: checkpoint.metrics }
-			: !evaluation?.ok
-				? { kind: "not_scored" }
-				: { kind: "scored", metrics: evaluation.metrics, guardrails: fired };
+	const blocked = checked.errors.length > 0 || checked.failed !== undefined;
+
+	let evaluation: EvalOutcome | null = null;
+	if (code && !code.unchanged && !blocked) {
+		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval${repair ? "1" : ""}`, split: "dev", commit: code.commit, mock: spec.mock, capUsd: config.budget_usd.night - spec.spentUsd - code.coderUsd - code.devUsd, round: spec.round, pauses: spec.pauses });
+	}
+	const fired = evaluation?.ok ? guardrails(evaluation.metrics, config.gates, checked.heldOut) : [];
+	const { outcome, repairable } = outcomeOf(
+		{
+			committed: code !== null,
+			unchanged: code?.unchanged === true,
+			checkErrors: checked.errors.length > 0,
+			checkFailed: checked.failed !== undefined,
+			evaluation: evaluation && { ok: evaluation.ok, failedOut: evaluation.failed_out, metrics: evaluation.metrics },
+			guardrails: fired,
+		},
+		checkpoint.metrics,
+	);
 	const decision = decide({
 		outcome,
 		primary: config.primary_metric,
@@ -255,6 +305,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		infraErrors: (code?.infraErrors ?? 0) + (evaluation?.failed_out ? 1 : 0),
 		...(evaluation?.instance ? { instance: evaluation.instance } : {}),
 	};
-	const errors = !code ? codeError : evaluation && !evaluation.ok ? evaluation.error : undefined;
-	return { expId, evalId, code, evaluation, guardrails: fired, decision, facts, ...(errors ? { errors } : {}) };
+	const checkErrors = checked.failed ?? (checked.errors.length ? `check errors:\n${checked.errors.map((e) => `- ${e}`).join("\n")}` : undefined);
+	const errors = !code ? codeError : (checkErrors ?? (evaluation && !evaluation.ok ? evaluation.error : undefined));
+	return { expId, evalId, code, evaluation, guardrails: fired, decision, facts, repairable, ...(errors ? { errors } : {}) };
 }

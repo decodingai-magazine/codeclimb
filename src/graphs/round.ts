@@ -13,6 +13,9 @@ import { aaMove, type NoiseState, noiseDue, weightedScore } from "../decision.ts
 import { noiseEvalId, sandboxPrefix } from "../ids.ts";
 import { writeJson } from "../night/files.ts";
 import type { Pauses } from "./pause.ts";
+import { existsSync } from "node:fs";
+import { type LoopState, softStop } from "../night/loop.ts";
+import { maskText, type Scanner } from "../night/scan.ts";
 
 export interface RoundState {
 	checkpoint: Checkpoint;
@@ -55,7 +58,10 @@ async function runNoise(root: string, night: string, config: NightConfig, paths:
 	return { noise, spendUsd: e.program_usd };
 }
 
-export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState, spentUsd: number, pauses: Pauses): Promise<RoundResult> {
+export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState, loop: LoopState, pauses: Pauses): Promise<RoundResult> {
+	const spentUsd = loop.spentUsd;
+	const scenarioDir = join(root, config.scenario);
+	const scanner = (signal: AbortSignal): Scanner => ({ scenarioDir, ...(config.scenario_spec.scan ? { scan: config.scenario_spec.scan } : {}), signal });
 	let s = s0;
 	let noiseUsd = 0;
 	if (noiseDue(s.noise, s.checkpoint.exp_id, Object.keys(s.checkpoint.metrics).length > 0, config.noise_margin.fixed)) {
@@ -63,17 +69,28 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		s = { ...s, noise: n.noise };
 		noiseUsd = n.spendUsd;
 	}
-	const exp = await runExperiment(root, night, config, paths, {
-		aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0,
-		spentUsd: spentUsd + noiseUsd,
-		round,
-		pauses,
-		checkpoint: s.checkpoint,
-		hypothesis: s.guidance.hypothesis,
-		mock,
-		history: s.history,
-		...(s.failures ? { failures: s.failures } : {}),
-	});
+	const base = { aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0, round, pauses, checkpoint: s.checkpoint, mock, history: s.history };
+	const e0 = await runExperiment(root, night, config, paths, { ...base, spentUsd: spentUsd + noiseUsd, hypothesis: s.guidance.hypothesis, ...(s.failures ? { failures: s.failures } : {}) });
+	let exp = e0;
+	let repaired: { usd: number; tokens: number; programUsd: number } | null = null;
+	// Repair: one per round, for a commit that failed before it was scored, if a stop check passes with its spend added.
+	if (e0.repairable && e0.code) {
+		const failedCode = e0.code;
+		const usd0 = e0.facts.coderUsd + e0.facts.devUsd + e0.facts.programUsd;
+		const allowed = await step(`${e0.expId}/repair-check`, async () => !existsSync(paths.stopJson) && softStop(config, { ...loop, spentUsd: spentUsd + noiseUsd + usd0, tokens: loop.tokens + e0.facts.tokens }, round, Date.now(), pauses.deadlineMs) === null)();
+		if (allowed) {
+			// The failed attempt keeps its row (no review of its own) and its note, both written before `e1` starts.
+			const failed = await step(`${e0.expId}/failed`, async (ctx) => {
+				appendRow(paths.results, { ...experimentRow(night, config, e0.facts), reviewer_usd: 0, t_review: 0 });
+				const sc = scanner(ctx.signal);
+				writeFileAtomic(notePath(paths.bundle, round, 0), await maskText(sc, noteText(round, 0, e0.decision.decision, e0.decision.reason, failedCode.notes, null)));
+				return { failures: await maskText(sc, e0.errors ?? ""), hypothesis: e0.facts.hypothesis === null ? null : await maskText(sc, e0.facts.hypothesis) };
+			})();
+			repaired = { usd: usd0, tokens: e0.facts.tokens, programUsd: e0.facts.programUsd };
+			exp = await runExperiment(root, night, config, paths, { ...base, spentUsd: spentUsd + noiseUsd + usd0, hypothesis: failed.hypothesis, failures: failed.failures, repairOf: { commit: failedCode.commit } });
+		}
+	}
+	const attempt = exp === e0 ? 0 : 1;
 	const { facts, decision } = exp;
 
 	// Review: always, also of a revert; a failed review keeps the last guidance and never ends the night.
@@ -122,32 +139,35 @@ export async function runRound(root: string, night: string, config: NightConfig,
 	}
 	const reviewerUsd = (review?.reviewer_usd ?? 0) + pausedReviewUsd;
 	const tokens = facts.tokens + (review?.tokens ?? 0);
+	const roundTokens = tokens + (repaired?.tokens ?? 0);
 
 	const row = { ...experimentRow(night, config, facts), reviewer_usd: reviewerUsd, t_review: review?.t_review ?? 0, tokens };
 	row.wall_s += row.t_review;
 	await step(`${exp.expId}/record`, async () => appendRow(paths.results, row))();
 
-	// Learn, in order: log entry and history line (state), the note, the rejected diff, the next guidance.
+	// Learn, in order: log entry and history line (state), the note, the rejected diff, the next guidance; everything a coder reads is masked.
 	const line = historyLine(round, facts.hypothesis, movesText(config, s.checkpoint.metrics, decision), decision, exp.errors);
-	const changedCode = exp.code !== null && !exp.code.unchanged;
-	await step(`${exp.expId}/learn`, async () => {
-		writeFileAtomic(notePath(paths.bundle, round, 0), noteText(round, 0, decision.decision, decision.reason, exp.code?.notes ?? "", review?.review?.verdict ?? ""));
-		if (decision.decision !== "keep" && changedCode && exp.code) {
+	const code = exp.code;
+	const learned = await step(`${exp.expId}/learn`, async (ctx) => {
+		const sc = scanner(ctx.signal);
+		writeFileAtomic(notePath(paths.bundle, round, attempt), await maskText(sc, noteText(round, attempt, decision.decision, decision.reason, code?.notes ?? "", review?.review?.verdict ?? "")));
+		// The rejected diff compares with the checkpoint: an `e1` equal to `e0` still changed code.
+		if (decision.decision !== "keep" && code?.differs) {
 			const repo = await ExperimentRepo.open(paths.repo);
-			writeFileAtomic(rejectedDiffPath(paths.bundle, round), `${await repo.diff(s.checkpoint.commit, exp.code.commit)}\n`);
+			writeFileAtomic(rejectedDiffPath(paths.bundle, round), await maskText(sc, `${await repo.diff(s.checkpoint.commit, code.commit)}\n`));
 		}
-		return true;
+		return { line: await maskText(sc, line), failures: exp.errors ? await maskText(sc, exp.errors) : null };
 	})();
 	const kept = decision.decision === "keep";
 	return {
 		checkpoint: kept ? { exp_id: exp.expId, commit: facts.commit, metrics: decision.metrics } : s.checkpoint,
 		guidance: nextGuidance(s.guidance, review?.review ?? null),
-		history: [...s.history, { round, line }],
+		history: [...s.history, { round, line: learned.line }],
 		noise: s.noise,
-		...(decision.score === undefined && !decision.unchanged && exp.errors ? { failures: exp.errors } : {}),
+		...(decision.score === undefined && !decision.unchanged && learned.failures ? { failures: learned.failures } : {}),
 		kept,
-		spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd + reviewerUsd + noiseUsd,
-		tokens,
-		maxEvalUsd: Math.max(noiseUsd, facts.programUsd),
+		spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd + reviewerUsd + noiseUsd + (repaired?.usd ?? 0),
+		tokens: roundTokens,
+		maxEvalUsd: Math.max(noiseUsd, facts.programUsd, repaired?.programUsd ?? 0),
 	};
 }

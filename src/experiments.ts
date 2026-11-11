@@ -83,6 +83,19 @@ export class ExperimentRepo {
 		}
 	}
 
+	/** Write the files of `sha` to `dir`, through a temporary index (the bare repository's own is untouched). */
+	async exportTree(sha: string, dir: string): Promise<void> {
+		mkdirSync(dir, { recursive: true });
+		const tmp = mkdtempSync(join(tmpdir(), "cc-index-"));
+		try {
+			const env = { GIT_INDEX_FILE: join(tmp, "index"), GIT_WORK_TREE: resolve(dir) };
+			await this.g(["read-tree", sha], env);
+			await this.g(["checkout-index", "--all"], env);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	}
+
 	/** Import the `main` branch of a git bundle file as refs/exp/<id>; returns its SHA. */
 	async importBundle(file: string, id: string, ref = "main"): Promise<string> {
 		await this.g(["fetch", "--quiet", "--force", file, `${ref}:refs/exp/${id}`]);

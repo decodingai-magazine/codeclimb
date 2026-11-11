@@ -49,6 +49,8 @@ export interface CodeRequest {
 	failures?: string;
 	/** A repair attempt: no send-backs, no wrap-up turn. */
 	repair?: boolean;
+	/** The commit the sandbox starts from when it is not the parent: a repair starts from the failed commit. */
+	startSha?: string;
 }
 
 export interface CodeResult {
@@ -152,7 +154,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	let live: Sandbox | null = null;
 	let reopen: string | undefined;
 	/** The commit the sandbox starts from: the parent, or the paused commit after a pause. */
-	let startSha = req.parentSha;
+	let startSha = req.startSha ?? req.parentSha;
 	const sessionFile = () => readdirSync(sessionDir).filter((n) => n.endsWith(".jsonl")).sort().pop();
 	if (pausedAt) {
 		// After a pause, once: a new sandbox from the paused commit, the same session, the clock set so the pause doesn't count.
@@ -289,6 +291,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			trajectory: req.trajectory ?? "",
 			rejectedDiffs: rejectedDiffs(req.bundleDir),
 			...(req.failures ? { failures: req.failures } : {}),
+			...(req.repair ? { repair: true } : {}),
 		});
 		if (!signal.aborted) await session.prompt(reopen ? RESTART_PROMPT : prompt);
 		const hasTrain = existsSync(join(req.bundleDir, "train"));

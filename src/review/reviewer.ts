@@ -7,11 +7,12 @@ import type { Decision } from "../decision.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { readJson, writeJson } from "../night/files.ts";
 import { type CreditStop, isCreditMessage } from "../night/pause.ts";
+import { mask, scanText } from "../night/scan.ts";
 import { writeFileAtomic } from "../night/memory.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
 import { trainProblem } from "../coder/sendback.ts";
-import { askForReview, CODER_PART_CHARS, capItems, capRunLog, capText, DIFF_CHARS, type Review, SOURCE_CHARS } from "./evidence.ts";
+import { askForReview, CODER_PART_CHARS, parseReply, capItems, capRunLog, capText, DIFF_CHARS, type Review, SOURCE_CHARS } from "./evidence.ts";
 import { specFiles } from "../coder/prompt.ts";
 
 type Metrics = Record<string, number>;
@@ -66,6 +67,8 @@ export interface ReviewResult {
 }
 
 class CreditError extends Error {}
+
+export const LEAK_REWRITE = "Your reply names held-out items, which coders must not see. Send the same JSON object again without them: ";
 
 const tag = (name: string, body: string) => `<${name}>\n${body.trim()}\n</${name}>`;
 const fmt = (v: number | undefined) => (typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : "none");
@@ -165,8 +168,10 @@ export async function reviewPrompt(r: ReviewRequest): Promise<string> {
 		if ((m.model_calls ?? 0) > 0) lines.push(`Model calls: ${m.model_calls}, replayed ${m.model_calls_replayed ?? 0}, failed ${m.model_calls_failed ?? 0}.`);
 	} else if (e.evalError) lines.push(`Errors:\n${e.evalError}`);
 	if (e.guardrails.length) lines.push(`Guardrails: ${e.guardrails.join(", ")}`);
-	const check = readJson<{ notes?: string[] }>(join(r.nightDir, "exps", r.expId, "check.json"));
+	const check = readJson<{ notes?: string[]; errors?: string[]; held_out_names?: number }>(join(r.nightDir, "exps", r.expId, "check.json"));
+	if (check?.errors?.length) lines.push(`Repository-check errors (the commit was not evaluated):\n${check.errors.map((n) => `- ${n}`).join("\n")}`);
 	if (check?.notes?.length) lines.push(`Repository-check notes:\n${check.notes.map((n) => `- ${n}`).join("\n")}`);
+	if (check?.held_out_names === 1) lines.push("The diff's added lines name one held-out item: a note, not a block.");
 	parts.push(tag("experiment", lines.join("\n\n")));
 
 	const expDir = join(r.nightDir, "exps", r.expId);
@@ -233,13 +238,26 @@ export async function runReview(r: ReviewRequest, signal: AbortSignal): Promise<
 	signal.addEventListener("abort", onAbort, { once: true });
 	let review: Review | null = null;
 	try {
-		review = await askForReview(async (p) => {
+		const ask = async (p: string) => {
 			signal.throwIfAborted();
 			await session.prompt(p);
 			// Pi does not throw on a failed call: without this the JSON retry would read a credit error as a bad reply.
 			if (credit) throw new CreditError(credit.message);
 			return session.getLastAssistantText() ?? "";
-		}, prompt);
+		};
+		review = await askForReview(ask, prompt);
+		// Leak loop: coders read all three fields. A find gets one rewrite request; what survives is masked.
+		const scan = r.config.scenario_spec.scan;
+		if (review && scan) {
+			const sc = { scenarioDir: r.scenarioDir, scan, signal };
+			const text = (v: Review) => [v.feedback, v.hypothesis, v.verdict].join("\n");
+			const found = await scanText(sc, text(review));
+			if (found.length) {
+				review = parseReply(await ask(`${LEAK_REWRITE}${found.join(", ")}`)) ?? review;
+				const left = await scanText(sc, text(review));
+				review = { feedback: mask(review.feedback, left), hypothesis: mask(review.hypothesis, left), verdict: mask(review.verdict, left) };
+			}
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (!signal.aborted && !credit && isCreditMessage(message)) credit = { who: "reviewer", model: r.config.reviewer_model, message };

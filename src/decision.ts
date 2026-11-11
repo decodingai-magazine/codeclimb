@@ -55,6 +55,31 @@ export type Outcome =
 	| { kind: "not_scored" }
 	| { kind: "scored"; metrics: Metrics; guardrails: string[] };
 
+export interface AttemptFacts {
+	/** Whether the coder produced a commit. */
+	committed: boolean;
+	/** Its tree equals the commit its sandbox started from: the checkpoint, or `e0` for a repair. */
+	unchanged: boolean;
+	/** `check` errors (they block the evaluation). */
+	checkErrors: boolean;
+	/** The check command itself failed. */
+	checkFailed: boolean;
+	/** The dev evaluation, when it ran. */
+	evaluation: { ok: boolean; failedOut: boolean; metrics: Metrics } | null;
+	guardrails: string[];
+}
+
+/** What an attempt amounts to for the keep rule, and whether it may be repaired (spec: Keep rule; Repair). */
+export function outcomeOf(a: AttemptFacts, checkpointMetrics: Metrics): { outcome: Outcome; repairable: boolean } {
+	if (!a.committed) return { outcome: { kind: "failed" }, repairable: false };
+	if (a.unchanged) return { outcome: { kind: "unchanged", checkpointMetrics }, repairable: false };
+	if (a.checkErrors || a.checkFailed || !a.evaluation?.ok) {
+		const failedEval = a.evaluation !== null && !a.evaluation.ok && !a.evaluation.failedOut;
+		return { outcome: { kind: "not_scored" }, repairable: !a.checkFailed && (a.checkErrors || failedEval) };
+	}
+	return { outcome: { kind: "scored", metrics: a.evaluation.metrics, guardrails: a.guardrails }, repairable: false };
+}
+
 export interface DecideInput {
 	outcome: Outcome;
 	primary: string;

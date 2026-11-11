@@ -45,7 +45,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				break;
 			}
 			round = next;
-			const r = await runRound(root, id, config, paths, input.mock, round, state, loop.spentUsd, pauses);
+			const r = await runRound(root, id, config, paths, input.mock, round, state, loop, pauses);
 			loop = {
 				spentUsd: loop.spentUsd + r.spendUsd,
 				tokens: loop.tokens + r.tokens,

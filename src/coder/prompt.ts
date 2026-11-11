@@ -57,6 +57,8 @@ export interface PromptInput {
 	trajectory?: string;
 	rejectedDiffs?: string[];
 	failures?: string;
+	/** A repair: fix its own failure and nothing else; the review step only. */
+	repair?: boolean;
 }
 
 const tag = (name: string, body: string) => `<${name}>\n${body.trim()}\n</${name}>`;
@@ -77,13 +79,14 @@ export function coderPrompt(p: PromptInput): string {
 		const diffs = p.rejectedDiffs?.length ? `\n\nRejected diffs (read the part you need): ${p.rejectedDiffs.join(", ")}` : "";
 		parts.push(tag("trajectory", `${p.trajectory}${diffs}`));
 	}
-	if (p.failures) parts.push(tag("failures", p.failures));
+	if (p.failures) parts.push(tag("failures", p.repair ? `Your last attempt failed before it was scored. Fix this failure and nothing else:\n${p.failures}` : p.failures));
 	const t = targetLines(config, p.checkpoint);
 	if (t.targets.length) parts.push(tag("targets", `Raise all of these in this attempt, one task per metric:\n${t.targets.map((l) => `- ${l}`).join("\n")}`));
 	if (t.met.length) parts.push(tag("met", `Reached on dev; plan no task for them, only check they don't fall:\n${t.met.map((l) => `- ${l}`).join("\n")}`));
 	if (t.fragile.length) parts.push(tag("fragile", `Reached by less than their ci95_half; they can fall below on the next split:\n${t.fragile.map((l) => `- ${l}`).join("\n")}`));
 	if (p.hypothesis) parts.push(tag("hypothesis", `Test this hypothesis, within the targets:\n${p.hypothesis}`));
-	parts.push(
+	if (p.repair) parts.push("Workflow: no research and no plan. Fix the failure above, then review: check that the fix holds, measure again.");
+	else parts.push(
 		[
 			"Workflow:",
 			"1. Research, at most a fifth of the time: run the program first, and score the starting code on train.",
