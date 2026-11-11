@@ -1,7 +1,7 @@
 // The `night` graph: init, rounds, finish; any failure ends in the stop operation (spec: Round loop; Cleanup).
 import { existsSync } from "node:fs";
 import { entrypoint, getConfig, isGraphInterrupt } from "@langchain/langgraph";
-import { runStopGraph } from "../control.ts";
+import { runStopGraph, startTimer } from "../control.ts";
 import { nightPaths, writeStopIfMissing } from "../night/files.ts";
 import { initNight } from "../night/init.ts";
 import { emptyLoop, finishNight, type LoopState, stopCheck, thresholdsMet } from "../night/loop.ts";
@@ -10,8 +10,10 @@ import { sandboxPrefix, testEvalId } from "../ids.ts";
 import { type Checkpoint, evaluationRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
 import { runEvaluation } from "./parts.ts";
+import { NightStopped, Pauses } from "./pause.ts";
 import { type RoundState, runRound } from "./round.ts";
-import { mockOffline } from "../pi/models.ts";
+import { mockCredit, mockOffline } from "../pi/models.ts";
+import { VARIATION_TIMEOUT_S } from "../night/pause.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
 
 export const night = entrypoint("night", async (input: NightInput) => {
@@ -24,22 +26,26 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const init = await step("init", (ctx) => {
 			// Armed once per night: a resumed run takes init from its checkpoint and leaves the counter alone.
 			if (input.mock && input.mock_offline) mockOffline(input.mock_offline);
+			if (input.mock && input.mock_credit) mockCredit(input.mock_credit);
 			return initNight(ctx, root, input);
 		}, { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
+		// The variation backstop: a timer due in 4 days that stops the variation unless it ended or a newer one began.
+		await step("variation-timer", () => startTimer(id, { variation: input.variation ?? 0 }, VARIATION_TIMEOUT_S))();
+		const pauses = new Pauses(id, paths, init.deadlineMs);
 		let round = 0;
 		let stopReason: string;
 		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [], noise: { runs: 0, measured: false, remeasureOn: null, base: null } };
 		let loop: LoopState = emptyLoop();
 		for (;;) {
 			const next = round + 1;
-			const check = await step(`r${next}/stop-check`, async () => stopCheck(paths, config, init, next, loop))();
+			const check = await step(`r${next}/stop-check`, async () => stopCheck(paths, config, pauses.deadlineMs, next, loop))();
 			if (check.hard) return { night_id: id, stopped: true };
 			if (check.reason) {
 				stopReason = check.reason;
 				break;
 			}
 			round = next;
-			const r = await runRound(root, id, config, paths, input.mock, round, state, loop.spentUsd);
+			const r = await runRound(root, id, config, paths, input.mock, round, state, loop.spentUsd, pauses);
 			loop = {
 				spentUsd: loop.spentUsd + r.spendUsd,
 				tokens: loop.tokens + r.tokens,
@@ -57,7 +63,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const checkpoint: Checkpoint = state.checkpoint;
 		// After any soft stop: score the checkpoint on test, for the report only.
 		const testId = testEvalId(id, round);
-		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit, mock: input.mock, capUsd: config.budget_usd.night - loop.spentUsd });
+		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit, mock: input.mock, capUsd: config.budget_usd.night - loop.spentUsd, round, pauses });
 		await step(`${testId}/record`, async () => appendRow(paths.results, evaluationRow(id, config, "test", testId, round, checkpoint, test)))();
 		const done = await step("finish", () =>
 			finishNight(paths, {
@@ -73,6 +79,8 @@ export const night = entrypoint("night", async (input: NightInput) => {
 	} catch (error) {
 		// A pause travels as a thrown GraphInterrupt: never clean up on it.
 		if (isGraphInterrupt(error)) throw error;
+		// Resumed after a stop while paused: the stop operation already cleaned up.
+		if (error instanceof NightStopped) return { night_id: id, stopped: true };
 		const runAborted = runSignal?.aborted === true && !isOwnFailure(error);
 		const cancelledFromOutside = runAborted && !existsSync(paths.stopJson);
 		// Aborted with a stop.json on disk: CodeClimb's own stop operation is cleaning up.

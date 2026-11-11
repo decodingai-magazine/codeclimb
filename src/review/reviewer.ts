@@ -6,6 +6,7 @@ import type { NightConfig } from "../config.ts";
 import type { Decision } from "../decision.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { readJson, writeJson } from "../night/files.ts";
+import { type CreditStop, isCreditMessage } from "../night/pause.ts";
 import { writeFileAtomic } from "../night/memory.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
@@ -60,7 +61,11 @@ export interface ReviewResult {
 	reviewer_usd: number;
 	t_review: number;
 	tokens: number;
+	/** A credit error: the review just stops; the night pauses and runs it again. */
+	credit?: CreditStop;
 }
+
+class CreditError extends Error {}
 
 const tag = (name: string, body: string) => `<${name}>\n${body.trim()}\n</${name}>`;
 const fmt = (v: number | undefined) => (typeof v === "number" ? String(Math.round(v * 1e6) / 1e6) : "none");
@@ -216,8 +221,10 @@ export async function runReview(r: ReviewRequest, signal: AbortSignal): Promise<
 	const session = await openSession({ model: await sessionModel(r.config.reviewer_model, "reviewer", r.mock), thinking: r.config.reviewer_thinking, cwd: "/", systemPrompt: REVIEWER_SYSTEM });
 	let usd = 0;
 	let tokens = 0;
+	let credit: CreditStop | undefined;
 	session.subscribe((ev) => {
 		if (ev.type === "message_end" && ev.message.role === "assistant") {
+			if (ev.message.stopReason === "error" && isCreditMessage(ev.message.errorMessage ?? "")) credit ??= { who: "reviewer", model: r.config.reviewer_model, message: ev.message.errorMessage ?? "" };
 			usd += ev.message.usage?.cost?.total ?? 0;
 			tokens += ev.message.usage?.totalTokens ?? 0;
 		}
@@ -229,14 +236,21 @@ export async function runReview(r: ReviewRequest, signal: AbortSignal): Promise<
 		review = await askForReview(async (p) => {
 			signal.throwIfAborted();
 			await session.prompt(p);
+			// Pi does not throw on a failed call: without this the JSON retry would read a credit error as a bad reply.
+			if (credit) throw new CreditError(credit.message);
 			return session.getLastAssistantText() ?? "";
 		}, prompt);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (!signal.aborted && !credit && isCreditMessage(message)) credit = { who: "reviewer", model: r.config.reviewer_model, message };
+		if (!credit || signal.aborted) throw error;
 	} finally {
 		signal.removeEventListener("abort", onAbort);
 		session.dispose();
 	}
 	signal.throwIfAborted();
-	const result: ReviewResult = { review, reviewer_usd: usd, t_review: (Date.now() - t0) / 1000, tokens };
+	const result: ReviewResult = { review, reviewer_usd: usd, t_review: (Date.now() - t0) / 1000, tokens, ...(credit ? { credit } : {}) };
+	if (credit) return { ...result, review: null };
 	if (review) writeJson(join(dir, `r${r.round}.json`), { round: r.round, model: r.config.reviewer_model, ...review, reviewer_usd: usd, t_review: result.t_review, tokens });
 	return result;
 }

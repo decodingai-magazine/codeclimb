@@ -1,6 +1,7 @@
 // Where a metered call goes: canned answers in mock mode, OpenRouter, or Pi's model runtime (spec: Metering proxy; Mock mode).
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
-import { modelRuntime } from "../pi/models.ts";
+import { MOCK_CREDIT_MESSAGE, mockCreditDue, modelRuntime } from "../pi/models.ts";
+import { isCreditMessage } from "../night/pause.ts";
 import type { CallKind } from "./ledger.ts";
 
 export const OPENROUTER_BASE = "https://openrouter.ai/api";
@@ -23,8 +24,6 @@ export interface Upstream {
 
 type Body = Record<string, unknown>;
 
-const CREDIT = /\b402\b|payment required|insufficient (credits|quota|funds|balance)|credit balance|out of (credits|budget)|quota (exceeded|exhausted)|usage limit reached|key limit exceeded|billing/i;
-export const isCreditMessage = (s: string) => CREDIT.test(s);
 
 const chatAnswer = (model: string, text: string, finish: string, usage: { prompt_tokens: number; completion_tokens: number }) => ({
 	id: `cc-${Date.now()}`,
@@ -38,6 +37,7 @@ const chatAnswer = (model: string, text: string, finish: string, usage: { prompt
 export function mockCall(kind: CallKind, body: Body): Upstream {
 	const model = String(body.model);
 	const zero = { ok: true, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+	if (mockCreditDue("program")) return { ...zero, ok: false, credit: true, error: MOCK_CREDIT_MESSAGE, body: { error: { message: MOCK_CREDIT_MESSAGE, type: "api_error" } } };
 	if (kind === "chat") return { ...zero, finish_reason: "stop", body: chatAnswer(model, "mock", "stop", { prompt_tokens: 0, completion_tokens: 0 }) };
 	if (kind === "embeddings") {
 		const inputs = Array.isArray(body.input) ? body.input : [body.input];

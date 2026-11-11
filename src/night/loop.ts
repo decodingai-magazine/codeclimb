@@ -4,7 +4,6 @@ import type { NightConfig } from "../config.ts";
 import { sandboxPrefix } from "../ids.ts";
 import { type NightPaths, readJson, writeJson } from "./files.ts";
 import { sandboxes } from "./sandboxes.ts";
-import type { InitResult } from "./init.ts";
 import type { DoneJson } from "./types.ts";
 
 export interface StopCheck {
@@ -38,10 +37,10 @@ export function softStop(config: NightConfig, s: LoopState, nextRound: number, n
 	return null;
 }
 
-/** The round-start check: a hard stop on disk first, then the soft stops. */
-export function stopCheck(paths: NightPaths, config: NightConfig, init: InitResult, nextRound: number, s: LoopState): StopCheck {
+/** The round-start check: a hard stop on disk first, then the soft stops. `deadlineMs` is moved forward by pauses. */
+export function stopCheck(paths: NightPaths, config: NightConfig, deadlineMs: number, nextRound: number, s: LoopState): StopCheck {
 	if (existsSync(paths.stopJson)) return { hard: true, reason: null };
-	return { hard: false, reason: softStop(config, s, nextRound, Date.now(), init.deadlineMs) };
+	return { hard: false, reason: softStop(config, s, nextRound, Date.now(), deadlineMs) };
 }
 
 /** Every threshold metric of the checkpoint is present and at least its target. */

@@ -12,6 +12,7 @@ import { rethrowControl, runEvaluation, runExperiment } from "./parts.ts";
 import { aaMove, type NoiseState, noiseDue, weightedScore } from "../decision.ts";
 import { noiseEvalId, sandboxPrefix } from "../ids.ts";
 import { writeJson } from "../night/files.ts";
+import type { Pauses } from "./pause.ts";
 
 export interface RoundState {
 	checkpoint: Checkpoint;
@@ -31,10 +32,10 @@ export interface RoundResult extends RoundState {
 }
 
 /** The A/A run: the checkpoint evaluated on dev once more; its move becomes the noise margin's base (spec: Noise margin). */
-async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState, mock: boolean, spentUsd: number): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
+async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState, mock: boolean, spentUsd: number, pauses: Pauses): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
 	const cp = s.checkpoint;
 	const evalId = noiseEvalId(cp.exp_id, round);
-	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, noCache: true });
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, noCache: true, round, pauses });
 	const first = weightedScore(cp.metrics, config.thresholds, config.weights);
 	const second = e.ok ? weightedScore(e.metrics, config.thresholds, config.weights) : undefined;
 	const margin = e.ok ? aaMove(cp.metrics, e.metrics, config.thresholds, config.weights) : undefined;
@@ -54,11 +55,11 @@ async function runNoise(root: string, night: string, config: NightConfig, paths:
 	return { noise, spendUsd: e.program_usd };
 }
 
-export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState, spentUsd: number): Promise<RoundResult> {
+export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState, spentUsd: number, pauses: Pauses): Promise<RoundResult> {
 	let s = s0;
 	let noiseUsd = 0;
 	if (noiseDue(s.noise, s.checkpoint.exp_id, Object.keys(s.checkpoint.metrics).length > 0, config.noise_margin.fixed)) {
-		const n = await runNoise(root, night, config, paths, round, s, mock, spentUsd);
+		const n = await runNoise(root, night, config, paths, round, s, mock, spentUsd, pauses);
 		s = { ...s, noise: n.noise };
 		noiseUsd = n.spendUsd;
 	}
@@ -66,6 +67,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0,
 		spentUsd: spentUsd + noiseUsd,
 		round,
+		pauses,
 		checkpoint: s.checkpoint,
 		hypothesis: s.guidance.hypothesis,
 		mock,
@@ -76,41 +78,49 @@ export async function runRound(root: string, night: string, config: NightConfig,
 
 	// Review: always, also of a revert; a failed review keeps the last guidance and never ends the night.
 	let review: ReviewResult | null = null;
-	try {
-		review = await step(`${exp.expId}/review`, (ctx) =>
-			runReview(
-				{
-					night,
-					round,
-					expId: exp.expId,
-					config,
-					mock,
-					scenarioDir: join(root, config.scenario),
-					bundleDir: paths.bundle,
-					nightDir: paths.nightDir,
-					repoDir: paths.repo,
-					checkpoint: { ...s.checkpoint, starter: Object.keys(s.checkpoint.metrics).length === 0 },
-					experiment: {
-						commit: exp.code?.commit ?? null,
-						hypothesis: facts.hypothesis,
-						decision,
-						guardrails: exp.guardrails,
-						unchanged: exp.code?.unchanged === true,
-						closing: exp.code?.closing ?? "(no closing message)",
-						notes: exp.code?.notes ?? "",
-						evalId: exp.evalId,
-						...(exp.errors ? { evalError: exp.errors } : {}),
+	let pausedReviewUsd = 0;
+	// A credit error: the review just stops, the night pauses, and the review runs again as `-resume<n>`.
+	for (let suffix = ""; ; ) {
+		review = null;
+		try {
+			review = await step(`${exp.expId}/review${suffix}`, (ctx) =>
+				runReview(
+					{
+						night,
+						round,
+						expId: exp.expId,
+						config,
+						mock,
+						scenarioDir: join(root, config.scenario),
+						bundleDir: paths.bundle,
+						nightDir: paths.nightDir,
+						repoDir: paths.repo,
+						checkpoint: { ...s.checkpoint, starter: Object.keys(s.checkpoint.metrics).length === 0 },
+						experiment: {
+							commit: exp.code?.commit ?? null,
+							hypothesis: facts.hypothesis,
+							decision,
+							guardrails: exp.guardrails,
+							unchanged: exp.code?.unchanged === true,
+							closing: exp.code?.closing ?? "(no closing message)",
+							notes: exp.code?.notes ?? "",
+							evalId: exp.evalId,
+							...(exp.errors ? { evalError: exp.errors } : {}),
+						},
+						trajectory: buildTrajectory(paths.bundle, paths.nightDir, s.history),
 					},
-					trajectory: buildTrajectory(paths.bundle, paths.nightDir, s.history),
-				},
-				ctx.signal,
-			),
-		)();
-	} catch (error) {
-		rethrowControl(error);
-		console.error(`review of ${exp.expId} failed:`, error);
+					ctx.signal,
+				),
+			)();
+		} catch (error) {
+			rethrowControl(error);
+			console.error(`review of ${exp.expId} failed:`, error);
+		}
+		if (!review?.credit) break;
+		pausedReviewUsd += review.reviewer_usd;
+		suffix = await pauses.pause(round, `the review of round ${round}`, review.credit);
 	}
-	const reviewerUsd = review?.reviewer_usd ?? 0;
+	const reviewerUsd = (review?.reviewer_usd ?? 0) + pausedReviewUsd;
 	const tokens = facts.tokens + (review?.tokens ?? 0);
 
 	const row = { ...experimentRow(night, config, facts), reviewer_usd: reviewerUsd, t_review: review?.t_review ?? 0, tokens };

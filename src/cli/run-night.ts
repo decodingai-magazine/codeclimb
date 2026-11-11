@@ -3,11 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { type NightConfig, loadNightConfig } from "../config.ts";
-import { nightThreads, serverUrl, startNight, stopNight } from "../control.ts";
+import { nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
 import { loadEnvFile } from "../env.ts";
 import { defaultNightId, isValidNightId } from "../ids.ts";
 import { findNightDir, type NightPaths, nightPaths, readJson } from "../night/files.ts";
-import { type NightInput, serverRoot } from "../night/types.ts";
+import { type NightInput, type NightJson, serverRoot } from "../night/types.ts";
 
 const FOLLOW_MS = 5_000;
 
@@ -145,7 +145,21 @@ async function stop(argv: string[]): Promise<void> {
 	if (stopJson) console.log(JSON.stringify(stopJson, null, 2));
 }
 
+async function resume(argv: string[]): Promise<void> {
+	const { values } = parseArgs({ args: argv, options: { night: { type: "string" }, "no-wait": { type: "boolean", default: false } } });
+	if (!values.night) die("--night <id> is required");
+	const dir = findNightDir(root, values.night);
+	const night = dir ? readJson<NightJson>(join(dir, "night.json")) : null;
+	if (!night) die(`night ${values.night} not found under ${join(root, "runs")}`);
+	const r = await resumeNight(root, values.night);
+	if ("refused" in r) die(r.refused);
+	console.log(`resumed pause ${r.resumed} of night ${values.night}`);
+	if (values["no-wait"]) return;
+	await follow(nightPaths(root, night.config.results_path, values.night), values.night, night.config.primary_metric);
+}
+
 const [command, ...rest] = process.argv.slice(2);
 if (command === "stop") await stop(rest);
-else if (command === "resume" || command === "continue") die(`${command} is not built yet`);
+else if (command === "resume") await resume(rest);
+else if (command === "continue") die(`${command} is not built yet`);
 else await start(process.argv.slice(2));

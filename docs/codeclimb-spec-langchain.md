@@ -258,7 +258,7 @@ Validation at parse:
 | `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--rounds N] [--no-wait] [--mock [--mock-offline N]]` | Starts a night and follows it |
 | `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` | More rounds on an ended night; default: the newest ended night under the config's results |
 | `run-night stop --night ID` | Hard stop |
-| `run-night resume --night ID` | Ends a pause for credits |
+| `run-night resume --night ID [--no-wait]` | Ends a pause for credits, then follows the night |
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>` from local time. A valid id is 1 to 48 letters, digits or hyphens, not starting with a hyphen
 - `--rounds` on a new night replaces `max_rounds`. `--no-wait` starts the night and exits without following
@@ -282,6 +282,7 @@ Validation at parse:
 - program calls get canned answers at zero cost: chat `mock`, embeddings `[1, 0, 0, 0]` per input, decisions `{}`, rerank every score 0
 - skipped: the model checks, the round-start smoke test, web research (it would reach the real web); lessons are never applied
 - `--mock-offline N` (only with `--mock`) imitates a lost connection. The coder's model calls number 2 to N+1 of the night's first experiment are answered as failed calls: an assistant message with stop reason `error` and the error text `fetch failed`. Every other call is answered as above. The number travels in the start input
+- `mock_credit` (only with `mock`, a start-input field for tests, with no CLI flag) imitates running out of credits: `{ who, call }` answers call number `call` of the night for `who` (`coder`, `reviewer` or `program`) as a credit error, `402 Payment Required: insufficient credits`, once. A coder or reviewer call gets an assistant message with stop reason `error` and that text; a program call gets the 402 a provider would send. Every later call is answered as above, so a resume carries on
 
 ## Experiment lifecycle
 

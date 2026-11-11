@@ -1,5 +1,6 @@
 // The start input of a night's server run, and what the night records (spec: Control operations; Files a night writes).
 import type { NightConfig } from "../config.ts";
+import type { MockCredit } from "../pi/models.ts";
 
 export interface NightInput {
 	night_id: string;
@@ -7,6 +8,10 @@ export interface NightInput {
 	mock: boolean;
 	/** `--mock-offline N`: the coder's model calls 2 to N+1 of the first experiment fail. */
 	mock_offline?: number;
+	/** Tests only, with `mock`: one scripted credit error (spec: Mock mode). */
+	mock_credit?: MockCredit;
+	/** The variation number: 0 at start, +1 per continue. */
+	variation?: number;
 	continue?: { rescore: boolean; direction?: string };
 }
 

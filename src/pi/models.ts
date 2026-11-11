@@ -33,9 +33,29 @@ export function mockOffline(n: number): void {
 	Object.assign(offline, { first: 2, last: n + 1, seen: 0 });
 }
 
+/** A scripted credit error for tests (start input `mock_credit`, no CLI flag): that role's call number `call` of the night fails once. */
+export interface MockCredit {
+	who: "coder" | "reviewer" | "program";
+	call: number;
+}
+export const MOCK_CREDIT_MESSAGE = "402 Payment Required: insufficient credits";
+const credit: { who: MockCredit["who"] | null; call: number; seen: number } = { who: null, call: 0, seen: 0 };
+
+export function mockCredit(c: MockCredit): void {
+	Object.assign(credit, { who: c.who, call: c.call, seen: 0 });
+}
+
+/** Count a mock call of `who`; true for the one that answers as a credit error. */
+export function mockCreditDue(who: MockCredit["who"]): boolean {
+	if (credit.who !== who) return false;
+	credit.seen++;
+	return credit.seen === credit.call;
+}
+
 const reply: FauxResponseFactory = (context, _options, _state, model): AssistantMessage => {
 	// Put the factory back first: the queue gives up one entry per call, and an empty queue answers with an error.
 	faux?.appendResponses([reply]);
+	if ((model.id === "coder" || model.id === "reviewer") && mockCreditDue(model.id)) return fauxAssistantMessage([], { stopReason: "error", errorMessage: MOCK_CREDIT_MESSAGE });
 	if (model.id === "reviewer") return fauxAssistantMessage(fauxText(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis", verdict: "mock verdict" })));
 	if (model.id === "lessons") return fauxAssistantMessage(fauxText(JSON.stringify({ ops: [] })));
 	if (offline.last >= offline.first) {

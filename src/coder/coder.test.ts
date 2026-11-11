@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { after, describe, test } from "node:test";
 import { loadNightConfig } from "../config.ts";
 import { ExperimentRepo } from "../experiments.ts";
+import { mockCredit } from "../pi/models.ts";
 import { DockerBackend } from "../sandbox/docker.ts";
 import { type CodeRequest, RESTART_PROMPT, runCoder } from "./coder.ts";
 
@@ -72,5 +73,44 @@ describe("coder crash resume", { skip }, () => {
 		unfinish(expDir);
 		await (await backend.find(`cc-${expId}`))?.destroy();
 		await assert.rejects(runCoder(backend, req, ac.signal), /sandbox lost twice/);
+	});
+
+	test("a credit stop commits the partial work; the rerun after the pause carries on that commit in the same session", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cc-coder-"));
+		const bundle = join(dir, "bundle");
+		mkdirSync(join(bundle, "spec"), { recursive: true });
+		writeFileSync(join(bundle, "spec", "SPEC.md"), "Make it better.\n");
+		const repo = await ExperimentRepo.open(join(dir, "experiments.git"));
+		const parent = await repo.importStarter(join(ROOT, "scenarios/datenorm/starter"), `${night}-r0-starter`);
+		const config = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
+		const expId = `${night}-r2-e0`;
+		const expDir = join(dir, "exps", expId);
+		const req: CodeRequest = { night, expId, round: 2, parentSha: parent, repoDir: repo.dir, bundleDir: bundle, expDir, config, mock: true, hypothesis: null, checkpointMetrics: {} };
+		const ac = new AbortController();
+		const git = (...args: string[]) => spawnSync("git", ["-C", repo.dir, ...args], { encoding: "utf8" }).stdout.trim();
+
+		// The coder's second model call (after its first bash turn) answers with a credit error.
+		mockCredit({ who: "coder", call: 2 });
+		const paused = await runCoder(backend, req, ac.signal);
+		assert.equal(paused.stop, "credits");
+		assert.equal(paused.credit?.who, "coder");
+		const state = JSON.parse(readFileSync(join(expDir, "code-state.json"), "utf8"));
+		assert.equal(state.paused.commit, paused.commit);
+		assert.equal(state.finishedAt, undefined);
+		assert.equal(readdirSync(expDir).includes("code-result.json"), false);
+		const pausedLines = git("show", `${paused.commit}:MOCK.md`).split("\n").length;
+
+		// The night's teardown destroys the sandbox before the pause.
+		await (await backend.find(`cc-${expId}`))?.destroy();
+		const resumed = await runCoder(backend, req, ac.signal);
+		assert.equal(resumed.stop, "done");
+		assert.equal(resumed.infraErrors, 0);
+		assert.equal(JSON.parse(readFileSync(join(expDir, "code-state.json"), "utf8")).freshRestarts, 0);
+		// One commit on the round's parent, holding the work from before the pause.
+		assert.equal(git("rev-parse", `${resumed.commit}^`), parent);
+		assert.ok(git("show", `${resumed.commit}:MOCK.md`).split("\n").length > pausedLines);
+		const sessions = readdirSync(join(expDir, "session"));
+		assert.equal(sessions.length, 1);
+		assert.ok(readFileSync(join(expDir, "session", sessions[0] as string), "utf8").includes(RESTART_PROMPT));
 	});
 });

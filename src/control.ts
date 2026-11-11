@@ -1,7 +1,9 @@
 // The control operations, as calls to the Agent Server's API (spec: Control operations; Durable runtime on LangGraph, Threads).
 // The CLI, the worker API, the watchdog and the graphs all call this module.
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Client } from "@langchain/langgraph-sdk";
-import { nightThreadId, stopThreadId } from "./ids.ts";
+import { nightThreadId, stopThreadId, timerThreadId } from "./ids.ts";
 import { findNightDir, type StopReason, writeStopIfMissing } from "./night/files.ts";
 import type { NightInput } from "./night/types.ts";
 
@@ -25,9 +27,55 @@ export async function startNight(input: NightInput): Promise<StartResult> {
 }
 
 /** The night's threads, newest first. */
-export async function nightThreads(nightId: string): Promise<{ thread_id: string; status: string }[]> {
+export async function nightThreads(nightId: string): Promise<{ thread_id: string; status: string; variation: number }[]> {
 	const threads = await client().threads.search({ metadata: { kind: "night", night_id: nightId }, sortBy: "created_at", sortOrder: "desc", limit: 100 });
-	return threads.map((t) => ({ thread_id: t.thread_id, status: t.status }));
+	return threads.map((t) => ({ thread_id: t.thread_id, status: t.status, variation: Number(t.metadata?.run ?? 0) }));
+}
+
+/** The pause number of the newest thread's pending interrupt, or null: a night is paused by this, never by the thread's status. */
+export async function pendingPause(nightId: string): Promise<{ threadId: string; pause: number } | null> {
+	const newest = (await nightThreads(nightId))[0];
+	if (!newest) return null;
+	const state = await client().threads.getState(newest.thread_id);
+	for (const task of state.tasks) {
+		for (const i of task.interrupts) {
+			const pause = (i.value as { pause?: unknown } | undefined)?.pause;
+			if (typeof pause === "number") return { threadId: newest.thread_id, pause };
+		}
+	}
+	return null;
+}
+
+export type ResumeResult = { resumed: number } | { refused: string };
+
+/** End a pause: a server run of `night` on the newest thread with the resume command for the pending pause. A stopped night is never resumed. */
+export async function resumeNight(root: string, nightId: string): Promise<ResumeResult> {
+	const dir = findNightDir(root, nightId);
+	if (dir && existsSync(join(dir, "stop.json"))) return { refused: `night ${nightId} was stopped` };
+	if (dir && existsSync(join(dir, "done.json"))) return { refused: `night ${nightId} is done` };
+	const pending = await pendingPause(nightId);
+	if (!pending) return { refused: `night ${nightId} is not paused` };
+	try {
+		await client().runs.create(pending.threadId, "night", { command: { resume: { pause: pending.pause } }, multitaskStrategy: "reject" });
+	} catch (error) {
+		// A run is in flight on the thread: the pause was resumed already and its end has not run yet.
+		if (typeof error === "object" && error !== null && "status" in error && error.status === 409) return { refused: `night ${nightId} is running: pause ${pending.pause} was resumed already` };
+		throw error;
+	}
+	return { resumed: pending.pause };
+}
+
+export interface TimerGuard {
+	pause?: number;
+	variation?: number;
+}
+
+/** A delayed server run of `stop` on the night's timer thread (created if missing), carrying its guard. */
+export async function startTimer(nightId: string, guard: TimerGuard, afterSeconds: number): Promise<void> {
+	const c = client();
+	const threadId = timerThreadId(nightId);
+	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "timer", night_id: nightId } });
+	await c.runs.create(threadId, "stop", { input: { night_id: nightId, reason: "failed", guard }, afterSeconds, multitaskStrategy: "enqueue" });
 }
 
 /** Cancel every pending or running server run on the night's threads, action interrupt, without waiting. */

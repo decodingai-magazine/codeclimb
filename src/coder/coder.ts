@@ -6,6 +6,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { NightConfig } from "../config.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { readJson, writeJson } from "../night/files.ts";
+import { type CreditStop, isCreditMessage } from "../night/pause.ts";
 import { NonRetriableError } from "../runtime/step.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
@@ -67,6 +68,8 @@ export interface CodeResult {
 	notes: string;
 	sendBacks: number;
 	error?: string;
+	/** Stop `credits`: the night pauses, then the coder carries on from this commit. */
+	credit?: CreditStop;
 }
 
 interface CodeState {
@@ -81,6 +84,8 @@ interface CodeState {
 	tProvision: number;
 	finishedAt?: string;
 	stop?: CoderStop;
+	/** A credit stop committed this; the rerun after the pause carries on from it. */
+	paused?: { commit: string };
 }
 
 /** The last `APPROACH:` line, backticks and asterisks stripped; else the last non-empty line; else `(no summary)`. */
@@ -135,8 +140,9 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	const prior = readJson<CodeState>(stateFile);
 	const finished = prior?.finishedAt ? readJson<CodeResult>(resultFile) : null;
 	if (finished) return finished;
-	const rerun = prior !== null && !prior.finishedAt;
-	const state: CodeState = rerun
+	const pausedAt = prior?.paused;
+	const rerun = prior !== null && !prior.finishedAt && !pausedAt;
+	const state: CodeState = prior && !prior.finishedAt
 		? { ...prior }
 		: { startedAt: new Date(t0).toISOString(), sandbox: sandboxName, freshRestarts: 0, infraErrors: 0, coderUsd: 0, devUsd: 0, tokens: 0, tCode: 0, tProvision: 0 };
 	const save = () => {
@@ -145,9 +151,21 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	};
 	let live: Sandbox | null = null;
 	let reopen: string | undefined;
-	if (rerun) {
+	/** The commit the sandbox starts from: the parent, or the paused commit after a pause. */
+	let startSha = req.parentSha;
+	const sessionFile = () => readdirSync(sessionDir).filter((n) => n.endsWith(".jsonl")).sort().pop();
+	if (pausedAt) {
+		// After a pause, once: a new sandbox from the paused commit, the same session, the clock set so the pause doesn't count.
+		startSha = pausedAt.commit;
+		const file = sessionFile();
+		if (file) reopen = join(sessionDir, file);
+		t0 = Date.now() - (state.tCode + state.tProvision) * 1000;
+		state.startedAt = new Date(t0).toISOString();
+		delete state.paused;
+		delete state.stop;
+	} else if (rerun) {
 		live = await backend.find(sandboxName);
-		const file = readdirSync(sessionDir).filter((n) => n.endsWith(".jsonl")).sort().pop();
+		const file = sessionFile();
 		if (live && file) {
 			// Alive, with a session file: a session resume on the same clock.
 			reopen = join(sessionDir, file);
@@ -171,7 +189,15 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	if (config.allowed_models.length) {
 		const port = await proxyPort();
 		await ensureMeterPath(config.scenario_spec.image, port);
-		ledger = openLedger(req.night, { id: `${req.expId}-dev`, allowedModels: config.allowed_models, capUsd: config.budget_usd.experiment - state.coderUsd, coder: true, mock: req.mock, spentUsd: state.devUsd });
+		ledger = openLedger(req.night, {
+			id: `${req.expId}-dev`,
+			allowedModels: config.allowed_models,
+			capUsd: config.budget_usd.experiment - state.coderUsd,
+			coder: true,
+			mock: req.mock,
+			spentUsd: state.devUsd,
+			onCreditStop: (s) => creditStop(s),
+		});
 	}
 	const closeDev = () => {
 		if (!ledger) return;
@@ -185,7 +211,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			name: sandboxName,
 			image: config.scenario_spec.image,
 			labels: { night: req.night, run: req.expId },
-			commit: { repo, sha: req.parentSha },
+			commit: { repo, sha: startSha },
 			specDir: req.bundleDir,
 			...(ledger ? { network: METER_NETWORK } : {}),
 		});
@@ -204,6 +230,11 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		stop ??= why;
 		void session?.abort();
 	};
+	let credit: CreditStop | undefined;
+	function creditStop(c: CreditStop): void {
+		credit ??= c;
+		end("credits");
+	}
 	const onAbort = () => end("cancelled");
 	signal.addEventListener("abort", onAbort, { once: true });
 	const totalMs = config.timeouts.experiment_min * 60_000;
@@ -237,6 +268,8 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			if (e.type === "tool_execution_start") toolsRunning++;
 			if (e.type === "tool_execution_end") toolsRunning = Math.max(0, toolsRunning - 1);
 			if (e.type === "message_end" && e.message.role === "assistant") {
+				// Pi reports a failed model call as a message, not a throw: test every one for a credit error.
+				if (e.message.stopReason === "error" && isCreditMessage(e.message.errorMessage ?? "")) creditStop({ who: "coder", model: config.model, message: e.message.errorMessage ?? "" });
 				state.coderUsd += e.message.usage?.cost?.total ?? 0;
 				state.tokens += e.message.usage?.totalTokens ?? 0;
 				if (ledger) state.devUsd = ledger.spentUsd;
@@ -294,8 +327,12 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		}
 	} catch (e) {
 		if (!stop) {
-			stop = signal.aborted ? "cancelled" : "agent_error";
-			error = e instanceof Error ? e.message : String(e);
+			const message = e instanceof Error ? e.message : String(e);
+			if (!signal.aborted && isCreditMessage(message)) creditStop({ who: "coder", model: config.model, message });
+			else {
+				stop = signal.aborted ? "cancelled" : "agent_error";
+				error = message;
+			}
 		}
 	} finally {
 		clearTimeout(timer);
@@ -324,8 +361,10 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	const hypothesis = req.hypothesis ?? approachOf(closingRaw);
 	const commit = await squashCommit(sb, repo, req.parentSha, req.expId, `${req.expId}: ${hypothesis}`);
 	state.stop = stop;
-	state.finishedAt = new Date().toISOString();
 	state.tCode = Math.max(0, (Date.now() - t0) / 1000 - state.tProvision);
+	const paused = stop === "credits";
+	if (paused) state.paused = { commit };
+	else state.finishedAt = new Date().toISOString();
 	const result: CodeResult = {
 		commit,
 		stop,
@@ -340,7 +379,13 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		notes,
 		sendBacks,
 		...(error ? { error } : {}),
+		...(paused && credit ? { credit } : {}),
 	};
+	if (paused) {
+		// No result file and no finishedAt: the rerun after the pause must code again.
+		writeJson(stateFile, state);
+		return result;
+	}
 	// The result first, then the finished state: a rerun that finds both returns the result without coding again.
 	writeJson(resultFile, result);
 	writeJson(stateFile, state);

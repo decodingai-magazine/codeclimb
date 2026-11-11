@@ -1,6 +1,8 @@
 // The `stop` graph: the one cleanup path of every hard stop, step by step (spec: Cleanup).
 import { entrypoint } from "@langchain/langgraph";
-import { cancelNightRuns } from "../control.ts";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { cancelNightRuns, nightThreads, pendingPause, type TimerGuard } from "../control.ts";
 import { sandboxPrefix } from "../ids.ts";
 import { findNightDir, type StopReason, writeStopIfMissing } from "../night/files.ts";
 import { sandboxes } from "../night/sandboxes.ts";
@@ -11,10 +13,30 @@ import { step } from "../runtime/step.ts";
 export interface StopInput {
 	night_id: string;
 	reason?: StopReason;
+	/** A timer's guard: the pause or the variation it watches. */
+	guard?: TimerGuard;
+}
+
+/** A timer fires only while its pause is pending, or while its variation is the newest and has not ended. */
+async function guardHolds(id: string, guard: TimerGuard): Promise<boolean> {
+	const dir = findNightDir(serverRoot(), id);
+	if (!dir || existsSync(join(dir, "done.json")) || existsSync(join(dir, "stop.json"))) return false;
+	if (guard.pause !== undefined) return (await pendingPause(id))?.pause === guard.pause;
+	if (guard.variation !== undefined) return (await nightThreads(id))[0]?.variation === guard.variation;
+	return false;
 }
 
 export const stop = entrypoint("stop", async (input: StopInput) => {
 	const id = input.night_id;
+	if (input.guard) {
+		const guard = input.guard;
+		if (!(await step("guard", () => guardHolds(id, guard))())) return { night_id: id, skipped: true };
+		// A timer has no caller: it writes stop.json itself, before the cancel, so the night reads it as a stop.
+		await step("timer-stop-json", async () => {
+			const dir = findNightDir(serverRoot(), id);
+			return dir ? writeStopIfMissing(dir, "failed") : false;
+		})();
+	}
 	const cancelled = await step("cancel-runs", () => cancelNightRuns(id))();
 	// The server reports a cancelled run as interrupted while its step may still run: abort and sweep always follow.
 	const aborted = await step("abort-live", async () => abortNight(id, new Error(`night ${id} stopped`)))();
