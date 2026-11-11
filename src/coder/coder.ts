@@ -10,7 +10,8 @@ import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
 import type { Sandbox, SandboxBackend } from "../sandbox/types.ts";
 import { PARENT_BUNDLE, pullCommit } from "../sandbox/transfer.ts";
-import { coderPrompt } from "./prompt.ts";
+import { coderPrompt, targetLines } from "./prompt.ts";
+import { inReserve, MIN_MINUTES_LEFT, RESERVE_SHARE, sendBackMessage, WRAP_UP } from "./sendback.ts";
 
 export type CoderStop = "done" | "timeout" | "idle" | "budget" | "agent_error" | "credits" | "cancelled";
 
@@ -35,6 +36,8 @@ export interface CodeRequest {
 	/** The reviewer's hypothesis for this round; none in round 1. */
 	hypothesis: string | null;
 	checkpointMetrics: Record<string, number>;
+	/** A repair attempt: no send-backs, no wrap-up turn. */
+	repair?: boolean;
 }
 
 export interface CodeResult {
@@ -50,6 +53,7 @@ export interface CodeResult {
 	/** The hypothesis recorded: the reviewer's, else the APPROACH line. */
 	hypothesis: string;
 	notes: string;
+	sendBacks: number;
 	error?: string;
 }
 
@@ -122,14 +126,24 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	let stop: CoderStop | undefined;
 	let error: string | undefined;
 	let session: AgentSession | undefined;
+	let sendBacks = 0;
 	const end = (why: CoderStop) => {
 		stop ??= why;
 		void session?.abort();
 	};
 	const onAbort = () => end("cancelled");
 	signal.addEventListener("abort", onAbort, { once: true });
-	const deadline = t0 + config.timeouts.experiment_min * 60_000;
+	const totalMs = config.timeouts.experiment_min * 60_000;
+	const deadline = t0 + totalMs;
 	const timer = setTimeout(() => end("timeout"), Math.max(0, deadline - Date.now()));
+	let wrapUpSent = false;
+	/** The reserve started while the coder works: the wrap-up as a steering message, once. */
+	const steerWrapUp = () => {
+		if (wrapUpSent || stop || !session?.isStreaming) return;
+		wrapUpSent = true;
+		void session.steer(WRAP_UP).catch(() => {});
+	};
+	const reserveTimer = setTimeout(steerWrapUp, Math.max(0, t0 + totalMs * (1 - RESERVE_SHARE) - Date.now()));
 	let lastEvent = Date.now();
 	let toolsRunning = 0;
 	const idle = setInterval(() => {
@@ -153,6 +167,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 				state.tokens += e.message.usage?.totalTokens ?? 0;
 				save();
 				if (state.coderUsd + state.devUsd >= config.budget_usd.experiment) end("budget");
+				else if (state.coderUsd + state.devUsd >= config.budget_usd.experiment * (1 - RESERVE_SHARE)) steerWrapUp();
 			}
 		});
 		const prompt = coderPrompt({
@@ -165,6 +180,40 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			hasTrain: existsSync(join(req.bundleDir, "train")),
 		});
 		if (!signal.aborted) await session.prompt(prompt);
+		const hasTrain = existsSync(join(req.bundleDir, "train"));
+		const target = targetLines(config, req.checkpointMetrics).targets[0]?.split(":")[0];
+		const nextStep = req.hypothesis
+			? `test the parts of the hypothesis you have not tested yet (${req.hypothesis})`
+			: target
+				? `look at the worst train items of ${target}, the threshold metric furthest below its target`
+				: "look at the worst train items and fix the most common failure";
+		const minutesLeft = () => (deadline - Date.now()) / 60_000;
+		for (;;) {
+			if (stop || signal.aborted) break;
+			const usd = state.coderUsd + state.devUsd;
+			const message = sendBackMessage({
+				tasks: await readOptional(sb, "/tmp/tasks.json"),
+				train: await readOptional(sb, "/tmp/train-score.json"),
+				hasTrain,
+				reserve: inReserve({ elapsedMs: Date.now() - t0, totalMs, usd, budgetUsd: config.budget_usd.experiment }),
+				sendBacks,
+				repair: req.repair === true,
+				capStopped: stop !== undefined,
+				minutesLeft: minutesLeft(),
+				minutesTotal: config.timeouts.experiment_min,
+				usdLeft: config.budget_usd.experiment - usd,
+				usdTotal: config.budget_usd.experiment,
+				nextStep,
+			});
+			if (!message) break;
+			sendBacks++;
+			await session.prompt(message);
+		}
+		// One wrap-up turn for a coder that was sent back before its reserve.
+		if (!stop && !signal.aborted && sendBacks > 0 && !wrapUpSent && minutesLeft() >= MIN_MINUTES_LEFT) {
+			wrapUpSent = true;
+			await session.prompt(WRAP_UP);
+		}
 	} catch (e) {
 		if (!stop) {
 			stop = signal.aborted ? "cancelled" : "agent_error";
@@ -172,6 +221,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		}
 	} finally {
 		clearTimeout(timer);
+		clearTimeout(reserveTimer);
 		clearInterval(idle);
 		signal.removeEventListener("abort", onAbort);
 	}
@@ -208,6 +258,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		closing: closingRaw ? closingRaw.slice(0, CLOSING_CHARS) : "(no closing message)",
 		hypothesis,
 		notes,
+		sendBacks,
 		...(error ? { error } : {}),
 	};
 }
