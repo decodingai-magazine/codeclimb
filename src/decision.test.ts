@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decide, guardrails, marginFor, weightedScore } from "./decision.ts";
+import { aaMove, decide, guardrails, marginFor, noiseDue, weightedScore } from "./decision.ts";
 
 const thresholds = { a: 0.8, b: 0.5 };
 const weights = { a: 3, b: 1 };
@@ -77,4 +77,22 @@ test("scored reason: the fresh-calls clause and the A/A value appear only when t
 	assert.equal(off.reason, "weighted score 0.3750 > checkpoint 0.0000 + noise margin 0.0050 (A/A 0.0220)");
 	const noAa = decide({ ...base, margin: 0.002, outcome: { kind: "scored", metrics, guardrails: [] } });
 	assert.equal(noAa.reason, "weighted score 0.3750 > checkpoint 0.0000 + noise margin 0.0020 (9 of 83 model calls fresh)");
+});
+
+test("A/A move: weighted sum of each threshold metric's share move, so opposite moves add up", () => {
+	// a: shares 0.5 and 0.4375 (move 0.0625 × 3); b: 0.4 and 0.5 (move 0.1 × 1) → (0.1875 + 0.1) / 4
+	assert.ok(Math.abs(aaMove({ a: 0.4, b: 0.2 }, { a: 0.35, b: 0.25 }, thresholds, weights) - 0.071875) < 1e-12);
+	assert.equal(aaMove({ a: 0.4 }, { a: 0.4 }, thresholds, weights), 0);
+});
+
+test("A/A due: a checkpoint with metrics, no noise yet or a remeasure on a new kept checkpoint, at most 2 runs, not with fixed", () => {
+	const s = { runs: 0, measured: false, remeasureOn: null as string | null };
+	assert.equal(noiseDue(s, "cp", false, undefined), false); // the unscored starter
+	assert.equal(noiseDue(s, "cp", true, undefined), true);
+	assert.equal(noiseDue(s, "cp", true, 0.003), false); // fixed margin
+	assert.equal(noiseDue({ ...s, runs: 1, measured: true }, "cp", true, undefined), false);
+	assert.equal(noiseDue({ ...s, runs: 1 }, "cp", true, undefined), true); // a failed run is tried again
+	assert.equal(noiseDue({ runs: 1, measured: true, remeasureOn: "cp" }, "cp", true, undefined), false); // same checkpoint
+	assert.equal(noiseDue({ runs: 1, measured: true, remeasureOn: "cp" }, "cp2", true, undefined), true); // the next kept one
+	assert.equal(noiseDue({ runs: 2, measured: false, remeasureOn: null }, "cp", true, undefined), false);
 });

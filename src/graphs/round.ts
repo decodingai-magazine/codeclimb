@@ -4,17 +4,21 @@ import type { NightConfig } from "../config.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import type { NightPaths } from "../night/files.ts";
 import { buildTrajectory, type Guidance, type HistoryEntry, historyLine, movesText, nextGuidance, notePath, noteText, rejectedDiffPath, writeFileAtomic } from "../night/memory.ts";
-import { type Checkpoint, experimentRow } from "../night/rows.ts";
+import { type Checkpoint, evaluationRow, experimentRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
 import { type ReviewResult, runReview } from "../review/reviewer.ts";
 import { step } from "../runtime/step.ts";
-import { rethrowControl, runExperiment } from "./parts.ts";
+import { rethrowControl, runEvaluation, runExperiment } from "./parts.ts";
+import { aaMove, type NoiseState, noiseDue, weightedScore } from "../decision.ts";
+import { noiseEvalId, sandboxPrefix } from "../ids.ts";
+import { writeJson } from "../night/files.ts";
 
 export interface RoundState {
 	checkpoint: Checkpoint;
 	guidance: Guidance;
 	history: HistoryEntry[];
 	failures?: string;
+	noise: NoiseState & { base: number | null };
 }
 
 export interface RoundResult extends RoundState {
@@ -24,8 +28,40 @@ export interface RoundResult extends RoundState {
 	tokens: number;
 }
 
-export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s: RoundState): Promise<RoundResult> {
+/** The A/A run: the checkpoint evaluated on dev once more; its move becomes the noise margin's base (spec: Noise margin). */
+async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
+	const cp = s.checkpoint;
+	const evalId = noiseEvalId(cp.exp_id, round);
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit });
+	const first = weightedScore(cp.metrics, config.thresholds, config.weights);
+	const second = e.ok ? weightedScore(e.metrics, config.thresholds, config.weights) : undefined;
+	const margin = e.ok ? aaMove(cp.metrics, e.metrics, config.thresholds, config.weights) : undefined;
+	await step(`${evalId}/record`, async () => {
+		appendRow(paths.results, evaluationRow(night, config, "noise", evalId, round, cp, e, second !== undefined ? { score: second } : {}));
+		if (margin !== undefined) {
+			const moves = Object.fromEntries(Object.keys(config.thresholds).map((m) => [m, [cp.metrics[m] ?? null, e.metrics[m] ?? null]]));
+			writeJson(join(paths.nightDir, "noise.json"), { margin, expId: cp.exp_id, first, second, moves });
+		}
+		return true;
+	})();
+	const runs = s.noise.runs + 1;
+	const noise: RoundState["noise"] =
+		margin === undefined
+			? { ...s.noise, runs }
+			: { runs, measured: true, remeasureOn: margin > config.noise_margin.max ? cp.exp_id : null, base: margin };
+	return { noise, spendUsd: e.program_usd };
+}
+
+export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState): Promise<RoundResult> {
+	let s = s0;
+	let noiseUsd = 0;
+	if (noiseDue(s.noise, s.checkpoint.exp_id, Object.keys(s.checkpoint.metrics).length > 0, config.noise_margin.fixed)) {
+		const n = await runNoise(root, night, config, paths, round, s);
+		s = { ...s, noise: n.noise };
+		noiseUsd = n.spendUsd;
+	}
 	const exp = await runExperiment(root, night, config, paths, {
+		aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0,
 		round,
 		checkpoint: s.checkpoint,
 		hypothesis: s.guidance.hypothesis,
@@ -94,9 +130,10 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		checkpoint: kept ? { exp_id: exp.expId, commit: facts.commit, metrics: decision.metrics } : s.checkpoint,
 		guidance: nextGuidance(s.guidance, review?.review ?? null),
 		history: [...s.history, { round, line }],
+		noise: s.noise,
 		...(decision.score === undefined && !decision.unchanged && exp.errors ? { failures: exp.errors } : {}),
 		kept,
-		spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd + reviewerUsd,
+		spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd + reviewerUsd + noiseUsd,
 		tokens,
 	};
 }

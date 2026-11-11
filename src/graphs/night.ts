@@ -23,7 +23,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const init = await step("init", (ctx) => initNight(ctx, root, input), { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		let round = 0;
 		let stopReason: string;
-		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [] };
+		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [], noise: { runs: 0, measured: false, remeasureOn: null, base: null } };
 		let spend = 0;
 		for (;;) {
 			const next = round + 1;
@@ -36,7 +36,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 			round = next;
 			const r = await runRound(root, id, config, paths, input.mock, round, state);
 			spend += r.spendUsd;
-			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, ...(r.failures ? { failures: r.failures } : {}) };
+			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, noise: r.noise, ...(r.failures ? { failures: r.failures } : {}) };
 			if (thresholdsMet(config, state.checkpoint.metrics)) {
 				stopReason = "thresholds";
 				break;

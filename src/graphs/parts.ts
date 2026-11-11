@@ -77,6 +77,8 @@ export interface ExperimentSpec {
 	history: HistoryEntry[];
 	/** The last experiment's errors, when it was never scored. */
 	failures?: string;
+	/** The noise margin's base: `fixed`, else the A/A move, else 0. */
+	aaBase: number;
 }
 
 export interface ExperimentOutcome {
@@ -156,8 +158,8 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		thresholds: config.thresholds,
 		weights: config.weights,
 		checkpointScore: checkpointScore(config, checkpoint.metrics),
-		margin: marginFor(config.noise_margin.fixed ?? 0, config.noise_margin, evaluation?.metrics ?? {}),
-		aaBase: config.noise_margin.fixed ?? 0,
+		margin: marginFor(spec.aaBase, config.noise_margin, evaluation?.metrics ?? {}),
+		aaBase: spec.aaBase,
 		scaleByReplay: config.noise_margin.scale_by_replay,
 	});
 	const facts: ExperimentFacts = {

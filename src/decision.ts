@@ -96,3 +96,34 @@ export function decide(d: DecideInput): Decision {
 	}
 	return { decision: keep ? "keep" : "revert", reason, metrics: o.metrics, score };
 }
+
+export const MAX_AA_RUNS = 2;
+
+/** Sum over threshold metrics of `weight × |share₁ − share₂|`, over the sum of weights. */
+export function aaMove(first: Metrics, second: Metrics, thresholds: Metrics, weights: Metrics): number {
+	let sum = 0;
+	let total = 0;
+	const share = (v: number | undefined, t: number) => (typeof v === "number" ? Math.min(Math.max(v, 0) / t, 1) : 0);
+	for (const [name, t] of Object.entries(thresholds)) {
+		const w = weights[name] ?? 1;
+		sum += w * Math.abs(share(first[name], t) - share(second[name], t));
+		total += w;
+	}
+	return total > 0 ? sum / total : 0;
+}
+
+export interface NoiseState {
+	/** A/A runs so far, failed ones included. */
+	runs: number;
+	/** A successful A/A run measured the noise. */
+	measured: boolean;
+	/** The checkpoint whose move was above `max`: measure again on the next kept checkpoint. */
+	remeasureOn: string | null;
+}
+
+/** An A/A run is due at the start of a round whose checkpoint has metrics, unless the margin is fixed. */
+export function noiseDue(s: NoiseState, checkpointId: string, checkpointScored: boolean, fixed: number | undefined): boolean {
+	if (fixed !== undefined || !checkpointScored || s.runs >= MAX_AA_RUNS) return false;
+	if (!s.measured) return true;
+	return s.remeasureOn !== null && s.remeasureOn !== checkpointId;
+}
