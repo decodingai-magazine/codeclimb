@@ -11,6 +11,7 @@ import { type Checkpoint, evaluationRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
 import { runEvaluation } from "./parts.ts";
 import { type RoundState, runRound } from "./round.ts";
+import { mockOffline } from "../pi/models.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
 
 export const night = entrypoint("night", async (input: NightInput) => {
@@ -20,7 +21,11 @@ export const night = entrypoint("night", async (input: NightInput) => {
 	const config = input.config;
 	const paths = nightPaths(root, config.results_path, id);
 	try {
-		const init = await step("init", (ctx) => initNight(ctx, root, input), { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
+		const init = await step("init", (ctx) => {
+			// Armed once per night: a resumed run takes init from its checkpoint and leaves the counter alone.
+			if (input.mock && input.mock_offline) mockOffline(input.mock_offline);
+			return initNight(ctx, root, input);
+		}, { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		let round = 0;
 		let stopReason: string;
 		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [], noise: { runs: 0, measured: false, remeasureOn: null, base: null } };
