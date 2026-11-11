@@ -10,15 +10,38 @@ import type { DoneJson } from "./types.ts";
 export interface StopCheck {
 	/** A stop.json is on disk: a hard stop is already cleaning up; end quietly. */
 	hard: boolean;
-	reason: string | null;
+	reason: SoftStop | null;
 }
 
-/** The round-start check: a hard stop on disk first, then the soft stops in their order. */
-export function stopCheck(paths: NightPaths, config: NightConfig, init: InitResult, nextRound: number): StopCheck {
+export type SoftStop = "max_rounds" | "deadline" | "budget" | "tokens" | "plateau";
+
+/** What the round-start check reads; the night carries it across rounds. */
+export interface LoopState {
+	spentUsd: number;
+	tokens: number;
+	maxRoundUsd: number;
+	maxRoundTokens: number;
+	/** The costliest single evaluation so far: the test evaluation's estimate. */
+	maxEvalUsd: number;
+	roundsWithoutKeep: number;
+}
+
+export const emptyLoop = (): LoopState => ({ spentUsd: 0, tokens: 0, maxRoundUsd: 0, maxRoundTokens: 0, maxEvalUsd: 0, roundsWithoutKeep: 0 });
+
+/** The first five soft stops, in order; the first wins. */
+export function softStop(config: NightConfig, s: LoopState, nextRound: number, now: number, deadlineMs: number): SoftStop | null {
+	if (nextRound > config.max_rounds) return "max_rounds";
+	if (now >= deadlineMs) return "deadline";
+	if (s.spentUsd + s.maxRoundUsd + s.maxEvalUsd > config.budget_usd.night) return "budget";
+	if (config.max_tokens !== undefined && s.tokens + s.maxRoundTokens > config.max_tokens) return "tokens";
+	if (config.plateau_rounds > 0 && s.roundsWithoutKeep >= config.plateau_rounds) return "plateau";
+	return null;
+}
+
+/** The round-start check: a hard stop on disk first, then the soft stops. */
+export function stopCheck(paths: NightPaths, config: NightConfig, init: InitResult, nextRound: number, s: LoopState): StopCheck {
 	if (existsSync(paths.stopJson)) return { hard: true, reason: null };
-	if (nextRound > config.max_rounds) return { hard: false, reason: "max_rounds" };
-	if (Date.now() >= init.deadlineMs) return { hard: false, reason: "deadline" };
-	return { hard: false, reason: null };
+	return { hard: false, reason: softStop(config, s, nextRound, Date.now(), init.deadlineMs) };
 }
 
 /** Every threshold metric of the checkpoint is present and at least its target. */

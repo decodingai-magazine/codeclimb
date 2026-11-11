@@ -26,6 +26,8 @@ export interface RoundResult extends RoundState {
 	/** The round's spend: its row plus one review. */
 	spendUsd: number;
 	tokens: number;
+	/** The costliest evaluation of the round. */
+	maxEvalUsd: number;
 }
 
 /** The A/A run: the checkpoint evaluated on dev once more; its move becomes the noise margin's base (spec: Noise margin). */
@@ -136,5 +138,6 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		kept,
 		spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd + reviewerUsd + noiseUsd,
 		tokens,
+		maxEvalUsd: Math.max(noiseUsd, facts.programUsd),
 	};
 }
