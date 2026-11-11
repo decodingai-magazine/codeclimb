@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { NightConfig } from "../config.ts";
 import { ExperimentRepo } from "../experiments.ts";
-import { writeJson } from "../night/files.ts";
+import { readJson, writeJson } from "../night/files.ts";
+import { NonRetriableError } from "../runtime/step.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
 import type { Sandbox, SandboxBackend } from "../sandbox/types.ts";
@@ -24,6 +25,8 @@ const IDLE_CHECK_MS = 30_000;
 export const NOTES_CHARS = 3000;
 export const APPROACH_CHARS = 300;
 export const CLOSING_CHARS = 1000;
+export const MAX_FRESH_RESTARTS = 1;
+export const RESTART_PROMPT = "The harness restarted while you worked. Your sandbox and its files are as you left them: continue where you left off.";
 
 export interface CodeRequest {
 	night: string;
@@ -120,16 +123,45 @@ async function squashCommit(sb: Sandbox, repo: ExperimentRepo, parentSha: string
 }
 
 export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal: AbortSignal): Promise<CodeResult> {
-	const t0 = Date.now();
+	let t0 = Date.now();
 	const { config } = req;
 	const sandboxName = `cc-${req.expId}`;
 	const stateFile = join(req.expDir, "code-state.json");
-	mkdirSync(join(req.expDir, "session"), { recursive: true });
-	const state: CodeState = { startedAt: new Date(t0).toISOString(), sandbox: sandboxName, freshRestarts: 0, infraErrors: 0, coderUsd: 0, devUsd: 0, tokens: 0, tCode: 0, tProvision: 0 };
+	const resultFile = join(req.expDir, "code-result.json");
+	const sessionDir = join(req.expDir, "session");
+	mkdirSync(sessionDir, { recursive: true });
+
+	// A rerun is decided by the state file, not by the attempt number (a step rerun after a restart starts at attempt 1).
+	const prior = readJson<CodeState>(stateFile);
+	const finished = prior?.finishedAt ? readJson<CodeResult>(resultFile) : null;
+	if (finished) return finished;
+	const rerun = prior !== null && !prior.finishedAt;
+	const state: CodeState = rerun
+		? { ...prior }
+		: { startedAt: new Date(t0).toISOString(), sandbox: sandboxName, freshRestarts: 0, infraErrors: 0, coderUsd: 0, devUsd: 0, tokens: 0, tCode: 0, tProvision: 0 };
 	const save = () => {
-		state.tCode = (Date.now() - t0) / 1000 - state.tProvision;
+		state.tCode = Math.max(0, (Date.now() - t0) / 1000 - state.tProvision);
 		writeJson(stateFile, state);
 	};
+	let live: Sandbox | null = null;
+	let reopen: string | undefined;
+	if (rerun) {
+		live = await backend.find(sandboxName);
+		const file = readdirSync(sessionDir).filter((n) => n.endsWith(".jsonl")).sort().pop();
+		if (live && file) {
+			// Alive, with a session file: a session resume on the same clock.
+			reopen = join(sessionDir, file);
+			t0 = Date.parse(state.startedAt);
+		} else {
+			// Dead: one fresh restart from the parent commit; the clock and the session start again.
+			if (state.freshRestarts >= MAX_FRESH_RESTARTS) throw new NonRetriableError(`experiment ${req.expId}: sandbox lost twice`);
+			live = null;
+			state.freshRestarts++;
+			state.infraErrors++;
+			state.startedAt = new Date(t0).toISOString();
+			state.tProvision = 0;
+		}
+	}
 	save();
 
 	signal.throwIfAborted();
@@ -149,7 +181,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	};
 	let sb: Sandbox;
 	try {
-		sb = await backend.create({
+		sb = live ?? await backend.create({
 			name: sandboxName,
 			image: config.scenario_spec.image,
 			labels: { night: req.night, run: req.expId },
@@ -161,7 +193,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		closeDev();
 		throw e;
 	}
-	state.tProvision = (Date.now() - t0) / 1000;
+	if (!reopen) state.tProvision = (Date.now() - t0) / 1000;
 	save();
 
 	let stop: CoderStop | undefined;
@@ -198,7 +230,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			cwd: "/repo",
 			sandbox: sb,
 			...(ledger ? { env: meterEnv(ledger.token) } : {}),
-			storage: { dir: join(req.expDir, "session") },
+			storage: { dir: sessionDir, ...(reopen ? { reopen } : {}) },
 		});
 		session.subscribe((e) => {
 			lastEvent = Date.now();
@@ -225,7 +257,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			rejectedDiffs: rejectedDiffs(req.bundleDir),
 			...(req.failures ? { failures: req.failures } : {}),
 		});
-		if (!signal.aborted) await session.prompt(prompt);
+		if (!signal.aborted) await session.prompt(reopen ? RESTART_PROMPT : prompt);
 		const hasTrain = existsSync(join(req.bundleDir, "train"));
 		const target = targetLines(config, req.checkpointMetrics).targets[0]?.split(":")[0];
 		const nextStep = req.hypothesis
@@ -293,8 +325,8 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 	const commit = await squashCommit(sb, repo, req.parentSha, req.expId, `${req.expId}: ${hypothesis}`);
 	state.stop = stop;
 	state.finishedAt = new Date().toISOString();
-	save();
-	return {
+	state.tCode = Math.max(0, (Date.now() - t0) / 1000 - state.tProvision);
+	const result: CodeResult = {
 		commit,
 		stop,
 		coderUsd: state.coderUsd,
@@ -309,4 +341,8 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		sendBacks,
 		...(error ? { error } : {}),
 	};
+	// The result first, then the finished state: a rerun that finds both returns the result without coding again.
+	writeJson(resultFile, result);
+	writeJson(stateFile, state);
+	return result;
 }
