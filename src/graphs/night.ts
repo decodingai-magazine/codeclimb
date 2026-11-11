@@ -6,6 +6,10 @@ import { nightPaths, writeStopIfMissing } from "../night/files.ts";
 import { initNight } from "../night/init.ts";
 import { finishNight, stopCheck } from "../night/loop.ts";
 import { type NightInput, serverRoot } from "../night/types.ts";
+import { sandboxPrefix, testEvalId } from "../ids.ts";
+import { type Checkpoint, evaluationRow } from "../night/rows.ts";
+import { appendRow } from "../results.ts";
+import { runEvaluation } from "./parts.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
 
 export const night = entrypoint("night", async (input: NightInput) => {
@@ -29,14 +33,19 @@ export const night = entrypoint("night", async (input: NightInput) => {
 			round = next;
 			await step(`r${round}/round`, async () => ({ round }))();
 		}
+		const checkpoint: Checkpoint = { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} };
+		// After any soft stop: score the checkpoint on test, for the report only.
+		const testId = testEvalId(id, round);
+		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit });
+		await step(`${testId}/record`, async () => appendRow(paths.results, evaluationRow(id, config, "test", testId, round, checkpoint, test)))();
 		const done = await step("finish", () =>
 			finishNight(paths, {
 				nightId: id,
 				stopReason,
 				rounds: round,
-				kept: { exp_id: init.round0.exp_id, commit: init.round0.sha, dev_score: 0 },
-				testMetrics: null,
-				spendUsd: 0,
+				kept: { exp_id: checkpoint.exp_id, commit: checkpoint.commit, dev_score: checkpoint.metrics[config.primary_metric] ?? 0 },
+				testMetrics: test.ok ? test.metrics : null,
+				spendUsd: test.program_usd,
 			}),
 		)();
 		return done ?? { night_id: id, stopped: true };
