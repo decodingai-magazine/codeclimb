@@ -1,6 +1,6 @@
 // One experiment's coder: a Pi session whose tools act in a fresh sandbox from the checkpoint, then one squash
 // commit into the experiment repository (spec: Coder; End of an experiment).
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { NightConfig } from "../config.ts";
@@ -36,6 +36,10 @@ export interface CodeRequest {
 	/** The reviewer's hypothesis for this round; none in round 1. */
 	hypothesis: string | null;
 	checkpointMetrics: Record<string, number>;
+	/** The night so far, for the prompt's trajectory. */
+	trajectory?: string;
+	/** The last experiment's errors, when it was never scored. */
+	failures?: string;
 	/** A repair attempt: no send-backs, no wrap-up turn. */
 	repair?: boolean;
 }
@@ -79,6 +83,12 @@ export function approachOf(closing: string): string {
 	const clean = (pick ?? "").replace(/[`*]/g, "").trim();
 	return clean ? clean.slice(0, APPROACH_CHARS) : "(no summary)";
 }
+
+/** The rejected diffs in the bundle's history, as the coder sees them under /spec. */
+const rejectedDiffs = (bundleDir: string) => {
+	const dir = join(bundleDir, "history");
+	return existsSync(dir) ? readdirSync(dir).filter((n) => /^r\d+\.diff$/.test(n)).sort().map((n) => `/spec/history/${n}`) : [];
+};
 
 async function readOptional(sb: Sandbox, path: string): Promise<string | null> {
 	const r = await sb.exec(`test -f ${path} && cat ${path}`, { cwd: "/" });
@@ -178,6 +188,9 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			minutes: config.timeouts.experiment_min,
 			endsAt: new Date(deadline),
 			hasTrain: existsSync(join(req.bundleDir, "train")),
+			trajectory: req.trajectory ?? "",
+			rejectedDiffs: rejectedDiffs(req.bundleDir),
+			...(req.failures ? { failures: req.failures } : {}),
 		});
 		if (!signal.aborted) await session.prompt(prompt);
 		const hasTrain = existsSync(join(req.bundleDir, "train"));

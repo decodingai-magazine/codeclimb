@@ -11,8 +11,8 @@ import { checkpointScore } from "../coder/prompt.ts";
 import { type Decision, decide, guardrails, marginFor, type Outcome } from "../decision.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { devEvalId, experimentId, sandboxPrefix } from "../ids.ts";
-import { type Checkpoint, type ExperimentFacts, experimentRow } from "../night/rows.ts";
-import { appendRow } from "../results.ts";
+import type { Checkpoint, ExperimentFacts } from "../night/rows.ts";
+import { buildTrajectory, type HistoryEntry } from "../night/memory.ts";
 
 export interface EvalOutcome extends EvalResult {
 	t_teardown: number;
@@ -73,24 +73,32 @@ export interface ExperimentSpec {
 	/** The reviewer's hypothesis for the round; none in round 1. */
 	hypothesis: string | null;
 	mock: boolean;
+	/** The history lines so far, for the trajectory. */
+	history: HistoryEntry[];
+	/** The last experiment's errors, when it was never scored. */
+	failures?: string;
 }
 
 export interface ExperimentOutcome {
 	expId: string;
+	evalId: string;
+	code: (CodeResult & { unchanged: boolean }) | null;
+	evaluation: EvalOutcome | null;
+	guardrails: string[];
 	decision: Decision;
-	commit: string;
-	/** The row's spend: coder + dev + program. */
-	spendUsd: number;
-	tokens: number;
+	facts: ExperimentFacts;
+	/** The errors when it was never scored. */
+	errors?: string;
 }
 
-/** One experiment: code, teardown, dev evaluation unless unchanged or uncommitted, decide, record (spec: Round loop). */
+/** One experiment: code, teardown, dev evaluation unless unchanged or uncommitted, decide (spec: Round loop). */
 export async function runExperiment(root: string, night: string, config: NightConfig, paths: NightPaths, spec: ExperimentSpec): Promise<ExperimentOutcome> {
 	const expId = experimentId(night, spec.round);
 	const evalId = devEvalId(expId);
 	const { checkpoint } = spec;
 	type Coded = CodeResult & { unchanged: boolean };
 	let code: Coded | null = null;
+	let codeError: string | undefined;
 	try {
 		code = await step(
 			`${expId}/code`,
@@ -109,6 +117,8 @@ export async function runExperiment(root: string, night: string, config: NightCo
 						mock: spec.mock,
 						hypothesis: spec.hypothesis,
 						checkpointMetrics: checkpoint.metrics,
+						trajectory: buildTrajectory(paths.bundle, paths.nightDir, spec.history),
+						...(spec.failures ? { failures: spec.failures } : {}),
 					},
 					ctx.signal,
 				);
@@ -119,6 +129,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		)();
 	} catch (error) {
 		rethrowControl(error);
+		codeError = error instanceof Error ? error.message : String(error);
 		console.error(`experiment ${expId} failed:`, error);
 	}
 	const coderTeardown = await step(`${expId}/teardown`, async () => {
@@ -131,13 +142,14 @@ export async function runExperiment(root: string, night: string, config: NightCo
 	if (code && !code.unchanged) {
 		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval`, split: "dev", commit: code.commit });
 	}
+	const fired = evaluation?.ok ? guardrails(evaluation.metrics, config.gates, 0) : [];
 	const outcome: Outcome = !code
 		? { kind: "failed" }
 		: code.unchanged
 			? { kind: "unchanged", checkpointMetrics: checkpoint.metrics }
 			: !evaluation?.ok
 				? { kind: "not_scored" }
-				: { kind: "scored", metrics: evaluation.metrics, guardrails: guardrails(evaluation.metrics, config.gates, 0) };
+				: { kind: "scored", metrics: evaluation.metrics, guardrails: fired };
 	const decision = decide({
 		outcome,
 		primary: config.primary_metric,
@@ -167,6 +179,6 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		infraErrors: (code?.infraErrors ?? 0) + (evaluation?.failed_out ? 1 : 0),
 		...(evaluation?.instance ? { instance: evaluation.instance } : {}),
 	};
-	await step(`${expId}/record`, async () => appendRow(paths.results, experimentRow(night, config, facts)))();
-	return { expId, decision, commit: facts.commit, spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd, tokens: facts.tokens };
+	const errors = !code ? codeError : evaluation && !evaluation.ok ? evaluation.error : undefined;
+	return { expId, evalId, code, evaluation, guardrails: fired, decision, facts, ...(errors ? { errors } : {}) };
 }

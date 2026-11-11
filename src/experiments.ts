@@ -58,6 +58,20 @@ export class ExperimentRepo {
 		return this.g(["rev-parse", `${sha}^{tree}`]);
 	}
 
+	/** The unified diff from `base` to `sha`. */
+	diff(base: string, sha: string): Promise<string> {
+		return this.g(["diff", "--no-color", "--no-ext-diff", base, sha]);
+	}
+
+	/** Every text file of a commit, as `### <path>` sections (binary files skipped). */
+	async source(sha: string): Promise<string> {
+		const numstat = await this.g(["diff", "--numstat", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", sha]);
+		const text = numstat.split("\n").filter((l) => l && !l.startsWith("-\t-\t")).map((l) => l.split("\t").slice(2).join("\t"));
+		const parts: string[] = [];
+		for (const path of text) parts.push(`### ${path}\n${await this.g(["show", `${sha}:${path}`])}`);
+		return parts.join("\n\n");
+	}
+
 	/** Write a git bundle of `sha` (as branch main) to `file`. */
 	async bundle(sha: string, file: string): Promise<void> {
 		const tmpRef = `refs/cc-bundle/${process.pid}-${Date.now()}`;

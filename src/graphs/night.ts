@@ -9,7 +9,8 @@ import { type NightInput, serverRoot } from "../night/types.ts";
 import { sandboxPrefix, testEvalId } from "../ids.ts";
 import { type Checkpoint, evaluationRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
-import { runEvaluation, runExperiment } from "./parts.ts";
+import { runEvaluation } from "./parts.ts";
+import { type RoundState, runRound } from "./round.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
 
 export const night = entrypoint("night", async (input: NightInput) => {
@@ -22,7 +23,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const init = await step("init", (ctx) => initNight(ctx, root, input), { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		let round = 0;
 		let stopReason: string;
-		let checkpoint: Checkpoint = { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} };
+		let state: RoundState = { checkpoint: { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} }, guidance: { feedback: "", hypothesis: null }, history: [] };
 		let spend = 0;
 		for (;;) {
 			const next = round + 1;
@@ -33,14 +34,15 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				break;
 			}
 			round = next;
-			const exp = await runExperiment(root, id, config, paths, { round, checkpoint, hypothesis: null, mock: input.mock });
-			spend += exp.spendUsd;
-			if (exp.decision.decision === "keep") checkpoint = { exp_id: exp.expId, commit: exp.commit, metrics: exp.decision.metrics };
-			if (thresholdsMet(config, checkpoint.metrics)) {
+			const r = await runRound(root, id, config, paths, input.mock, round, state);
+			spend += r.spendUsd;
+			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, ...(r.failures ? { failures: r.failures } : {}) };
+			if (thresholdsMet(config, state.checkpoint.metrics)) {
 				stopReason = "thresholds";
 				break;
 			}
 		}
+		const checkpoint: Checkpoint = state.checkpoint;
 		// After any soft stop: score the checkpoint on test, for the report only.
 		const testId = testEvalId(id, round);
 		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit });

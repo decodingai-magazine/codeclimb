@@ -53,6 +53,10 @@ export interface PromptInput {
 	minutes: number;
 	endsAt: Date;
 	hasTrain: boolean;
+	direction?: string;
+	trajectory?: string;
+	rejectedDiffs?: string[];
+	failures?: string;
 }
 
 const tag = (name: string, body: string) => `<${name}>\n${body.trim()}\n</${name}>`;
@@ -68,6 +72,12 @@ export function coderPrompt(p: PromptInput): string {
 			`A copy of the spec is at /spec/spec.${p.hasTrain ? " /spec/train is the only labeled data you get." : ""}`,
 		].join("\n\n"),
 	);
+	if (p.direction) parts.push(tag("direction", p.direction));
+	if (p.trajectory) {
+		const diffs = p.rejectedDiffs?.length ? `\n\nRejected diffs (read the part you need): ${p.rejectedDiffs.join(", ")}` : "";
+		parts.push(tag("trajectory", `${p.trajectory}${diffs}`));
+	}
+	if (p.failures) parts.push(tag("failures", p.failures));
 	const t = targetLines(config, p.checkpoint);
 	if (t.targets.length) parts.push(tag("targets", `Raise all of these in this attempt, one task per metric:\n${t.targets.map((l) => `- ${l}`).join("\n")}`));
 	if (t.met.length) parts.push(tag("met", `Reached on dev; plan no task for them, only check they don't fall:\n${t.met.map((l) => `- ${l}`).join("\n")}`));
