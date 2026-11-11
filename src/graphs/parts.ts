@@ -6,6 +6,8 @@ import { type EvalRequest, type EvalResult, evaluate } from "../eval/evaluator.t
 import type { NightPaths } from "../night/files.ts";
 import { sandboxes } from "../night/sandboxes.ts";
 import { isOwnFailure, step } from "../runtime/step.ts";
+import { closeLedger, openLedger, proxyPort } from "../meter/proxy.ts";
+import { ensureMeterPath, METER_NETWORK, meterEnv } from "../meter/relay.ts";
 import { type CodeResult, runCoder } from "../coder/coder.ts";
 import { checkpointScore } from "../coder/prompt.ts";
 import { type Decision, decide, guardrails, marginFor, type Outcome } from "../decision.ts";
@@ -25,6 +27,11 @@ export interface EvalSpec {
 	sandboxName: string;
 	split: "dev" | "test";
 	commit: string;
+	mock: boolean;
+	/** The night's budget left when the evaluation starts: its meter token's cap. */
+	capUsd: number;
+	/** The A/A run: no replayed calls, nothing cached. */
+	noCache?: boolean;
 }
 
 /** An error that is a pause or an abort of the server run travels on; anything else becomes an outcome. */
@@ -52,7 +59,25 @@ export async function runEvaluation(root: string, night: string, config: NightCo
 	const backstopMin = config.timeouts.eval_min * scenario.stages.length * 3 + 15;
 	let result: EvalResult & { failed_out: boolean };
 	try {
-		result = { ...(await step(`${spec.evalId}/evaluate`, (ctx) => evaluate(sandboxes, req, ctx.signal), { backstopMin, live: { id: spec.evalId, night } })()), failed_out: false };
+		result = {
+			...(await step(
+				`${spec.evalId}/evaluate`,
+				async (ctx) => {
+					if (!config.allowed_models.length) return evaluate(sandboxes, req, ctx.signal);
+					const port = await proxyPort();
+					const checkMeterPath = () => ensureMeterPath(scenario.image, port);
+					await checkMeterPath();
+					const ledger = openLedger(night, { id: spec.evalId, allowedModels: config.allowed_models, capUsd: spec.capUsd, mock: spec.mock, ...(spec.noCache ? { noCache: true } : {}) });
+					try {
+						return await evaluate(sandboxes, { ...req, network: METER_NETWORK, meterEnv: meterEnv(ledger.token), ledgerCalls: () => closeLedger(ledger), checkMeterPath }, ctx.signal);
+					} finally {
+						closeLedger(ledger);
+					}
+				},
+				{ backstopMin, live: { id: spec.evalId, night } },
+			)()),
+			failed_out: false,
+		};
 	} catch (error) {
 		rethrowControl(error);
 		const message = error instanceof Error ? error.message : String(error);
@@ -79,6 +104,8 @@ export interface ExperimentSpec {
 	failures?: string;
 	/** The noise margin's base: `fixed`, else the A/A move, else 0. */
 	aaBase: number;
+	/** The night's spend so far. */
+	spentUsd: number;
 }
 
 export interface ExperimentOutcome {
@@ -142,7 +169,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 
 	let evaluation: EvalOutcome | null = null;
 	if (code && !code.unchanged) {
-		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval`, split: "dev", commit: code.commit });
+		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval`, split: "dev", commit: code.commit, mock: spec.mock, capUsd: config.budget_usd.night - spec.spentUsd - code.coderUsd - code.devUsd });
 	}
 	const fired = evaluation?.ok ? guardrails(evaluation.metrics, config.gates, 0) : [];
 	const outcome: Outcome = !code
@@ -171,7 +198,7 @@ export async function runExperiment(root: string, night: string, config: NightCo
 		hypothesis: code?.hypothesis ?? spec.hypothesis,
 		decision,
 		coderUsd: code?.coderUsd ?? 0,
-		devUsd: 0,
+		devUsd: code?.devUsd ?? 0,
 		programUsd: evaluation?.program_usd ?? 0,
 		tokens: code?.tokens ?? 0,
 		tProvision: (code?.tProvision ?? 0) + (evaluation?.t_provision ?? 0),

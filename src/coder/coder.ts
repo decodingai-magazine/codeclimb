@@ -11,6 +11,9 @@ import { openSession } from "../pi/session.ts";
 import type { Sandbox, SandboxBackend } from "../sandbox/types.ts";
 import { PARENT_BUNDLE, pullCommit } from "../sandbox/transfer.ts";
 import { coderPrompt, targetLines } from "./prompt.ts";
+import type { Ledger } from "../meter/ledger.ts";
+import { closeLedger, openLedger, proxyPort } from "../meter/proxy.ts";
+import { ensureMeterPath, METER_NETWORK, meterEnv } from "../meter/relay.ts";
 import { inReserve, MIN_MINUTES_LEFT, RESERVE_SHARE, sendBackMessage, WRAP_UP } from "./sendback.ts";
 
 export type CoderStop = "done" | "timeout" | "idle" | "budget" | "agent_error" | "credits" | "cancelled";
@@ -48,6 +51,8 @@ export interface CodeResult {
 	commit: string;
 	stop: Exclude<CoderStop, "cancelled">;
 	coderUsd: number;
+	/** The coder's dev ledger: its program runs through the proxy. */
+	devUsd: number;
 	tokens: number;
 	tProvision: number;
 	tCode: number;
@@ -129,7 +134,33 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 
 	signal.throwIfAborted();
 	const repo = await ExperimentRepo.open(req.repoDir);
-	const sb = await backend.create({ name: sandboxName, image: config.scenario_spec.image, labels: { night: req.night, run: req.expId }, commit: { repo, sha: req.parentSha }, specDir: req.bundleDir });
+	// Metered: the coder's dev ledger, a new token per attempt, capped at what is left of the experiment's budget.
+	let ledger: Ledger | undefined;
+	if (config.allowed_models.length) {
+		const port = await proxyPort();
+		await ensureMeterPath(config.scenario_spec.image, port);
+		ledger = openLedger(req.night, { id: `${req.expId}-dev`, allowedModels: config.allowed_models, capUsd: config.budget_usd.experiment - state.coderUsd, coder: true, mock: req.mock, spentUsd: state.devUsd });
+	}
+	const closeDev = () => {
+		if (!ledger) return;
+		const rows = closeLedger(ledger);
+		state.devUsd = ledger.spentUsd;
+		if (rows.length) writeFileSync(join(req.expDir, "meter-dev.jsonl"), `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`);
+	};
+	let sb: Sandbox;
+	try {
+		sb = await backend.create({
+			name: sandboxName,
+			image: config.scenario_spec.image,
+			labels: { night: req.night, run: req.expId },
+			commit: { repo, sha: req.parentSha },
+			specDir: req.bundleDir,
+			...(ledger ? { network: METER_NETWORK } : {}),
+		});
+	} catch (e) {
+		closeDev();
+		throw e;
+	}
 	state.tProvision = (Date.now() - t0) / 1000;
 	save();
 
@@ -166,6 +197,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			thinking: config.coder_thinking,
 			cwd: "/repo",
 			sandbox: sb,
+			...(ledger ? { env: meterEnv(ledger.token) } : {}),
 			storage: { dir: join(req.expDir, "session") },
 		});
 		session.subscribe((e) => {
@@ -175,6 +207,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			if (e.type === "message_end" && e.message.role === "assistant") {
 				state.coderUsd += e.message.usage?.cost?.total ?? 0;
 				state.tokens += e.message.usage?.totalTokens ?? 0;
+				if (ledger) state.devUsd = ledger.spentUsd;
 				save();
 				if (state.coderUsd + state.devUsd >= config.budget_usd.experiment) end("budget");
 				else if (state.coderUsd + state.devUsd >= config.budget_usd.experiment * (1 - RESERVE_SHARE)) steerWrapUp();
@@ -237,6 +270,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		clearTimeout(reserveTimer);
 		clearInterval(idle);
 		signal.removeEventListener("abort", onAbort);
+		closeDev();
 	}
 	stop ??= signal.aborted ? "cancelled" : "done";
 	const closingRaw = session?.getLastAssistantText()?.trim() ?? "";
@@ -264,6 +298,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 		commit,
 		stop,
 		coderUsd: state.coderUsd,
+		devUsd: state.devUsd,
 		tokens: state.tokens,
 		tProvision: state.tProvision,
 		tCode: state.tCode,

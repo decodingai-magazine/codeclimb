@@ -34,7 +34,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				break;
 			}
 			round = next;
-			const r = await runRound(root, id, config, paths, input.mock, round, state);
+			const r = await runRound(root, id, config, paths, input.mock, round, state, spend);
 			spend += r.spendUsd;
 			state = { checkpoint: r.checkpoint, guidance: r.guidance, history: r.history, noise: r.noise, ...(r.failures ? { failures: r.failures } : {}) };
 			if (thresholdsMet(config, state.checkpoint.metrics)) {
@@ -45,7 +45,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const checkpoint: Checkpoint = state.checkpoint;
 		// After any soft stop: score the checkpoint on test, for the report only.
 		const testId = testEvalId(id, round);
-		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit });
+		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit, mock: input.mock, capUsd: config.budget_usd.night - spend });
 		await step(`${testId}/record`, async () => appendRow(paths.results, evaluationRow(id, config, "test", testId, round, checkpoint, test)))();
 		const done = await step("finish", () =>
 			finishNight(paths, {

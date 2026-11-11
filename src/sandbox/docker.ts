@@ -17,7 +17,7 @@ interface Proc {
 }
 
 /** Run `docker <args>`, collecting output as buffers (no size limit). `input` is written to stdin or piped from a stream. */
-function docker(args: string[], input?: string | Buffer | Readable): Promise<Proc> {
+export function docker(args: string[], input?: string | Buffer | Readable): Promise<Proc> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
 		const out: Buffer[] = [];

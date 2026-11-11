@@ -29,10 +29,10 @@ export interface RoundResult extends RoundState {
 }
 
 /** The A/A run: the checkpoint evaluated on dev once more; its move becomes the noise margin's base (spec: Noise margin). */
-async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
+async function runNoise(root: string, night: string, config: NightConfig, paths: NightPaths, round: number, s: RoundState, mock: boolean, spentUsd: number): Promise<{ noise: RoundState["noise"]; spendUsd: number }> {
 	const cp = s.checkpoint;
 	const evalId = noiseEvalId(cp.exp_id, round);
-	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit });
+	const e = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${round}-noise`, split: "dev", commit: cp.commit, mock, capUsd: config.budget_usd.night - spentUsd, noCache: true });
 	const first = weightedScore(cp.metrics, config.thresholds, config.weights);
 	const second = e.ok ? weightedScore(e.metrics, config.thresholds, config.weights) : undefined;
 	const margin = e.ok ? aaMove(cp.metrics, e.metrics, config.thresholds, config.weights) : undefined;
@@ -52,16 +52,17 @@ async function runNoise(root: string, night: string, config: NightConfig, paths:
 	return { noise, spendUsd: e.program_usd };
 }
 
-export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState): Promise<RoundResult> {
+export async function runRound(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, s0: RoundState, spentUsd: number): Promise<RoundResult> {
 	let s = s0;
 	let noiseUsd = 0;
 	if (noiseDue(s.noise, s.checkpoint.exp_id, Object.keys(s.checkpoint.metrics).length > 0, config.noise_margin.fixed)) {
-		const n = await runNoise(root, night, config, paths, round, s);
+		const n = await runNoise(root, night, config, paths, round, s, mock, spentUsd);
 		s = { ...s, noise: n.noise };
 		noiseUsd = n.spendUsd;
 	}
 	const exp = await runExperiment(root, night, config, paths, {
 		aaBase: config.noise_margin.fixed ?? s.noise.base ?? 0,
+		spentUsd: spentUsd + noiseUsd,
 		round,
 		checkpoint: s.checkpoint,
 		hypothesis: s.guidance.hypothesis,
