@@ -27,8 +27,9 @@ import {
   freshNight,
   initNight,
   type Kept,
-  historyLine, maskFailures, repairable,
+  historyLine, maskFailures, maskText, repairable,
   markPaused,
+  type NightState,
   type Noise,
   type PausedAt,
   recordNoise, recordRows, renameKept, rescoreRow, saveRejected,
@@ -131,7 +132,13 @@ export const runNight = ccInngest.createFunction(
       }),
     );
     const start = event.data.continue;
-    const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : freshNight(await step.run("init", () => initNight(cfg, nightId)));
+    const given = event.data.direction?.trim();
+    const fresh = async (): Promise<NightState> => {
+      const init = freshNight(await step.run("init", () => initNight(cfg, nightId)));
+      // A new night's direction, masked like a continue's (`continueNight`).
+      return given ? { ...init, direction: await step.run("mask-direction", () => maskText(cfg, given)) } : init;
+    };
+    const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : await fresh();
     const { direction } = state;
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 

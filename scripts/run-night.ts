@@ -1,7 +1,8 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
 //   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock]     (always on Docker)
-//   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest] [--seed ID|latest|best]
+//   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest] [--seed ID|latest|best] [--direction TEXT]
 //     --seed (or the config's `seed`): start from an ended night's kept commit and its dev scores, not the starter
+//     --direction: the operator's direction for every round, as with continue
 //   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--night ID] [--direction TEXT] [--rounds N]
 //     more rounds on a night, from its kept commit; default: the newest night that ended
 //   npm run run-night -- stop --night ID
@@ -83,7 +84,6 @@ if (positionals[0] === "stop") {
   const continuing = positionals[0] === "continue";
   if (positionals.length && !continuing) throw new Error(`unknown command ${positionals[0]}`);
   if (!values.config) throw new Error("usage: run-night [continue] --config <yaml>");
-  if (!continuing && values.direction) throw new Error("--direction needs the continue command");
   if (continuing && values.seed) throw new Error("--seed starts a new night: a continued night goes on from its own kept commit");
   const loaded = loadConfig(resolve(values.config));
   const cfg = values.mock ? mockConfig(loaded) : loaded;
@@ -112,7 +112,7 @@ if (positionals[0] === "stop") {
   const nightId = continuing ? (values.night ?? latestNight(cfg)) : (values["night-id"] ?? newNightId());
   const reopened = continuing ? reopenNight(cfg, nightId) : null;
   const start = reopened ? { rescore: reopened.rescore, ...(values.direction ? { direction: values.direction } : {}) } : undefined;
-  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(reopened?.config ?? cfg), start));
+  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(reopened?.config ?? cfg), start, values.direction));
   console.log(`[run-night] ${continuing ? "continued" : "started"} night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
   if (!values["no-wait"]) await follow(reopened?.config ?? cfg, nightId);
 }
