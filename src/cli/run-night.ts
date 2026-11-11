@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { type NightConfig, loadNightConfig } from "../config.ts";
-import { nightThreads, resumeNight, serverUrl, startNight, startVariation, stopNight } from "../control.ts";
-import { endedNights, reopenNight, resolveSeed } from "../night/variation.ts";
+import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
+import { endedNights, resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
 import { defaultNightId, isValidNightId } from "../ids.ts";
 import { findNightDir, type NightPaths, nightPaths, readJson, writeStopIfMissing } from "../night/files.ts";
@@ -154,7 +154,7 @@ async function stop(argv: string[]): Promise<void> {
 	if (stopJson) console.log(JSON.stringify(stopJson, null, 2));
 }
 
-async function continueNight(argv: string[]): Promise<void> {
+async function continueCommand(argv: string[]): Promise<void> {
 	const { values } = parseArgs({
 		args: argv,
 		options: { config: { type: "string" }, night: { type: "string" }, direction: { type: "string" }, rounds: { type: "string" }, seed: { type: "string" }, "no-wait": { type: "boolean", default: false } },
@@ -191,17 +191,16 @@ async function continueNight(argv: string[]): Promise<void> {
 		die(`the Agent Server at ${serverUrl()} is not reachable (is \`npm run server\` running?)`);
 	}
 	const config = mock ? mockConfig : plain;
-	const input = reopenNight(root, nightId, config, { mock, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
-	if ("refused" in input) die(input.refused);
 	const paths = nightPaths(root, config.results_path, nightId);
+	let started: Awaited<ReturnType<typeof continueNight>>;
 	try {
-		const thread = await startVariation(input);
-		console.log(`continued night ${nightId} as variation ${input.variation} (thread ${thread}): rounds up to ${input.config.max_rounds}${input.continue?.rescore ? ", a rescore round first" : ""}`);
+		started = await continueNight(root, nightId, config, { mock, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
 	} catch (error) {
-		// The night reads as running from the rewritten night.json: end it, so it can be continued again.
-		writeStopIfMissing(paths.nightDir, "failed");
 		die(`cannot start the variation on the Agent Server: ${(error as Error).message}`);
 	}
+	if ("refused" in started) die(started.refused);
+	const { input } = started;
+	console.log(`continued night ${nightId} as variation ${input.variation} (thread ${started.thread}): rounds up to ${input.config.max_rounds}${input.continue?.rescore ? ", a rescore round first" : ""}`);
 	if (values["no-wait"]) return;
 	await follow(paths, nightId, config.primary_metric);
 }
@@ -230,5 +229,5 @@ async function resume(argv: string[]): Promise<void> {
 const [command, ...rest] = process.argv.slice(2);
 if (command === "stop") await stop(rest);
 else if (command === "resume") await resume(rest);
-else if (command === "continue") await continueNight(rest);
+else if (command === "continue") await continueCommand(rest);
 else await start(process.argv.slice(2));

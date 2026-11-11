@@ -7,6 +7,7 @@ import type { NightConfig } from "./config.ts";
 import { lessonsThreadId, nightThreadId, stopThreadId, timerThreadId } from "./ids.ts";
 import { findNightDir, type StopReason, writeStopIfMissing } from "./night/files.ts";
 import type { NightInput } from "./night/types.ts";
+import { type ReopenOptions, reopenNight } from "./night/variation.ts";
 
 export const serverUrl = () => process.env.CODECLIMB_SERVER_URL ?? "http://127.0.0.1:2024";
 const client = () => new Client({ apiUrl: serverUrl() });
@@ -33,6 +34,29 @@ export async function startVariation(input: NightInput): Promise<string> {
 	const thread = await c.threads.create({ metadata: { kind: "night", night_id: input.night_id, run: input.variation ?? 0 } });
 	await c.runs.create(thread.thread_id, "night", { input: { ...input }, multitaskStrategy: "reject" });
 	return thread.thread_id;
+}
+
+/** The watchdog's resume: a server run of `night` with no input on an errored thread, which replays from the last saved step. */
+export async function resumeErroredThread(threadId: string): Promise<void> {
+	await client().runs.create(threadId, "night", { multitaskStrategy: "reject" });
+}
+
+export type ContinueResult = { thread: string; input: NightInput } | { refused: string };
+
+/**
+ * Continue an ended night: reopen it on disk, then start the variation on a new thread. A failed start ends the
+ * night again with stop.json (failed), since the rewritten night.json reads as running.
+ */
+export async function continueNight(root: string, nightId: string, config: NightConfig, o: ReopenOptions): Promise<ContinueResult> {
+	const input = reopenNight(root, nightId, config, o);
+	if ("refused" in input) return input;
+	const dir = findNightDir(root, nightId);
+	try {
+		return { thread: await startVariation(input), input };
+	} catch (error) {
+		if (dir) writeStopIfMissing(dir, "failed");
+		throw error;
+	}
 }
 
 /** The night's threads, newest first. */
@@ -67,8 +91,9 @@ export async function resumeNight(root: string, nightId: string): Promise<Resume
 	try {
 		await client().runs.create(pending.threadId, "night", { command: { resume: { pause: pending.pause } }, multitaskStrategy: "reject" });
 	} catch (error) {
-		// A run is in flight on the thread: the pause was resumed already and its end has not run yet.
-		if (typeof error === "object" && error !== null && "status" in error && error.status === 409) return { refused: `night ${nightId} is running: pause ${pending.pause} was resumed already` };
+		// A run is in flight on the thread: the pause was resumed already and its end has not run yet. The server
+		// answers 409 or, once the run has started, 422 ("Thread is already running a task").
+		if (typeof error === "object" && error !== null && "status" in error && (error.status === 409 || error.status === 422)) return { refused: `night ${nightId} is running: pause ${pending.pause} was resumed already` };
 		throw error;
 	}
 	return { resumed: pending.pause };

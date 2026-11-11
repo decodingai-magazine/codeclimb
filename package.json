@@ -15,7 +15,8 @@
     "run-night": "tsx src/cli/run-night.ts",
     "validate-results": "tsx src/cli/validate-results.ts",
     "lessons": "tsx src/cli/lessons.ts",
-    "export": "tsx src/cli/export.ts"
+    "export": "tsx src/cli/export.ts",
+    "api": "tsx src/cli/api.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.3.0",
