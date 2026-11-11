@@ -21,6 +21,11 @@ export function stopCheck(paths: NightPaths, config: NightConfig, init: InitResu
 	return { hard: false, reason: null };
 }
 
+/** Every threshold metric of the checkpoint is present and at least its target. */
+export function thresholdsMet(config: NightConfig, metrics: Record<string, number>): boolean {
+	return Object.entries(config.thresholds).every(([name, target]) => typeof metrics[name] === "number" && (metrics[name] as number) >= target);
+}
+
 export interface FinishInput {
 	nightId: string;
 	stopReason: string;

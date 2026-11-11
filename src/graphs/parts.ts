@@ -6,6 +6,13 @@ import { type EvalRequest, type EvalResult, evaluate } from "../eval/evaluator.t
 import type { NightPaths } from "../night/files.ts";
 import { sandboxes } from "../night/sandboxes.ts";
 import { isOwnFailure, step } from "../runtime/step.ts";
+import { type CodeResult, runCoder } from "../coder/coder.ts";
+import { checkpointScore } from "../coder/prompt.ts";
+import { type Decision, decide, guardrails, marginFor, type Outcome } from "../decision.ts";
+import { ExperimentRepo } from "../experiments.ts";
+import { devEvalId, experimentId, sandboxPrefix } from "../ids.ts";
+import { type Checkpoint, type ExperimentFacts, experimentRow } from "../night/rows.ts";
+import { appendRow } from "../results.ts";
 
 export interface EvalOutcome extends EvalResult {
 	t_teardown: number;
@@ -58,4 +65,108 @@ export async function runEvaluation(root: string, night: string, config: NightCo
 		return (Date.now() - t) / 1000;
 	})();
 	return { ...result, t_teardown: teardown };
+}
+
+export interface ExperimentSpec {
+	round: number;
+	checkpoint: Checkpoint;
+	/** The reviewer's hypothesis for the round; none in round 1. */
+	hypothesis: string | null;
+	mock: boolean;
+}
+
+export interface ExperimentOutcome {
+	expId: string;
+	decision: Decision;
+	commit: string;
+	/** The row's spend: coder + dev + program. */
+	spendUsd: number;
+	tokens: number;
+}
+
+/** One experiment: code, teardown, dev evaluation unless unchanged or uncommitted, decide, record (spec: Round loop). */
+export async function runExperiment(root: string, night: string, config: NightConfig, paths: NightPaths, spec: ExperimentSpec): Promise<ExperimentOutcome> {
+	const expId = experimentId(night, spec.round);
+	const evalId = devEvalId(expId);
+	const { checkpoint } = spec;
+	type Coded = CodeResult & { unchanged: boolean };
+	let code: Coded | null = null;
+	try {
+		code = await step(
+			`${expId}/code`,
+			async (ctx): Promise<Coded> => {
+				const result = await runCoder(
+					sandboxes,
+					{
+						night,
+						expId,
+						round: spec.round,
+						parentSha: checkpoint.commit,
+						repoDir: paths.repo,
+						bundleDir: paths.bundle,
+						expDir: join(paths.nightDir, "exps", expId),
+						config,
+						mock: spec.mock,
+						hypothesis: spec.hypothesis,
+						checkpointMetrics: checkpoint.metrics,
+					},
+					ctx.signal,
+				);
+				const repo = await ExperimentRepo.open(paths.repo);
+				return { ...result, unchanged: (await repo.treeOf(result.commit)) === (await repo.treeOf(checkpoint.commit)) };
+			},
+			{ backstopMin: config.timeouts.experiment_min * 3 + 30, live: { id: expId, night } },
+		)();
+	} catch (error) {
+		rethrowControl(error);
+		console.error(`experiment ${expId} failed:`, error);
+	}
+	const coderTeardown = await step(`${expId}/teardown`, async () => {
+		const t = Date.now();
+		await (await sandboxes.find(`cc-${expId}`))?.destroy();
+		return (Date.now() - t) / 1000;
+	})();
+
+	let evaluation: EvalOutcome | null = null;
+	if (code && !code.unchanged) {
+		evaluation = await runEvaluation(root, night, config, paths, { evalId, sandboxName: `${sandboxPrefix(night)}-r${spec.round}-eval`, split: "dev", commit: code.commit });
+	}
+	const outcome: Outcome = !code
+		? { kind: "failed" }
+		: code.unchanged
+			? { kind: "unchanged", checkpointMetrics: checkpoint.metrics }
+			: !evaluation?.ok
+				? { kind: "not_scored" }
+				: { kind: "scored", metrics: evaluation.metrics, guardrails: guardrails(evaluation.metrics, config.gates, 0) };
+	const decision = decide({
+		outcome,
+		primary: config.primary_metric,
+		thresholds: config.thresholds,
+		weights: config.weights,
+		checkpointScore: checkpointScore(config, checkpoint.metrics),
+		margin: marginFor(config.noise_margin.fixed ?? 0, config.noise_margin, evaluation?.metrics ?? {}),
+		aaBase: config.noise_margin.fixed ?? 0,
+		scaleByReplay: config.noise_margin.scale_by_replay,
+	});
+	const facts: ExperimentFacts = {
+		expId,
+		evalId,
+		round: spec.round,
+		parent: checkpoint,
+		commit: code?.commit ?? checkpoint.commit,
+		hypothesis: code?.hypothesis ?? spec.hypothesis,
+		decision,
+		coderUsd: code?.coderUsd ?? 0,
+		devUsd: 0,
+		programUsd: evaluation?.program_usd ?? 0,
+		tokens: code?.tokens ?? 0,
+		tProvision: (code?.tProvision ?? 0) + (evaluation?.t_provision ?? 0),
+		tCode: code?.tCode ?? 0,
+		tEval: evaluation?.t_eval ?? 0,
+		tTeardown: coderTeardown + (evaluation?.t_teardown ?? 0),
+		infraErrors: (code?.infraErrors ?? 0) + (evaluation?.failed_out ? 1 : 0),
+		...(evaluation?.instance ? { instance: evaluation.instance } : {}),
+	};
+	await step(`${expId}/record`, async () => appendRow(paths.results, experimentRow(night, config, facts)))();
+	return { expId, decision, commit: facts.commit, spendUsd: facts.coderUsd + facts.devUsd + facts.programUsd, tokens: facts.tokens };
 }

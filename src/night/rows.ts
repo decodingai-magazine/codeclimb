@@ -1,5 +1,6 @@
-// Builders of result rows that are not experiments (spec: Result row, Rows that are not experiments).
+// Builders of result rows (spec: Result row; Rows that are not experiments).
 import type { NightConfig } from "../config.ts";
+import type { Decision } from "../decision.ts";
 import type { ResultRow } from "../results.ts";
 
 export interface Checkpoint {
@@ -17,6 +18,65 @@ export interface EvalFacts {
 	t_eval: number;
 	t_teardown: number;
 	instance: string;
+}
+
+export interface ExperimentFacts {
+	expId: string;
+	evalId: string;
+	round: number;
+	parent: Checkpoint;
+	/** The experiment's commit; the parent's when the coder failed before committing. */
+	commit: string;
+	hypothesis: string | null;
+	decision: Decision;
+	coderUsd: number;
+	devUsd: number;
+	programUsd: number;
+	tokens: number;
+	tProvision: number;
+	tCode: number;
+	tEval: number;
+	tTeardown: number;
+	infraErrors: number;
+	instance?: string;
+}
+
+/** An experiment row (spec: Result row). */
+export function experimentRow(night: string, config: NightConfig, f: ExperimentFacts): ResultRow {
+	const d = f.decision;
+	return {
+		night_id: night,
+		exp_id: f.expId,
+		parent_id: f.parent.exp_id,
+		eval_id: f.evalId,
+		round: f.round,
+		stack: "langchain",
+		backend: "docker",
+		kind: "experiment",
+		split: "dev",
+		model: config.model,
+		reviewer_model: config.reviewer_model,
+		hypothesis: f.hypothesis,
+		commit: f.commit,
+		metrics: d.metrics,
+		decision: d.decision,
+		...(d.score !== undefined ? { score: d.score } : {}),
+		decision_reason: d.reason,
+		coder_usd: f.coderUsd,
+		dev_usd: f.devUsd,
+		program_usd: f.programUsd,
+		reviewer_usd: 0,
+		tokens: f.tokens,
+		wall_s: f.tProvision + f.tCode + f.tEval + f.tTeardown,
+		t_provision: f.tProvision,
+		t_code: f.tCode,
+		t_eval: f.tEval,
+		t_review: 0,
+		t_teardown: f.tTeardown,
+		infra_errors: f.infraErrors,
+		...(f.instance ? { evaluator_instance: f.instance } : {}),
+		...(d.unchanged ? { unchanged: true } : {}),
+	};
 }
 
 /** A noise or test row: the checkpoint's exp_id and commit, coder fields 0, a failed evaluation recorded as `error` with the primary at 0. */

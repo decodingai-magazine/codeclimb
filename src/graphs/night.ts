@@ -4,12 +4,12 @@ import { entrypoint, getConfig, isGraphInterrupt } from "@langchain/langgraph";
 import { runStopGraph } from "../control.ts";
 import { nightPaths, writeStopIfMissing } from "../night/files.ts";
 import { initNight } from "../night/init.ts";
-import { finishNight, stopCheck } from "../night/loop.ts";
+import { finishNight, stopCheck, thresholdsMet } from "../night/loop.ts";
 import { type NightInput, serverRoot } from "../night/types.ts";
 import { sandboxPrefix, testEvalId } from "../ids.ts";
 import { type Checkpoint, evaluationRow } from "../night/rows.ts";
 import { appendRow } from "../results.ts";
-import { runEvaluation } from "./parts.ts";
+import { runEvaluation, runExperiment } from "./parts.ts";
 import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
 
 export const night = entrypoint("night", async (input: NightInput) => {
@@ -22,6 +22,8 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		const init = await step("init", (ctx) => initNight(ctx, root, input), { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		let round = 0;
 		let stopReason: string;
+		let checkpoint: Checkpoint = { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} };
+		let spend = 0;
 		for (;;) {
 			const next = round + 1;
 			const check = await step(`r${next}/stop-check`, async () => stopCheck(paths, config, init, next))();
@@ -31,9 +33,14 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				break;
 			}
 			round = next;
-			await step(`r${round}/round`, async () => ({ round }))();
+			const exp = await runExperiment(root, id, config, paths, { round, checkpoint, hypothesis: null, mock: input.mock });
+			spend += exp.spendUsd;
+			if (exp.decision.decision === "keep") checkpoint = { exp_id: exp.expId, commit: exp.commit, metrics: exp.decision.metrics };
+			if (thresholdsMet(config, checkpoint.metrics)) {
+				stopReason = "thresholds";
+				break;
+			}
 		}
-		const checkpoint: Checkpoint = { exp_id: init.round0.exp_id, commit: init.round0.sha, metrics: {} };
 		// After any soft stop: score the checkpoint on test, for the report only.
 		const testId = testEvalId(id, round);
 		const test = await runEvaluation(root, id, config, paths, { evalId: testId, sandboxName: `${sandboxPrefix(id)}-test-r${round}`, split: "test", commit: checkpoint.commit });
@@ -45,7 +52,7 @@ export const night = entrypoint("night", async (input: NightInput) => {
 				rounds: round,
 				kept: { exp_id: checkpoint.exp_id, commit: checkpoint.commit, dev_score: checkpoint.metrics[config.primary_metric] ?? 0 },
 				testMetrics: test.ok ? test.metrics : null,
-				spendUsd: test.program_usd,
+				spendUsd: spend + test.program_usd,
 			}),
 		)();
 		return done ?? { night_id: id, stopped: true };
