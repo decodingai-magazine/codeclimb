@@ -1048,6 +1048,7 @@ Measured on 2026-11-11 with a throwaway graph on `langgraph dev`, on the pinned 
 | LangSmith: a `RunTree` with no parent, created inside a step of a traced server run, is a trace of its own. `createFeedback` called twice with one `feedbackId` stores one feedback, with the later score. A key used against the other region's endpoint gets 403 with an empty message | [[#Tracing]]; `LANGSMITH_ENDPOINT` must match the key's region |
 | With tracing on and no project in the workspace yet, the server logs "Failed to get organization ID. Tracing to LangSmith will not work". The first traced run creates the project and its trace arrives all the same | Ignore the warning |
 | Not run, read from the server's source: `runs.cancel` parses its `wait` parameter so that any value, `0` included, means wait | Cancel without passing `wait` |
+| A task that fails out of its retries fails the server run, even when the entrypoint catches its error: the task calls after it never run (measured 2026-11-11 on 1.7.3). A task that fails and then succeeds on a retry is harmless | A step returns its final failure as data on its last attempt, or at once for a non-retriable error, and the step wrapper throws it in the entrypoint; LangGraph never sees a failed task |
 
 ## Deployment and environment
 

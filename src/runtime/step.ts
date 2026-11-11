@@ -36,6 +36,23 @@ const OWN_FAILURE = Symbol("codeclimb.ownFailure");
 export const isOwnFailure = (error: unknown) => typeof error === "object" && error !== null && (error as Record<symbol, boolean>)[OWN_FAILURE] === true;
 
 export const DEFAULT_BACKSTOP_MIN = 30;
+export const STEP_ATTEMPTS = 3;
+
+/**
+ * A step's final failure travels as data: a task that fails out of its retries fails the whole server run, even when
+ * the entrypoint catches the error (LangGraph 1.7.3), so a failed experiment could never become an outcome.
+ */
+interface StepFailure {
+	__ccStepFailure: { kind: "timeout" | "nonretriable" | "error"; message: string };
+}
+const isStepFailure = (v: unknown): v is StepFailure => typeof v === "object" && v !== null && "__ccStepFailure" in v;
+
+function rebuild(f: StepFailure): Error {
+	const { kind, message } = f.__ccStepFailure;
+	const e = kind === "timeout" ? new StepTimeoutError(message) : kind === "nonretriable" ? new NonRetriableError(message) : new Error(message);
+	(e as unknown as Record<symbol, boolean>)[OWN_FAILURE] = true;
+	return e;
+}
 export const HOST_COMMAND_BACKSTOP_MIN = 35;
 
 /** Define and call a step named `name` once. Saved results are matched by name and call order. */
@@ -45,11 +62,11 @@ export function step<A extends unknown[], R>(name: string, body: (ctx: StepConte
 		{
 			name,
 			retry: {
-				maxAttempts: 3,
+				maxAttempts: STEP_ATTEMPTS,
 				retryOn: (e: unknown) => !(e instanceof NonRetriableError) && !(e instanceof StepTimeoutError) && !runAborted,
 			},
 		},
-		async (...args: A): Promise<R> => {
+		async (...args: A): Promise<R | StepFailure> => {
 			const config = getConfig();
 			const runSignal = config.signal;
 			const attempt = config.executionInfo?.nodeAttempt ?? 1;
@@ -73,8 +90,14 @@ export function step<A extends unknown[], R>(name: string, body: (ctx: StepConte
 				return result;
 			} catch (error) {
 				const thrown = timedOut ? ac.signal.reason : error;
-				if (!runAborted && typeof thrown === "object" && thrown !== null) (thrown as Record<symbol, boolean>)[OWN_FAILURE] = true;
-				throw thrown;
+				// An abort of the server run travels on as a throw: the run is ending.
+				if (runAborted) throw thrown;
+				const kind = thrown instanceof StepTimeoutError ? "timeout" : thrown instanceof NonRetriableError ? "nonretriable" : "error";
+				const message = thrown instanceof Error ? thrown.message : String(thrown);
+				// Retriable and attempts left: let LangGraph retry. Otherwise return the failure as data.
+				if (kind === "error" && attempt < STEP_ATTEMPTS) throw thrown;
+				console.error(`step ${name} failed (attempt ${attempt}):`, thrown);
+				return { __ccStepFailure: { kind, message } };
 			} finally {
 				clearTimeout(timer);
 				runSignal?.removeEventListener("abort", onRunAbort);
@@ -82,5 +105,9 @@ export function step<A extends unknown[], R>(name: string, body: (ctx: StepConte
 			}
 		},
 	);
-	return t as (...args: A) => Promise<R>;
+	return async (...args: A): Promise<R> => {
+		const r = await (t as (...a: A) => Promise<R | StepFailure>)(...args);
+		if (isStepFailure(r)) throw rebuild(r);
+		return r;
+	};
 }
