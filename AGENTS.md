@@ -1,17 +1,29 @@
-# Development Rules & Stack
+# CodeClimb: Development Rules
 
-## Teck stack
+CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbox, round after round, until the program meets evaluation thresholds. This branch (`langchain`) builds it on LangGraph JS.
 
-- LangChain ecosystem (TypeScript); Full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
+## Where things are
+
+- **Build spec**: `docs/codeclimb-spec-langchain.md` is the contract for everything built here. Read the sections a ticket names before writing code; every constant is in its section "Every number in one place". It is a copy of the Obsidian note of the same name: change both together.
+- **Tickets**: GitHub Issues, through `gh`. A build ticket names its spec sections, its acceptance criteria and its blockers. Work a ticket only when every blocker is closed.
+- **Vocabulary**: `GLOSSARY.md`. Use its words in code, commits and issues: night, variation, round, experiment, evaluation, checkpoint, step.
+- **Decisions already made**: `docs/adr/`. Read the ones that touch your area before you change its design.
+- **End-to-end tests**: the `codeclimb-e2e` skill.
+- **Given inputs**: `scenarios/`, `configs/` and `docker/` are what the build runs on. Change them only when the user asks.
+- **Night output**: `runs/` (gitignored).
+
+## Tech stack
+
+- TypeScript on Node 24, ESM, run from source with `tsx`
+- LangChain ecosystem; full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
     - Use the TypeScript pages, not the Python ones: the two APIs differ (Python's `retry_policy` is `retry` on a JS task)
-    - LangGraph JS (`@langchain/langgraph`): graphs, durable execution, checkpoints, interrupts
-    - Agent Server: `npm run server` (`langgraphjs dev`, no hot reload: restart it after a code change) serves the graphs in `langgraph.json` at http://127.0.0.1:2024
-    - LangSmith (`langsmith`): tracing and feedback only; sandboxes are local Docker (docs/adr/0004)
-- Pi agent; Full docs: https://github.com/earendil-works/pi
+    - LangGraph JS (`@langchain/langgraph`): the functional API (`entrypoint`, `task`, `interrupt`)
+    - Agent Server: `npm run server` (`langgraphjs dev`) serves the graphs in `langgraph.json` at http://127.0.0.1:2024. It has no hot reload: restart it after a code change. It runs one night at a time
+    - LangSmith (`langsmith`): tracing and feedback only
+- Pi (`@earendil-works/pi-coding-agent`): the coder, the reviewer and the lessons sessions run on its SDK; full docs: https://github.com/earendil-works/pi
+- Docker: every sandbox is a local container, so Docker must be running for any night
 
-## Build spec
-
-`docs/codeclimb-spec-langchain.md` is the contract for everything built here: read the sections a ticket names before writing code. It is a copy of the Obsidian note of the same name; change both together.
+The spec's "Platform facts" lists LangGraph and LangSmith behaviours already measured on the pinned versions. Trust them over memory and over the docs.
 
 ## LangGraph debugging
 
@@ -24,6 +36,7 @@ With `npm run server` running, use the local Agent Server REST API:
 - Runs on a thread: `curl -s http://127.0.0.1:2024/threads/<thread_id>/runs`
 
 Output is JSON. Use jq to filter.
+A night's own state is in its files under `runs/`, not in the server: read `nights/<id>/` first.
 Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (link printed by `npm run server`).
 If access is denied, ask the user to review the session's permissions.
 
@@ -46,48 +59,38 @@ If access is denied, ask the user to review the session's permissions.
 - Inline single-line helpers that have only one call site.
 - Check node_modules for external API types; don't guess.
 - **No inline imports** (`await import()`, `import("pkg").Type`, dynamic type imports). Top-level imports only.
-- In `packages/coding-agent`, resolve package assets through helpers in `src/config.ts`. Do not use `__dirname` directly; the helpers account for source checkouts, npm installations, and standalone binaries.
-- Never remove or downgrade code to fix type errors from outdated deps; upgrade the dep instead.
-- Use only erasable TypeScript syntax (Node strip-only mode) in code checked by the root config (`packages/*/src`, `packages/*/test`, `packages/coding-agent/examples`): no parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`, or other constructs needing JS emit. Use explicit fields with constructor assignments.
+- Keep step bodies free of LangGraph: it appears only in the graph definitions, the step wrappers and the control operations.
+- When the spec and the code disagree, the spec wins. When the spec looks wrong, stop and ask the user: the fix goes into the spec first.
 - Always ask before removing functionality or code that appears intentional.
 - Do not preserve backward compatibility unless the user asks for it.
-- Never hardcode key checks (e.g. `matchesKey(keyData, "ctrl+x")`). Add defaults to `DEFAULT_EDITOR_KEYBINDINGS` or `DEFAULT_APP_KEYBINDINGS` so they stay configurable.
-- Never modify `packages/ai/src/models.generated.ts` directly; update the catalog definitions in `packages/ai/catalog/` instead (see its README), then regenerate. Including the resulting `models.generated.ts` diff is always OK, even if regeneration includes unrelated upstream model metadata changes. The generated model data in `packages/ai/src/providers/data/` is gitignored: never stage it, and don't look for it in git history.
 
 ## Commands
 
-- After code changes (not docs): `npm run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests.
-- Run `npm run build` whenever something needs built output (`dist/`): tests or benchmarks that import built packages, Durable's workerd suite. Never use it to type check or lint: that is `npm run check`, the preferred check.
-- Never run `npm test` unless requested by the user.
-- Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root:
-  - Vitest: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts`
-  - `packages/tui` (`node:test`): `node --test test/specific.test.ts`
+- After code changes (not docs): `npm run typecheck`, then `npm test` (the unit tests: fast and free). Fix every error before committing.
 - If you create or modify a test file, run it and iterate on test or implementation until it passes.
-- For `packages/coding-agent/test/suite/`, use `test/suite/harness.ts` + the faux provider. No real provider APIs, keys, or paid tokens.
-- When regressions tests for fixing a github issue, add a comment with the github issue number next to the test.
+- Whole nights: the `codeclimb-e2e` skill. Its free scenarios run on mock models; run them whenever a change touches what they cover.
+- Spend money only when the user says so: a night on real models, or a paid e2e scenario, needs the user's go-ahead for that run.
+- When a regression test fixes a GitHub issue, add a comment with the issue number next to the test.
 - For ad-hoc scripts, `write` them to a temp file (e.g. `/tmp`), run, edit if needed, remove when done. Don't embed multi-line scripts in `bash` commands.
 - Never commit unless the user asks.
 
 ## Dependency and Install Security
 
-- Treat npm dep and lockfile changes as reviewed code. Direct registry deps, including internal workspace deps, stay pinned to exact versions.
-- When updating `undici`, you MUST read its changelog/release notes for the target version and evaluate whether any changes may affect functionality before applying the update.
+- Treat npm dep and lockfile changes as reviewed code. Every dependency is pinned to an exact version: the one in the spec's dependency table.
+- A dependency the spec's table does not list, or another version of one it does: ask the user first.
 - Hydrate/update locally with `npm install --ignore-scripts`; clean/CI-style with `npm ci --ignore-scripts`. Don't run lifecycle scripts unless the user asks.
 - If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts`.
-- If `packages/coding-agent/install-lock/` needs regen, run `node scripts/generate-coding-agent-install-lock.mjs` (verify with `--check` or `npm run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
-- Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
 
 ## Git
 
-Multiple pi sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
+Multiple agent sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
 
 Committing:
 
 - Only commit files YOU changed in THIS session.
 - Stage explicit paths (`git add <path1> <path2>`); never `git add -A` / `git add .`.
 - Before committing, run `git status` and verify you are only staging your files.
-- `packages/ai/src/models.generated.ts` may always be included alongside your files.
-- Message format: `{feat,fix,docs}[(ai,tui,agent,coding-agent)]: <commit message> (optionally multiple lines)`. Message is informative and concise.
+- Message format: `{feat,fix,docs}: <commit message> (optionally multiple lines)`. Message is informative and concise.
 
 Never run (destroys other agents' work or bypasses checks):
 
@@ -109,7 +112,7 @@ When reviewing PRs:
 
 When creating issues:
 
-- Add `pkg:*` labels for affected packages (`pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`); use all that apply.
+- Apply one triage label (see Triage labels below).
 
 When posting issue/PR comments:
 
@@ -117,9 +120,10 @@ When posting issue/PR comments:
 - Keep comments concise, technical, in the user's tone.
 - End every AI-posted comment with the AI-generated disclaimer line specified by the originating prompt (e.g. `This comment is AI-generated by `/wr``).
 
-When closing issues via commit:
+When closing issues:
 
-- Include `fixes #<number>` or `closes #<number>` in the message so merging auto-closes the issue. For multiple issues, repeat the keyword per issue (`closes #1, closes #2`); a shared keyword (`closes #1, #2`) only closes the first.
+- A commit message with `fixes #<number>` or `closes #<number>` closes the issue only when it merges into `main`. For multiple issues, repeat the keyword per issue (`closes #1, closes #2`); a shared keyword (`closes #1, #2`) only closes the first.
+- Work on `langchain` does not merge into `main`, so close a finished build ticket by hand: `gh issue close <number>` with a comment naming the commit, once its acceptance criteria pass and the work is committed. Closing it unblocks the tickets behind it.
 
 ## Agent skills
 
@@ -133,4 +137,4 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created only when first needed. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
