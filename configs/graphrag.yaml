@@ -1,5 +1,5 @@
 scenario: scenarios/graphrag
-sandbox: inngest
+sandbox: docker
 max_rounds: 5
 deadline: 6h
 timeouts:

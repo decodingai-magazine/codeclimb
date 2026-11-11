@@ -2,23 +2,24 @@
 
 ## Teck stack
 
-- Inngest Ecosystem;  Full docs: https://www.inngest.com/llms.txt
-    - Cloud: Durability
-    - Sandboxes: isolated code execution inside a run; function code runs on the Connect worker on your machine
+- LangChain ecosystem (TypeScript); Full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
+    - LangGraph JS (`@langchain/langgraph`): graphs, durable execution, checkpoints, interrupts
+    - Agent Server: `npm run dev` (`langgraphjs dev`) serves the graphs in `langgraph.json` at http://127.0.0.1:2024
+    - LangSmith (`langsmith`): tracing, feedback, Sandboxes (`langsmith/sandbox`)
 - Pi agent; Full docs: https://github.com/earendil-works/pi
 
-## Inngest debugging
+## LangGraph debugging
 
-Use the Inngest CLI to inspect function runs and traces:
+With `npm run dev` running, use the local Agent Server REST API:
 
-- Get a run: `npx inngest-cli@latest api --prod --env production get-function-run <run_id>`
-- Get a trace: `npx inngest-cli@latest api --prod --env production get-function-trace <run_id> --include-output`
-- Get runs from an event: `npx inngest-cli@latest api --prod --env production get-event-runs <event_id> --include-output --limit 5`
-- Invoke locally: `npx inngest-cli@latest api invoke-function <app_id> <function_id> --data '{...}'`
+- Health: `curl -s http://127.0.0.1:2024/ok`
+- Run a graph and wait: `curl -s -X POST http://127.0.0.1:2024/runs/wait -H 'content-type: application/json' -d '{"assistant_id":"<graph>","input":{...}}'`
+- Thread state: `curl -s http://127.0.0.1:2024/threads/<thread_id>/state`
+- Thread history: `curl -s -X POST http://127.0.0.1:2024/threads/<thread_id>/history -H 'content-type: application/json' -d '{}'`
+- Runs on a thread: `curl -s http://127.0.0.1:2024/threads/<thread_id>/runs`
 
 Output is JSON. Use jq to filter.
-Cloud commands use the stored OAuth login unless INNGEST_API_KEY or an explicit key flag overrides it.
-Set --env to the intended environment.
+Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (link printed by `npm run dev`).
 If access is denied, ask the user to review the session's permissions.
 
 ## Conversational Style
@@ -128,13 +129,3 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root, created only when first needed. See `docs/agents/domain.md`.
-
-<!-- BEGIN:nextjs-agent-rules -->
-
-## This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->

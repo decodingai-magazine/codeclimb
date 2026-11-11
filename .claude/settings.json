@@ -8,7 +8,6 @@
     }
   },
   "enabledPlugins": {
-    "inngest@anthropic-plugin-directory": true,
     "mattpocock-skills@claude-plugins-official": true,
     "langchain-skills@langchain-plugins": true,
     "langsmith-skills@langchain-plugins": true,
