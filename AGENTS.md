@@ -9,6 +9,10 @@
     - LangSmith (`langsmith`): tracing and feedback only; sandboxes are local Docker (docs/adr/0004)
 - Pi agent; Full docs: https://github.com/earendil-works/pi
 
+## Build spec
+
+`docs/codeclimb-spec-langchain.md` is the contract for everything built here: read the sections a ticket names before writing code. It is a copy of the Obsidian note of the same name; change both together.
+
 ## LangGraph debugging
 
 With `npm run server` running, use the local Agent Server REST API:

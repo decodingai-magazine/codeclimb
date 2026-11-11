@@ -7,11 +7,11 @@ description: End-to-end tests for CodeClimb, whole nights on the local Agent Ser
 
 An end-to-end test runs a whole night: the graphs, sandboxes, Pi sessions, commits, evaluations, the review, the test evaluation and the result files. Unit tests don't cover this.
 
-Ten scenarios. 1 to 6 run on mock models and cost nothing: run all six, in order, every time. 7 to 10 run on real models and spend money: run one only after the user says so for that scenario.
+Eleven scenarios. 1 to 7 run on mock models and cost nothing: run all seven, in order, every time. 8 to 11 run on real models and spend money: run one only after the user says so for that scenario.
 
 ## Setup
 
-1. `docker images` lists `codeclimb-python`. If not: `npm run build:image`.
+1. `docker images` lists `codeclimb-python` and, for scenario 7, `codeclimb-graphrag`. If not: `npm run build:image`, `npm run build:image:graphrag`. Scenario 7's host commands need `uv`.
 2. `npm run server` is running on the code under test. It has no hot reload: restart it after every code change.
 3. No other night is running on this server (`docker ps` shows no `cc-` container). One server runs one night at a time.
 
@@ -27,6 +27,7 @@ Give every night a fresh id with `--night-id` (for example `plateau-$(date +%H%M
 | 4 | Hard stop mid-round | scenario 2's command with `--no-wait`, then the steps below |
 | 5 | Kill and restart | scenario 2's command with `--no-wait`, then the steps below |
 | 6 | Lost connection mid-turn | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` |
+| 7 | Multi-stage scenario | `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` |
 
 `--mock` replaces the models with scripted ones. Mock metrics mean nothing: a score of 0 is expected, and the check is that everything ran. Mock nights write to `runs/mock/<results folder>/`; below, `N` is `runs/mock/<results folder>/nights/<id>`.
 
@@ -71,20 +72,30 @@ A failure in the coder or the review falls back quietly in some paths. Read `cod
 
 **6. Lost connection mid-turn.** `--mock-offline 6` makes six of the first coder's model calls fail as a lost connection. Scenario 2's checks hold, and `N/exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one: the session carried on.
 
+**7. Multi-stage scenario.** Graphrag has three stages, a metered program, `check`, `scan` and lessons. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`. These checks hold either way:
+
+- `run-night` prints `done`; `N/done.json` exists and `N/stop.json` doesn't; `validate-results` passes.
+- Every round has an experiment row with a `decision_reason`, and there is one `test` row.
+- Every evaluation has `N/evals/<eval>/extraction/inputs.jsonl`.
+- Every experiment with a commit has `N/exps/<exp>/check.json`.
+- Where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`.
+- Within a minute of `done`, `runs/mock/graphrag-smoke/lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and `git status` shows the scenario's `lessons.md` unchanged.
+- `docker ps` shows no `cc-<id>` container.
+
 ## Paid scenarios
 
 Each spends real money. Before running one, ask the user and name the scenario and its ceiling. They need provider credentials (`.env` or Pi's `auth.json`) and write to `runs/<results folder>/`, with no `mock` in the path.
 
 | # | Scenario | Command | Ceiling | Passes when |
 |---|---|---|---|---|
-| 7 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $2 | `done`; a `test` row; `spend_usd` above 0 and at most 2; `meter.jsonl` shows real calls |
-| 8 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $10 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
-| 9 | Cost cap | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20 |
-| 10 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $4 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
+| 8 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $2 | `done`; a `test` row; `spend_usd` above 0 and at most 2; `meter.jsonl` shows real calls |
+| 9 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $10 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
+| 10 | Cost cap | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20 |
+| 11 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $4 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
 
 For every paid night also check: `N/done.json` exists with no `stop.json`; `validate-results` passes; `docker ps` shows no `cc-<id>` container.
 
-Scenario 10 runs on a generated copy of datenorm whose dev and test hold the train items. The coder can read every answer, so a night that does not reach the threshold means the loop is broken, not the coder. Its scores say nothing about the program.
+Scenario 11 runs on a generated copy of datenorm whose dev and test hold the train items. The coder can read every answer, so a night that does not reach the threshold means the loop is broken, not the coder. Its scores say nothing about the program.
 
 ## Report
 
