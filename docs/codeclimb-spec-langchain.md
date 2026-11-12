@@ -2,7 +2,7 @@
 
 - what CodeClimb is: an optimization loop where a coding agent rewrites a program in a sandbox, round after round, until the program meets evaluation thresholds. Nothing is fine-tuned or trained
 - this file: everything needed to build CodeClimb from scratch on the LangChain stack: LangGraph JS, the Agent Server (the self-hosted server `langgraphjs up` starts, with its own Postgres and Redis), LangSmith tracing and feedback, Docker sandboxes. It states architecture, contracts, features and numbers; it holds no code
-- status: built on the `langgraphjs up` server, moved from LangGraph's dev server on 2026-11-12 (decided in issue #26 after the go/no-go spike #27; the seven free end-to-end nights pass on it). Derived from the Inngest twin, which is built ([[codeclimb-spec-inngest|codeclimb-spec-inngest]], commit `9773559`). The platform facts below were measured on the pinned packages with a throwaway graph, and are stated as facts in [[#Platform facts]]. Points the spike left open are listed, each with the ticket it falls to, in [[#Open points for the build]]
+- status: built on the `langgraphjs up` server, moved from LangGraph's dev server on 2026-11-12 (decided in issue #26 after the go/no-go spike #27; the seven free end-to-end nights pass on it). Derived from the Inngest twin, which is built ([[codeclimb-spec-inngest|codeclimb-spec-inngest]], commit `9773559`). The platform facts below were measured on the pinned packages with a throwaway graph, and are stated as facts in [[#Platform facts]]. The build tickets, #20 to #32 included, are closed; what they left unmeasured or undecided is listed in [[#Open points for the build]]
 - use: handed to a coding agent that builds the whole application alone, with zero human input (the layer-2 benchmark of [[codeclimb-eval-spec|codeclimb-eval-spec]])
 - first build: on the `langchain` branch of the codeclimb repo, from this file alone (the repo holds a copy at `docs/codeclimb-spec-langchain.md`; change both together). The repo also gives `GLOSSARY.md`, `docs/adr/0001` to `0005` (0001, superseded: why the dev server; why steps own their abort signal; why one trace per experiment; why Docker only; 0005: why `langgraphjs up`) and the end-to-end skill `.claude/skills/codeclimb-e2e/SKILL.md`; all three repeat what this file says. Run the free end-to-end nights as the build reaches them ([[#Suggested build order]]), and the paid ones only when the operator says so. Nothing here needs `codeclimb-eval-spec`: that is for a later benchmark
 - stack-specific parts: [[#Durable runtime on LangGraph]], [[#Tracing]], [[#Deployment and environment]], plus the stack's names in the npm scripts, the result row and the control operations. Everything else is stack-neutral and matches the Inngest twin's local mode (the Inngest dev server with Docker sandboxes), so the two builds behave the same and their nights compare. Declared differences, each forced by this stack or decided for it:
@@ -96,7 +96,7 @@ Given, unchanged by you:
 
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
 
-- npm scripts: `server` (the Agent Server), `api` (the worker API and the watchdog), `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:scenario:overfit` (given), `export`, `lessons`, `dev` (the app), `typecheck`, `test` (unit tests)
+- npm scripts: `server` (the Agent Server), `server:logs`, `server:stop`, `api` (the worker API and the watchdog), `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `build:scenario:overfit` (given), `export`, `lessons`, `dev` (the app), `build:app` (the app's production build), `typecheck`, `test` (unit tests)
 - graphs, in `langgraph.json`: `night`, `stop`, `lessons`
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
@@ -119,6 +119,8 @@ Dependencies, pinned to exact versions. These are the versions this spec's SDK f
 | `@opentelemetry/api` | 1.10.0 | Used directly for spans |
 | `next`, `react`, `react-dom` | 16.4.2, 19.3.1, 19.3.1 | The app only |
 | `yaml`, `tsx`, `typescript` | 2.9.1, 4.23.15, 6.0.3 | |
+| `@types/node`, `@types/react`, `@types/react-dom` | 24.19.2, 19.3.0, 19.3.0 | Types only |
+| `zod` | 4.6.7 | Kept from the scaffold; the code does not use it |
 
 - `server` runs `langgraphjs up` with the compose override, sets `CODECLIMB_HOST_ROOT` to the checkout, and waits until the server answers `/ok`. The server listens on `127.0.0.1:8123` ([[#Deployment and environment]])
 - `run-night` and `api` reach `http://127.0.0.1:8123` (`CODECLIMB_SERVER_URL`)
@@ -175,7 +177,7 @@ CodeClimb never reads a scenario's data. It only runs the commands in `scenario.
 | `headline` (opt) | Metric names each round reports and logs. They decide nothing: the config's `thresholds` do |
 | `diagnostics` (opt) | Regexes of metrics the reviewer reads to explain the headlines. A bad regex fails at load |
 | `protocol` (opt) | Files the reviewer reads as its protocol; `path#Heading` = that one `## Heading` section |
-| `check` (opt) | Host: reads the commit's files in `{repo}` (a temporary checkout), writes a JSON object to `{report}` with two lists of strings, `errors` and `notes`. Errors block evaluation; notes go to the reviewer. Saved as `exps/<exp>/check.json` |
+| `check` (opt) | Host: reads the commit's files in `{repo}` (a temporary checkout), writes a JSON object to `{report}` with two lists of strings, `errors` and `notes`. Errors block evaluation; notes go to the reviewer. Saved as `exps/<exp>/check.json` (`errors`, `notes`, `held_out_names`: the count of distinct held-out names the leak scan found, and `failed` when the command itself failed), written when the scenario has `check` or `scan` |
 | `scan` (opt) | Host: reads the file `{text}`, writes a JSON object to `{report}` with one list, `found`: the held-out names in the text, as the text has them. Without `scan`, or for empty text, nothing is found |
 | `lessons` (opt) | Path of the `lessons.md` inside the agent spec: the memory across nights ([[#Lessons across nights]]) |
 
@@ -243,7 +245,7 @@ Validation at parse:
 
 - the reviewer must differ from the coder: an error if `reviewer_model` equals `model` and `reviewer_thinking` is unset or equals `coder_thinking`. Compared as strings, so one model under two providers passes
 - a backend's maximum active time, if it has one, must hold `experiment_min` + 10 and `eval_min × stages` + 10 minutes. Docker has none, so nothing is checked on this stack
-- `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`
+- `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`; `noise_margin.min` must not exceed `max`
 - relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
 - the config travels in the start input with paths relative to the checkout; the Agent Server resolves them against `CODECLIMB_ROOT` (default: its cwd; in the server container the compose override sets it to the checkout's host path, where the checkout is mounted). CLI and server may run from different directories, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
 - results directories must sit directly under `<root>/runs-langchain/` (or `<root>/runs-langchain/mock/` for mock nights): the API and the stop cleanup find a night by scanning there. Not `runs/`: the Inngest twin writes its nights there, from the same checkout, and a folder of its own keeps either build from finding, stopping or continuing the other's nights
@@ -256,15 +258,19 @@ Validation at parse:
 | command | does |
 |---|---|
 | `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--rounds N] [--no-wait] [--mock [--mock-offline N]]` | Starts a night and follows it |
-| `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` | More rounds on an ended night; default: the newest ended night under the config's results |
+| `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N] [--no-wait]` | More rounds on an ended night; default: the newest ended night under the config's results |
 | `run-night stop --night ID` | Hard stop |
 | `run-night resume --night ID [--no-wait]` | Ends a pause for credits, then follows the night |
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>` from local time. A valid id is 1 to 48 letters, digits or hyphens, not starting with a hyphen
 - `--rounds` on a new night replaces `max_rounds`. `--no-wait` starts the night and exits without following
+- a night id whose folder exists under the results directory but which has no thread is refused: it was used before, pick another
 - starting a night id that already has a thread starts nothing: the CLI prints a note and follows the night that is running, as the twin's deduplicated start does ([[#Durable runtime on LangGraph]])
 - following: every 5 s print new rows of the night (round, kind, split, short experiment id, primary metric, decision, spend, hypothesis); print `done` with `done.json` and exit when it appears; print `stopped` with `stop.json`; print where a pause stopped and how to resume. Ctrl-C detaches; the night keeps running
 - `--direction` only with `continue`; `--seed` never with `continue`
+- `continue` and `lessons` tell a mock night by its folder: a night under `runs-langchain/mock/` is continued, or distilled, as a mock
+- `resume` is refused for a night that has a `stop.json` or a `done.json`, that is not paused, or whose pause was resumed already
+- a usage or validation error exits 2
 
 ### Mock mode
 
@@ -282,7 +288,7 @@ Validation at parse:
 - program calls get canned answers at zero cost: chat `mock`, embeddings `[1, 0, 0, 0]` per input, decisions `{}`, rerank every score 0
 - skipped: the model checks, the round-start smoke test, web research (it would reach the real web); lessons are never applied
 - `--mock-offline N` (only with `--mock`) imitates a lost connection. The coder's model calls number 2 to N+1 of the night's first experiment are answered as failed calls: an assistant message with stop reason `error` and the error text `fetch failed`. Every other call is answered as above. The number travels in the start input
-- `mock_credit` (only with `mock`, a start-input field for tests, with no CLI flag) imitates running out of credits: `{ who, call }` answers call number `call` of the night for `who` (`coder`, `reviewer` or `program`) as a credit error, `402 Payment Required: insufficient credits`, once. A coder or reviewer call gets an assistant message with stop reason `error` and that text; a program call gets the 402 a provider would send. Every later call is answered as above, so a resume carries on
+- `mock_credit` (only with `mock`, a start-input field for tests, with no CLI flag) imitates running out of credits: `{ who, call }` answers call number `call` of the night for `who` (`coder`, `reviewer` or `program`) as a credit error, `402 Payment Required: insufficient credits`, once. A coder or reviewer call gets an assistant message with stop reason `error` and that text; a program call is answered as a provider's 402 is: a failed upstream call (502 to the program) and a credit stop. Every later call is answered as above, so a resume carries on
 
 ## Experiment lifecycle
 
@@ -318,19 +324,18 @@ Each round, in order:
 2. **Smoke test.** Before money goes into the round: the same model check as at night start (each model exists, has credentials and is on the account's plan; no paid call) and, for a metered night, the proxy's URL reaches the proxy. A failure is retried every 5 minutes, 6 more times; then the night stops with `outage`. Why: an outage would spend the coder's budget on a round that can't be scored
 3. **Noise run**, when due ([[#Noise margin]])
 4. **Code.** The experiment's coder on a fresh sandbox from the checkpoint ([[#Coder]]). It commits `/repo` as one commit
-5. **Check and leak scan** (in the experiment, on the host). The scenario's `check` on the commit; then `scan` on the lines the commit adds. Both skipped with no commit, on a credit stop, or when the commit's files equal the checkpoint's
+5. **Check and leak scan** (in the experiment, on the host). The scenario's `check` on the commit; then `scan` on the lines the commit adds. Both skipped with no commit, on a credit stop, or when the commit's files equal the checkpoint's. A `check` command that itself fails blocks the evaluation as its errors do
 6. **Evaluate on dev** in an evaluation ([[#Evaluator]]). Skipped with no commit, with `check` errors, or with unchanged files. The checkpoint is not run again: its stored dev metrics are the reference
 7. **Decide** ([[#Keep rule]])
 8. **Repair**, at most one per round ([[#Repair]])
 9. **Review** ([[#Reviewer]]). Always, also of a reverted experiment and in the last round: its feedback is what the next round, or a continued night, learns. A failed review keeps the last feedback and hypothesis and leaves the verdict empty; it never kills the night
 10. **Record.** Append the row, with the review's cost and time
 11. **Learn**, in this order (the order is part of what a replay must repeat):
-    - add the round's spend and tokens; reset or raise the count of rounds without a keep; remember the costliest evaluation
-    - append the round's log entry
     - write the experiment's note
-    - add the masked history line
     - save the rejected diff, if the round kept nothing and changed code
+    - add the masked history line
     - set the next round's feedback, masked failures and hypothesis
+    - add the round's spend and tokens; reset or raise the count of rounds without a keep; remember the costliest round and evaluation
 12. **Keep.** A kept experiment becomes the checkpoint
 13. **Thresholds.** If every threshold metric of the checkpoint is present and ≥ its target, stop with `thresholds`
 
@@ -365,7 +370,7 @@ A commit that failed before it was scored says nothing about its idea.
 - the failed attempt keeps its row (`error`), its cost and its own note
 - attempt `e1` starts from the failed commit, with the masked errors, the same hypothesis, and a prompt that says: fix this failure and nothing else; there is no second repair. No research, no plan, no send-backs
 - `e1` is decided against the same checkpoint and stands for the round. The decision, the review's diff and the rejected diff all compare `e1` with the checkpoint
-- repairable means the evaluation returned `ok: false`. An evaluator run that failed out of its retries is an `error` with no repair
+- repairable means the evaluation returned `ok: false`. An evaluator run that failed out of its retries is an `error` with no repair, and so is a `check` command that itself failed
 - the failed attempt's row (with `reviewer_usd` 0) and its note are written before `e1` starts
 - `unchanged` compares a commit with the commit its sandbox started from: the checkpoint, or `e0` for a repair. An `e1` equal to `e0` is recorded as `revert`, `unchanged: true`, with the checkpoint's metrics, and its diff against the checkpoint is still saved as the rejected diff
 - the leak scan of a repair covers the lines `e1` adds over `e0`
@@ -382,8 +387,8 @@ Problem: a program that gets 402 on every call scores as a low F1, and the keep 
 - resume: a resume command from the CLI or the app. Finished work stays; only what stopped reruns: the coder from its commit in the same Pi session on a new sandbox, the evaluation from scratch, the review again. The resumed coder's sandbox is created from a git bundle holding both the paused commit and the round's parent, so the final commit still squashes onto the parent. It gets the same short restart prompt as after a crash; its send-back count and wrap-up flag start again; its clock is set to now minus the coding time so far, once: when the state file shows a paused session, not on a later rerun of the step. Still out of credits → it pauses again at the same place
 - paused time doesn't count against the deadline or `experiment_min`
 - a pause lasts 3 days, then a timer stops the night with reason `failed` ([[#Durable runtime on LangGraph]]). Stop works while paused
-- files: `pause.json` while paused (`at`, `round`, `stops[]` each with `where`), `pauses.jsonl` as a log with `resumed_at`. `where` is free text naming the step: the experiment, the evaluation, or the review of round N. One pause holds one stop
-- ending a pause: log it to `pauses.jsonl`, delete `pause.json`, and add the paused time to `deadlineMs` in `night.json` and to the loop's deadline. This step must be safe to retry
+- files: `pause.json` while paused (`pause`, its number; `at`, `round`, `stops[]` each with `where`), `pauses.jsonl` as a log with `resumed_at` and `paused_ms`. Pause numbers run on across a night's variations, so none repeats within a night. `where` is free text naming the step: the experiment, the evaluation, or the review of round N. One pause holds one stop
+- ending a pause: log it to `pauses.jsonl`, delete `pause.json`, and add the paused time to `deadlineMs` in `night.json` and to the loop's deadline. This step must be safe to retry: the log holds one entry per pause, and `night.json` records the last pause whose time was added (`pausesApplied`). A night that was stopped while paused stays stopped: the step adds nothing and the night ends its server run quietly
 - every evaluation pauses the same way: dev, noise, rescore and test. A rerun keeps its `eval_id`, so it does not replay the calls its paused attempt made
 
 ### Continue, seed and rescore
@@ -393,7 +398,7 @@ Continue: more rounds on an ended night, under the same id.
 - allowed only for a night that ended (`done.json` or `stop.json`) and ran the same scenario
 - reopening happens before the continued night's server run is created, by whoever creates it (the CLI for `run-night continue`, the worker API for the app), never in a step of the night. In order: check the night ended and ran this scenario; move the files of rounds past the last recorded round aside; rename the end file; work out the rescore flag, `max_rounds` and the budget; rewrite `night.json` with the new deadline, config and scoring hashes (`startedAt` stays). From then on the night reads as running, so a second continue is refused and the follower never sees the old `done.json`. Done inside the night instead, `run-night continue` would print `done` at its first poll and exit
 - the first step of the continued variation only rebuilds the bundle and the state below
-- rounds number on from the last recorded round, from the kept commit, with the last review's feedback and hypothesis, the log rebuilt from the rows, the notes and the rejected diffs
+- rounds number on from the last recorded round, from the kept commit, with the last review's feedback and hypothesis, the history lines rebuilt from the rows, the notes and the rejected diffs
 - `--rounds` adds to the rounds so far (default: the config's `max_rounds`). The deadline restarts from now. The bundle is rebuilt from the scenario as it stands
 - budget: `night.json` keeps `run_budget_usd`, the config's `budget_usd.night` as it was at the first continuation. Every continuation sets the night budget to what the night has spent plus `run_budget_usd`, never plus the budget in the saved config, which would compound
 - config: the CLI's continue uses the yaml it is given; the API's uses the night's saved config with `scenario.yaml` loaded again from disk
@@ -409,9 +414,10 @@ Where a continued variation's state comes from:
 | last round | The highest round among its `experiment` rows |
 | spend | Over all its rows: coder + dev + program spend, plus each round's review once |
 | feedback, hypothesis | The review file of the latest round that has one |
-| log | One entry per round from the `experiment` rows; in a repaired round the last row stands. Changes are against the checkpoint of that time, starting from the seed's metrics |
+| history | One masked line per round from the `experiment` rows; in a repaired round the last row stands. Changes are against the checkpoint of that time, starting from the seed's metrics |
 | noise | `noise.json` as it is, unless this variation rescores |
 | tokens, rounds without a keep, costliest round and evaluation, A/A count | Start at zero: `max_tokens` and `plateau_rounds` apply per variation |
+| pause count | The highest pause number in `pauses.jsonl` and `pause.json` |
 | `rounds` in the new `done.json` | The night's last round number, a rescore round included |
 
 Seed: a new night that starts from an ended night's kept commit instead of the starter.
@@ -608,7 +614,8 @@ Problem: coders stopped at about half their time, with open tasks or no measurem
 - commit: the sandbox's `.git` is replaced, the tree is committed once on the parent commit (squashing whatever the coder committed), exported as a git bundle and imported as `refs/exp/<exp>`. Message: `<exp id>: <hypothesis>`. In order: the parent's git bundle, uploaded at create, stays in the sandbox outside `/repo`; delete `/repo/.git`; start a new repository on `main`; fetch the parent from that bundle and soft-reset to it; add everything (so `.gitignore` applies); commit, an empty commit allowed, as `codeclimb <codeclimb@localhost>`; bundle `main`; the host reads the bundle and force-fetches `main` into the experiment's ref
 - hypothesis recorded: the reviewer's if the round had one, else the last `APPROACH` line of the closing message, backticks and asterisks stripped, cut to 300 characters. With no such line: the closing message's last non-empty line, else `(no summary)`
 - a commit whose tree equals its parent's is `unchanged`: nothing is evaluated, and the closing message (cut to 1,000 characters; `(no closing message)` when empty) goes to the reviewer and the history
-- `code-state.json` is rewritten on every assistant message, so a killed attempt loses nothing and the app can show it live. Keys: `startedAt`, `sandbox`, `freshRestarts`, `infraErrors`, `coderUsd`, `devUsd`, `tokens`, `tCode`, `tProvision`, and at the end `finishedAt` and `stop`
+- `code-state.json` is rewritten on every assistant message, so a killed attempt loses nothing and the app can show it live. Keys: `startedAt`, `sandbox`, `freshRestarts`, `infraErrors`, `coderUsd`, `devUsd`, `tokens`, `tCode`, `tProvision`, and at the end `finishedAt` and `stop`; after a credit stop `stop` and `paused` (the paused commit) with no `finishedAt`
+- `code-result.json` holds a finished coder's result, written before the finished state. A rerun step that finds both returns it without coding again
 
 ### Crash and resume
 
@@ -710,7 +717,7 @@ Handling:
 
 Notes and rejected diffs are files in the bundle's `history/`, so every later coder sandbox has them under `/spec/history/`. They are masked with `scan` before they are written.
 
-The log (one entry per round: hypothesis, changes, decision, reason) and the history (the same entries as masked lines) are not files: they live in the night's state, so a step retry can't append one twice. The masked lines travel to each coder in its step's input. The reviewer's lines are built from the log, unmasked. The feedback in a trajectory is read from `reviews/r<N>.json`.
+The history (one masked line per round: hypothesis, changes, decision, reason) is not a file: it lives in the night's state, so a step retry can't append a line twice. The masked lines travel to each coder and to the reviewer in their step's input. The feedback in a trajectory is read from `reviews/r<N>.json`.
 
 - **note**, one per experiment, `history/notes/r<N>-e<n>.md`, kept whether or not the round is kept:
   - heading: `## r<N>-e<n> · <decision>: <reason>` (reason cut to 300 characters)
@@ -754,7 +761,7 @@ An HTTP server in the Agent Server process, in the server container; the only wa
 
 | route | use |
 |---|---|
-| `POST /v1/chat/completions` | Text messages only (`system`, `user`, `assistant`), no tools, no streaming. `response_format`, `seed`, `top_p`, `stop`, `reasoning` are forwarded. Answers in OpenAI's shape |
+| `POST /v1/chat/completions` | Text messages only (`system`, `user`, `assistant`), no tools, no streaming. To OpenRouter, `max_tokens`, `temperature`, `response_format`, `seed`, `top_p`, `stop` and `reasoning` are forwarded; through Pi, `max_tokens` only. Answers in OpenAI's shape |
 | `POST /v1/embeddings` | `input`: a string or a list of strings |
 | `POST /v1/decisions` | OpenRouter decisions models. Body: `model`, `state`, `questions`, optional `assets`. Answers with `answers` |
 | `POST /v1/rerank` | Body: `model`, `query`, `documents` (a list of strings), optional `top_n`. Answers with `results`, best first, each an `index` into the documents and a `relevance_score` |
@@ -781,11 +788,11 @@ Replay cache. Problem: identical code scored 0.722 to 0.767 on one metric across
 
 Path to the proxy:
 
-- listener: the proxy has its own listener in the Agent Server process, started on first use, at `CODECLIMB_PROXY_HOST` and `CODECLIMB_PROXY_PORT`. In the server container the compose override sets them to `0.0.0.0` (every interface inside the container) and the fixed port 8090. The port is not published to the operator's machine: only containers on the stack's network and on `cc-meter` reach it. The worker API runs in another process, so unlike the Inngest twin it does not serve `/v1`
+- listener: the proxy has its own listener in the Agent Server process, started on first use, at `CODECLIMB_PROXY_HOST` and `CODECLIMB_PROXY_PORT`. In the server container the compose override sets them to `0.0.0.0` (every interface inside the container) and the fixed port 8090. The port is not published to the operator's machine: only containers on the stack's network and on `cc-meter` reach it. With neither variable set (outside the server container: the unit tests) it binds a free port on loopback, or on the Docker bridge's gateway address on Linux. The worker API runs in another process, so unlike the Inngest twin it does not serve `/v1`
 - metered: sandboxes join a plain network `cc-meter` and see the proxy at `http://cc-meter-relay:8080/v1`
 - the server container joins `cc-meter` too, under the alias `codeclimb-server` (the relay target, `CODECLIMB_RELAY_TARGET`). `cc-meter` must exist before `up`, since the compose override names it as an external network ([[#Deployment and environment]])
 - the relay: a container `cc-meter-relay` from the scenario's image, on `cc-meter`, running a small TCP forwarder written with Python's standard library (port 8080 → the relay target and the proxy's port), labelled `cc.meter=1`, `cc.meter.port=<port>` and `cc.meter.target=<target>`, with no managed label. It is shared by nights, never swept, reused while it runs with the same port and target labels and recreated otherwise. Concurrent callers must not remove a relay another just started
-- the relay reaches the proxy by the server container's name on `cc-meter`, the same on Docker Desktop and on Linux. The host-gateway alias and the Linux bridge-address bind are off this path ([[#Open points for the build]])
+- the relay reaches the proxy by the server container's name on `cc-meter`, the same on Docker Desktop and on Linux. The host-gateway alias and the Linux bridge-address bind are off this path. Both are kept as the defaults outside the server container: every relay gets the alias `host.docker.internal`, which is also the relay target when `CODECLIMB_RELAY_TARGET` is unset ([[#Open points for the build]])
 - unmetered: the default bridge. Both have internet access; only a token gets a program to a model
 - "the path is up" is checked before a coder starts, before an evaluator opens, after each stage's run, and in the round-start smoke test: `cc-meter` and the relay exist, the relay runs, and both its port label equals the proxy's port and its target label equals the relay target; otherwise recreate it. Why the target too: a relay left by another server with the same port but another target would be kept and forward nowhere. There is no HTTP probe from the Agent Server: the relay's name resolves only inside the network
 - why: with a broken path a program still runs, and one that swallows its errors would score as a bad program. An outage never becomes a score
@@ -860,14 +867,14 @@ Under the directory of `results_path`:
 | `results.jsonl` | Every night's rows |
 | `experiments.git` | The experiment repository |
 | `lessons/<night>-r<N>/` | Lesson proposals |
-| `nights/<id>/night.json` | `night_id`, `startedAt`, `deadlineMs`, the round-0 experiment id and SHA, `seed`, the resolved `config`, `metric_script_sha256`, `lessons_sha256` |
+| `nights/<id>/night.json` | `night_id`, `startedAt`, `deadlineMs`, the round-0 experiment id and SHA, `seed`, the resolved `config`, `metric_script_sha256`, `lessons_sha256`; once they apply, `run_budget_usd`, `variation` and `pausesApplied` |
 | `nights/<id>/done.json` | `night_id`, `stop_reason`, `rounds`, `kept` (`exp_id`, `commit`, `dev_score`), `test_metrics`, `spend_usd` (4 decimals), `leftover_sandboxes_destroyed`, `finished_at` |
 | `nights/<id>/stop.json` | `at`, `reason` (`manual`, `app`, `failed`, `cancelled`). Written only if the night has no `done.json`; the first stop wins |
 | `nights/<id>/pause.json`, `pauses.jsonl` | The current pause; every pause |
 | `nights/<id>/noise.json` | The A/A run |
 | `nights/<id>/bundle/` | The coder's `/spec`: `spec/`, optional `train/` and more, `history/` growing |
 | `nights/<id>/reviews/r<N>.json`, `r<N>.prompt.md` | The review and what it read |
-| `nights/<id>/exps/<exp>/` | `session/*.jsonl`, `code-state.json`, `tasks.json`, `train-score.json`, `check.json`, `meter-dev.jsonl` |
+| `nights/<id>/exps/<exp>/` | `session/*.jsonl`, `code-state.json`, `code-result.json`, `tasks.json`, `train-score.json`, `check.json`, `meter-dev.jsonl` |
 | `nights/<id>/evals/<eval>/` | `<stage>/{inputs.jsonl, run.log, outputs.tar, outputs/, report.json}`, `meter.jsonl`, `metrics.json` |
 
 Source of truth is git plus `results.jsonl`. The runtime's traces and scores mirror it for debugging and are never read by a decision.
@@ -880,7 +887,7 @@ The Inngest twin's four events, as calls to the Agent Server's API through `@lan
 
 | operation | call | input | called by |
 |---|---|---|---|
-| start | Create the night's thread, then a server run of `night` on it. If the thread exists, nothing starts and the CLI follows the running night | `night_id`, `config`, optional `continue` (`rescore`, optional `direction`) | CLI, API (continue) |
+| start | Create the night's thread, then a server run of `night` on it. If the thread exists, nothing starts and the CLI follows the running night | `night_id`, `config`, `mock`; optional `seed` (a night id), `variation`, `continue` (`rescore`, optional `direction`), `mock_offline`, `mock_credit` | CLI, API (continue) |
 | stop | Write `stop.json` (the first stop wins), then a server run of `stop` on the night's stop thread | `night_id`, optional `reason` | CLI, API, the night's failure and cancel paths, the watchdog |
 | resume | A server run of `night` on the night's newest thread with a resume command | `night_id`; the pause number is read from the thread's pending interrupt | CLI, API |
 | lessons | A server run of `lessons` on the scenario's lessons thread, queued behind any in flight | `night_id`, `scenario`, `config` | the night at its end; the stop cleanup. Only when lessons are on |
@@ -894,7 +901,7 @@ Default `127.0.0.1:7421`, in its own process (`api`, on the operator's machine, 
 |---|---|
 | `GET /api/health` | Liveness |
 | `GET /api/nights`, `GET /api/nights/:id` | Night summaries, read from `runs-langchain/*/nights/*` |
-| `GET /api/nights/:id/live` | Summary, the current round's experiment (phase, elapsed, coder and dev spend, tokens), the exportable experiments |
+| `GET /api/nights/:id/live` | Summary, the current round's experiment (phase, elapsed, coder and dev spend, tokens), the night's row count, the exportable experiments |
 | `GET /api/nights/:id/report` | The night's rows, reviews, config extract and diffs, as JSON |
 | `POST /api/nights/:id/stop`, `/resume` | The stop or resume operation; stop writes `stop.json` at once |
 | `POST /api/nights/:id/continue` | `{direction?, rounds ≥ 1}`; 409 when the night can't continue |
@@ -1005,7 +1012,7 @@ Rules the loop depends on:
 - a code change reaches the server only through a new image: `npm run server` again, which rebuilds from `ADD .` and recreates the server container. To a running night that is a kill: it reruns the running step and loses the in-memory state. `server` never passes `up --watch`: its effect on a running night was not measured, and a watch rebuild would be the same kill at a moment nobody chose
 - a server restarted onto new code cannot replay a night started by older code: let running nights finish first
 
-State the night carries across rounds: the checkpoint, feedback, failures, hypothesis, log, history, spend, tokens, per-round spends and tokens, rounds without a keep, the costliest evaluation, the deadline, the pause count, the round, the noise and the A/A run count, the stop reason.
+State the night carries across rounds: the checkpoint, feedback, failures, hypothesis, the direction, history, spend, tokens, the costliest round's spend and tokens, rounds without a keep, the costliest evaluation, the deadline, the pause count, the round, the noise and the A/A run count, the stop reason.
 
 ### Cleanup
 
@@ -1109,7 +1116,7 @@ The server image, built by `langgraphjs up` from `langgraph.json`:
 - `.dockerignore`: `**/.env*` except `.env.example`, `.git`, `**/node_modules`, `.claude/worktrees`, `runs`, `runs-langchain`, `web/.next`, `.langgraph_api`, `**/.venv`, `**/__pycache__`. Without it the keys, the night output, the host's own native modules and, in the main checkout, every worktree would go into the image
 - `env: ".env"`: the server container gets the `.env` keys. The path must resolve inside the project
 
-The compose override, `docker/langgraph-up.compose.yaml`, named in `langgraph.json`'s `docker_compose_file`. The CLI merges it into its own compose file, so it adds to the `langgraph-api` service. Adding it and changing `langgraph.json` touch given inputs: they need the operator's go-ahead (ticket #29).
+The compose override, `docker/langgraph-up.compose.yaml`, named in `langgraph.json`'s `docker_compose_file`. The CLI merges it into its own compose file, so it adds to the `langgraph-api` service. Adding it and changing `langgraph.json` touched given inputs, with the operator's go-ahead (ticket #29); a further change needs it again.
 
 - mounts: the host's Docker socket (`/var/run/docker.sock`); the checkout at its own host path (`CODECLIMB_HOST_ROOT`), so an absolute path in a night's input names the same file on both sides; the checkout's git directory read-only at its host path (`CODECLIMB_HOST_GIT_DIR`: a worktree's `.git` is a file naming a directory outside the checkout); Pi's `auth.json` (`CODECLIMB_HOST_PI_AUTH`) read-write at `/pi/auth.json`, since Pi writes refreshed subscription tokens back in place (read from Pi's source, not exercised: mock nights). Pi's lock directory beside the file lands in the container, so a refresh there is not locked against a Pi on the host; the volume `uv` at `/uv`
 - environment: `CODECLIMB_ROOT` = `CODECLIMB_HOST_ROOT`; `CODECLIMB_PI_AUTH_PATH=/pi/auth.json`; `CODECLIMB_SERVER_URL=http://127.0.0.1:8000` (the graphs call the server they run in); `CODECLIMB_PROXY_HOST=0.0.0.0` and `CODECLIMB_PROXY_PORT=8090`; `CODECLIMB_RELAY_TARGET=codeclimb-server`; `N_JOBS_PER_WORKER=4` (the 4 concurrent runs); `BG_JOB_TIMEOUT_SECS=432000` (5 days: a night's run outlives the variation backstop); `UV_PYTHON=3.14`, and `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` under `/uv`, so uv's Python and cache survive a container recreate and the container's Linux venv never replaces a scenario's own `.venv` in the checkout. The one project environment serves every uv scenario in turn: uv re-syncs it when the scenario changes
@@ -1125,7 +1132,7 @@ Commands:
 
 Environment:
 
-- env file: one `.env` (gitignored; `.env.example` lists every key), loaded first by the CLI and the API, and named in `langgraph.json`'s `env` for the server container. Values already in the shell win
+- env file: one `.env` (gitignored; `.env.example` lists every key), loaded first by the CLI and the API (from the directory they start in, then from `CODECLIMB_ROOT` when that is another one), and named in `langgraph.json`'s `env` for the server container. Values already in the shell win
 - `LANGSMITH_API_KEY` is required: without it the server does not start. With `LANGSMITH_TRACING=false` nothing is traced; mock nights and CI run that way, with a key
 - the machine stays on until the night ends; on macOS it must not sleep: `server` starts a detached `caffeinate -i docker wait <server container>`, which keeps the Mac awake as long as the server container runs and ends with it
 - a sandbox keeps running while its server is away
@@ -1134,7 +1141,7 @@ Environment:
 
 | variable | meaning |
 |---|---|
-| `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` | Provider keys; `OPENROUTER_BASE_URL` points the proxy elsewhere, for tests |
+| `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` | Provider keys, read by Pi; the proxy and the model check read `OPENROUTER_API_KEY` themselves. `OPENAI_API_KEY` is the embeddings key when Pi resolves none for `openai` |
 | `CODECLIMB_PI_AUTH_PATH` | Another `auth.json`; in the server container `/pi/auth.json`, the mounted one |
 | `LANGSMITH_API_KEY` | Required to boot the server; tracing and feedback |
 | `LANGSMITH_TRACING`, `LANGSMITH_PROJECT` | Tracing on or off; the project the traces land in, `codeclimb` |
@@ -1247,25 +1254,23 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 
 ## Open points for the build
 
-Points the `langgraphjs up` spike (#27) left open. Each is a decision for the ticket named, made there and written back into this spec; none is a fact yet.
+Tickets #26 to #32, the move to `langgraphjs up`, are closed, and what they settled is written into the sections above. These points they left unmeasured or undecided; none is a fact yet.
 
-- #29, image and compose: settled and written into [[#Deployment and environment]] and [[#Platform facts]]. One stays open: `langgraph.json`'s `env` must resolve inside the project, so a git worktree needs its own `.env` (a symlink to the main checkout's works; `server` stops when there is none)
-- #30, metering:
-  - the relay's `cc.meter.target` label and the target comparison in "the path is up": the spike's relay forwards to the target but compares only the port
-  - the relay test of `npm test`, which removes `cc-meter-relay` at its end
-  - two servers flipping the shared relay
-  - the Linux bridge-address bind and the host-gateway alias, now off the path: keep or remove. A removal needs the operator's go-ahead
+- image and compose: `langgraph.json`'s `env` must resolve inside the project, so a git worktree needs its own `.env` (a symlink to the main checkout's works; `server` stops when there is none)
+- metering:
+  - two servers flipping the shared relay ([[#Known gaps]])
+  - the Linux bridge-address bind and the host-gateway alias, off the path and kept as the defaults outside the server container. A removal needs the operator's go-ahead
   - sandboxes on `cc-meter` can reach every port of the server container, the Agent Server's API on 8000 included: whether to narrow that
-- #31, durability: every server run passes `sync`, and night 5 passes with a kill of the server container. Measured in night 5: from `up` to the runs sweeper's pickup, about 2 minutes, the thread reads `busy` and its run `running`, so the watchdog leaves it alone; the watchdog is unchanged. Still open:
-  - the server's run time limit: settled at 5 days (`BG_JOB_TIMEOUT_SECS=432000` in the override; the image's default is 24 h). Not measured: no run has reached it
+- durability:
+  - the server's run time limit, 5 days (`BG_JOB_TIMEOUT_SECS=432000` in the override; the image's default is 24 h): no run has reached it
   - the server-run attempt count: the image's `BG_JOB_MAX_RETRIES` is 3 (read from its config, not measured); whether a sweeper rerun counts as one was not measured
   - the bound on `sync` storage, about 1 s, not narrowed
   - the dev-server-only facts in [[#Platform facts]], not re-measured on this server
   - the step wrapper's workarounds (the final failure returned as data, the own-failure marker, the own backstop timers): all three kept; any removal needs the operator's go-ahead
-- #32, docs and the suite: AGENTS.md, the README, the e2e skill, the glossary's Agent Server entry and `.env.example` describe the `langgraphjs up` server, and nights 1 to 7 pass in one run on it. Still open:
+- the suite:
   - night 5's timing margin: the kill comes as round 2's code step starts, a second or two after round 1's last steps finished, close to the ~1 s `sync` lag. A late round-1 result lost in the kill would rerun and could fail the "no `cc-<id>-r1-` sandbox" check
   - a LangSmith key for CI
-  - whether `scan` surfaces its own failure in the check step: the graphrag night's `check.json` shows both ran, but a failing `scan` was not tried
+  - a failing `scan` in the check step: nothing catches it there, so the step fails and, out of its retries, so does the night (read from the code; the graphrag night's `check.json` shows both commands ran, but a failing `scan` was not tried)
 
 ## Suggested build order
 
