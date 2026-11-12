@@ -25,3 +25,4 @@ __pycache__/
 # Next.js app build output
 web/.next/
 web/next-env.d.ts
+runs-langchain/

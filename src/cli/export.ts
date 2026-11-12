@@ -1,6 +1,6 @@
 // export: one experiment's code out of a results directory's experiments.git (spec: Export).
 //   npm run export -- --config configs/datenorm-smoke.yaml [--exp best] --to-dir ../solution [--force]
-//   npm run export -- --results runs/datenorm-smoke/results.jsonl --exp <exp id> --to-dir out --with-history
+//   npm run export -- --results runs-langchain/datenorm-smoke/results.jsonl --exp <exp id> --to-dir out --with-history
 //   npm run export -- --config configs/datenorm-smoke.yaml --to-remote git@github.com:you/repo.git [--branch main]
 // `--exp best`, the default, is the kept commit of the most recently finished night.
 import { dirname, join, resolve } from "node:path";

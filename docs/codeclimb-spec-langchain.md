@@ -41,15 +41,15 @@ You are done when the end-to-end tests pass. They run on the local Agent Server 
 | 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
 | 7 | `npm run build:image:graphrag`, then `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | A scenario with three stages, a metered program, `check`, `scan` and lessons runs end to end |
 
-Nights 1, 2 and 6 write to `runs/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
+Nights 1, 2 and 6 write to `runs-langchain/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
 | `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` | [[#CLI]], [[#Stops]] |
 | `nights/<id>/done.json` exists; `stop.json` and `pause.json` don't | [[#Files a night writes]] |
-| `npm run validate-results -- runs/mock/<name>/results.jsonl` passes | [[#Result row]] |
+| `npm run validate-results -- runs-langchain/mock/<name>/results.jsonl` passes | [[#Result row]] |
 | `results.jsonl` has a row per experiment of every round, plus a `test` row | [[#Round loop]] |
-| `git -C runs/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit; its diff adds `MOCK.md` | [[#Mock mode]], [[#Experiment repository]] |
+| `git -C runs-langchain/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit; its diff adds `MOCK.md` | [[#Mock mode]], [[#Experiment repository]] |
 | `exps/*/code-state.json` has `stop: done`; `exps/*/session/` holds a session file | [[#Coder]] |
 | `reviews/r<n>.json` exists for every round, with `feedback: mock feedback` | [[#Reviewer]] |
 | `exps/*/train-score.json` and `exps/*/tasks.json` exist; the session holds eight send-backs ("You stopped with N of N minutes"), then one wrap-up ("change no more code") | [[#Send-backs, reserve and wrap-up]] |
@@ -68,11 +68,11 @@ Nights 3 to 7 add:
 | 4 | `run-night` prints `stopped`; `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left | [[#Cleanup]] |
 | 5 | Kill once `exps/<id>-r2-e0/` exists, so round 1's row is in `results.jsonl`. If the night finishes before that happens, nothing is killed: run night 5 again. The server may have saved none of the night's steps (it writes its state only after 3 quiet seconds, and a mock night has none), so the restart can replay the night from its start: the night's files must make that replay redo nothing. After the restart the night finishes by itself: `done.json` exists, every `eval_id` is in `results.jsonl` once, and round 1's `code-state.json` is unchanged, so round 1's coder did not run again | [[#Crash and resume]], [[#Platform facts]] |
 | 6 | Every check of the table above; and `exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one | [[#Mock mode]], [[#End of an experiment]] |
-| 7 | It writes to `runs/mock/graphrag-smoke/`. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`; these checks hold either way. `run-night` prints `done`; `done.json` exists and `stop.json` doesn't; `validate-results` passes; every round has an experiment row with `decision_reason`, plus one `test` row; every evaluation has `evals/<eval>/extraction/inputs.jsonl`; every experiment with a commit has `exps/<exp>/check.json`; where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`; within a minute of `done`, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and the scenario's `lessons.md` is unchanged; no `cc-<id>` container is left | [[#Scenario contract]], [[#Evaluator]], [[#Repair]], [[#Lessons across nights]] |
+| 7 | It writes to `runs-langchain/mock/graphrag-smoke/`. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`; these checks hold either way. `run-night` prints `done`; `done.json` exists and `stop.json` doesn't; `validate-results` passes; every round has an experiment row with `decision_reason`, plus one `test` row; every evaluation has `evals/<eval>/extraction/inputs.jsonl`; every experiment with a commit has `exps/<exp>/check.json`; where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`; within a minute of `done`, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and the scenario's `lessons.md` is unchanged; no `cc-<id>` container is left | [[#Scenario contract]], [[#Evaluator]], [[#Repair]], [[#Lessons across nights]] |
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, lessons, export, the worker API and the app. Build them to this spec. The paid end-to-end tests run on real models and spend money. Run one only when the operator says so for that scenario, and name its ceiling first. They write to `runs/<results folder>/`, with no `mock` in the path:
+Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, lessons, export, the worker API and the app. Build them to this spec. The paid end-to-end tests run on real models and spend money. Run one only when the operator says so for that scenario, and name its ceiling first. They write to `runs-langchain/<results folder>/`, with no `mock` in the path:
 
 | # | night | ceiling | passes when |
 |---|---|---|---|
@@ -246,7 +246,7 @@ Validation at parse:
 - `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`
 - relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
 - the config travels in the start input with paths relative to the checkout; the Agent Server resolves them against `CODECLIMB_ROOT` (default: its cwd). CLI and server may run from different directories, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
-- results directories must sit directly under `<root>/runs/` (or `<root>/runs/mock/` for mock nights): the API and the stop cleanup find a night by scanning there
+- results directories must sit directly under `<root>/runs-langchain/` (or `<root>/runs-langchain/mock/` for mock nights): the API and the stop cleanup find a night by scanning there. Not `runs/`: the Inngest twin writes its nights there, from the same checkout, and a folder of its own keeps either build from finding, stopping or continuing the other's nights
 - models are checked on the CLI and again in the Agent Server with its own credentials (a non-retriable failure of the night's first step). For a Pi model: it is in Pi's model runtime, its provider has credentials, and it is in the provider's list of models available to the account. The check finds missing models and keys, not wrong keys. `openrouter/` entries of `allowed_models` are checked through OpenRouter's per-model endpoints API instead (ready only when it lists at least one endpoint), because its model list omits some callable models; the priced embedding models are left out of the Pi check too
 
 ## CLI
@@ -270,7 +270,7 @@ Validation at parse:
 
 `--mock` runs the same night on scripted models: the Agent Server, sandboxes, Pi sessions and tools, commits, evals, the proxy, the keep rule and every file are real. No provider is called, so it costs nothing and needs no provider credentials. The Agent Server needs no LangSmith key either; without one, or with `LANGSMITH_TRACING=false`, nothing is sent to LangSmith.
 
-- results go to `runs/mock/<name>/`: the results directory's name moved under a `mock` sibling (`runs/datenorm-smoke/…` → `runs/mock/datenorm-smoke/…`)
+- results go to `runs-langchain/mock/<name>/`: the results directory's name moved under a `mock` sibling (`runs-langchain/datenorm-smoke/…` → `runs-langchain/mock/datenorm-smoke/…`)
 - models: pi-ai's faux provider, registered as a native provider on the Agent Server process's one Pi model runtime, with provider id `mock` and one model per role: `coder`, `reviewer`, `lessons`. A mock session takes its model object from the faux provider, not from a `<provider>/<id>` lookup. Faux models cost 0
 - the faux provider's response queue is shared by every session and gives up one entry per model call; an empty queue answers with an error. So queue a response factory that puts itself back on every call, with a head start of several entries for concurrent sessions; never a fixed list. The factory picks its reply by the model's id:
 
@@ -886,12 +886,12 @@ The Inngest twin's four events, as calls to the Agent Server's API through `@lan
 
 ### Worker API
 
-Default `127.0.0.1:7421`, in its own process (`api`), which also runs the watchdog ([[#Durable runtime on LangGraph]]). It reaches the Agent Server at `CODECLIMB_SERVER_URL` and reads `runs/` from the same checkout the server writes. No token on loopback; off loopback `CODECLIMB_WORKER_TOKEN` is required as a bearer on everything. A busy port is a startup error: two APIs would run two watchdogs over the same nights.
+Default `127.0.0.1:7421`, in its own process (`api`), which also runs the watchdog ([[#Durable runtime on LangGraph]]). It reaches the Agent Server at `CODECLIMB_SERVER_URL` and reads `runs-langchain/` from the same checkout the server writes. No token on loopback; off loopback `CODECLIMB_WORKER_TOKEN` is required as a bearer on everything. A busy port is a startup error: two APIs would run two watchdogs over the same nights.
 
 | endpoint | purpose |
 |---|---|
 | `GET /api/health` | Liveness |
-| `GET /api/nights`, `GET /api/nights/:id` | Night summaries, read from `runs/*/nights/*` |
+| `GET /api/nights`, `GET /api/nights/:id` | Night summaries, read from `runs-langchain/*/nights/*` |
 | `GET /api/nights/:id/live` | Summary, the current round's experiment (phase, elapsed, coder and dev spend, tokens), the exportable experiments |
 | `GET /api/nights/:id/report` | The night's rows, reviews, config extract and diffs, as JSON |
 | `POST /api/nights/:id/stop`, `/resume` | The stop or resume operation; stop writes `stop.json` at once |
@@ -901,7 +901,7 @@ Default `127.0.0.1:7421`, in its own process (`api`), which also runs the watchd
 
 - status comes from files, not from the durable runtime: `done.json` → `finished`, `stop.json` → `stopped`, `pause.json` → `paused`, no file written for an hour → `stale`, else `running`. So the app doesn't depend on the stack
 - phase of the live experiment: `evaluated` once its row exists; `starting` with no `code-state.json`; `waiting for eval` once the state has `finishedAt`; otherwise `coding`. A repair (`e1`) takes over from `e0` once its folder exists
-- finding nights: scan `<root>/runs/*/nights/<id>/night.json` and `<root>/runs/mock/*/nights/<id>/night.json`. The stop cleanup finds a night's folder the same way, since the stop input holds only the night id
+- finding nights: scan `<root>/runs-langchain/*/nights/<id>/night.json` and `<root>/runs-langchain/mock/*/nights/<id>/night.json`. The stop cleanup finds a night's folder the same way, since the stop input holds only the night id
 - nights start only from the CLI
 
 ### App
@@ -1055,7 +1055,7 @@ Measured on 2026-11-11 with a throwaway graph on `langgraph dev`, on the pinned 
 
 One mode: everything on your machine. The Agent Server is the LangGraph dev server (`langgraph dev`), and the sandboxes are Docker containers. Decided 2026-11-11. What was left out, and why:
 
-- the hosted Agent Server (LangSmith Deployment): every piece of a night's state is on the server's disk (`runs/`, `experiments.git`, the scenarios' `lessons.md`) or in its process's memory (the proxy's ledgers and cache, the live registry). A hosted deployment has no persistent disk, and the proxy would need a home outside it
+- the hosted Agent Server (LangSmith Deployment): every piece of a night's state is on the server's disk (`runs-langchain/`, `experiments.git`, the scenarios' `lessons.md`) or in its process's memory (the proxy's ledgers and cache, the live registry). A hosted deployment has no persistent disk, and the proxy would need a home outside it
 - `langgraph up` (the server image with Postgres and Redis): its container has no Docker. Running the sandboxes from it would need the host's Docker socket, which was not tried, and a second mode doubles what is built and tested
 - LangSmith Sandboxes: Docker costs nothing, and this build is for learning, not for production
 
@@ -1086,7 +1086,7 @@ Environment:
 | `LANGSMITH_TRACING`, `LANGSMITH_PROJECT` | Tracing on or off; the project the traces land in, `codeclimb` |
 | `LANGSMITH_ENDPOINT`, `LANGSMITH_WORKSPACE_ID` | The API endpoint, which must match the key's region (`https://eu.api.smith.langchain.com` for an EU key); the workspace when the key reaches more than one |
 | `CODECLIMB_SERVER_URL` | Where the CLI, the API and the graphs reach the Agent Server (default `http://127.0.0.1:2024`) |
-| `CODECLIMB_ROOT` | The checkout the server resolves config paths and `runs/` against (default: its working directory) |
+| `CODECLIMB_ROOT` | The checkout the server resolves config paths and `runs-langchain/` against (default: its working directory) |
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT` | The worker API (default `127.0.0.1:7421`) |
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer; where the app reaches the API |
 | `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds; on Linux Docker the `docker0` address |
@@ -1164,7 +1164,7 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 - the watchdog (crash recovery past the server's own 3 attempts, and the lost thread) runs only while `api` runs. The pause timeout and the variation backstop don't need it
 - the mock coder stops at once on every turn, so a mock session holds the full 8 send-backs and one wrap-up. With a 5-minute experiment and the 3-minute floor, all of them must start within the first 2 minutes
 - four requirements the Inngest reference build misses are part of this spec as well:
-  - finding mock nights under `runs/mock/`
+  - finding mock nights under `runs-langchain/mock/`
   - the failure path writing `stop.json` before `night.json` exists
   - picking the Linux bridge address
   - a pause end that is safe to retry

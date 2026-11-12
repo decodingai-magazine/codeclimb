@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { isMockResults } from "../config.ts";
 import { continueNight, resumeNight, stopNight } from "../control.ts";
 import { type ExportTarget, exportExperiment, validateExpId } from "../export.ts";
 import { isValidNightId } from "../ids.ts";
@@ -85,7 +86,7 @@ export class WorkerApi {
 		if (direction !== undefined && typeof direction !== "string") throw new HttpError(400, "direction must be text");
 		if (!(typeof rounds === "number" && Number.isInteger(rounds) && rounds >= 1)) throw new HttpError(400, "rounds must be an integer ≥ 1");
 		const cfg = n.night.config;
-		const mock = cfg.results_path.startsWith("runs/mock/");
+		const mock = isMockResults(cfg.results_path);
 		const r = await continueNight(this.o.root, n.id, cfg, { mock, rounds, ...(direction?.trim() ? { direction } : {}) });
 		if ("refused" in r) throw new HttpError(409, r.refused);
 		return { night_id: n.id, variation: r.input.variation, thread: r.thread, max_rounds: r.input.config.max_rounds, rescore: r.input.continue?.rescore ?? false };

@@ -2,6 +2,7 @@
 // (spec: Worker API). Status comes from files, so the app doesn't depend on the stack.
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { isMockResults, RUNS_DIR } from "../config.ts";
 import { ExperimentRepo } from "../experiments.ts";
 import { readJson } from "../night/files.ts";
 import type { PauseJson } from "../night/pause.ts";
@@ -21,13 +22,13 @@ export interface NightEntry {
 }
 
 /**
- * Every night with a night.json of this build under `<root>/runs/*` and `<root>/runs/mock/*`. The Inngest twin writes
- * its nights to the same folders with another night.json (its scenario is an object, with no `scenario_spec`): they
- * are left out, so neither the app nor the watchdog touches them.
+ * Every night with a night.json of this build under `<root>/runs-langchain/*` and `<root>/runs-langchain/mock/*`.
+ * The Inngest twin writes to `runs/`; a night.json of its kind (its scenario is an object, with no `scenario_spec`)
+ * is left out anyway, so neither the app nor the watchdog touches one.
  */
 export function listNights(root: string): NightEntry[] {
 	const out: NightEntry[] = [];
-	for (const base of [join(root, "runs"), join(root, "runs", "mock")]) {
+	for (const base of [join(root, RUNS_DIR), join(root, RUNS_DIR, "mock")]) {
 		if (!existsSync(base)) continue;
 		for (const folder of readdirSync(base)) {
 			const nights = join(base, folder, "nights");
@@ -76,7 +77,7 @@ export function summary(root: string, n: NightEntry, now = Date.now()) {
 	return {
 		id: n.id,
 		scenario: cfg.scenario,
-		mock: cfg.results_path.startsWith("runs/mock/"),
+		mock: isMockResults(cfg.results_path),
 		status,
 		stop_reason: done?.stop_reason ?? stop?.reason ?? null,
 		pause: status === "paused" ? pause : null,

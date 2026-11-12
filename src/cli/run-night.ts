@@ -2,7 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { type NightConfig, loadNightConfig } from "../config.ts";
+import { type NightConfig, loadNightConfig, RUNS_DIR } from "../config.ts";
 import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
 import { endedNights, resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
@@ -149,7 +149,7 @@ async function stop(argv: string[]): Promise<void> {
 	if (!values.night) die("--night <id> is required");
 	const dir = findNightDir(root, values.night);
 	// A night still in init has no night.json yet: its cancel path writes stop.json itself.
-	if (!dir && (await nightThreads(values.night)).length === 0) die(`night ${values.night} not found under ${join(root, "runs")} nor on the Agent Server`);
+	if (!dir && (await nightThreads(values.night)).length === 0) die(`night ${values.night} not found under ${join(root, RUNS_DIR)} nor on the Agent Server`);
 	await stopNight(root, values.night, "manual", dir);
 	console.log("stopped");
 	const stopJson = dir ? readJson(join(dir, "stop.json")) : null;
@@ -168,7 +168,7 @@ async function continueCommand(argv: string[]): Promise<void> {
 		rounds = Number(values.rounds);
 		if (!Number.isInteger(rounds) || rounds < 1) die("--rounds must be an integer ≥ 1");
 	}
-	// A mock night lives under runs/mock/: the night's folder says which one it is.
+	// A mock night lives under runs-langchain/mock/: the night's folder says which one it is.
 	const plain = loadOrDie(values.config, false);
 	const mockConfig = loadOrDie(values.config, true);
 	const candidates = [
@@ -179,8 +179,8 @@ async function continueCommand(argv: string[]): Promise<void> {
 	let mock: boolean;
 	if (nightId) {
 		const dir = findNightDir(root, nightId);
-		if (!dir) die(`night ${nightId} not found under ${join(root, "runs")}`);
-		mock = dir.includes(`${sep}runs${sep}mock${sep}`);
+		if (!dir) die(`night ${nightId} not found under ${join(root, RUNS_DIR)}`);
+		mock = dir.includes(`${sep}${RUNS_DIR}${sep}mock${sep}`);
 	} else {
 		const newest = candidates[0];
 		if (!newest) die(`no ended night under the results of ${values.config}`);
@@ -230,7 +230,7 @@ async function resume(argv: string[]): Promise<void> {
 	if (!values.night) die("--night <id> is required");
 	const dir = findNightDir(root, values.night);
 	const night = dir ? readJson<NightJson>(join(dir, "night.json")) : null;
-	if (!night) die(`night ${values.night} not found under ${join(root, "runs")}`);
+	if (!night) die(`night ${values.night} not found under ${join(root, RUNS_DIR)}`);
 	const r = await resumeNight(root, values.night);
 	if ("refused" in r) die(r.refused);
 	console.log(`resumed pause ${r.resumed} of night ${values.night}`);

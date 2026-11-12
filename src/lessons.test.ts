@@ -61,7 +61,7 @@ function scenarioCfg(): { root: string; cfg: NightConfig; file: string } {
 	const file = join(root, "scen", "spec", "agent", "lessons.md");
 	writeFileSync(file, LESSONS);
 	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
-	const cfg: NightConfig = { ...base, scenario: "scen", scenario_spec: { ...base.scenario_spec, lessons: "spec/agent/lessons.md" }, results_path: "runs/mock/t/results.jsonl", lessons: "propose" };
+	const cfg: NightConfig = { ...base, scenario: "scen", scenario_spec: { ...base.scenario_spec, lessons: "spec/agent/lessons.md" }, results_path: "runs-langchain/mock/t/results.jsonl", lessons: "propose" };
 	return { root, cfg, file };
 }
 
@@ -197,7 +197,7 @@ test("lessons: a proposal over the line cap after its prune rounds is never appl
 	assert.ok(proposal);
 	assert.ok(proposal.lines > LINE_CAP, "the mock model prunes nothing");
 	assert.deepEqual(proposal.prune, []);
-	const real = { ...cfg, results_path: "runs/t/results.jsonl" };
+	const real = { ...cfg, results_path: "runs-langchain/t/results.jsonl" };
 	const { dir, applied } = writeProposal(root, real, { ...proposal }, true);
 	assert.equal(applied, false);
 	assert.match(readFileSync(join(dir, "changes.md"), "utf8"), /## Over the cap/);
@@ -251,7 +251,7 @@ test("lessons: propose, skip a repeat, never apply a mock night; apply a real pr
 	assert.equal((await proposeLessons(root, cfg, "n7", noScan))?.fromRound, 0, "an unapplied proposal's rounds are distilled again");
 
 	// The same proposal on a real night's results: applied, then refused once the file moved.
-	const real = { ...cfg, results_path: "runs/t/results.jsonl" };
+	const real = { ...cfg, results_path: "runs-langchain/t/results.jsonl" };
 	const edited = { ...proposal, lessons: LESSONS.replace("raised recall.", "raised mention recall.") };
 	const out = writeProposal(root, real, edited, true);
 	assert.equal(out.applied, true);

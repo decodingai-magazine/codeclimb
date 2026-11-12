@@ -79,7 +79,7 @@ test("the budget does not compound: each continuation is the spend so far plus t
 test("reopen: refuses a running night; moves the files of an unfinished round aside, renames the end file, rewrites night.json", () => {
 	const id = `tv${randomBytes(3).toString("hex")}`;
 	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
-	const config = { ...base, results_path: `runs/mock/${id}/results.jsonl`, max_rounds: 2, budget_usd: { ...base.budget_usd, night: 10 } };
+	const config = { ...base, results_path: `runs-langchain/mock/${id}/results.jsonl`, max_rounds: 2, budget_usd: { ...base.budget_usd, night: 10 } };
 	const paths = nightPaths(ROOT, config.results_path, id);
 	try {
 		mkdirSync(join(paths.nightDir, "exps", `${id}-r2-e0`), { recursive: true });
@@ -131,7 +131,7 @@ test("reopen: refuses a running night; moves the files of an unfinished round as
 test("seed: refused while the seed night applies lessons that lessons.md doesn't hold yet; a mock night never is", () => {
 	const id = `tl${randomBytes(3).toString("hex")}`;
 	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: false });
-	const config: NightConfig = { ...base, results_path: `runs/${id}/results.jsonl` };
+	const config: NightConfig = { ...base, results_path: `runs-langchain/${id}/results.jsonl` };
 	const ran: NightConfig = { ...config, lessons: "apply", scenario_spec: { ...config.scenario_spec, lessons: "spec/lessons.md" } };
 	const paths = nightPaths(ROOT, config.results_path, id);
 	try {
@@ -146,7 +146,7 @@ test("seed: refused while the seed night applies lessons that lessons.md doesn't
 		assert.deepEqual(resolveSeed(ROOT, config, id), { id, rescore: true });
 		// A mock night's lessons are never applied, so they never block a seed.
 		writeJson(join(paths.resultsDir, "lessons", `${id}-r1`, "proposal.json"), { applied: false });
-		writeJson(paths.nightJson, { ...readJson<NightJson>(paths.nightJson), config: { ...ran, results_path: `runs/mock/${id}/results.jsonl` } });
+		writeJson(paths.nightJson, { ...readJson<NightJson>(paths.nightJson), config: { ...ran, results_path: `runs-langchain/mock/${id}/results.jsonl` } });
 		assert.equal("refused" in resolveSeed(ROOT, config, id), false);
 	} finally {
 		rmSync(dirname(paths.results), { recursive: true, force: true });

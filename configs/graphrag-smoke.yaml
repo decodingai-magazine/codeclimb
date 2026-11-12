@@ -24,4 +24,4 @@ thresholds:
 budget_usd:
   experiment: 2.0
   night: 20.0
-results_path: runs/graphrag-smoke/results.jsonl
+results_path: runs-langchain/graphrag-smoke/results.jsonl

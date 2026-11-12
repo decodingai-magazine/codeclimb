@@ -8,7 +8,7 @@ import { beginPause, endPause, isCreditMessage, type NightJsonWithPauses } from 
 
 function night() {
 	const root = mkdtempSync(join(tmpdir(), "cc-pause-"));
-	const paths = nightPaths(root, "runs/x/results.jsonl", "n1");
+	const paths = nightPaths(root, "runs-langchain/x/results.jsonl", "n1");
 	writeJson(paths.nightJson, { night_id: "n1", deadlineMs: 1_000_000 });
 	return paths;
 }

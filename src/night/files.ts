@@ -1,6 +1,7 @@
 // Where a night's files live and how they are written (spec: Files a night writes).
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { RUNS_DIR } from "../config.ts";
 
 export interface NightPaths {
 	resultsDir: string;
@@ -31,9 +32,9 @@ export function nightPaths(root: string, resultsPath: string, nightId: string): 
 	};
 }
 
-/** A night's folder, found by scanning `runs/*` and `runs/mock/*` (the stop input holds only the night id). A night in init has its folder before night.json. */
+/** A night's folder, found by scanning `runs-langchain/*` and `runs-langchain/mock/*` (the stop input holds only the night id). A night in init has its folder before night.json. */
 export function findNightDir(root: string, nightId: string): string | null {
-	for (const base of [join(root, "runs"), join(root, "runs", "mock")]) {
+	for (const base of [join(root, RUNS_DIR), join(root, RUNS_DIR, "mock")]) {
 		if (!existsSync(base)) continue;
 		for (const name of readdirSync(base)) {
 			const dir = join(base, name, "nights", nightId);

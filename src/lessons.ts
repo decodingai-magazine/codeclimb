@@ -16,7 +16,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { NightConfig, Thinking } from "./config.ts";
+import { isMockResults, type NightConfig, type Thinking } from "./config.ts";
 import { nightPaths } from "./night/files.ts";
 import { isCreditMessage } from "./night/pause.ts";
 import { mask } from "./night/scan.ts";
@@ -545,8 +545,8 @@ export interface Proposal extends DistillOutput {
 	changes: string;
 }
 
-/** A mock night's results sit under runs/mock/: its proposals are never applied. */
-export const isMockConfig = (cfg: NightConfig) => cfg.results_path.startsWith("runs/mock/");
+/** A mock night's proposals are never applied. */
+export const isMockConfig = (cfg: NightConfig) => isMockResults(cfg.results_path);
 
 export function lessonsFile(root: string, cfg: NightConfig): string {
 	if (!cfg.scenario_spec.lessons) throw new Error(`scenario ${cfg.scenario_spec.name} declares no lessons`);

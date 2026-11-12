@@ -40,12 +40,12 @@ test("watchdog: no thread on two checks in a row stops the night", () => {
 	assert.deepEqual(checks([null, null]), ["none", "stop"]);
 });
 
-/** A checkout with one night of each status under runs/mock/t/. */
+/** A checkout with one night of each status under runs-langchain/mock/t/. */
 function checkout() {
 	const root = mkdtempSync(join(tmpdir(), "cc-api-"));
 	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
-	const config = { ...base, results_path: "runs/mock/t/results.jsonl" };
-	const dir = (id: string) => join(root, "runs", "mock", "t", "nights", id);
+	const config = { ...base, results_path: "runs-langchain/mock/t/results.jsonl" };
+	const dir = (id: string) => join(root, "runs-langchain", "mock", "t", "nights", id);
 	const files: Record<string, string | null> = { fin: "done.json", stp: "stop.json", pau: "pause.json", run: null, old: null };
 	for (const [id, file] of Object.entries(files)) {
 		writeJson(join(dir(id), "night.json"), { night_id: id, startedAt: new Date().toISOString(), deadlineMs: 0, round0: { exp_id: `${id}-r0-starter`, sha: "c0" }, seed: null, config, metric_script_sha256: {}, lessons_sha256: [] } satisfies NightJson);

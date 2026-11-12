@@ -1,7 +1,7 @@
 # End-to-end test that the loop climbs. Real models only. The scenario is a generated copy of datenorm
 # whose dev and test hold the train items (npm run build:scenario:overfit), so the coder can read every
 # answer: the night must end on `thresholds`, and test must equal dev.
-scenario: runs/e2e/scenarios/datenorm-overfit
+scenario: runs-langchain/e2e/scenarios/datenorm-overfit
 sandbox: docker
 max_rounds: 4
 deadline: 2h
@@ -22,4 +22,4 @@ gates:
 budget_usd:
   experiment: 0.15
   night: 0.5
-results_path: runs/e2e-overfit/results.jsonl
+results_path: runs-langchain/e2e-overfit/results.jsonl

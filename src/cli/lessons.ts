@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { parseArgs } from "node:util";
-import { type NightConfig, loadNightConfig } from "../config.ts";
+import { type NightConfig, loadNightConfig, RUNS_DIR } from "../config.ts";
 import { loadEnvFile } from "../env.ts";
 import { applyProposal, lessonsFile, parseLessons, proposalsOf, proposeLessons, serializeLessons, writeProposal } from "../lessons.ts";
 import { findNightDir } from "../night/files.ts";
@@ -58,9 +58,9 @@ if (command === "format") {
 	const nightId = values.night;
 	if (!nightId) die(`${command} needs --night <id>`);
 	const dir = findNightDir(root, nightId);
-	if (!dir) die(`night ${nightId} not found under ${join(root, "runs")}`);
-	// A mock night lives under runs/mock/: its folder says which config paths apply.
-	const cfg = load(dir.includes(`${sep}runs${sep}mock${sep}`));
+	if (!dir) die(`night ${nightId} not found under ${join(root, RUNS_DIR)}`);
+	// A mock night lives under runs-langchain/mock/: its folder says which config paths apply.
+	const cfg = load(dir.includes(`${sep}${RUNS_DIR}${sep}mock${sep}`));
 	if (!cfg.scenario_spec.lessons) die(`scenario ${cfg.scenario_spec.name} declares no lessons`);
 	try {
 		if (command === "distill") {

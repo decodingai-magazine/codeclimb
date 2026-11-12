@@ -3,6 +3,14 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
 
+/**
+ * Where this build's nights write, under the checkout: its own folder, apart from the Inngest twin's `runs/`.
+ * Mock nights go to its `mock/` subfolder.
+ */
+export const RUNS_DIR = "runs-langchain";
+/** A mock night's results sit under `runs-langchain/mock/`. */
+export const isMockResults = (resultsPath: string) => resultsPath.startsWith(`${RUNS_DIR}/mock/`);
+
 export type Thinking = "off" | "minimal" | "low" | "medium" | "high";
 export type LessonsMode = "off" | "propose" | "apply";
 const THINKING: readonly Thinking[] = ["off", "minimal", "low", "medium", "high"];
@@ -60,7 +68,7 @@ export interface NightConfig {
 	noise_margin: { min: number; max: number; fixed?: number; scale_by_replay: boolean };
 	lessons: LessonsMode;
 	seed?: string;
-	/** results.jsonl, relative to the checkout; its directory sits directly under runs/ or runs/mock/. */
+	/** results.jsonl, relative to the checkout; its directory sits directly under runs-langchain/ or runs-langchain/mock/. */
 	results_path: string;
 }
 
@@ -275,8 +283,8 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 	const resultsAbs = resolve(opts.cwd, str(raw, "results_path", path));
 	let results = underRoot(opts.root, resultsAbs, "results_path");
 	const parts = results.split("/");
-	if (parts.length !== 3 || parts[0] !== "runs" || parts[1] === "mock") fail(`results_path ${results}: its directory must sit directly under runs/ (runs/<name>/<file>)`);
-	if (opts.mock) results = ["runs", "mock", ...parts.slice(1)].join("/");
+	if (parts.length !== 3 || parts[0] !== RUNS_DIR || parts[1] === "mock") fail(`results_path ${results}: its directory must sit directly under ${RUNS_DIR}/ (${RUNS_DIR}/<name>/<file>)`);
+	if (opts.mock) results = [RUNS_DIR, "mock", ...parts.slice(1)].join("/");
 
 	const config: NightConfig = {
 		scenario,

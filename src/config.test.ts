@@ -20,7 +20,7 @@ const base = {
 	primary_metric: "accuracy",
 	thresholds: { accuracy: 1.01 },
 	budget_usd: { experiment: 1, night: 10 },
-	results_path: "runs/datenorm-smoke/results.jsonl",
+	results_path: "runs-langchain/datenorm-smoke/results.jsonl",
 };
 
 function load(overrides: Record<string, unknown>, opts: { mock?: boolean } = {}) {
@@ -38,12 +38,12 @@ test("the given smoke config loads with its defaults and its scenario", () => {
 	assert.equal(config.plateau_rounds, 3);
 	assert.equal(config.lessons, "off");
 	assert.deepEqual(config.weights, { accuracy: 1 });
-	assert.equal(config.results_path, "runs/datenorm-smoke/results.jsonl");
+	assert.equal(config.results_path, "runs-langchain/datenorm-smoke/results.jsonl");
 });
 
-test("a mock night writes under runs/mock/", () => {
+test("a mock night writes under runs-langchain/mock/", () => {
 	const config = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
-	assert.equal(config.results_path, "runs/mock/datenorm-smoke/results.jsonl");
+	assert.equal(config.results_path, "runs-langchain/mock/datenorm-smoke/results.jsonl");
 });
 
 test("graphrag declares lessons, so lessons default to apply", () => {
@@ -72,9 +72,11 @@ test("a threshold of 0 or less is refused", () => {
 	assert.throws(() => load({ thresholds: {} }), /threshold/);
 });
 
-test("a results directory not directly under runs/ is refused", () => {
+test("a results directory not directly under runs-langchain/ is refused", () => {
 	assert.throws(() => load({ results_path: "out/x/results.jsonl" }), /runs/);
-	assert.throws(() => load({ results_path: "runs/a/b/results.jsonl" }), /runs/);
+	// The Inngest twin's folder is not this build's.
+	assert.throws(() => load({ results_path: "runs/datenorm-smoke/results.jsonl" }), /runs-langchain/);
+	assert.throws(() => load({ results_path: "runs-langchain/a/b/results.jsonl" }), /runs/);
 });
 
 test("lessons on a scenario without lessons are refused", () => {
