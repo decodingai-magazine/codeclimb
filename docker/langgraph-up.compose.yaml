@@ -15,6 +15,8 @@ services:
       CODECLIMB_RELAY_TARGET: codeclimb-server
       # A night, a stop, a lessons run and a spare.
       N_JOBS_PER_WORKER: "4"
+      # The image ends a run after 24 h by default; a night's run lasts up to the 4-day variation backstop: 5 days.
+      BG_JOB_TIMEOUT_SECS: "432000"
       # graphrag's host commands (uv run) need requires-python >=3.14; left alone, uv takes 3.15, for which
       # pydantic-core has no wheel. uv's Python, cache and project environment live on the uv volume: they survive a
       # container recreate, and the container's Linux venv stays out of the checkout's own `.venv`.
