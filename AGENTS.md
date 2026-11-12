@@ -5,7 +5,7 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 ## Where things are
 
 - **Benchmark spec**: `docs/codeclimb-eval-spec.md` is the contract for everything built here. Read the sections a ticket names before writing code. It is a copy of the Obsidian note of the same name: change both together.
-- **Build specs and build tickets**: `docs/codeclimb-spec-<stack>.md` and `tickets-<stack>/` (moving to `specs/<stack>/`). They are the benchmark's subjects, handed to the harness in a trial. Change them only when the user asks.
+- **Build specs and build tickets**: `specs/<stack>/spec.md` and `specs/<stack>/tickets/`, for `inngest` and `langchain`. They are the benchmark's subjects, handed to the harness in a trial. Change them only when the user asks.
 - **Benchmark tickets**: GitHub Issues, through `gh`. A benchmark ticket names its spec sections, its acceptance criteria and its blockers. Work a ticket only when every blocker is closed.
 - **Vocabulary**: `GLOSSARY.md`. Use its words in code, commits and issues: stack, build spec, build ticket, benchmark ticket, harness, trial, arm, workflow, phase, verifier, reward. CodeClimb's own words (night, round, experiment, evaluation) keep the meaning the build specs give them.
 - **Decisions already made**: `docs/adr/`. Read the ones that touch your area before you change its design.

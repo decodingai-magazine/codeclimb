@@ -6,7 +6,7 @@
 - this file is a copy of the Obsidian note `codeclimb-eval-spec`: change both together. Decisions that are hard to reverse: `docs/adr/`
 - benchmark tickets: GitHub issues, the sub-issues of #33 (`decodingai-magazine/codeclimb`)
 - words: `GLOSSARY.md`. Harness = the agent under test; Harbor = the tool that runs trials
-- subjects: `specs/inngest/spec.md` and `specs/langchain/spec.md` (the build specs), each with its pile of build tickets in `specs/<stack>/tickets/`. Until they move there, the build specs are `docs/codeclimb-spec-<stack>.md` and the piles `tickets-<stack>/`
+- subjects: `specs/inngest/spec.md` and `specs/langchain/spec.md` (the build specs), each with its pile of build tickets in `specs/<stack>/tickets/`
 - background: the long-running coding agents wiki in the vault (`wiki/synthesis`)
 
 ## Stack comparison
@@ -37,7 +37,7 @@
   - shared, one copy at the branch root: `scenarios/`, `configs/`, `docker/` (the two Dockerfiles), copied from `langchain@bce6a16`
   - per stack, in `specs/<stack>/given/`: `.env.example`, `tsconfig.json`, `package.json` + lockfile pinning only the stack SDK, one hello unit (LangChain: `langgraph.json` + `src/hello.ts`; Inngest: one function), `.gitignore`
   - where each comes from: the shared dirs and LangChain's `given/` are copies from `langchain@bce6a16` (its `package.json` and lockfile cut down to the stack SDK); Inngest's `given/` is copied from `main`, except the SDK-only `package.json` + lockfile and the hello function, which are written for the benchmark
-  - re-check `configs/` against each build spec's "What you get" once the specs settle: `configs/e2e/budget.yaml` and `overfit.yaml` served paid nights, which are cut
+  - `configs/e2e/budget.yaml` and `overfit.yaml` stay given: both build specs list them, for real-model nights that no check runs
   - runs folder: `runs-inngest/` on Inngest, `runs-langchain/` on LangChain, so the two never clash. Each build spec fixes its name; a config's `results_path` is relative to it, so the configs are byte-identical on both stacks
   - not given, because the build specs have the harness write them: `.dockerignore`, the LangChain compose override
   - out of `/app` (they are arms): `AGENTS.md` guidance, `.mcp.json`, `.claude/`, `docs/agents/`
@@ -119,7 +119,7 @@
 - `one-shot` (default, every arm): the harness builds from `SPEC.md` however it likes. It never sees the build tickets
 - `pocock`: `full` + `SPEC.md` + the stack's pile of build tickets + Matt Pocock's skills (`mattpocock-skills` 1.3.1, vendored), driven by the prompt template
   - the pile is `specs/<stack>/tickets/`, frozen: written before the runs by Paul with an agent, never by the trial. The same pile in every trial removes decomposition noise
-  - every build ticket in a pile is `ready-for-agent`: nothing waits on a human. The paid-night ticket leaves both piles
+  - every build ticket in a pile is `ready-for-agent`: nothing waits on a human, and no pile holds a paid-night ticket
   - the assemble step rewrites the spec path inside each ticket to `SPEC.md` and changes nothing else. The pile's sha256 is logged per trial
   - the trial: `/implement` per build ticket, frontier first (any ticket whose blockers are done), until all are done; then run `E2E.md`
   - model-invocable skills on demand: `tdd`, `code-review`, `diagnosing-bugs`, `research`, `domain-modeling`, `codebase-design`, `prototype`
@@ -175,6 +175,7 @@
 - LangChain: `langchain`, at a new commit with the `results_path` relative to the runs folder. Until then the pin is `bce6a16`
 - configs are normalized across `main`, `langchain` and this branch, with `langchain`'s as the source of truth
 - rule: never grade a harness on a check a reference build fails. A build spec change that alters a check needs the reference to pass it; otherwise the check is dropped on both stacks
+- dropped on both stacks under this rule: night 7's check on `metrics.json` and the metrics of a dev evaluation that was not scored. The stacks differ there (Inngest writes `metrics.json` only when every stage was scored, LangChain always), so the done signals check only that the test evaluation has one
 - the build specs are still being improved, so the pinned commits are re-checked by the reference gate after every spec change that touches the done signal
 - each build spec's "Known gaps" lists places where the spec asks more than its reference does. If a reference fails a check inside the trial image, patch the reference or drop the check
 
