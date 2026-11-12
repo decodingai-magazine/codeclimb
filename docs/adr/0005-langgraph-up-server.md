@@ -38,7 +38,7 @@ The operator wants durability from the runtime itself: once a step finishes, it 
 ## Consequences
 
 - the server needs `LANGSMITH_API_KEY` to boot: mock nights and CI need a key
-- a code change needs a new image (`npm run server` again, or `up --watch`). Either recreates the server container, which to a running night is a kill
+- a code change needs a new image: `npm run server` again, which recreates the server container. To a running night that is a kill. What `up --watch` does to a running night was not measured
 - the server image adds `git` and a Docker CLI to the base image; a compose override mounts the Docker socket, the checkout (at its host path) and Pi's `auth.json`, and puts the server container on `cc-meter`
 - the metering proxy binds every interface in the server container on a fixed port, and the shared relay forwards to the server container by name on `cc-meter`. The relay serves one server at a time
 - the server listens on `127.0.0.1:8123`

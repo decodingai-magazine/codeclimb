@@ -101,7 +101,7 @@ You build everything else. Source layout is yours. These external contracts are 
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
   - `codeclimb-graphrag`: `codeclimb-python` plus `scenarios/graphrag/requirements.txt` installed system-wide with `uv pip`; build context `scenarios/graphrag`
-- host tools: Node 24 and Docker on the operator's machine (the CLI, the API, the app, the image builds); `git`, `tar`, `bash`, `python3` and `uv` in the server image, where the host commands run (graphrag's run through `uv`). "Host" in this spec means the Agent Server's side of a sandbox: the server container ([[#Deployment and environment]])
+- host tools: Node 24, Docker, `git`, `tar`, `bash`, `python3`, `uv` on the operator's machine (the CLI, the API, export, the dataset and scenario builds, `lessons` by hand); the same tools plus a Docker CLI in the server image, where a night's host commands run (graphrag's through `uv`). "Host" in the scenario contract, the evaluator and the coder means the Agent Server's side of a sandbox: the server container ([[#Deployment and environment]])
 - everything in [[#CLI]], [[#Files a night writes]], [[#Result row]], [[#Worker API]] and [[#Deployment and environment]]
 
 Dependencies, pinned to exact versions. These are the versions this spec's SDK facts hold for:
@@ -122,7 +122,7 @@ Dependencies, pinned to exact versions. These are the versions this spec's SDK f
 
 - `server` runs `langgraphjs up` with the compose override, sets `CODECLIMB_HOST_ROOT` to the checkout, and waits until the server answers `/ok`. The server listens on `127.0.0.1:8123` ([[#Deployment and environment]])
 - `run-night` and `api` reach `http://127.0.0.1:8123` (`CODECLIMB_SERVER_URL`)
-- install with lifecycle scripts off, on the host and in the image (`NPM_CONFIG_IGNORE_SCRIPTS=true` for the image's `npm ci`)
+- install with lifecycle scripts off, on the operator's machine and in the image (`NPM_CONFIG_IGNORE_SCRIPTS=true` for the image's `npm ci`)
 
 ## Components
 
@@ -268,7 +268,7 @@ Validation at parse:
 
 ### Mock mode
 
-`--mock` runs the same night on scripted models: the Agent Server, sandboxes, Pi sessions and tools, commits, evals, the proxy, the keep rule and every file are real. No provider is called, so it costs nothing and needs no provider credentials. The Agent Server still needs `LANGSMITH_API_KEY` to boot: without it the server container exits with code 3 ([[#Platform facts]]), so mock nights and CI need a key, from the region `LANGSMITH_ENDPOINT` names. With `LANGSMITH_TRACING=false` nothing is traced; the server still checks the key at boot and sends its own usage metadata to LangSmith.
+`--mock` runs the same night on scripted models: the Agent Server, sandboxes, Pi sessions and tools, commits, evals, the proxy, the keep rule and every file are real. No provider is called, so it costs nothing and needs no provider credentials. The Agent Server still needs `LANGSMITH_API_KEY` to boot: without it the server container exits with code 3 ([[#Platform facts]]), so mock nights and CI need a key, from the region `LANGSMITH_ENDPOINT` names. With `LANGSMITH_TRACING=false` nothing is traced; the server still checks the key at boot, and with tracing on it was seen running a metadata loop that submits to LangSmith (not checked with tracing off).
 
 - results go to `runs-langchain/mock/<name>/`: the results directory's name moved under a `mock` sibling (`runs-langchain/datenorm-smoke/…` → `runs-langchain/mock/datenorm-smoke/…`)
 - models: pi-ai's faux provider, registered as a native provider on the Agent Server process's one Pi model runtime, with provider id `mock` and one model per role: `coder`, `reviewer`, `lessons`. A mock session takes its model object from the faux provider, not from a `<provider>/<id>` lookup. Faux models cost 0
@@ -808,7 +808,7 @@ One interface; Pi's tools and the orchestrator call only this.
 Docker backend:
 
 - one container per sandbox, limited to 2 CPUs and 2 GiB, on the default bridge or `cc-meter`, kept alive by the image's sleep command
-- the backend drives the Docker CLI in the server container against the host's daemon, through the mounted Docker socket, so sandboxes are siblings of the server container, not children. Files enter and leave a sandbox by copy (write file, read file, tars), never by bind mount, so host and container paths never need to match
+- the backend drives the Docker CLI in the server container against the Docker daemon of the operator's machine, through the mounted Docker socket, so sandboxes are siblings of the server container, not children. Files enter and leave a sandbox by copy (write file, read file, tars), never by bind mount, so host and container paths never need to match
 - labels: `cc.managed=1`, `cc.night=<night>`, `cc.run=<experiment or evaluation id>`; sweeps filter on `cc.managed`
 - exec: each command runs under a new session leader that waits for it and first writes its process id to a file under `/tmp`. On a timeout or an abort, a second exec sends KILL to that process group. Killing the `docker exec` client alone leaves the command running in the container, and no timeout would work
 - helper execs (read, write, kill, reset, clone) use the working directory `/`, because `/repo` is missing during the evaluator's reset. The reset's wipe of `/tmp` spares the process-id files
@@ -1002,7 +1002,7 @@ Rules the loop depends on:
 - steps take plain data and return small JSON (SHAs, metrics, paths); large state stays on disk
 - file writes inside steps are idempotent: rows deduplicate by `eval_id`, other files are rewritten whole
 - the Agent Server holds in-memory state (the live registry, the proxy's ledgers and cache). Every graph therefore runs in the one Agent Server process that holds the disk: one server per checkout, one night at a time, with 4 concurrent runs (a night, a stop, a lessons run, a spare). A second night on the same server is not supported. Importing the graph module has no side effects beyond registering the tracer: the proxy starts on first use, and listeners and timers start inside steps
-- a code change reaches the server only through a new image: `npm run server` again (it rebuilds from `ADD .`) or `up --watch`. Either recreates the server container, which to a running night is a kill: it reruns the running step and loses the in-memory state
+- a code change reaches the server only through a new image: `npm run server` again, which rebuilds from `ADD .` and recreates the server container. To a running night that is a kill: it reruns the running step and loses the in-memory state. What `up --watch` does to a running night was not measured ([[#Open points for the build]])
 - a server restarted onto new code cannot replay a night started by older code: let running nights finish first
 
 State the night carries across rounds: the checkpoint, feedback, failures, hypothesis, log, history, spend, tokens, per-round spends and tokens, rounds without a keep, the costliest evaluation, the deadline, the pause count, the round, the noise and the A/A run count, the stop reason.
@@ -1038,7 +1038,7 @@ Measured on the `langgraphjs up` server on 2026-11-12 (spike #27): image `langch
 | fact | consequence |
 |---|---|
 | The image runs CodeClimb's TypeScript from source with `.ts` import paths: its `npm ci` and `tsx` load every graph in `langgraph.json`, and `/ok` answers. The image's schema step warns about the `night` input type (`never`) and about `pi-web-access`'s missing types; both are harmless | No build step of CodeClimb's own |
-| The server boots with `LANGSMITH_API_KEY` and no license key. Without the key the container exits with code 3. The boot check goes to the key's region (`LANGSMITH_ENDPOINT`). The server also sends usage metadata to LangSmith | Mock nights and CI need a key ([[#Mock mode]]) |
+| The server boots with `LANGSMITH_API_KEY` and no license key. Without the key the container exits with code 3. The boot check goes to the key's region (`LANGSMITH_ENDPOINT`). The server also runs a metadata loop that submits to LangSmith | Mock nights and CI need a key ([[#Mock mode]]) |
 | The base image has `python3` (3.12), `uv` (0.13.6) and `tar`, but no `git` and no Docker CLI. With `git` and Debian's `docker-cli` added and the host's Docker socket mounted, the container creates, runs and destroys sandboxes on the host's daemon | The image lines ([[#Deployment and environment]]) |
 | With no Python pinned, uv in the container picks the newest CPython for graphrag's `requires-python >=3.14` (3.15), for which `pydantic-core` has no wheel, so the bundle command fails trying to build it. With `UV_PYTHON=3.14`, graphrag's host commands (`bundle`, `check`, `scan`) run and a mock graphrag night finishes with the same decisions as on the dev server. uv's downloaded Python and its cache live in the container's home and are lost when the container is recreated | `UV_PYTHON=3.14` in the compose override |
 | A metered mock night writes its meter rows through: sandbox → `cc-meter-relay:8080` on `cc-meter` → the server container's alias on `cc-meter` → the proxy bound on `0.0.0.0` at its fixed port | [[#Metering proxy]] |
@@ -1046,7 +1046,7 @@ Measured on the `langgraphjs up` server on 2026-11-12 (spike #27): image `langch
 | The `:24` base image tag floats; `up --no-pull` uses the local copy | Pin `api_version` |
 | The generated Dockerfile copies the project with `ADD .` | A `.dockerignore` |
 | `durability: "sync"` is honoured but not strict. With `exit`, a step that finished 8 s before a kill of the server container runs again after `up`. With `sync`, its result is in Postgres 1 s into the next step and it is not redone. But the write is asynchronous (a batching checkpointer, 5 ms batch window, its own ingestion loop): a kill issued 6 ms after a step finished lost that step, and it ran again. The bound, about 1 s, was not narrowed | A kill reruns the running step and at most the last second's results; the idempotent-write rules still apply |
-| A task that fails out of its retries, inside a `try`/`catch` in the entrypoint, still ends the server run and the thread in `error`. The task calls after it do run now (on the dev server they did not), but the run's result is the error. A task that fails and then succeeds on a retry is harmless | The step wrapper's failure-as-data stays ([[#Durable runtime on LangGraph]]) |
+| A task that fails out of its retries, inside a `try`/`catch` in the entrypoint, still ends the server run and the thread in `error`. The task calls after it do run now (on the dev server they did not), but the run's result is the error. (On the dev server, 2026-11-11: a task that fails and then succeeds on a retry is harmless) | The step wrapper's failure-as-data stays ([[#Durable runtime on LangGraph]]) |
 | After a kill of the server container and `up` again, with Postgres and Redis left running, the server reruns the killed run by itself, on the same server run record, which ends `success`. It does so through its runs sweeper (`sweep_interval` 2 minutes): about 2 minutes after `up`, not at start. `up --wait` and its healthcheck return long before that | Crash resume needs no other process; the watchdog and night 5 wait for it |
 | Killed mid-round 2 of a mock datenorm night, the night resumed from its last stored step: it finished by itself, every `eval_id` once, round 1's `code-state.json` unchanged, and neither round 1's nor the noise run's sandboxes were created again. Only the code step running at the kill reran. Its sandbox kept running through the outage and was replaced when the step reran | Night 5 |
 | `up` prunes the killed container and creates a new one; Postgres, Redis and the project's data volume are untouched | Graph state survives a recreate; the process's memory does not |
@@ -1094,7 +1094,7 @@ What the switch fixes and what it does not: [[#Durable runtime on LangGraph]], [
 | worker API + watchdog | `api`, on the operator's machine |
 | CLI | `run-night`, on the operator's machine |
 | app | `dev`, on the operator's machine |
-| sandboxes | Docker, siblings of the server container on the host's daemon |
+| sandboxes | Docker, siblings of the server container on the Docker daemon of the operator's machine |
 | proxy | Port 8090 in the server container, reached through the relay |
 | LangSmith | The key is required to boot; tracing and feedback are optional, on the free Developer plan |
 
@@ -1117,7 +1117,7 @@ Commands:
 
 - `npm run server`: sets `CODECLIMB_HOST_ROOT` to the checkout, creates `cc-meter` when it is missing (an external network must exist before `up`), runs `langgraphjs up` and waits until `/ok` answers. Run it again after a code change: it rebuilds the image and recreates the server container, which to a running night is a kill
 - one command shows the server container's logs (ticket #29 names it)
-- the stack stops with `docker compose down` on its project. Without `-v` Postgres keeps every thread; with `-v` they are gone, and so is every night's crash resume
+- the stack stops with `docker compose down` on its project. Without `-v` Postgres keeps every thread; with `-v` they are gone, and so is every night's crash resume. `server` never passes `up --recreate`, which recreates the volumes too
 
 Environment:
 
@@ -1219,8 +1219,8 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 - no remote orchestration: while the Agent Server is down, nothing runs. The night resumes from its last stored step once the server is back
 - a killed night waits for the runs sweeper: the server picks its run up about 2 minutes after `up`, not at start. Nothing is lost in the wait; the night only starts later
 - an interrupted step reruns from its start: durability is per step, not exactly once. A kill reruns the step that was running (a coder step on a new sandbox, its model calls paid again), and possibly one that finished within about a second before the kill, since `sync` stores a result asynchronously. The idempotent-write rules make the rerun safe, not free
-- in-process memory is lost on a crash: the proxy's ledgers and replay cache and the live registry. The rerun steps open new tokens and register again. The calls a killed evaluation made before the kill are paid but not in any ledger, so spend can be under-counted by them; the cache starts empty, so an evaluation after the crash replays nothing from before it and its margin is scaled for more fresh calls
-- a code change, `up --watch` included, recreates the server container: to a running night that is a kill
+- in-process memory is lost on a crash: the proxy's ledgers and replay cache and the live registry. The rerun steps open new tokens and register again. Expected, not measured: the calls a killed evaluation made before the kill are paid but in no ledger, so spend under-counts them; and the cache starts empty, so an evaluation after the crash replays nothing from before it, which makes its calls fresh and its noise margin wider
+- a code change needs `npm run server` again, which recreates the server container: to a running night that is a kill
 - the server does not boot without a LangSmith key, so mock nights and CI need one
 - the watchdog (crash recovery past the server's own server-run attempts, and the lost thread) runs only while `api` runs. The pause timeout and the variation backstop don't need it
 - the mock coder stops at once on every turn, so a mock session holds the full 8 send-backs and one wrap-up. With a 5-minute experiment and the 3-minute floor, all of them must start within the first 2 minutes
@@ -1242,7 +1242,8 @@ Points the `langgraphjs up` spike (#27) left open. Each is a decision for the ti
 - #29, image and compose:
   - how the published port binds to `127.0.0.1` only: the generated compose publishes 8123 on every interface
   - whether CLI 1.7.1 honours `api_version` for the JS image; if not, how the image is pinned
-  - how 4 concurrent runs are set on this server: the dev server's `-n 4` has no `up` flag
+  - how 4 concurrent runs are set on this server: `langgraphjs up` 1.7.1 has no flag for it (its flags: config, compose file, port, recreate, no-pull, watch, wait, Postgres URI)
+  - what `up --watch` does to a running night (not measured), and whether the edit loop uses it
   - the mount mode of Pi's `auth.json`: the spike mounted it read-only and never used it (mock nights), and a subscription login may need to write refreshed tokens back
   - a volume for uv's Python and cache, so a container recreate does not download Python 3.14 again
   - how `server` keeps a Mac awake now that `up` returns
@@ -1264,6 +1265,7 @@ Points the `langgraphjs up` spike (#27) left open. Each is a decision for the ti
   - the full AGENTS.md pass, the e2e skill (`.claude/skills/codeclimb-e2e/SKILL.md`, empty on `langchain-up` since d281626), the glossary's Agent Server entry (it still says dev server) and `.env.example`'s note that the server starts without a LangSmith key
   - night 5's timing margin: the kill comes as round 2's code step starts, a second or two after round 1's last steps finished, close to the ~1 s `sync` lag. A late round-1 result lost in the kill would rerun and could fail the "no `cc-<id>-r1-` sandbox" check
   - a LangSmith key for CI
+  - whether `scan` surfaces its own failure in the check step: the graphrag night's `check.json` shows both ran, but a failing `scan` was not tried
 
 ## Suggested build order
 
