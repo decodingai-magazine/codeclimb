@@ -11,6 +11,11 @@ import { type ReopenOptions, reopenNight } from "./night/variation.ts";
 
 export const serverUrl = () => process.env.CODECLIMB_SERVER_URL ?? "http://127.0.0.1:8123";
 const client = () => new Client({ apiUrl: serverUrl() });
+/**
+ * Every server run CodeClimb creates: a finished step's result is stored in Postgres within about 1 s of its end, so a
+ * kill of the server container reruns only the step that was running (spec: Durable runtime on LangGraph).
+ */
+const DURABILITY = "sync";
 
 export type StartResult = { started: true; threadId: string } | { started: false; threadId: string };
 
@@ -24,7 +29,7 @@ export async function startNight(input: NightInput): Promise<StartResult> {
 		if (typeof error === "object" && error !== null && "status" in error && error.status === 409) return { started: false, threadId };
 		throw error;
 	}
-	await c.runs.create(threadId, "night", { input: { ...input }, multitaskStrategy: "reject" });
+	await c.runs.create(threadId, "night", { input: { ...input }, multitaskStrategy: "reject", durability: DURABILITY });
 	return { started: true, threadId };
 }
 
@@ -32,13 +37,13 @@ export async function startNight(input: NightInput): Promise<StartResult> {
 export async function startVariation(input: NightInput): Promise<string> {
 	const c = client();
 	const thread = await c.threads.create({ metadata: { kind: "night", night_id: input.night_id, run: input.variation ?? 0 } });
-	await c.runs.create(thread.thread_id, "night", { input: { ...input }, multitaskStrategy: "reject" });
+	await c.runs.create(thread.thread_id, "night", { input: { ...input }, multitaskStrategy: "reject", durability: DURABILITY });
 	return thread.thread_id;
 }
 
 /** The watchdog's resume: a server run of `night` with no input on an errored thread, which replays from the last saved step. */
 export async function resumeErroredThread(threadId: string): Promise<void> {
-	await client().runs.create(threadId, "night", { multitaskStrategy: "reject" });
+	await client().runs.create(threadId, "night", { multitaskStrategy: "reject", durability: DURABILITY });
 }
 
 export type ContinueResult = { thread: string; input: NightInput } | { refused: string };
@@ -89,7 +94,7 @@ export async function resumeNight(root: string, nightId: string): Promise<Resume
 	const pending = await pendingPause(nightId);
 	if (!pending) return { refused: `night ${nightId} is not paused` };
 	try {
-		await client().runs.create(pending.threadId, "night", { command: { resume: { pause: pending.pause } }, multitaskStrategy: "reject" });
+		await client().runs.create(pending.threadId, "night", { command: { resume: { pause: pending.pause } }, multitaskStrategy: "reject", durability: DURABILITY });
 	} catch (error) {
 		// A run is in flight on the thread: the pause was resumed already and its end has not run yet. The server
 		// answers 409 or, once the run has started, 422 ("Thread is already running a task").
@@ -109,7 +114,7 @@ export async function startTimer(nightId: string, guard: TimerGuard, afterSecond
 	const c = client();
 	const threadId = timerThreadId(nightId);
 	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "timer", night_id: nightId } });
-	await c.runs.create(threadId, "stop", { input: { night_id: nightId, reason: "failed", guard }, afterSeconds, multitaskStrategy: "enqueue" });
+	await c.runs.create(threadId, "stop", { input: { night_id: nightId, reason: "failed", guard }, afterSeconds, multitaskStrategy: "enqueue", durability: DURABILITY });
 }
 
 /** Cancel every pending or running server run on the night's threads, action interrupt, without waiting. */
@@ -134,7 +139,7 @@ export async function runStopGraph(nightId: string, reason?: StopReason): Promis
 	const c = client();
 	const threadId = stopThreadId(nightId);
 	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "stop", night_id: nightId } });
-	await c.runs.create(threadId, "stop", { input: { night_id: nightId, ...(reason ? { reason } : {}) }, multitaskStrategy: "enqueue" });
+	await c.runs.create(threadId, "stop", { input: { night_id: nightId, ...(reason ? { reason } : {}) }, multitaskStrategy: "enqueue", durability: DURABILITY });
 }
 
 export interface LessonsInput {
@@ -148,7 +153,7 @@ export async function startLessons(input: LessonsInput): Promise<void> {
 	const c = client();
 	const threadId = lessonsThreadId(input.scenario);
 	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "lessons", scenario: input.scenario } });
-	await c.runs.create(threadId, "lessons", { input: { ...input }, multitaskStrategy: "enqueue" });
+	await c.runs.create(threadId, "lessons", { input: { ...input }, multitaskStrategy: "enqueue", durability: DURABILITY });
 }
 
 /** The stop operation: write `stop.json` (the first stop wins), then the stop graph. */

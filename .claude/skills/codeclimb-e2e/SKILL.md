@@ -62,13 +62,22 @@ A failure in the coder or the review falls back quietly in some paths. Read `cod
 2. `npm run run-night -- stop --night <id>`. It prints `stopped`.
 3. Wait 30 s, then check: `N/stop.json` has `reason: manual`; there is no `N/done.json`; `results.jsonl` has no `test` row for the night; `docker ps` shows no `cc-<id>` container.
 
-**5. Kill and restart.** The server writes its state to disk only after 3 quiet seconds, and a mock night has none, so the restart may replay the night from its start. The night's files must make that replay redo nothing.
+**5. Kill and restart.** Every night run is created with `durability: "sync"`, so a finished step's result is in Postgres within about a second. A kill of the server container reruns only the step that was running. After `up`, the server picks the killed run up by itself through its runs sweeper, about 2 minutes later.
 
-1. Start the night with `--no-wait`.
-2. Wait, up to 2 minutes, until `N/exps/<id>-r2-e0/` exists: round 1's row is in `results.jsonl`. If the night finishes first, nothing was killed: run scenario 5 again, up to 3 times, and only then report it as not run.
-3. Save a copy of `N/exps/<id>-r1-e0/code-state.json`.
-4. `kill -9` the process listening on port 2024 (`lsof -nP -t -iTCP:2024 -sTCP:LISTEN`), then start `npm run server` again. Start nothing else: the server reruns the night by itself.
-5. Wait for `N/done.json`, then check: every `eval_id` is in `results.jsonl` exactly once; round 1's `code-state.json` equals the saved copy (round 1 was not redone); the checks for a finished mock night hold.
+1. Follow container creates in the background: `docker events --filter type=container --filter event=create --format '{{.Time}} {{.Actor.Attributes.name}}'`.
+2. Start the night with `--no-wait`.
+3. Poll every 50 ms, up to 2 minutes, until `N/exps/<id>-r2-e0/` exists: round 1's row is in `results.jsonl`. If the night finishes first, nothing was killed: run scenario 5 again, up to 3 times, and only then report it as not run.
+4. Record the sha256 and mtime of `N/exps/<id>-r1-e0/code-state.json`.
+5. `docker kill` the server container: the stack's `langgraph-api` service, named in `npm run server`'s last line (`<project>-langgraph-api-1`). Leave its Postgres and Redis running. Note the time.
+6. `npm run server` again. Start nothing else: no watchdog, no manual resume. The server reruns the night by itself about 2 minutes after `up`.
+7. Wait for `N/done.json`, then check:
+   - every `eval_id` is in `results.jsonl` exactly once;
+   - round 1's `code-state.json` has the recorded sha256 and mtime (round 1's coder did not run again);
+   - no `cc-<id>-r1-` sandbox was created after the kill (the night resumed from its last stored step, it did not replay round 1); only the step running at the kill reruns, on a new sandbox of the same name;
+   - the thread has one server run, `success` (`curl -s http://127.0.0.1:8123/threads/<thread>/runs`);
+   - the checks for a finished mock night hold.
+
+   If only the `cc-<id>-r1-` check fails, run scenario 5 again before suspecting the code: the kill comes a second or two after round 1's last step, close to the ~1 s that `sync` takes to store a result.
 
 **6. Lost connection mid-turn.** `--mock-offline 6` makes six of the first coder's model calls fail as a lost connection. Scenario 2's checks hold, and `N/exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one: the session carried on.
 

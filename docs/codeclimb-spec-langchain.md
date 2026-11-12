@@ -990,7 +990,7 @@ Threads:
 Watchdog. Crash recovery only. The worker API's process checks, every 60 s, every night found by files that has neither `done.json` nor `stop.json`, and reads the night's newest thread:
 - the thread's status is `error`, on two checks in a row → a server run of `night` on that thread with no input. It replays from the last saved step, and the coder's state file resumes its session. At most 2 such resumes per thread; the third `error` → the stop operation, reason `failed`. A run that failed in the graph's own code already wrote `stop.json` and is never seen here. What arrives here died outside it: a crash past the server's own server-run attempts, or an error before the graph started
 - no thread is found, on two checks in a row → the stop operation, reason `failed`. A thread lost with every saved step means a replay would redo finished work, so the night is stopped and can be continued instead. The dev server lost threads this way; on this server the thread is in Postgres and no loss was seen, but the rule stays as a guard
-- a thread that is busy, interrupted or idle is left alone: the server owns a running run and its restarts. That covers the gap after a kill: the server picks a killed run up only with its runs sweeper, about 2 minutes after `up`, and until then the watchdog must not act on the night ([[#Open points for the build]])
+- a thread that is busy, interrupted or idle is left alone: the server owns a running run and its restarts. That covers the gap after a kill: the server picks a killed run up only with its runs sweeper, about 2 minutes after `up`, and until then the watchdog must not act on the night. Measured in night 5: in that gap the thread reads `busy`
 - why two checks: a night between its failure and its `stop.json`, or between its start and the server's first write, must not be touched
 
 Rules the loop depends on:
@@ -1254,12 +1254,12 @@ Points the `langgraphjs up` spike (#27) left open. Each is a decision for the ti
   - two servers flipping the shared relay
   - the Linux bridge-address bind and the host-gateway alias, now off the path: keep or remove. A removal needs the operator's go-ahead
   - sandboxes on `cc-meter` can reach every port of the server container, the Agent Server's API on 8000 included: whether to narrow that
-- #31, durability:
-  - the thread's status in the ~2 minutes before the runs sweeper picks a killed run up, against the watchdog's rules (expected busy, so left alone; not measured)
-  - the server-run attempt count on this server, and whether a sweeper rerun counts as one
+- #31, durability: every server run passes `sync`, and night 5 passes with a kill of the server container. Measured in night 5: from `up` to the runs sweeper's pickup, about 2 minutes, the thread reads `busy` and its run `running`, so the watchdog leaves it alone; the watchdog is unchanged. Still open:
+  - the server's run time limit: the image's `BG_JOB_TIMEOUT_SECS`, 86400 s (24 h) by default (read from the image's config, not measured). A night's server run can last up to the 4-day variation backstop, and the backstop's timer is created inside that run, so a limit of exactly 4 days ends the run first. The "Long steps" row says the server has no run time limit; the value is the operator's call
+  - the server-run attempt count: the image's `BG_JOB_MAX_RETRIES` is 3 (read from its config, not measured); whether a sweeper rerun counts as one was not measured
   - the bound on `sync` storage, about 1 s, not narrowed
-  - the dev-server-only facts in [[#Platform facts]], re-measured on this server
-  - the step wrapper's workarounds (the final failure returned as data, the own-failure marker, the own backstop timers): finding 7 keeps the first; any removal needs the operator's go-ahead
+  - the dev-server-only facts in [[#Platform facts]], not re-measured on this server
+  - the step wrapper's workarounds (the final failure returned as data, the own-failure marker, the own backstop timers): all three kept; any removal needs the operator's go-ahead
 - #32, docs and the suite:
   - the full AGENTS.md pass, the e2e skill (`.claude/skills/codeclimb-e2e/SKILL.md`, empty on `langchain-up` since d281626), the glossary's Agent Server entry (it still says dev server) and `.env.example`'s note that the server starts without a LangSmith key
   - night 5's timing margin: the kill comes as round 2's code step starts, a second or two after round 1's last steps finished, close to the ~1 s `sync` lag. A late round-1 result lost in the kill would rerun and could fail the "no `cc-<id>-r1-` sandbox" check
