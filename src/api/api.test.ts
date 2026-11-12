@@ -51,6 +51,8 @@ function checkout() {
 		writeJson(join(dir(id), "night.json"), { night_id: id, startedAt: new Date().toISOString(), deadlineMs: 0, round0: { exp_id: `${id}-r0-starter`, sha: "c0" }, seed: null, config, metric_script_sha256: {}, lessons_sha256: [] } satisfies NightJson);
 		if (file) writeJson(join(dir(id), file), file === "done.json" ? { stop_reason: "max_rounds", rounds: 1, kept: { exp_id: `${id}-r0-starter`, commit: "c0", dev_score: 0.5 }, spend_usd: 0, finished_at: "x" } : { reason: "manual", pause: 1, stops: [] });
 	}
+	// A night of the Inngest twin in the same folder: listed nowhere.
+	writeJson(join(dir("twin"), "night.json"), { night_id: "twin", startedAt: Date.now(), config: { scenario: { name: "datenorm" }, results_path: config.results_path } });
 	const old = (Date.now() - STALE_MS - 60_000) / 1000;
 	utimesSync(join(dir("old"), "night.json"), old, old);
 	utimesSync(dir("old"), old, old);

@@ -21,3 +21,7 @@ npm-debug.log*
 runs/
 __pycache__/
 .venv/
+
+# Next.js app build output
+web/.next/
+web/next-env.d.ts

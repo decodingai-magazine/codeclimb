@@ -20,7 +20,11 @@ export interface NightEntry {
 	night: NightJson;
 }
 
-/** Every night with a night.json under `<root>/runs/*` and `<root>/runs/mock/*`. */
+/**
+ * Every night with a night.json of this build under `<root>/runs/*` and `<root>/runs/mock/*`. The Inngest twin writes
+ * its nights to the same folders with another night.json (its scenario is an object, with no `scenario_spec`): they
+ * are left out, so neither the app nor the watchdog touches them.
+ */
 export function listNights(root: string): NightEntry[] {
 	const out: NightEntry[] = [];
 	for (const base of [join(root, "runs"), join(root, "runs", "mock")]) {
@@ -30,7 +34,7 @@ export function listNights(root: string): NightEntry[] {
 			if (!existsSync(nights)) continue;
 			for (const id of readdirSync(nights)) {
 				const night = readJson<NightJson>(join(nights, id, "night.json"));
-				if (night?.config) out.push({ id, dir: join(nights, id), night });
+				if (typeof night?.config?.scenario === "string" && night.config.scenario_spec) out.push({ id, dir: join(nights, id), night });
 			}
 		}
 	}
@@ -100,7 +104,7 @@ interface CodeStateFile {
 	stop?: string;
 }
 
-/** The summary, the current round's experiment and the exportable experiments. */
+/** The summary, the current round's experiment, the night's row count (the app refetches the report when it changes) and the exportable experiments. */
 export function live(root: string, n: NightEntry, now = Date.now()) {
 	const s = summary(root, n, now);
 	const rows = rowsOf(root, n);
@@ -128,7 +132,7 @@ export function live(root: string, n: NightEntry, now = Date.now()) {
 		.filter((r) => r.kind === "experiment" && r.commit)
 		.map((r) => ({ exp_id: r.exp_id, round: r.round, decision: r.decision, score: r.metrics[n.night.config.primary_metric] ?? null, hypothesis: r.hypothesis }))
 		.reverse();
-	return { ...s, current, experiments };
+	return { ...s, current, rows: rows.length, experiments };
 }
 
 interface ReviewFile {
