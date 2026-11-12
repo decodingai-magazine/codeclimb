@@ -359,7 +359,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 | `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
 | `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night), `graphrag.yaml` (5 rounds; `--sandbox inngest` runs it on Inngest Sandboxes, on Cloud) and `e2e/` (end-to-end checks of the budget and plateau stops and of a climb, shared with the LangGraph stack; `overfit.yaml` needs a scenario only that stack generates) |
+| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night), `graphrag.yaml` (5 rounds; `--sandbox inngest` runs it on Inngest Sandboxes, on Cloud) and `e2e/` (end-to-end checks of the budget and plateau stops and of a climb, shared with the LangGraph stack; `overfit.yaml` runs on `generated/datenorm-overfit`, which `npm run build:scenario:overfit` builds) |
 
 ### Deviations from the spec in this iteration
 

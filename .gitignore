@@ -22,6 +22,8 @@ npm-debug.log*
 # codeclimb night runs (experiment repo, sessions, results); runs/ holds nights from before runs-inngest/
 runs-inngest/
 runs/
+# scenarios built by a script (npm run build:scenario:overfit), shared by both stacks
+generated/
 __pycache__/
 .venv/
 
