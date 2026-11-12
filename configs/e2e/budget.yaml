@@ -22,4 +22,4 @@ gates:
 budget_usd:
   experiment: 0.03
   night: 0.05
-results_path: runs-langchain/e2e-budget/results.jsonl
+results_path: e2e-budget/results.jsonl

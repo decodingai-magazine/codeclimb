@@ -24,6 +24,6 @@
 - [ ] The rescore's program spend counts toward the night's spend; a credit stop in it pauses the night and a resume reruns it under the same `eval_id`
 - [ ] A later continue finds the rescore row as the night's last `keep`
 - [ ] Unit tests cover the rescore flag and the row, by passing differing scoring-hash maps; no test edits the given `gold/` or `evaluators/`
-- [ ] On mock models, with a temporary copy of a scenario and its config (inside the checkout but outside `scenarios/` and `configs/`, each with its own name and a results directory directly under `runs-langchain/`): finish a night, change a file under the copy's `evaluators/`, then continue it; the first new row is the rescore row as specified, a `noise` row follows when the checkpoint has metrics, and the night ends with `done`. A night seeded from the first one after the same change starts with a rescore row too
+- [ ] On mock models, with a temporary copy of a scenario and its config (inside the checkout but outside `scenarios/` and `configs/`, each with its own name and a `results_path` folder of its own, which lands directly under `runs-langchain/`): finish a night, change a file under the copy's `evaluators/`, then continue it; the first new row is the rescore row as specified, a `noise` row follows when the checkpoint has metrics, and the night ends with `done`. A night seeded from the first one after the same change starts with a rescore row too
 - [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal"
 - [ ] `npm run typecheck` and `npm test` pass

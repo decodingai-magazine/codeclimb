@@ -5,7 +5,7 @@
 ## How to work them
 
 - Work a ticket only when every ticket in its "Blocked by" is done. Numbers are in dependency order: a blocker always has a lower number.
-- Given inputs are present and are consumed, not rebuilt: `scenarios/`, `configs/` and `docker/` (the two Dockerfiles). Ticket 01 creates the rest of the scaffold. A test that needs a different scenario or config uses a temporary copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a results directory directly under `runs-langchain/`.
+- Given inputs are present and are consumed, not rebuilt: `scenarios/`, `configs/` and `docker/` (the two Dockerfiles). Ticket 01 creates the rest of the scaffold. The end-to-end test is the spec's "Goal and done signal": nothing outside the spec defines it. A test that needs a different scenario or config uses a temporary copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` folder of its own, which lands directly under `runs-langchain/`.
 - Preconditions for every ticket that runs a night or a Docker test: Docker is running; `.env` exists with `LANGSMITH_API_KEY` (the server container exits with code 3 without it); `LANGSMITH_TRACING=false` unless the ticket is about tracing.
 - Nights run one at a time: one night per server, and the relay is shared. Tickets whose blockers allow parallel work must still take turns on the Agent Server.
 - After a code change the Agent Server needs `npm run server` again before a night sees it.
@@ -112,13 +112,8 @@
 ## Spec gaps met while cutting
 
 - "Suggested build order" puts mock nights 1 and 2 at its step 5 and the noise run and send-backs at step 7, yet the done signal's table for those nights requires both. Tickets 15 to 25 use the order the table forces: review, notes and send-backs, then metering (night 1), then the noise run (night 2).
-- The spec calls `package.json`, `langgraph.json` and the compose override given and gates a change to them on the operator's go-ahead. A from-scratch rebuild has to create or rewrite them; ticket 01 says so.
+- The spec calls `package.json` and `langgraph.json` given, as placeholders to replace, and the compose override the builder's to write. A from-scratch rebuild creates what is absent and brings what exists to the spec; ticket 01 says so.
 - `build:dataset` and `build:dataset:hard` are fixed script names whose behaviour the spec never states. Ticket 01 wires them to whatever the scenarios' own `scripts/` provide.
-- Pause and resume, continue, seed, rescore, applied lessons, the watchdog, the worker API, export and the app have no named end-to-end check. Their tickets define checks on mock nights or with a faked Agent Server client.
+- Pause and resume, continue, seed, rescore, applied lessons, the watchdog, the worker API, export and the app have no named end-to-end check. Their tickets define checks on mock nights or with a faked Agent Server client: a continued mock night runs mock end to end (ticket 32), and the pause timeout and the variation backstop fire in seconds through the spec's two timer test hooks (ticket 30).
 - `deadline`, `budget`, `tokens` and `thresholds` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3). Ticket 24 checks `deadline` and `thresholds` on mock nights with temporary config copies, and `budget` and `tokens` in unit tests with fabricated counters.
-- Night 4 is started with `--no-wait`, yet its check says `run-night` prints `stopped`; the spec does not say which command prints it. Ticket 26 reads it as: following the night prints `stopped`.
-- The spec points at `GLOSSARY.md`, `docs/adr/` and the end-to-end skill as given; no ticket depends on them.
-- `configs/e2e/` also holds `budget.yaml` and `overfit.yaml`, which the spec never names; `overfit.yaml` points at a scenario that no fixed script builds. Ticket 02 loads only the configs whose scenario directory exists, and no ticket runs these two.
-- The spec says nights 1, 2, 3 and 6 write to `runs-langchain/mock/<config-name>/`, but the plateau config's results folder is `e2e-plateau`. Tickets follow the config's `results_path`.
-- The spec does not say which wins when both `--seed` and the config's `seed` are set. Ticket 36 leaves it to the builder.
-- Ticket 30's end-to-end check needs a timer that fires in seconds; the spec fixes the delays at 3 and 4 days and gives no test input. The ticket has the test call the timer operation itself with a short delay.
+- `configs/e2e/budget.yaml` and `overfit.yaml` are given and named by the spec, but they run on real models only and are in no night of the done signal. Ticket 02 loads them (`overfit.yaml` once ticket 01's `build:scenario:overfit` has written its scenario), and no ticket runs them.

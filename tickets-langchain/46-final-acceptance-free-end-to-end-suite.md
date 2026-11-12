@@ -20,7 +20,7 @@
 - [ ] Night 1, `capitals-smoke --mock`: every row of the check table holds
 - [ ] Night 2, `datenorm-smoke --mock`: every row of the check table holds; it ends on `max_rounds` after exactly 2 rounds
 - [ ] Night 3, `configs/e2e/plateau.yaml --mock`: every row of the check table holds, with `plateau` as its `stop_reason`; `done.json` has `rounds: 1`
-- [ ] Night 4, night 2 with `--no-wait` then `run-night stop` while round 1 runs: `stopped`, `stop.json` with `reason: manual`, no `done.json`, no `test` row, no container
+- [ ] Night 4, night 2 with `--no-wait` then `run-night stop` once `exps/<id>-r1-e0/` exists: the stop command prints `stopped` and exits 0; within 30 s of it, `stop.json` with `reason: manual`, no `done.json`, no `test` row, no container
 - [ ] Night 5, night 2 with `--no-wait`, the server container killed once `exps/<id>-r2-e0/` exists, then `npm run server`: the night finishes by itself; every `eval_id` once; round 1's `code-state.json` unchanged; no `cc-<id>-r1-` sandbox created after the kill
 - [ ] Night 6, `datenorm-smoke --mock --mock-offline 6`: every row of the check table, plus the error message followed by clean ones in round 1's session
 - [ ] Night 7, `npm run build:image:graphrag` then `graphrag-smoke --mock`: every check of its row, the lessons proposal within a minute of `done` included
@@ -31,4 +31,4 @@
 - [ ] LangGraph appears only in the graph definitions, the step wrapper and the control operations; step bodies are framework-free
 - [ ] A grep over the source finds the literal strings `You stopped with` and `change no more code` in exactly one message builder each
 - [ ] `scenarios/`, `configs/` and the two Dockerfiles are byte-identical to what the environment supplied
-- [ ] The fixed npm scripts all exist and do their job (none is still a placeholder): `server`, `server:logs`, `server:stop`, `api`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `export`, `lessons`, `dev`, `build:app`, `typecheck`, `test`
+- [ ] The fixed npm scripts all exist and do their job (none is still a placeholder): `server`, `server:logs`, `server:stop`, `api`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build:app`, `typecheck`, `test`

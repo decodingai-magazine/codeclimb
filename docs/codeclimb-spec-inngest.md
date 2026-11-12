@@ -1,16 +1,24 @@
 # CodeClimb on Inngest — Build Spec (System 1)
 
 - what CodeClimb is: an optimization loop where a coding agent rewrites a program in a sandbox, round after round, until the program meets evaluation thresholds. Nothing is fine-tuned or trained
-- this file: everything needed to build CodeClimb from scratch on the Inngest stack. It states architecture, contracts, features and numbers; it holds no code. As built in `~/Documents/01-Projects/codeclimb` at commit `e384bb5` (2026-11-11), branch `main`
-- use: handed to a coding agent that builds the whole application alone, with zero human input (the layer-2 benchmark of [[codeclimb-eval-spec|codeclimb-eval-spec]]). The twin for the other stack: [[codeclimb-spec-langchain|codeclimb-spec-langchain]]
+- this file: everything needed to build CodeClimb from scratch on the Inngest stack. It states architecture, contracts, features and numbers; it holds no code. It describes a reference build (2026-11-11) that you don't have and don't need: where this file asks for more than the reference does, [[#Known gaps]] says so
+- use: handed to a coding agent that builds the whole application alone, with zero human input, from this file and the given inputs ([[#What you get, what you build]]). Nothing else is needed: the done signal is the end-to-end test, and [[#Goal and done signal]] states it in full
 - stack-specific parts: [[#Durable runtime on Inngest]], [[#Deployment and environment]]. Everything else is stack-neutral
-- scenario used for real nights: [[graphrag-spec|graphrag-spec]]. Background: [[autoresearch-coding-framework-fit|autoresearch-coding-framework-fit]], [[agent-observability-harness-support|agent-observability-harness-support]]
+- scenario used for real nights: `scenarios/graphrag`, described by its own `README.md` and `docs/`
 
 ## Goal and done signal
 
 Build the application so that a **night** (one run of the loop) works end to end: durable functions, sandboxes, coding-agent sessions, commits, evaluations, the review, the test evaluation and the result files.
 
-You are done when the end-to-end tests pass. They run on the local dev server (`npm run dev:inngest`) and one worker (`npm run worker`), with Docker sandboxes and mock models, so they cost nothing ([[#Mock mode]]). Run one night at a time, each under a fresh night id: a start with a used id starts nothing ([[#Durable runtime on Inngest]]). Seven nights, one after the other:
+You are done when the end-to-end test passes. The end-to-end test is this section and nothing outside this file: the seven nights below, run one after the other, each passing every check listed for it. They run on the local dev server (`npm run dev:inngest`) and one worker (`npm run worker`), with Docker sandboxes and mock models, so they cost nothing ([[#Mock mode]]).
+
+Before the first night:
+
+- Docker is running, and `docker images` lists `codeclimb-python` and, for night 7, `codeclimb-graphrag` (`npm run build:image`, `npm run build:image:graphrag`). Night 7's host commands need `uv`
+- the dev server and the worker are up, and the worker runs the code under test: start it again after a code change
+- no other night is running: `docker ps` shows no `cc-` container. Run one night at a time, each under a fresh night id (`--night-id`): a start with a used id starts nothing ([[#Durable runtime on Inngest]])
+
+Seven nights, one after the other:
 
 | # | night | what it proves |
 |---|---|---|
@@ -22,15 +30,15 @@ You are done when the end-to-end tests pass. They run on the local dev server (`
 | 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
 | 7 | `npm run build:image:graphrag`, then `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | The multi-stage night: two rounds on a scenario with three stages (`extraction`, `graph`, `retrieval`), a metered program, a repository check, host commands through `uv`, a repair, and lessons at the end |
 
-Nights 1, 2, 3 and 6 write to `runs/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
+Nights 1, 2, 3 and 6 write to `runs-inngest/mock/<name>/`, where `<name>` is the folder their config's `results_path` names ([[#Night config]]): `capitals-smoke`, `datenorm-smoke`, `e2e-plateau` and `datenorm-smoke`. For such a night `<id>`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
 | `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3) | [[#CLI]], [[#Stops]] |
 | `nights/<id>/done.json` exists; `stop.json` and `pause.json` don't | [[#Files a night writes]] |
-| `npm run validate-results -- runs/mock/<name>/results.jsonl` passes | [[#Result row]] |
+| `npm run validate-results -- runs-inngest/mock/<name>/results.jsonl` passes | [[#Result row]] |
 | `results.jsonl` has a row per experiment of every round, plus a `test` row | [[#Round loop]] |
-| `git -C runs/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit; its diff adds `MOCK.md` | [[#Mock mode]], [[#Experiment repository]] |
+| `git -C runs-inngest/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit; its diff adds `MOCK.md` | [[#Mock mode]], [[#Experiment repository]] |
 | `exps/*/code-state.json` has `stop: done`; `exps/*/session/` holds a session file | [[#Coder]] |
 | `reviews/r<n>.json` exists for every round, with `feedback: mock feedback` | [[#Reviewer]] |
 | `exps/*/train-score.json` and `exps/*/tasks.json` exist; the session holds eight send-backs ("You stopped with N of N minutes"), then one wrap-up ("change no more code") | [[#Send-backs, reserve and wrap-up]] |
@@ -46,11 +54,11 @@ Nights 3 to 6 add:
 | night | check | contract it depends on |
 |---|---|---|
 | 3 | `run-night` prints `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left | [[#Stops]] |
-| 4 | Stop once `exps/<id>-r1-e0/` exists. Within 30 s of the stop: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left. A `run-night` that follows the night prints `stopped` | [[#Cleanup]] |
+| 4 | Stop once `exps/<id>-r1-e0/` exists. The stop command, `npm run run-night -- stop --night <id>`, prints `stopped` and exits 0. Within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left. A `run-night` that was following the night prints `stopped` too | [[#CLI]], [[#Cleanup]] |
 | 5 | Kill once `exps/<id>-r2-e0/` exists, so round 1's row is in `results.jsonl`. If the night finishes before that happens, nothing is killed: run night 5 again. Record round 1's `code-state.json` (sha256 and mtime) and follow `docker events` for container creates across the kill. Start the worker again and nothing else: no stop, no manual resume. The step that was running is retried by itself about 2 minutes after the kill, when its lease expires. Then the night finishes: `done.json` exists, every `eval_id` is in `results.jsonl` once, round 1's `code-state.json` is unchanged (so round 1's coder did not run again), and no `cc-<id>-r1-` sandbox is created after the kill (round 1's steps are memoized, not run again). Only the step running at the kill is retried: a coder step finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone. | [[#Crash and resume]], [[#Platform facts found while building]] |
 | 6 | Every check of the first table; and `exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one | [[#Mock mode]], [[#End of an experiment]] |
 
-Night 7, `graphrag-smoke`, writes to `runs/mock/graphrag-smoke/` and has its own checks, because a dev evaluation of it may fail. As built, it always does: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+Night 7, `graphrag-smoke`, writes to `runs-inngest/mock/graphrag-smoke/` and has its own checks, because a dev evaluation of it may fail. As built, it always does: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
 
 From the first table, these rows hold unchanged: `run-night` prints `done`, `done.json`, `validate-results`, the mock commit of `r1-e0`, `code-state.json` and the session file, the reviews, `decision_reason`, `spend_usd: 0` and `docker ps`. These replace the others:
 
@@ -70,7 +78,7 @@ From the first table, these rows hold unchanged: `run-night` prints `done`, `don
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec. One paid end-to-end test runs on real models and spends money. Run it only when the operator says so for that run, and name its ceiling first. It needs provider credentials and writes to `runs/<results folder>/`, with no `mock` in the path:
+Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec. One paid end-to-end test runs on real models and spends money. Run it only when the operator says so for that run, and name its ceiling first. It needs provider credentials and writes to `runs-inngest/<results folder>/`, with no `mock` in the path:
 
 | # | night | ceiling | passes when |
 |---|---|---|---|
@@ -83,14 +91,16 @@ The paid night must also end with `done.json` and no `stop.json`, pass `validate
 Given, unchanged by you:
 
 - `scenarios/<name>/`: `datenorm`, `datenorm-hard`, `capitals`, `graphrag`. Each holds its manifest, starter repo, agent spec, gold data, evaluators and scripts
-- `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`; and `configs/e2e/plateau.yaml` for the end-to-end tests
+- `configs/`: the night configs, the same files on every stack ([[#Night config]]): `capitals-smoke.yaml`, `datenorm-smoke.yaml`, `datenorm.yaml`, `graphrag-smoke.yaml` and `graphrag.yaml`; under `configs/e2e/`, `plateau.yaml` (night 3), `budget.yaml` (the cost cap) and `overfit.yaml` (the loop climbs when the answer is in reach). `budget.yaml` and `overfit.yaml` run on real models only and are in no night of [[#Goal and done signal]]: `budget.yaml` must load; `overfit.yaml` loads once `npm run build:scenario:overfit` has written the scenario it names, a generated copy of `datenorm` that is not given
+- `docker/`: `python.Dockerfile` and `graphrag.Dockerfile`, the definitions of the two images below
 - credentials: one `.env` (gitignored, from `.env.example`) holding the provider keys; Pi's `auth.json`
-- Inngest skills, MCP servers and docs; Pi's docs; the end-to-end test instructions (the nights of [[#Goal and done signal]] as a procedure)
+- Pi's docs
 - comments in the pack that name files you don't have (a `docs/` page, a source path) are leftovers: this spec replaces them
 
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
 
-- npm scripts: `dev:inngest` (Inngest dev server), `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `export`, `lessons`, `dev`, `build`, `start` (the app), `typecheck`, `test` (unit tests)
+- npm scripts: `dev:inngest` (Inngest dev server), `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build`, `start` (the app), `typecheck`, `test` (unit tests)
+  - `build:scenario:overfit` runs the given `scenarios/datenorm/scripts/build_overfit.py` with `--out` set to the `scenario` path that `configs/e2e/overfit.yaml` names
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
   - `codeclimb-graphrag`: `codeclimb-python` plus `scenarios/graphrag/requirements.txt` installed system-wide with `uv pip`; build context `scenarios/graphrag`
@@ -207,7 +217,7 @@ One night optimizes the whole system: every stage, every round.
 | field | default | meaning |
 |---|---|---|
 | `scenario` | required | Scenario directory |
-| `sandbox` | required | `docker` |
+| `sandbox` | required | `docker`, the only value. Any other is refused when the config loads |
 | `max_rounds` | required | ≥ 1 |
 | `max_tokens` | none | Cap on coder + reviewer tokens; a positive integer |
 | `plateau_rounds` | 3 | Stop after that many rounds in a row kept nothing; 0 = never |
@@ -225,16 +235,19 @@ One night optimizes the whole system: every stage, every round.
 | `budget_usd.night` | required | Caps the whole night: every experiment, review and evaluation |
 | `noise_margin` | `min` 0.002, `max` 0.005, `fixed` none, `scale_by_replay` true | [[#Noise margin]] |
 | `lessons` | `apply` if the scenario declares lessons, else `off` | `off`, `propose`, `apply`. Not `off` without scenario lessons is an error |
-| `seed` | none | A night id, `latest` or `best`: start from an ended night's kept commit |
-| `results_path` | required | Its directory holds everything nights of this config write |
+| `seed` | none | A night id, `latest` or `best`: start from an ended night's kept commit. `--seed` on the command line wins over it |
+| `results_path` | required | The rows file, relative to the runs folder: `<folder>/results.jsonl`. Its directory, the results directory, holds everything nights of this config write |
 
 Validation at parse:
 
 - the reviewer must differ from the coder: an error if `reviewer_model` equals `model` and `reviewer_thinking` is unset or equals `coder_thinking`. Compared as strings, so one model under two providers passes
 - `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`
-- relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
+- a relative `scenario` resolves against the directory `run-night` is started in, not the yaml's folder
+- `results_path` is relative to the stack's runs folder, `<root>/runs-inngest/`, never to the start directory: `datenorm-smoke/results.jsonl` means `runs-inngest/datenorm-smoke/results.jsonl`. A mock night writes under `runs-inngest/mock/<results_path>` ([[#Mock mode]]). `<root>` is `CODECLIMB_ROOT`, by default the directory the command is started in. The given configs name no runs folder, so the same files serve every stack
+- refused when the config loads: a `results_path` that is absolute, that has a `..` segment (it would leave the runs folder), or that is not one folder and a file name
+- `results_path` is resolved once, by the CLI. It travels in the start event and is saved in `night.json` in its resolved form (`runs-inngest/datenorm-smoke/results.jsonl`, or `runs-inngest/mock/datenorm-smoke/results.jsonl`), so the worker, a continue and the API never add the runs folder or `mock/` a second time
 - the config travels in the start event with paths relative to the checkout; the worker resolves them against `CODECLIMB_ROOT` (default: its cwd). CLI and worker may run from different directories on one machine, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
-- results directories must sit directly under `<root>/runs/` (or `<root>/runs/mock/` for mock nights): the API and the stop cleanup find a night by scanning there
+- so every results directory sits directly under `<root>/runs-inngest/` (or `<root>/runs-inngest/mock/` for mock nights): the API and the stop cleanup find a night by scanning there
 - models are checked on the CLI and again on the worker with its own credentials (a non-retriable failure of the night's first step). For a Pi model: it is in Pi's model runtime, its provider has credentials, and it is in the provider's list of models available to the account. The check finds missing models and keys, not wrong keys. `openrouter/` entries of `allowed_models` are checked through OpenRouter's per-model endpoints API instead (ready only when it lists at least one endpoint), because its model list omits some callable models; the priced embedding models are left out of the Pi check too
 
 ## CLI
@@ -245,21 +258,23 @@ Validation at parse:
 |---|---|
 | `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--direction TEXT] [--rounds N] [--no-wait] [--mock [--mock-offline N]]` | Starts a night and follows it |
 | `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` | More rounds on an ended night; default: the newest ended night under the config's results |
-| `run-night stop --night ID` | Hard stop: sends the stop event with reason `manual` |
+| `run-night stop --night ID` | Hard stop: sends the stop event with reason `manual`, waits for the night's `stop.json`, then prints `stopped` |
 | `run-night resume --night ID` | Ends a pause for credits |
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>` from local time. A valid id is 1 to 48 letters, digits or hyphens, not starting with a hyphen
 - `--rounds` on a new night replaces `max_rounds`. `--no-wait` starts the night and exits without following
-- a night always runs on Docker: a config's `sandbox: inngest` is turned into `docker`, with a printed note
+- `--sandbox` takes `docker`, the only sandbox, and changes nothing
 - following: every 5 s print new rows of the night (round, kind, split, short experiment id, primary metric, decision, spend, hypothesis); print `done` with `done.json` and exit when it appears; print `stopped` with `stop.json`; print where a pause stopped and how to resume. Ctrl-C detaches; the night keeps running
 - `--direction` on a new night sets the operator's direction for every round, as on a continued one. It travels in the start event and is masked with `scan` in a step of its own, right after init
-- `--seed` never with `continue`
+- `--seed` never with `continue`. When both `--seed` and the config's `seed` are set, `--seed` wins
+- `continue` and `lessons` tell a mock night by its folder: a night under `runs-inngest/mock/` is continued, or distilled, as a mock. `continue` takes no `--mock`: it looks the night up under the config's results directory and under that directory's `mock/` sibling, and a night found under `mock/` runs its new rounds on the mock models, end to end like any mock night, and keeps writing there. Without `--night`, the default is the newest ended night of the two folders together, by `startedAt`
+- `stop` prints `stopped` and exits 0 once the night's `stop.json` exists. For a night that finished first it prints `done`
 
 ### Mock mode
 
 `--mock` runs the same night on scripted models: Inngest, sandboxes, Pi sessions and tools, commits, evals, the proxy, the keep rule and every file are real. No provider is called, so it costs nothing and needs no credentials.
 
-- results go to `runs/mock/<name>/`: the results directory's name moved under a `mock` sibling (`runs/datenorm-smoke/…` → `runs/mock/datenorm-smoke/…`)
+- results go to `runs-inngest/mock/<results_path>`: the results directory moves under the runs folder's `mock/` (`runs-inngest/datenorm-smoke/…` → `runs-inngest/mock/datenorm-smoke/…`)
 - models: pi-ai's faux provider, registered as a native provider on the worker's one Pi model runtime, with provider id `mock` and one model per role: `coder`, `reviewer`, `lessons`. A mock session takes its model object from the faux provider, not from a `<provider>/<id>` lookup. Faux models cost 0
 - the faux provider's response queue is shared by every session and gives up one entry per model call; an empty queue answers with an error. So queue a response factory that puts itself back on every call, with a head start of several entries for concurrent sessions; never a fixed list. The factory picks its reply by the model's id:
 
@@ -342,7 +357,7 @@ Soft stops. The first five are checked in this order at the start of a round, an
 
 Spend: a row's spend is `coder_usd + dev_usd + program_usd`. A round's spend is its rows plus one review. The night's spend adds the noise, rescore and test evaluations' program calls.
 
-Hard stops: the stop event (CLI, app), a night run that fails out of retries, and the 4-day run backstop. All go through one path ([[#Cleanup]]).
+Hard stops: the stop event (CLI, app), a night run that fails out of retries (the pause timeout ends a night this way), and the 4-day run backstop. All go through one path ([[#Cleanup]]).
 
 ### Repair
 
@@ -369,7 +384,7 @@ Problem: a program that gets 402 on every call scores as a low F1, and the keep 
 - only the parent run waits, in a durable wait with no sandbox running. A waiting child would hit its invoke timeout; with the sandbox gone, nothing bills
 - resume: an event from the CLI or the app. Finished work stays; only what stopped reruns: the coder from its commit in the same Pi session on a new sandbox, the evaluation from scratch, the review again. The resumed coder's sandbox is created from a git bundle holding both the paused commit and the round's parent, so the final commit still squashes onto the parent. It gets the same short restart prompt as after a crash; its send-back count and wrap-up flag start again; its clock is set to now minus the coding time so far, on the first attempt of the resumed step only. Still out of credits → it pauses again at the same place
 - paused time doesn't count against the deadline or `experiment_min`
-- a pause lasts 3 days, then the night fails, which stops it. Stop works while paused
+- a pause lasts 3 days, then the night fails, which stops it with a `stop.json`. Stop works while paused. A test shortens the 3 days with `CODECLIMB_PAUSE_TIMEOUT_S` ([[#Deployment and environment]])
 - files: `pause.json` while paused (`at`, `round`, `stops[]` each with `where`), `pauses.jsonl` as a log with `resumed_at`. `where` is free text naming the step: the experiment, the evaluation, or the review of round N. One pause holds one stop
 - ending a pause: log it to `pauses.jsonl`, delete `pause.json`, and add the paused time to `deadlineMs` in `night.json` and to the loop's deadline. This step must be safe to retry
 - every evaluation pauses the same way: dev, noise, rescore and test. A rerun keeps its `eval_id`, so it does not replay the calls its paused attempt made
@@ -379,6 +394,7 @@ Problem: a program that gets 402 on every call scores as a low F1, and the keep 
 Continue: more rounds on an ended night, under the same id.
 
 - allowed only for a night that ended (`done.json` or `stop.json`) and ran the same scenario
+- a mock night is continued as a mock: its folder under `mock/` says so ([[#CLI]]). The new rounds run on the mock models, write to the same folder and cost nothing, from the CLI and from the API alike
 - reopening happens before the start event is sent, by whoever sends it (the CLI for `run-night continue`, the worker API for the app), never in a step of the night. In order: check the night ended and ran this scenario; move the files of rounds past the last recorded round aside; rename the end file; work out the rescore flag, `max_rounds` and the budget; rewrite `night.json` with the new deadline, config and scoring hashes (`startedAt` stays). From then on the night reads as running, so a second continue is refused and the follower never sees the old `done.json`. Done inside the night instead, `run-night continue` would print `done` at its first poll and exit
 - the first step of the continued run only rebuilds the bundle and the state below
 - rounds number on from the last recorded round, from the kept commit, with the last review's feedback and hypothesis, the log rebuilt from the rows, the notes and the rejected diffs
@@ -839,7 +855,7 @@ Rows that are not experiments:
 
 ### Files a night writes
 
-Under the directory of `results_path`:
+Under the results directory, the directory of the resolved `results_path`:
 
 | path | content |
 |---|---|
@@ -864,7 +880,7 @@ Source of truth is git plus `results.jsonl`. The runtime's traces and scores mir
 
 | event | data | sent by |
 |---|---|---|
-| `codeclimb/night.start` | `night_id`, `config`, optional `continue` (`rescore`, optional `direction`), optional `direction` (a new night's; never beside `continue`), optional `mock_offline` (a mock night's) | CLI, API (continue) |
+| `codeclimb/night.start` | `night_id`, `config`, optional `mock` (true on a mock night, new or continued), optional `continue` (`rescore`, optional `direction`), optional `direction` (a new night's; never beside `continue`), optional `mock_offline` (a mock night's) | CLI, API (continue) |
 | `codeclimb/night.stop` | `night_id`, optional `reason` | CLI, API, the failure and cancel handlers |
 | `codeclimb/night.resume` | `night_id` | CLI, API |
 | `codeclimb/night.finished` (the lessons event) | `night_id`, `scenario`, `config` | the night at its end; the stop cleanup. Only when lessons are on |
@@ -876,17 +892,17 @@ Default `127.0.0.1:7421`. It also routes `/v1/*` to the metering proxy's handler
 | endpoint | purpose |
 |---|---|
 | `GET /api/health` | Liveness |
-| `GET /api/nights`, `GET /api/nights/:id` | Night summaries, read from `runs/*/nights/*` |
+| `GET /api/nights`, `GET /api/nights/:id` | Night summaries, read from `runs-inngest/*/nights/*` and `runs-inngest/mock/*/nights/*` |
 | `GET /api/nights/:id/live` | Summary, the current round's experiment (phase, elapsed, coder and dev spend, tokens), the exportable experiments |
 | `GET /api/nights/:id/report` | The night's rows, reviews, config extract and diffs, as JSON |
 | `POST /api/nights/:id/stop`, `/resume` | Send the event; stop also writes `stop.json` at once |
-| `POST /api/nights/:id/continue` | `{direction?, rounds ≥ 1}`; 409 when the night can't continue |
+| `POST /api/nights/:id/continue` | `{direction?, rounds ≥ 1}`; 409 when the night can't continue. A mock night continues as a mock |
 | `GET /api/nights/:id/export/:exp?format=repo\|source\|bundle` | Download: a git repo `.tar.gz` (default), the tree only, or a git bundle |
 | `POST /api/nights/:id/export/:exp` | Body: `kind` = `dir` with a `path` on the worker's machine (always the git-repository form), or `kind` = `remote` with a `url` and an optional `branch` |
 
 - status comes from files, not from the durable runtime: `done.json` → `finished`, `stop.json` → `stopped`, `pause.json` → `paused`, no file written for an hour → `stale`, else `running`. So the app doesn't depend on the stack
 - phase of the live experiment: `evaluated` once its row exists; `starting` with no `code-state.json`; `waiting for eval` once the state has `finishedAt`; otherwise `coding`. A repair (`e1`) takes over from `e0` once its folder exists
-- finding nights: scan `<root>/runs/*/nights/<id>/night.json` and `<root>/runs/mock/*/nights/<id>/night.json`. The stop cleanup finds a night's folder the same way, since the stop event holds only the night id
+- finding nights: scan `<root>/runs-inngest/*/nights/<id>/night.json` and `<root>/runs-inngest/mock/*/nights/<id>/night.json`. The stop cleanup finds a night's folder the same way, since the stop event holds only the night id
 - nights start only from the CLI
 
 ### App
@@ -927,13 +943,13 @@ What the runtime must provide, and the Inngest feature that provides it. The ste
 |---|---|---|
 | The loop survives a worker crash | Memoized steps; the loop's variables are rebuilt on replay | Nights take hours |
 | The parent stays small | A thin `run-night` plus invoked children `run-experiment` and `run-evaluator` | Limits on steps and output per run |
-| Long steps | A `connect()` worker, not serverless; app id `codeclimb-worker` | A coder step runs up to `experiment_min` |
+| Long steps | A `connect()` worker, one long-running process; app id `codeclimb-worker` | A coder step runs up to `experiment_min` |
 | Retry | 2 retries on `run-night`, `run-experiment`, `run-evaluator` and `distill-lessons`; the two cleanup functions set none and keep the SDK default. The coder step learns its attempt number | Drives session resume |
-| Backstop timeouts | Experiment invoke: `experiment_min × 3 + 30` min. Evaluator invoke: `eval_min × stages × 3 + 15` min. Night: 4 days | Past retries and a pause |
+| Backstop timeouts | Experiment invoke: `experiment_min × 3 + 30` min. Evaluator invoke: `eval_min × stages × 3 + 15` min. Night: 4 days, or `CODECLIMB_BACKSTOP_S` seconds in a test ([[#Deployment and environment]]) | Past retries and a pause |
 | Cancel a night and its children | `run-night`, `run-experiment` and `run-evaluator` each cancel on the stop event for their night | Cancelling a parent may not cancel invoked children |
 | Stop running work | `night-stop-cleanup` on the stop event; `run-cancelled-cleanup` on the platform's function-cancelled event | Cancel never interrupts a running step |
 | Failure = stop | The night's failure handler sends the stop event | One cleanup path |
-| Pause and resume | Wait for the resume event, 3-day timeout | A human-paced wait at no cost |
+| Pause and resume | Wait for the resume event, 3-day timeout, or `CODECLIMB_PAUSE_TIMEOUT_S` seconds in a test | A human-paced wait at no cost |
 | One night id, one run | A stable start-event id `night-start-<id>`; a continue uses a fresh id | A double send starts one night |
 | Lessons one at a time | `distill-lessons` with a concurrency of 1 per scenario; event ids `lessons-<night>-r<round>` and `lessons-<night>-stop` | No two edits of one file |
 | Scores mirror | The score middleware on the client and the step-level score call, in the evaluator child. The target is the experiment child's run id, which that child returns and the parent passes on. One step per metric, named from the sorted metric names (a memoized result's key order can differ on replay). Only for a successful evaluation; a failed score call is swallowed | Comparison in the dashboard |
@@ -960,7 +976,7 @@ One path for every hard stop:
 - a finished night sweeps its own prefix before `done.json`
 - a stopped or failed night must always end with a `stop.json`, mock nights included. `run-night` only exits when it sees `done.json` or `stop.json`, so a night that died without either leaves the command, and a test run, hanging
 - a night can fail before `night.json` exists (a failed model check, bundle command or init), and the stop cleanup then finds no folder. So the night's failure handler, which gets the start event and with it the results directory, creates `nights/<id>/` and writes `stop.json` with reason `failed` itself when `night.json` is missing, then sends the stop event. A night with a `stop.json` and no `night.json` can't be continued or used as a seed
-- `run-night` exits 0 after printing `done` or `stopped`: tests read the printed word and the files
+- `run-night` exits 0 after printing `done` or `stopped`: tests read the printed word and the files. `run-night stop` does the same once `stop.json` exists
 
 ### Platform facts found while building
 
@@ -971,12 +987,12 @@ These cost time to find. They are not design choices.
 
 ## Deployment and environment
 
-One mode, with the worker on your machine. Why not a hosted worker: every piece of worker state is on disk, and a coder step outlives serverless limits.
+One mode: everything on your machine. Every piece of worker state is on disk or in the worker's memory, and a coder step runs for up to `experiment_min`, so the worker is one long-running process.
 
-| | local |
+| piece | where |
 |---|---|
 | orchestration | Inngest dev server (`dev:inngest`) |
-| worker | `worker` (dev mode) |
+| worker | `worker` |
 | CLI | `run-night` |
 | sandboxes | Docker |
 | proxy | A random port, the relay |
@@ -985,14 +1001,16 @@ One mode, with the worker on your machine. Why not a hosted worker: every piece 
 - the CLI and the worker default `INNGEST_DEV` to `1`, and `dev` sets it for the app
 - the machine stays on until the night ends; on macOS the worker holds `caffeinate -i`
 - a sandbox keeps running while its worker is away
+- timer test hooks: the pause timeout and the night backstop are too long for a test to wait for. With `CODECLIMB_PAUSE_TIMEOUT_S=20`, a paused night that nobody resumes ends 20 s into its pause with `stop.json`. With `CODECLIMB_BACKSTOP_S=60`, a night still running 60 s after its start is cancelled and ends with `stop.json`; no `cc-<id>` container is left either way. A test sets them in the worker's environment and starts the worker again; `.env.example` leaves them out
 - the app and the API bind loopback only by default
 
 | variable | meaning |
 |---|---|
 | `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` | Provider keys; `OPENROUTER_BASE_URL` points the proxy elsewhere, for tests |
 | `CODECLIMB_PI_AUTH_PATH` | Another `auth.json` |
-| `INNGEST_DEV` | Dev |
-| `CODECLIMB_ROOT` | The checkout the worker resolves config paths and `runs/` against |
+| `INNGEST_DEV` | `1`: the SDK talks to the local dev server |
+| `CODECLIMB_ROOT` | The checkout the worker resolves config paths and `runs-inngest/` against |
+| `CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S` | Test hooks, never set for a real night: the pause timeout and the night backstop in seconds, in place of 3 days and 4 days. Each is a positive integer; unset or empty means the default. The worker reads them when it starts |
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT` | The worker API (default `127.0.0.1:7421`); without `CODECLIMB_API_PORT` the port falls back to `PORT` |
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer; where the app reaches the worker |
 | `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds; on Linux Docker the `docker0` address |
@@ -1012,7 +1030,7 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx`; `tsc` for type
 | loop | repairs per round | 1 |
 | loop | held-out names in a diff that block a keep | ≥ 2 |
 | loop | keep comparison epsilon | 1e-12 |
-| loop | pause timeout; night backstop | 3 days; 4 days |
+| loop | pause timeout; night backstop | 3 days; 4 days (a test shortens them: `CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S`) |
 | loop | function retries (night, children, lessons) | 2 |
 | loop | invoke timeouts | `experiment_min × 3 + 30` min; `eval_min × stages × 3 + 15` min |
 | coder | reserve | the last 20% of time or budget |
@@ -1064,10 +1082,11 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 - `stack` is fixed to `inngest` in the row
 - the mock coder stops at once on every turn, so a mock session holds the full 8 send-backs and one wrap-up. With a 5-minute experiment and the 3-minute floor, all of them must start within the first 2 minutes
 - four places where this spec asks for more than the reference build does:
-  - finding mock nights under `runs/mock/` for `stop.json` and the API. The reference scans `runs/*/nights/` only, so a stopped mock night leaves `run-night` waiting
+  - finding mock nights under `runs-inngest/mock/` for `stop.json` and the API. The reference scans the folders of real nights only, so a stopped mock night leaves `run-night` waiting
   - the failure handler writing `stop.json` when `night.json` doesn't exist yet. The reference writes none, and `run-night` waits
   - picking the Docker bridge address on Linux when `CODECLIMB_PROXY_HOST` is unset. The reference needs it set by hand
   - the step that ends a pause being safe to retry. The reference's throws on a retry after it deleted `pause.json`
+- decided for this spec, whatever the reference does, so that one set of configs and one set of tests serve every stack: the runs folder `runs-inngest/` with `results_path` relative to it; `continue` telling a mock night by its folder; `run-night stop` printing `stopped`; `--seed` winning over the config's `seed`; the two timer test hooks; `docker` as the only `sandbox` value
 - kept as the reference has them, though they are weak spots:
   - a repair's leak scan covers only what `e1` adds over `e0`, so held-out names a failed attempt added and its repair kept are not counted
   - the stop cleanup's lessons event id is `lessons-<night>-stop`: a continued night stopped a second time reuses it, and the runtime may drop the second event

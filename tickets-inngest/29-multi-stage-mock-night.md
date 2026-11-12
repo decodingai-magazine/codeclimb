@@ -9,7 +9,7 @@
 **Status:** ready-for-agent
 
 - [ ] `npm run build:image:graphrag` builds `codeclimb-graphrag` from `codeclimb-python` with the scenario's requirements installed system-wide, build context `scenarios/graphrag`
-- [ ] With the dev server and the worker up, `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` writes to `runs/mock/graphrag-smoke/`, prints `done` with `stop_reason` `max_rounds` or `thresholds`, and exits 0
+- [ ] With the dev server and the worker up, `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` writes to `runs-inngest/mock/graphrag-smoke/`, prints `done` with `stop_reason` `max_rounds` or `thresholds`, and exits 0
 - [ ] The rows of the first table of "Goal and done signal" that the spec carries over hold: `done.json` without `stop.json` or `pause.json`, `validate-results`, the mock commit of `r1-e0` adding `MOCK.md`, `code-state.json` with `stop: done` and a session file, `reviews/r<n>.json` with `mock feedback`, `decision_reason` on every experiment row, `spend_usd: 0`, no `cc-<id>` container
 - [ ] `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row; a round has an `e1` row only after an `e0` row with decision `error`, and no round has an `e2`
 - [ ] Every `e0` session holds eight send-backs then one wrap-up, and an `e1` session holds neither; `train-score.json` and `tasks.json` exist for both

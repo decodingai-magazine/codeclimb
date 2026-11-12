@@ -8,10 +8,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] A documented, repeatable check (following the given end-to-end test instructions when the environment holds them) runs the three nights one after the other on the dev server with Docker sandboxes and asserts each row of the table; it fails with the row's name when one does not hold
+- [ ] A documented, repeatable check (its preconditions and its checks are the ones "Goal and done signal" states; nothing outside the spec defines it) runs the three nights one after the other on the dev server with Docker sandboxes and asserts each row of the table; it fails with the row's name when one does not hold
 - [ ] Nights 1 and 2 print `done` with `stop_reason` `max_rounds` or `thresholds`, night 3 with `plateau`, and `run-night` exits 0; night 2 ends on `max_rounds` after exactly 2 rounds
 - [ ] `results.jsonl` passes `validate-results` and has a row per experiment of every round plus a `test` row; every experiment row has `decision_reason`
-- [ ] `git -C runs/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`
+- [ ] `git -C runs-inngest/mock/<name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`
 - [ ] Every session under `exps/*/session/` holds eight send-backs (`You stopped with N of N minutes`) then one wrap-up (`change no more code`); `exps/*/code-state.json` has `stop: done`; `train-score.json` and `tasks.json` exist
 - [ ] `reviews/r<n>.json` exists for every round with `feedback: mock feedback`; `bundle/history/notes/r<round>-e<n>.md` exists per experiment with the `mock note` and, where reviewed, `mock verdict` parts
 - [ ] `datenorm-smoke`: round 1 kept at dev accuracy 0.125, a `noise` row in round 2, `noise.json` present. `capitals-smoke`: scores 0, keeps nothing, `evals/*/meter.jsonl` lists calls with no `error`

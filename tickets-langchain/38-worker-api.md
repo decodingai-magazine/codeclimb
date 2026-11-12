@@ -26,5 +26,5 @@
 - [ ] `POST /api/nights/:id/continue` takes `{direction?, rounds ≥ 1}`, reopens the night as ticket 32 does and starts the variation; it answers 409 when the night can't continue
 - [ ] A request body over 1 MB is refused; there is no endpoint that starts a new night
 - [ ] Tests start the API on a free port against temporary night folders and a faked Agent Server client, and cover every endpoint, each status and each phase; against a finished mock night, `/api/nights/:id` reads `finished` and the report holds its rows
-- [ ] On a running server, on mock models: a POST to `/api/nights/:id/stop` stops a running night, and a POST to `/api/nights/:id/continue` adds a round to a finished one
+- [ ] On a running server, on mock models: a POST to `/api/nights/:id/stop` stops a running night, and a POST to `/api/nights/:id/continue` adds a round to a finished one, which runs mock and stays under `runs-langchain/mock/`
 - [ ] `npm run typecheck` and `npm test` pass

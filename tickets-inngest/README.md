@@ -4,7 +4,7 @@
 
 - one file per ticket, `<NN>-<slug>.md`, numbered in dependency order: a ticket is blocked only by lower numbers
 - every ticket names the spec sections it implements by heading; the spec is the contract, the ticket only scopes it. Constants are in the spec's "Every number in one place"
-- the given inputs (`scenarios/`, `configs/`, the image definitions, `.env`, the end-to-end test instructions) are present in the build environment; tickets consume them and never change them. A test that needs a different scenario or config uses a test-only copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` directly under `runs/`, so test nights never mix into the given configs' results
+- the given inputs (`scenarios/`, `configs/`, `docker/` with the two image definitions, `.env`) are present in the build environment; tickets consume them and never change them. The end-to-end test is the spec's "Goal and done signal": nothing outside the spec defines it. A test that needs a different scenario or config uses a test-only copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` folder of its own, which lands directly under `runs-inngest/`, so test nights never mix into the given configs' results
 - tickets 01 to 40 are `ready-for-agent` and need no paid call: provider and OpenRouter paths are tested against fakes; whole nights run with `--mock`
 - ticket 41, night 8 of "Goal and done signal" (`capitals-smoke` on real models, paid), is `ready-for-human`: it runs only with the operator's go-ahead for that run, after its ceiling was named. Ticket 40, the final acceptance, does not wait for it
 - end-to-end checks need Docker, `npm run dev:inngest` and `npm run worker` running; the worker has no hot reload, so restart it after a code change. Nights run one at a time, each under a fresh night id
@@ -49,7 +49,7 @@
 - phase 19: night 7, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 29, after repair and lessons, which it exercises. Outside it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 35, 36)
 - phase 25: the OpenRouter and Pi backends and the web research guard. The model check and the credit test are built with the Pi sessions (ticket 08) and wired in tickets 19 and 24
 - phase 27: the one paid night, night 8. It runs only with the operator's go-ahead
-- pause, repair, continue, lessons, seed, rescore, the worker API, export and the app have no named end-to-end night. They get the checks their tickets define, on mock nights on the dev server
+- pause, repair, continue, lessons, seed, rescore, the worker API, export and the app have no named end-to-end night. They get the checks their tickets define, on mock nights on the dev server: a continued mock night runs mock end to end (ticket 26), and the pause timeout and the night backstop fire in seconds through the spec's two timer test hooks (tickets 24 and 21)
 - `deadline`, `budget`, `tokens`, `thresholds` and `outage` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3). Ticket 19 checks `deadline` and `thresholds` on mock nights with test-only config copies, and the others in unit tests
 
 ## Tickets

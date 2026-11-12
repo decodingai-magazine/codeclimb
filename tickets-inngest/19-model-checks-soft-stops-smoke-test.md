@@ -12,7 +12,7 @@
 - [ ] The model check runs on the CLI before the start event is sent, and again as the night's first step on the worker with the worker's credentials, where a failure is non-retriable; both are skipped with `--mock`
 - [ ] The smoke test runs after the stop check: the model check plus, on a metered night, the proxy-path check; a failure is retried every 5 minutes, 6 more times, each wait a durable sleep; then the night stops with `outage` (unit test of the retry policy with a fake clock)
 - [ ] Every soft stop leads to the test evaluation, the test row, the sweep and `done.json` with that `stop_reason`
-- [ ] End-to-end, mock, dev server, with test-only copies (inside the checkout but outside `scenarios/` and `configs/`, gitignored, each with its own name and a `results_path` directly under `runs/`); the given configs stay unchanged: a deadline of a few seconds ends with `stop_reason: deadline`; a `datenorm-smoke` copy with a threshold at or below 0.125 ends with `thresholds` after round 1
+- [ ] End-to-end, mock, dev server, with test-only copies (inside the checkout but outside `scenarios/` and `configs/`, gitignored, each with its own name and a `results_path` folder of its own, which lands directly under `runs-inngest/`); the given configs stay unchanged: a deadline of a few seconds ends with `stop_reason: deadline`; a `datenorm-smoke` copy with a threshold at or below 0.125 ends with `thresholds` after round 1
 - [ ] Unit tests cover `budget` and `tokens` through the loop's stop step with fabricated counters
 - [ ] No criterion needs a paid call: provider and platform paths are tested against fakes
 - [ ] The three mock nights of tickets 17 and 18 still pass

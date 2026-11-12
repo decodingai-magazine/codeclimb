@@ -18,4 +18,4 @@ gates:
 budget_usd:
   experiment: 0.25
   night: 0.5
-results_path: runs-langchain/capitals-smoke/results.jsonl
+results_path: capitals-smoke/results.jsonl

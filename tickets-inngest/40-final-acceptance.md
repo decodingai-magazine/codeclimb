@@ -12,15 +12,15 @@
 - [ ] Night 1, `capitals-smoke --mock`: every row of the first table holds
 - [ ] Night 2, `datenorm-smoke --mock`: every row of the first table holds; it ends on `max_rounds` after exactly 2 rounds
 - [ ] Night 3, `configs/e2e/plateau.yaml --mock`: every row of the first table that is not named for another config, with `stop_reason` `plateau`; `rounds: 1`, a `test` row, no container
-- [ ] Night 4, night 2 with `--no-wait` then `run-night stop` once `exps/<id>-r1-e0/` exists: within 30 s of the stop, `stop.json` with `reason: manual`, no `done.json`, no `test` row, no container; a `run-night` that follows the night prints `stopped`
+- [ ] Night 4, night 2 with `--no-wait` then `run-night stop` once `exps/<id>-r1-e0/` exists: the stop command prints `stopped` and exits 0; within 30 s of it, `stop.json` with `reason: manual`, no `done.json`, no `test` row, no container
 - [ ] Night 5, night 2 with `--no-wait`, the worker killed once `exps/<id>-r2-e0/` exists, then `npm run worker` (run again if the night finished before the kill): the night finishes by itself; every `eval_id` once; round 1's `code-state.json` unchanged; no `cc-<id>-r1-` sandbox created after the kill
 - [ ] Night 6, `datenorm-smoke --mock --mock-offline 6`: every row of the first table, plus the error message followed by clean ones in round 1's session
 - [ ] Night 7, `npm run build:image:graphrag` then `graphrag-smoke --mock`: every check the spec lists for it (ticket 29), the lessons files within a minute of `done` included
-- [ ] After the suite `docker ps` shows no `cc-<id>` sandbox container, and no night under `runs/mock/` is left without a `done.json` or a `stop.json`
+- [ ] After the suite `docker ps` shows no `cc-<id>` sandbox container, and no night under `runs-inngest/mock/` is left without a `done.json` or a `stop.json`
 - [ ] Every npm script the spec fixes does its job (none is still a placeholder); `package.json` holds the spec's dependencies at their exact versions, and every unlisted package is pinned exactly and listed in the report
 - [ ] Every constant in "Every number in one place" is traced to one place in the code and matches; mismatches are fixed
-- [ ] The four items "Known gaps" lists as asked beyond the reference are present and tested: mock nights found under `runs/mock/`, the failure handler's `stop.json` without `night.json`, the Docker bridge address on Linux, the retry-safe pause end. The four items it lists as kept are unchanged
+- [ ] The four items "Known gaps" lists as asked beyond the reference are present and tested: mock nights found under `runs-inngest/mock/`, the failure handler's `stop.json` without `night.json`, the Docker bridge address on Linux, the retry-safe pause end. The four items it lists as kept are unchanged
 - [ ] The Inngest SDK appears only in function definitions, the worker's connection and where events are sent; step bodies are framework-free
 - [ ] A grep over the source finds the literal strings `You stopped with` and `change no more code` in exactly one message builder each
-- [ ] `scenarios/`, `configs/` and the given image definitions are byte-identical to what the environment supplied
+- [ ] `scenarios/`, `configs/` and `docker/` are byte-identical to what the environment supplied
 - [ ] No check here makes a paid call

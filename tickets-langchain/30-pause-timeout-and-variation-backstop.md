@@ -10,6 +10,7 @@
 - "Platform facts": the dev-server fact on runs created with `afterSeconds`
 - "Known gaps": a pause timeout leaves `pause.json` behind
 - "Every number in one place": loop row "pause timeout; variation backstop"
+- "Deployment and environment": the timer test hooks (the Environment bullet, the variable table row, the pass-through in the compose override)
 
 **Not yet:** nothing is deferred.
 
@@ -23,6 +24,9 @@
 - [ ] When the guard passes, the stop graph writes `stop.json` with reason `failed` and runs the cleanup of ticket 26
 - [ ] A finished night's pending timers do nothing when they fire
 - [ ] Unit tests with a faked client and night folders cover each guard outcome for both timers
-- [ ] On a running server, on a mock night paused by `mock_credit`: the timer thread holds the night's two pending delayed runs, one due in 3 days with the pause number and one due in 4 days with the variation number. A test then calls the timer operation itself with a delay of a few seconds and that pause's number: the night ends with `stop.json` (`failed`) and no `cc-<id>` container. A second such night, resumed before that short timer fires, finishes with `done.json` and is not stopped when the timer fires
+- [ ] The test hooks: the step that creates a timer reads `CODECLIMB_PAUSE_TIMEOUT_S` or `CODECLIMB_BACKSTOP_S`, a positive integer of seconds in place of the 3 days or the 4 days; unset or empty means the default (unit test on the reader)
+- [ ] On a running server with neither variable set, on a mock night paused by `mock_credit`: the timer thread holds the night's two pending delayed runs, one due in 3 days with the pause number and one due in 4 days with the variation number
+- [ ] On a server started with `CODECLIMB_PAUSE_TIMEOUT_S` set to a few seconds, on a mock night paused by `mock_credit` that nobody resumes: the night ends with `stop.json` (`failed`), no `done.json` and no `cc-<id>` container, and its `run-night` prints `stopped`. A second such night, resumed before the timer fires, finishes with `done.json` and is not stopped when the timer fires
+- [ ] On a server started with `CODECLIMB_BACKSTOP_S` set shorter than a mock round: a mock night still running then ends with `stop.json` (`failed`), no `done.json` and no `cc-<id>` container. `npm run server` is run again without the variables afterwards
 - [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal"
 - [ ] `npm run typecheck` and `npm test` pass

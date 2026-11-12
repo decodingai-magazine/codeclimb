@@ -21,4 +21,4 @@ gates:
 budget_usd:
   experiment: 0.5
   night: 2.0
-results_path: runs-langchain/e2e-plateau/results.jsonl
+results_path: e2e-plateau/results.jsonl

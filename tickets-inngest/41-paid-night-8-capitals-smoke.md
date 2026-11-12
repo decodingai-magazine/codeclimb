@@ -9,7 +9,7 @@
 **Status:** ready-for-human
 
 - [ ] Before the night the operator gives the go-ahead for that run, after being told its command and its ceiling. Without a go-ahead the night is reported as not run, never as passed; one go-ahead covers one run
-- [ ] The night writes to `runs/<results folder>/`, with no `mock` in the path, and the ceiling is checked against `done.json`'s `spend_usd`
+- [ ] The night writes to `runs-inngest/<results folder>/`, with no `mock` in the path, and the ceiling is checked against `done.json`'s `spend_usd`
 - [ ] Night 8, ceiling $0.50: `npm run run-night -- --config configs/capitals-smoke.yaml` prints `done`; there is a `test` row; `spend_usd` is above 0 and at most 0.50; `meter.jsonl` shows real calls
 - [ ] The night also ends with `done.json` and no `stop.json`, passes `validate-results`, and leaves no `cc-<id>` container
 - [ ] A short report says: go-ahead given or not, ran or not run, its `spend_usd` against its ceiling, passed or failed, and what was fixed

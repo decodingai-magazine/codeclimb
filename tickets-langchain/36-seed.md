@@ -18,6 +18,7 @@
 **Status:** ready-for-agent
 
 - [ ] The CLI resolves `latest` (the newest `startedAt` among ended nights) and `best` (the highest weighted dev score among ended nights of this scenario with equal scoring hashes, a tie to the newer; test scores never count) to a night id before the start, searching the config's own results directory
+- [ ] When both `--seed` and the config's `seed` are set, `--seed` wins (unit test)
 - [ ] A seed is refused when the seed night kept nothing, has a `stop.json` and no `night.json`, or falls under the lessons refusal: it ran with `lessons: apply`, was not a mock, its scenario declares lessons, and it has rounds with notes or reviews past its newest applied proposal
 - [ ] Init aliases the seed's kept commit as `<night>-r0-seed`; `night.json`'s `seed` holds the seed night, its kept experiment, its last round, the primary value, the metrics and the rescore flag, worked out by comparing the seed night's scoring hashes with the current ones
 - [ ] The checkpoint starts with the seed's dev metrics; the seed night's noise carries over when the scoring hashes are equal, so no A/A run follows; coders and reviewers read a `<start>` note naming the seed night, and the trajectory starts with it

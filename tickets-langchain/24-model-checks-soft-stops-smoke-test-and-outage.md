@@ -25,7 +25,7 @@
 - [ ] The waits between tries are steps, so a replay takes the same path
 - [ ] `--mock` skips the model checks and the smoke test
 - [ ] Every soft stop (`max_rounds`, `deadline`, `budget`, `tokens`, `plateau`, `thresholds`, `outage`) leads to the test evaluation, the test row, the sweep and `done.json` with that `stop_reason`
-- [ ] On mock models, with temporary config copies (inside the checkout but outside `configs/`, each with its own name and a results directory directly under `runs-langchain/`); the given configs stay unchanged: a deadline of a few seconds ends with `stop_reason: deadline`; a `datenorm-smoke` copy with a threshold at or below 0.125 ends with `thresholds` after round 1
+- [ ] On mock models, with temporary config copies (inside the checkout but outside `configs/`, each with its own name and a `results_path` folder of its own, which lands directly under `runs-langchain/`); the given configs stay unchanged: a deadline of a few seconds ends with `stop_reason: deadline`; a `datenorm-smoke` copy with a threshold at or below 0.125 ends with `thresholds` after round 1
 - [ ] Unit tests cover `budget` and `tokens` through the night's stop check with fabricated counters
 - [ ] Unit tests with stubbed provider and OpenRouter replies cover pass, missing model, missing credentials, no endpoint, and the 7-try outage with a faked clock; the three mock nights of tickets 22 and 23 still pass
 - [ ] `npm run typecheck` and `npm test` pass

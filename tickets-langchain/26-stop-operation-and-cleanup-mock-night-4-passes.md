@@ -27,6 +27,6 @@
 - [ ] The round-start stop check ends the server run quietly when `stop.json` exists
 - [ ] The sandbox backend refuses to create a sandbox for a night that has a `stop.json` (unit test)
 - [ ] A coder aborted by the stop ends as `cancelled`: its sandbox is destroyed and Pi makes no further model call
-- [ ] Night 4: `datenorm-smoke --mock --no-wait`, then `run-night stop --night <id>` while round 1 runs; following the night prints `stopped`; `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left
+- [ ] Night 4: `datenorm-smoke --mock --no-wait`, then `run-night stop --night <id>` once `exps/<id>-r1-e0/` exists; the stop command prints `stopped` and exits 0 (for a night that finished first it prints `done`); a `run-night` that was following the night prints `stopped` too; within 30 s `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left
 - [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal"
 - [ ] `npm run typecheck` and `npm test` pass

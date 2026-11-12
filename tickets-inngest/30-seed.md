@@ -13,6 +13,6 @@
 - [ ] Init aliases the seed's commit as `<night>-r0-seed`; `night.json`'s `seed` holds the seed night, its kept experiment, its last round, the primary value, the metrics and the rescore flag
 - [ ] The checkpoint starts with the seed's metrics; a seeded night that keeps nothing still has its seed as checkpoint, its test evaluation runs on it, and `done.json`'s `kept.dev_score` is the seed's primary value
 - [ ] The seed night's `noise.json` carries over when the scoring hashes are equal, so no A/A run happens; the trajectory starts with the `<start>` note for coders and reviewers
-- [ ] The seed setting comes from the config's `seed` or `--seed`; a later continue of a seeded night reads `night.json`'s `seed`
+- [ ] The seed setting comes from the config's `seed` or `--seed`; when both are set `--seed` wins (unit test); a later continue of a seeded night reads `night.json`'s `seed`
 - [ ] End-to-end, mock, dev server: after a `datenorm-smoke --mock` night that kept round 1, `run-night --config configs/datenorm-smoke.yaml --mock --seed latest` starts from `<night>-r0-seed` pointing at that kept commit, records no `noise` row, and ends with `done`
 - [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them
