@@ -31,7 +31,7 @@ Give every night a fresh id with `--night-id` (for example `plateau-$(date +%H%M
 | 6 | Lost connection mid-turn | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` |
 | 7 | Multi-stage scenario | `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` |
 
-`--mock` replaces the models with scripted ones. Mock metrics mean nothing: a score of 0 is expected, and the check is that everything ran. Mock nights write to `runs-langchain/mock/<results folder>/`; below, `N` is `runs-langchain/mock/<results folder>/nights/<id>`.
+`--mock` replaces the models with scripted ones. Mock metrics mean nothing: a score of 0 is expected, and the check is that everything ran. A config's `results_path` is relative to `runs-langchain/` (`datenorm-smoke/results.jsonl`); its folder is the `<results folder>`. Mock nights write to `runs-langchain/mock/<results folder>/`; below, `N` is `runs-langchain/mock/<results folder>/nights/<id>`.
 
 ### Checks for every finished mock night (1, 2, 3, 6)
 

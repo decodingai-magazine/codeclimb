@@ -23,7 +23,7 @@ export interface NightEntry {
 
 /**
  * Every night with a night.json of this build under `<root>/runs-langchain/*` and `<root>/runs-langchain/mock/*`.
- * The Inngest twin writes to `runs/`; a night.json of its kind (its scenario is an object, with no `scenario_spec`)
+ * The Inngest twin writes to `runs-inngest/`; a night.json of its kind (its scenario is an object, with no `scenario_spec`)
  * is left out anyway, so neither the app nor the watchdog touches one.
  */
 export function listNights(root: string): NightEntry[] {

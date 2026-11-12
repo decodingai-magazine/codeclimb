@@ -41,7 +41,7 @@ You are done when the end-to-end tests pass. They run on the Agent Server (`npm 
 | 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
 | 7 | `npm run build:image:graphrag`, then `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | A scenario with three stages, a metered program, `check`, `scan` and lessons runs end to end |
 
-Nights 1, 2 and 6 write to `runs-langchain/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
+Nights 1, 2 and 6 write to `runs-langchain/mock/<name>/`, `<name>` being the folder of the config's `results_path`. For such a night `<id>`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
@@ -239,16 +239,16 @@ One night optimizes the whole system: every stage, every round.
 | `noise_margin` | `min` 0.002, `max` 0.005, `fixed` none, `scale_by_replay` true | [[#Noise margin]] |
 | `lessons` | `apply` if the scenario declares lessons, else `off` | `off`, `propose`, `apply`. Not `off` without scenario lessons is an error |
 | `seed` | none | A night id, `latest` or `best`: start from an ended night's kept commit |
-| `results_path` | required | Its directory holds everything nights of this config write |
+| `results_path` | required | `<name>/<file>`, relative to the stack's runs folder: `runs-langchain/` here, `runs-inngest/` on the Inngest twin. `datenorm-smoke/results.jsonl` → `runs-langchain/datenorm-smoke/results.jsonl`. Its directory holds everything nights of this config write |
 
 Validation at parse:
 
 - the reviewer must differ from the coder: an error if `reviewer_model` equals `model` and `reviewer_thinking` is unset or equals `coder_thinking`. Compared as strings, so one model under two providers passes
 - a backend's maximum active time, if it has one, must hold `experiment_min` + 10 and `eval_min × stages` + 10 minutes. Docker has none, so nothing is checked on this stack
 - `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`; `noise_margin.min` must not exceed `max`
-- relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
+- a relative `scenario` resolves against the directory `run-night` is started in, not the yaml's folder. `results_path` resolves against `<root>/runs-langchain/`, wherever `run-night` starts, so the same config file serves both stacks and the benchmark
 - the config travels in the start input with paths relative to the checkout; the Agent Server resolves them against `CODECLIMB_ROOT` (default: its cwd; in the server container the compose override sets it to the checkout's host path, where the checkout is mounted). CLI and server may run from different directories, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
-- results directories must sit directly under `<root>/runs-langchain/` (or `<root>/runs-langchain/mock/` for mock nights): the API and the stop cleanup find a night by scanning there. Not `runs/`: the Inngest twin writes its nights there, from the same checkout, and a folder of its own keeps either build from finding, stopping or continuing the other's nights
+- `results_path` must be exactly `<name>/<file>`, with `<name>` not `mock`: an absolute path, one with `..`, one with more or fewer parts, or one under `mock/` is refused at load. So every results directory sits directly under `<root>/runs-langchain/` (or `<root>/runs-langchain/mock/` for mock nights): the API and the stop cleanup find a night by scanning there. The loaded config (the start input, `night.json`) holds the path relative to the checkout: `runs-langchain/<name>/<file>` or `runs-langchain/mock/<name>/<file>`. Not `runs-inngest/`: the Inngest twin writes its nights there, from the same checkout, and a folder of its own keeps either build from finding, stopping or continuing the other's nights
 - models are checked on the CLI and again in the Agent Server with its own credentials (a non-retriable failure of the night's first step). For a Pi model: it is in Pi's model runtime, its provider has credentials, and it is in the provider's list of models available to the account. The check finds missing models and keys, not wrong keys. `openrouter/` entries of `allowed_models` are checked through OpenRouter's per-model endpoints API instead (ready only when it lists at least one endpoint), because its model list omits some callable models; the priced embedding models are left out of the Pi check too
 
 ## CLI
@@ -276,7 +276,7 @@ Validation at parse:
 
 `--mock` runs the same night on scripted models: the Agent Server, sandboxes, Pi sessions and tools, commits, evals, the proxy, the keep rule and every file are real. No provider is called, so it costs nothing and needs no provider credentials. The Agent Server still needs `LANGSMITH_API_KEY` to boot: without it the server container exits with code 3 ([[#Platform facts]]), so mock nights and CI need a key, from the region `LANGSMITH_ENDPOINT` names. With `LANGSMITH_TRACING=false` nothing is traced; the server still checks the key at boot, and with tracing on it was seen running a metadata loop that submits to LangSmith (not checked with tracing off).
 
-- results go to `runs-langchain/mock/<name>/`: the results directory's name moved under a `mock` sibling (`runs-langchain/datenorm-smoke/…` → `runs-langchain/mock/datenorm-smoke/…`)
+- results go to `runs-langchain/mock/<name>/`: the results directory's name moved under a `mock` sibling (`results_path: datenorm-smoke/results.jsonl` → `runs-langchain/mock/datenorm-smoke/results.jsonl` instead of `runs-langchain/datenorm-smoke/results.jsonl`)
 - models: pi-ai's faux provider, registered as a native provider on the Agent Server process's one Pi model runtime, with provider id `mock` and one model per role: `coder`, `reviewer`, `lessons`. A mock session takes its model object from the faux provider, not from a `<provider>/<id>` lookup. Faux models cost 0
 - the faux provider's response queue is shared by every session and gives up one entry per model call; an empty queue answers with an error. So queue a response factory that puts itself back on every call, with a head start of several entries for concurrent sessions; never a fixed list. The factory picks its reply by the model's id:
 
@@ -860,7 +860,7 @@ Rows that are not experiments:
 
 ### Files a night writes
 
-Under the directory of `results_path`:
+Under the directory of `results_path`: `runs-langchain/<name>/`, or `runs-langchain/mock/<name>/` for a mock night:
 
 | path | content |
 |---|---|
@@ -1169,6 +1169,7 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | config | `min_efficiency_gain` | 0.10 |
 | config | `noise_margin` `min` / `max` | 0.002 / 0.005 |
 | config | slack a backend's maximum active time must leave | 10 min |
+| config | `results_path` is relative to; mock nights under | `runs-langchain/`; `runs-langchain/mock/` |
 | loop | smoke test | 7 tries, 5 min apart |
 | loop | A/A runs per night | at most 2 |
 | loop | repairs per round | 1 |

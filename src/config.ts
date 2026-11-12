@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
 
 /**
- * Where this build's nights write, under the checkout: its own folder, apart from the Inngest twin's `runs/`.
+ * Where this build's nights write, under the checkout: its own folder, apart from the Inngest twin's `runs-inngest/`. A config's `results_path` is relative to it.
  * Mock nights go to its `mock/` subfolder.
  */
 export const RUNS_DIR = "runs-langchain";
@@ -68,7 +68,7 @@ export interface NightConfig {
 	noise_margin: { min: number; max: number; fixed?: number; scale_by_replay: boolean };
 	lessons: LessonsMode;
 	seed?: string;
-	/** results.jsonl, relative to the checkout; its directory sits directly under runs-langchain/ or runs-langchain/mock/. */
+	/** results.jsonl, relative to the checkout: `runs-langchain/<name>/<file>` or `runs-langchain/mock/<name>/<file>`. The yaml gives it relative to `runs-langchain/`. */
 	results_path: string;
 }
 
@@ -196,6 +196,19 @@ function underRoot(root: string, abs: string, what: string): string {
 	return rel.split(sep).join("/");
 }
 
+/**
+ * A config's `results_path` is relative to the stack's runs folder (`<name>/<file>`), so one config serves every stack.
+ * Comes back relative to the checkout: `runs-langchain/<name>/<file>`, or `runs-langchain/mock/<name>/<file>` for a mock night.
+ */
+export function resultsUnderRuns(resultsPath: string, mock: boolean): string {
+	const where = `results_path ${resultsPath}`;
+	if (isAbsolute(resultsPath)) fail(`${where}: must be relative to ${RUNS_DIR}/, not absolute`);
+	const parts = resultsPath.split(/[\\/]/).filter((p) => p !== "" && p !== ".");
+	if (parts.includes("..")) fail(`${where}: must stay inside ${RUNS_DIR}/ (no \`..\`)`);
+	if (parts.length !== 2 || parts[0] === "mock") fail(`${where}: must be <name>/<file>, relative to ${RUNS_DIR}/ (e.g. datenorm-smoke/results.jsonl)`);
+	return [RUNS_DIR, ...(mock ? ["mock"] : []), ...parts].join("/");
+}
+
 /** Load a night config yaml, validate it, embed its parsed scenario. Paths come back relative to `root`. */
 export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 	const path = resolve(opts.cwd, file);
@@ -280,11 +293,7 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 	const lessons = lessonsRaw as LessonsMode;
 	if (lessons !== "off" && !spec.lessons) fail(`lessons: \`${lessons}\` needs a scenario that declares lessons; ${spec.name} has none`);
 
-	const resultsAbs = resolve(opts.cwd, str(raw, "results_path", path));
-	let results = underRoot(opts.root, resultsAbs, "results_path");
-	const parts = results.split("/");
-	if (parts.length !== 3 || parts[0] !== RUNS_DIR || parts[1] === "mock") fail(`results_path ${results}: its directory must sit directly under ${RUNS_DIR}/ (${RUNS_DIR}/<name>/<file>)`);
-	if (opts.mock) results = [RUNS_DIR, "mock", ...parts.slice(1)].join("/");
+	const results = resultsUnderRuns(str(raw, "results_path", path), opts.mock);
 
 	const config: NightConfig = {
 		scenario,

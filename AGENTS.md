@@ -10,7 +10,7 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 - **Decisions already made**: `docs/adr/`. Read the ones that touch your area before you change its design.
 - **End-to-end tests**: the `codeclimb-e2e` skill.
 - **Given inputs**: `scenarios/`, `configs/` and `docker/` are what the build runs on. Change them only when the user asks.
-- **Night output**: `runs-langchain/` (gitignored).
+- **Night output**: `runs-langchain/` (gitignored). A config's `results_path` is relative to it: `datenorm-smoke/results.jsonl` → `runs-langchain/datenorm-smoke/results.jsonl`; mock nights under `runs-langchain/mock/`.
 
 ## Tech stack
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { stringify } from "yaml";
-import { deadlineAt, loadNightConfig } from "./config.ts";
+import { deadlineAt, loadNightConfig, resultsUnderRuns } from "./config.ts";
 import { isValidNightId } from "./ids.ts";
 
 const ROOT = process.cwd();
@@ -20,14 +20,14 @@ const base = {
 	primary_metric: "accuracy",
 	thresholds: { accuracy: 1.01 },
 	budget_usd: { experiment: 1, night: 10 },
-	results_path: "runs-langchain/datenorm-smoke/results.jsonl",
+	results_path: "datenorm-smoke/results.jsonl",
 };
 
-function load(overrides: Record<string, unknown>, opts: { mock?: boolean } = {}) {
+function load(overrides: Record<string, unknown>, opts: { mock?: boolean; cwd?: string } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "cc-config-"));
 	const file = join(dir, "night.yaml");
-	writeFileSync(file, stringify({ ...base, ...overrides }));
-	return loadNightConfig(file, { cwd: ROOT, root: ROOT, mock: opts.mock ?? false });
+	writeFileSync(file, stringify({ ...base, ...overrides, scenario: join(ROOT, base.scenario) }));
+	return loadNightConfig(file, { cwd: opts.cwd ?? ROOT, root: ROOT, mock: opts.mock ?? false });
 }
 
 test("the given smoke config loads with its defaults and its scenario", () => {
@@ -72,11 +72,22 @@ test("a threshold of 0 or less is refused", () => {
 	assert.throws(() => load({ thresholds: {} }), /threshold/);
 });
 
-test("a results directory not directly under runs-langchain/ is refused", () => {
-	assert.throws(() => load({ results_path: "out/x/results.jsonl" }), /runs/);
-	// The Inngest twin's folder is not this build's.
-	assert.throws(() => load({ results_path: "runs/datenorm-smoke/results.jsonl" }), /runs-langchain/);
-	assert.throws(() => load({ results_path: "runs-langchain/a/b/results.jsonl" }), /runs/);
+test("results_path is relative to runs-langchain/, whatever the cwd", () => {
+	assert.equal(load({}, { cwd: tmpdir() }).results_path, "runs-langchain/datenorm-smoke/results.jsonl");
+	assert.equal(load({}, { cwd: tmpdir(), mock: true }).results_path, "runs-langchain/mock/datenorm-smoke/results.jsonl");
+	assert.equal(resultsUnderRuns("./graphrag/results.jsonl", false), "runs-langchain/graphrag/results.jsonl");
+});
+
+test("a results_path that is absolute, leaves runs-langchain/ or is not <name>/<file> is refused", () => {
+	assert.throws(() => load({ results_path: join(ROOT, "runs-langchain/datenorm-smoke/results.jsonl") }), /absolute/);
+	assert.throws(() => load({ results_path: "../runs-inngest/datenorm-smoke/results.jsonl" }), /\.\./);
+	assert.throws(() => load({ results_path: "a/../../x/results.jsonl" }), /\.\./);
+	assert.throws(() => load({ results_path: "a/b/results.jsonl" }), /<name>\/<file>/);
+	assert.throws(() => load({ results_path: "results.jsonl" }), /<name>\/<file>/);
+	// The mock folder is the loader's, never a config's.
+	assert.throws(() => load({ results_path: "mock/x/results.jsonl" }), /<name>\/<file>/);
+	// The old checkout-relative form now reads as runs-langchain/runs-langchain/...: refused.
+	assert.throws(() => load({ results_path: "runs-langchain/datenorm-smoke/results.jsonl" }), /<name>\/<file>/);
 });
 
 test("lessons on a scenario without lessons are refused", () => {
