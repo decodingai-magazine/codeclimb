@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0005 (2026-11-12)
 ---
 
 # One mode: LangGraph's dev server on the operator's machine

@@ -18,7 +18,7 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 - LangChain ecosystem; full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
     - Use the TypeScript pages, not the Python ones: the two APIs differ (Python's `retry_policy` is `retry` on a JS task)
     - LangGraph JS (`@langchain/langgraph`): the functional API (`entrypoint`, `task`, `interrupt`)
-    - Agent Server: `npm run server` (`langgraphjs dev`) serves the graphs in `langgraph.json` at http://127.0.0.1:2024. It has no hot reload: restart it after a code change. It runs one night at a time
+    - Agent Server: `npm run server` (`langgraphjs up`: the server container plus its own Postgres and Redis) serves the graphs in `langgraph.json` at http://127.0.0.1:8123. A code change needs `npm run server` again, which rebuilds the image. It runs one night at a time
     - LangSmith (`langsmith`): tracing and feedback only
 - Pi (`@earendil-works/pi-coding-agent`): the coder, the reviewer and the lessons sessions run on its SDK; full docs: https://github.com/earendil-works/pi
 - Docker: every sandbox is a local container, so Docker must be running for any night
@@ -29,11 +29,11 @@ The spec's "Platform facts" lists LangGraph and LangSmith behaviours already mea
 
 With `npm run server` running, use the local Agent Server REST API:
 
-- Health: `curl -s http://127.0.0.1:2024/ok`
-- Run a graph and wait: `curl -s -X POST http://127.0.0.1:2024/runs/wait -H 'content-type: application/json' -d '{"assistant_id":"<graph>","input":{...}}'`
-- Thread state: `curl -s http://127.0.0.1:2024/threads/<thread_id>/state`
-- Thread history: `curl -s -X POST http://127.0.0.1:2024/threads/<thread_id>/history -H 'content-type: application/json' -d '{}'`
-- Runs on a thread: `curl -s http://127.0.0.1:2024/threads/<thread_id>/runs`
+- Health: `curl -s http://127.0.0.1:8123/ok`
+- Run a graph and wait: `curl -s -X POST http://127.0.0.1:8123/runs/wait -H 'content-type: application/json' -d '{"assistant_id":"<graph>","input":{...}}'`
+- Thread state: `curl -s http://127.0.0.1:8123/threads/<thread_id>/state`
+- Thread history: `curl -s -X POST http://127.0.0.1:8123/threads/<thread_id>/history -H 'content-type: application/json' -d '{}'`
+- Runs on a thread: `curl -s http://127.0.0.1:8123/threads/<thread_id>/runs`
 
 Output is JSON. Use jq to filter.
 A night's own state is in its files under `runs-langchain/`, not in the server: read `nights/<id>/` first.
