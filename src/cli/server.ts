@@ -4,8 +4,8 @@
 //   npm run server:stop    stop the stack; Postgres keeps every thread (no -v)
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir, platform, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { METER_NETWORK } from "../meter/relay.ts";
@@ -58,7 +58,9 @@ async function up(): Promise<void> {
 
 	const shimDir = join(dirname(fileURLToPath(import.meta.url)), "server-docker");
 	const cli = join(root, "node_modules", ".bin", "langgraphjs");
-	// `up` swallows a failed build or a container that exits, and its own wait is 10 s: the /ok poll below decides.
+	// `up` swallows a failed build or a container that exits, and its own wait is 10 s: the pass-through records the
+	// compose status, and the /ok poll below decides the rest.
+	const upStatus = join(mkdtempSync(join(tmpdir(), "codeclimb-server-")), "status");
 	const r = spawnSync(cli, ["up", "--port", String(PORT), "--no-pull", "--wait"], {
 		cwd: root,
 		stdio: "inherit",
@@ -69,9 +71,12 @@ async function up(): Promise<void> {
 			CODECLIMB_HOST_ROOT: root,
 			CODECLIMB_HOST_GIT_DIR: gitDir,
 			CODECLIMB_HOST_PI_AUTH: piAuth,
+			CODECLIMB_UP_STATUS: upStatus,
 		},
 	});
 	if (r.error) die(`langgraphjs up failed: ${r.error.message}`);
+	const status = existsSync(upStatus) ? readFileSync(upStatus, "utf8").trim() : "missing";
+	if (status !== "0") die(`docker compose up failed (status ${status}); see the output above`);
 
 	const deadline = Date.now() + READY_DEADLINE_MS;
 	while (!(await healthy())) {

@@ -8,8 +8,11 @@ real="${CODECLIMB_REAL_DOCKER:?CODECLIMB_REAL_DOCKER is not set}"
 if [ "${1:-}" = "compose" ]; then
 	for a in "$@"; do
 		if [ "$a" = "-" ]; then
-			sed -E 's/^([[:space:]]*-[[:space:]]*)"?([0-9]+):8000"?[[:space:]]*$/\1"127.0.0.1:\2:8000"/' | "$real" "$@"
-			exit $?
+			status=0
+			sed -E 's/^([[:space:]]*-[[:space:]]*)"?([0-9]+):8000"?[[:space:]]*$/\1"127.0.0.1:\2:8000"/' | "$real" "$@" || status=$?
+			# up ignores this status; server reads it, so a failed build is not hidden by an old container still answering.
+			if [ -n "${CODECLIMB_UP_STATUS:-}" ]; then echo "$status" > "$CODECLIMB_UP_STATUS"; fi
+			exit "$status"
 		fi
 	done
 fi
