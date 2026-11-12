@@ -100,6 +100,30 @@ class Assemble(unittest.TestCase):
         self.assertEqual(record["spec_sha256"], assemble.sha256_bytes((out / "SPEC.md").read_bytes()))
         self.assertEqual(record["pile_sha256"], assemble.tree_sha256(ROOT / "specs/inngest/tickets"))
 
+    def test_langchain_app(self):
+        out = self.tmp / "task/environment/app"
+        assemble.assemble("langchain", out)
+        given = ROOT / "specs/langchain/given"
+        self.assertEqual(
+            tree(out) - {f"{s}/{rel}" for s in assemble.SHARED for rel in tree(ROOT / s)},
+            {rel for rel in tree(given) if not rel.startswith("node_modules/")} | {"SPEC.md", "E2E.md", "AGENTS.md"},
+        )
+        self.assertIn("langgraph.json", tree(out))
+        # The build spec has the harness write these.
+        self.assertFalse((out / ".dockerignore").exists())
+        self.assertNotIn("[[", (out / "SPEC.md").read_text())
+
+    def test_night_configs_identical_on_both_stacks(self):
+        apps = {}
+        for stack in assemble.STACKS:
+            apps[stack] = self.tmp / stack / "environment/app"
+            assemble.assemble(stack, apps[stack])
+        configs = tree(apps["inngest"] / "configs")
+        self.assertEqual(configs, tree(apps["langchain"] / "configs"))
+        for rel in configs:
+            a, b = apps["inngest"] / "configs" / rel, apps["langchain"] / "configs" / rel
+            self.assertTrue(filecmp.cmp(a, b, shallow=False), rel)
+
     def test_rebuild_is_identical_and_replaces_stale_files(self):
         out = self.tmp / "task/environment/app"
         first = assemble.assemble("inngest", out)

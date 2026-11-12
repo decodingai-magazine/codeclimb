@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# typescript
+*.tsbuildinfo
+
+# env
+.env*
+!.env.example
+
+# logs
+npm-debug.log*
+
+# misc
+.DS_Store
+
+# LangGraph dev server state
+.langgraph_api/
+
+# codeclimb night runs (experiment repo, sessions, results)
+runs-langchain/
+generated/
+__pycache__/
+.venv/
+
+# Next.js app build output
+web/.next/
+web/next-env.d.ts
