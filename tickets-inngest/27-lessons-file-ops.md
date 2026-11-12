@@ -1,4 +1,4 @@
-# 26: Lessons file: format, operations and gates
+# 27: Lessons file: format, operations and gates
 
 **What to build:** A scenario's `lessons.md` can be parsed into numbered bullets, written back in the one fixed layout, and changed by `add`, `edit` and `drop` operations that code applies, so an untouched lesson stays byte for byte. Every gate on what a coder would read is enforced, and rejected operations are reported with their reason. No model is involved here.
 

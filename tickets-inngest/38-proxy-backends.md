@@ -1,10 +1,10 @@
-# 37: Proxy backends: OpenRouter and Pi
+# 38: Proxy backends: OpenRouter and Pi
 
 **What to build:** On a real-model night the proxy forwards a program's calls upstream: `openrouter/<id>` models straight to OpenRouter with the worker's key, other chat models through Pi's model runtime, embeddings to OpenRouter or to the two priced OpenAI models. It charges what each call cost, treats the failure cases as the spec says, and turns a credit signal into a credit stop. Both backends sit behind the upstream interface of ticket 15; a mock night keeps the mock upstream.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Metering proxy", "Pi facts found while building", "Pause for credits", "Deployment and environment", "Every number in one place"
 
-**Blocked by:** 15 (Metering proxy: ledgers, routes, refusals and mock answers); 20 (Done signal: both mock nights pass the end-to-end checks)
+**Blocked by:** 15 (Metering proxy: ledgers, routes, refusals and mock answers); 20 (Check table: mock nights 1 to 3 as one repeatable check)
 
 **Status:** ready-for-agent
 
@@ -13,4 +13,4 @@
 - [ ] An upstream failure answers 502 to the program and its cost is still charged; a credit signal fires the ledger's credit-stop callback, after which the ledger refuses with 402
 - [ ] The proxy picks the mock upstream on a mock night and these backends otherwise
 - [ ] No criterion needs a paid call: provider and platform paths are tested against fakes
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them

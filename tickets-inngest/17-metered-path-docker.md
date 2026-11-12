@@ -1,8 +1,8 @@
-# 17: Metered nights on Docker: relay, meter variables, both ledgers, cost metrics
+# 17: Metered nights on Docker: relay, ledgers, cost metrics; mock nights 1 and 3 pass
 
-**What to build:** On a night with `allowed_models`, sandboxes join the `cc-meter` network and reach the proxy through the shared relay container. The coder's shell gets a dev ledger capped by the experiment's budget; each evaluation gets its own ledger capped by the night's budget left. The evaluation's calls land in `meter.jsonl` and become the cost metrics. The path is checked before work starts and after each stage's run, so an outage never becomes a score. An unmetered night gets no token and stays on the default bridge.
+**What to build:** On a night with `allowed_models`, sandboxes join the `cc-meter` network and reach the proxy through the shared relay container. The coder's shell gets a dev ledger capped by the experiment's budget; each evaluation gets its own ledger capped by the night's budget left. The evaluation's calls land in `meter.jsonl` and become the cost metrics. The path is checked before work starts and after each stage's run, so an outage never becomes a score. An unmetered night gets no token and stays on the default bridge. The loop also gains the `plateau` stop, with its count of rounds without a keep, so that the two capitals nights of the done signal pass here: night 1 and the plateau night, night 3.
 
-**Spec sections** (`docs/codeclimb-spec-inngest.md`): "Metering proxy", "Evaluator", "Standard metrics", "Coder", "Prompt", "End of an experiment", "Known gaps"
+**Spec sections** (`docs/codeclimb-spec-inngest.md`): "Goal and done signal", "Metering proxy", "Evaluator", "Standard metrics", "Coder", "Prompt", "End of an experiment", "Stops", "Known gaps"
 
 **Blocked by:** 09 (Coder experiment: from the prompt to one commit); 10 (Evaluator: an unmetered evaluation with latency metrics); 11 (Tracer night: one mock round on the Inngest dev server); 15 (Metering proxy: ledgers, routes, refusals and mock answers)
 
@@ -15,5 +15,7 @@
 - [ ] Coder dev ledger `<exp>-dev`: a new token per Pi attempt, spend carried over, cap = what is left of `budget_usd.experiment`, written as `meter-dev.jsonl`, counted as `dev_usd`, never in cost metrics; the coder's budget stop reads `coder_usd + dev_usd`
 - [ ] Evaluation ledger: opened after the environment build with cap = the night's budget left, closed in "Close" also on failure, written as `meter.jsonl`, summed into `program_usd` and the cost metrics; a credit stop ends the stage with no score and is returned as a credit stop
 - [ ] The coder prompt carries the metered-night rules (endpoint variables, models, budget, the 402, the free replay after 5 seconds, models only through this endpoint) only on a metered night
-- [ ] End-to-end, mock, dev server: `npm run run-night -- --config configs/capitals-smoke.yaml --mock` prints `done`; `evals/*/meter.jsonl` lists the program's calls, none with `error`; `done.json` has `spend_usd: 0`; the night keeps nothing; no `cc-<id>` container remains while `cc-meter-relay` may
+- [ ] The parent counts the rounds in a row that kept nothing, and the stop check at the start of a round ends the night with `plateau` when the count reaches `plateau_rounds`, after `max_rounds` in the order of "Stops"; `plateau_rounds: 0` never stops
+- [ ] Night 1, with the dev server and the worker up: `npm run run-night -- --config configs/capitals-smoke.yaml --mock` prints `done` with `stop_reason` `max_rounds`; `evals/*/meter.jsonl` lists the program's calls, none with `error`; `done.json` has `spend_usd: 0`; capitals scores 0 and keeps nothing; no `cc-<id>` container remains while `cc-meter-relay` may
+- [ ] Night 3: `npm run run-night -- --config configs/e2e/plateau.yaml --mock` prints `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left
 - [ ] `datenorm-smoke --mock` still passes the checks of ticket 11 and gets no token

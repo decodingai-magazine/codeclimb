@@ -1,10 +1,10 @@
-# 32: Export: a kept commit as files, as a git repository, or pushed to a remote
+# 33: Export: a kept commit as files, as a git repository, or pushed to a remote
 
 **What to build:** `npm run export` writes a chosen experiment as plain files, as a git repository whose history is the kept lineage, or pushes that lineage to a remote branch. The worker API offers the same as downloads and as server-side exports. Nothing is ever force-pushed and git never prompts.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Export", "Worker API", "Experiment repository"
 
-**Blocked by:** 31 (Worker API: read nights, stop, resume, continue)
+**Blocked by:** 32 (Worker API: read nights, stop, resume, continue)
 
 **Status:** ready-for-agent
 

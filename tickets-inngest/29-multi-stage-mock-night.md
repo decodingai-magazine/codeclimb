@@ -1,10 +1,10 @@
-# 28: Multi-stage mock night: graphrag-smoke passes its checks
+# 29: Multi-stage mock night: graphrag-smoke, mock night 7, passes its checks
 
-**What to build:** The graphrag scenario runs end to end on mock models: three stages, a metered program, stage `files` uploaded into the evaluator's sandbox, host commands run through `uv`, the repository check, the leak scan, a repair, and a lessons run at the end. The done-signal check of ticket 20 gains the third night with its own checks. This ticket adds little code of its own; it is where the pieces first meet a multi-stage scenario, and it fixes what that shows.
+**What to build:** The graphrag scenario runs end to end on mock models: three stages, a metered program, stage `files` uploaded into the evaluator's sandbox, host commands run through `uv`, the repository check, the leak scan, a repair, and a lessons run at the end. This is night 7 of the done signal, with its own checks. This ticket adds little code of its own; it is where the pieces first meet a multi-stage scenario, and it fixes what that shows.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Goal and done signal", "What you get, what you build", "How a scenario is loaded", "Splits", "Stage reports become metrics", "Evaluator", "Standard metrics", "Repair", "Lessons across nights", "Metering proxy", "Mock mode", "Files a night writes"
 
-**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks); 24 (Repair: one fix attempt for a commit that failed before scoring); 27 (Lessons distillation: what a night learned reaches the next night)
+**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check); 25 (Repair: one fix attempt for a commit that failed before scoring); 28 (Lessons distillation: what a night learned reaches the next night)
 
 **Status:** ready-for-agent
 
@@ -23,4 +23,4 @@
 - [ ] `noise.json` and a `noise` row exist only if a round was kept
 - [ ] Within a minute of `done`, `lessons/<id>-r<last round>/` holds `lessons.md`, `changes.md` and `proposal.json` with an empty `ops` list and no `applied: true`; the scenario's `lessons.md` is unchanged
 - [ ] These checks hold whether or not a dev stage fails and a round ends in `error` with a repair `e1`; the check never asserts that a dev evaluation failed or passed
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"; `npm run typecheck` and `npm test` pass
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them; `npm run typecheck` and `npm test` pass

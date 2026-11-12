@@ -1,10 +1,10 @@
-# 27: Lessons distillation: what a night learned reaches the next night
+# 28: Lessons distillation: what a night learned reaches the next night
 
 **What to build:** A finished or stopped night sends the lessons event; `distill-lessons`, one at a time per scenario, reads the rounds past the last applied proposal, asks the lessons model for operations, runs the gates with one rewrite and up to two prune rounds, and writes the proposal folder. With `lessons: apply` it also writes the scenario's `lessons.md`. The same can be done by hand from the command line.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Lessons across nights", "Events", "Cleanup", "Durable runtime on Inngest", "Mock mode", "Files a night writes", "Known gaps"
 
-**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks); 21 (Hard stop and cleanup: every dead night ends in stop.json); 26 (Lessons file: format, operations and gates)
+**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check); 21 (Hard stop and cleanup: every dead night ends in stop.json; mock night 4 passes); 27 (Lessons file: format, operations and gates)
 
 **Status:** ready-for-agent
 
@@ -18,4 +18,4 @@
 - [ ] `npm run lessons -- distill --config … --night ID [--apply]` and `npm run lessons -- apply --config … --night ID` work by hand
 - [ ] End-to-end, mock, dev server, on a scenario and config that declare lessons (the given ones if any does, else test-only copies (inside the checkout but outside `scenarios/` and `configs/`, gitignored, each with its own name and a `results_path` directly under `runs/`)): a finished mock night produces a proposal folder with an empty op list and no `applied: true`, and the scenario's `lessons.md` is unchanged
 - [ ] Kept as the reference has it, do not fix: a continued night stopped a second time reuses `lessons-<night>-stop`
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them

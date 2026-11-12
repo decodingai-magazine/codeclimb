@@ -12,7 +12,7 @@
 - Every ticket ends with `npm run typecheck` and `npm test` passing, plus the checks it lists.
 - "Not yet" in a ticket lists behaviour a later ticket adds. Leave it out; do not stub it with guesses.
 - Tickets 01 to 44 are `ready-for-agent` and need no paid call: the real-model paths (tickets 24, 42 and 43) are verified with stubbed providers; whole nights run with `--mock`.
-- Ticket 45, nights 8 to 11 of "Goal and done signal" (real models, paid), is `ready-for-human`: each night runs only with the operator's go-ahead for that run, after its ceiling was named. Ticket 44, the final acceptance, does not wait for it.
+- Ticket 45, night 8 of "Goal and done signal" (`capitals-smoke` on real models, paid), is `ready-for-human`: it runs only with the operator's go-ahead for that run, after its ceiling was named. Ticket 44, the final acceptance, does not wait for it.
 - The order follows the spec's "Suggested build order", cut so that a mock night runs at ticket 15 and nights 1 to 3 of the done signal pass at ticket 25. Tickets 26 to 43 are gated on ticket 25, directly or through a blocker (all but ticket 33, the pure lessons file), and those that touch the loop rerun its check.
 
 ## Phases
@@ -99,7 +99,7 @@
 42. **Proxy backends: OpenRouter and Pi** (`42-proxy-backends-openrouter-and-pi.md`) — blocked by: 10, 20, 25, 29. Real upstream calls for chat, embeddings, decisions and rerank, with their pricing and failure rules.
 43. **Real-model coder sessions and the web research guard** (`43-real-model-coder-sessions-and-the-web-research-guard.md`) — blocked by: 12, 25. Provider models and credentials for Pi sessions; `pi-web-access` behind the guard extension.
 44. **Final acceptance: the free end-to-end suite and the fixed contracts** (`44-final-acceptance-free-end-to-end-suite.md`) — blocked by: every ticket from 01 to 43. The seven mock nights of the done signal, one after the other, on a fresh server; then the audit of the fixed contracts, the constants and the known gaps.
-45. **Paid nights 8 to 11: real models, with the operator's go-ahead** (`45-paid-nights-8-to-11.md`) — blocked by: 44. The four paid nights of the done signal on real models, each run only with the operator's go-ahead and under its ceiling.
+45. **Paid night 8: capitals-smoke on real models, with the operator's go-ahead** (`45-paid-night-8-capitals-smoke.md`) — blocked by: 44. The one paid night of the done signal, `capitals-smoke` on real models, run only with the operator's go-ahead and under its ceiling.
 
 ## Critical path
 
@@ -109,8 +109,8 @@
 
 - "Suggested build order" puts mock nights 1 and 2 at its step 5 and the noise run and send-backs at step 7, yet the done signal's table for those nights requires both. Tickets 15 to 25 use the order the table forces: review, notes and send-backs, then metering (night 1), then the noise run (night 2).
 - The spec calls `package.json`, `langgraph.json` and the compose override given and gates a change to them on the operator's go-ahead. A from-scratch rebuild has to create or rewrite them; ticket 01 says so.
-- `build:dataset`, `build:dataset:hard` and `build:scenario:overfit` are fixed script names whose behaviour the spec never states. Ticket 01 wires them to whatever the scenarios' own `scripts/` provide.
+- `build:dataset` and `build:dataset:hard` are fixed script names whose behaviour the spec never states. Ticket 01 wires them to whatever the scenarios' own `scripts/` provide.
 - Pause and resume, continue, seed, rescore, applied lessons, the watchdog, the worker API, export and the app have no named end-to-end check. Their tickets define checks on mock nights or with a faked Agent Server client.
-- `deadline` and `thresholds` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3; `budget` has the paid night 10). Ticket 24 checks them on mock nights with temporary config copies.
+- `deadline`, `budget`, `tokens` and `thresholds` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3). Ticket 24 checks `deadline` and `thresholds` on mock nights with temporary config copies, and `budget` and `tokens` in unit tests with fabricated counters.
 - Night 4 is started with `--no-wait`, yet its check says `run-night` prints `stopped`; the spec does not say which command prints it. Ticket 26 reads it as: following the night prints `stopped`.
 - The spec points at `GLOSSARY.md`, `docs/adr/` and the end-to-end skill as given; no ticket depends on them.

@@ -11,7 +11,7 @@ Creating or rewriting `package.json`, `tsconfig.json`, `.env.example`, `langgrap
 - "Durable runtime on LangGraph": the Graphs table (names only)
 - "Every number in one place": ports, server image, server
 
-**Not yet:** any night logic; the `api`, `run-night`, `validate-results`, `export`, `lessons`, `dev` and `build:app` scripts may be declared but their commands land in later tickets. `build:dataset`, `build:dataset:hard` and `build:scenario:overfit` call the given scenarios' own scripts; the spec does not describe them further.
+**Not yet:** any night logic; the `api`, `run-night`, `validate-results`, `export`, `lessons`, `dev` and `build:app` scripts may be declared but their commands land in later tickets. `build:dataset` and `build:dataset:hard` call the given scenarios' own scripts; the spec does not describe them further.
 
 **Blocked by:** None (can start immediately)
 

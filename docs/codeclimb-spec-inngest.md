@@ -10,17 +10,23 @@
 
 Build the application so that a **night** (one run of the loop) works end to end: durable functions, sandboxes, coding-agent sessions, commits, evaluations, the review, the test evaluation and the result files.
 
-You are done when the end-to-end tests pass. They run three mock nights, one after the other, on the local dev server with Docker sandboxes:
+You are done when the end-to-end tests pass. They run on the local dev server (`npm run dev:inngest`) and one worker (`npm run worker`), with Docker sandboxes and mock models, so they cost nothing ([[#Mock mode]]). Run one night at a time, each under a fresh night id: a start with a used id starts nothing ([[#Durable runtime on Inngest]]). Seven nights, one after the other:
 
-- `npm run run-night -- --config configs/capitals-smoke.yaml --mock`: the program calls a model through the metering proxy
-- `npm run run-night -- --config configs/datenorm-smoke.yaml --mock`: two rounds; round 1 is kept, a noise run follows, the review hands its hypothesis to round 2; no metering
-- `npm run run-night -- --config configs/graphrag-smoke.yaml --mock`: the multi-stage night: two rounds on a scenario with three stages (`extraction`, `graph`, `retrieval`), a metered program, a repository check, host commands through `uv`, a repair, and lessons at the end
+| # | night | what it proves |
+|---|---|---|
+| 1 | `npm run run-night -- --config configs/capitals-smoke.yaml --mock` | The program calls a model through the metering proxy |
+| 2 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock` | Two rounds: round 1 is kept, a noise run follows, the review hands its hypothesis to round 2; no metering. It ends on `max_rounds` after exactly 2 rounds: the iteration cap |
+| 3 | `npm run run-night -- --config configs/e2e/plateau.yaml --mock` | The plateau cap: capitals keeps nothing, so with `plateau_rounds: 1` the night ends on `plateau` after round 1 |
+| 4 | Night 2 again with `--no-wait`, then `npm run run-night -- stop --night <id>` while round 1 runs | A hard stop mid-round |
+| 5 | Night 2 again with `--no-wait`; once round 2 has started, kill the worker (the process `npm run worker` started, with its children; the dev server keeps running), then `npm run worker` again | Crash resume |
+| 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
+| 7 | `npm run build:image:graphrag`, then `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | The multi-stage night: two rounds on a scenario with three stages (`extraction`, `graph`, `retrieval`), a metered program, a repository check, host commands through `uv`, a repair, and lessons at the end |
 
-Each night writes to `runs/mock/<config-name>/`. For a night `<id>` of `capitals-smoke` or `datenorm-smoke`, all of these must hold:
+Nights 1, 2, 3 and 6 write to `runs/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
-| `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` | [[#CLI]], [[#Stops]] |
+| `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3) | [[#CLI]], [[#Stops]] |
 | `nights/<id>/done.json` exists; `stop.json` and `pause.json` don't | [[#Files a night writes]] |
 | `npm run validate-results -- runs/mock/<name>/results.jsonl` passes | [[#Result row]] |
 | `results.jsonl` has a row per experiment of every round, plus a `test` row | [[#Round loop]] |
@@ -35,9 +41,18 @@ Each night writes to `runs/mock/<config-name>/`. For a night `<id>` of `capitals
 | `capitals-smoke`: `evals/*/meter.jsonl` lists the program's calls, none with `error` | [[#Metering proxy]] |
 | `docker ps` shows no `cc-<id>` container | [[#Cleanup]] |
 
-The third night, `graphrag-smoke`, has its own checks, because a dev evaluation of it may fail. As built, it always does: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+Nights 3 to 6 add:
 
-From the table above, these rows hold unchanged: `run-night` prints `done`, `done.json`, `validate-results`, the mock commit of `r1-e0`, `code-state.json` and the session file, the reviews, `decision_reason`, `spend_usd: 0` and `docker ps`. These replace the others:
+| night | check | contract it depends on |
+|---|---|---|
+| 3 | `run-night` prints `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left | [[#Stops]] |
+| 4 | Stop once `exps/<id>-r1-e0/` exists. Within 30 s of the stop: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left. A `run-night` that follows the night prints `stopped` | [[#Cleanup]] |
+| 5 | Kill once `exps/<id>-r2-e0/` exists, so round 1's row is in `results.jsonl`. If the night finishes before that happens, nothing is killed: run night 5 again. Record round 1's `code-state.json` (sha256 and mtime) and follow `docker events` for container creates across the kill. Start the worker again and nothing else: no stop, no manual resume. The step that was running is retried by itself about 2 minutes after the kill, when its lease expires. Then the night finishes: `done.json` exists, every `eval_id` is in `results.jsonl` once, round 1's `code-state.json` is unchanged (so round 1's coder did not run again), and no `cc-<id>-r1-` sandbox is created after the kill (round 1's steps are memoized, not run again). Only the step running at the kill is retried: a coder step finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone. | [[#Crash and resume]], [[#Platform facts found while building]] |
+| 6 | Every check of the first table; and `exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one | [[#Mock mode]], [[#End of an experiment]] |
+
+Night 7, `graphrag-smoke`, writes to `runs/mock/graphrag-smoke/` and has its own checks, because a dev evaluation of it may fail. As built, it always does: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+
+From the first table, these rows hold unchanged: `run-night` prints `done`, `done.json`, `validate-results`, the mock commit of `r1-e0`, `code-state.json` and the session file, the reviews, `decision_reason`, `spend_usd: 0` and `docker ps`. These replace the others:
 
 | check | contract it depends on |
 |---|---|
@@ -55,16 +70,22 @@ From the table above, these rows hold unchanged: `run-night` prints `done`, `don
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though the mock nights don't reach them: real-model nights, stop, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec.
+Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec. One paid end-to-end test runs on real models and spends money. Run it only when the operator says so for that run, and name its ceiling first. It needs provider credentials and writes to `runs/<results folder>/`, with no `mock` in the path:
+
+| # | night | ceiling | passes when |
+|---|---|---|---|
+| 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $0.50 | `done`; a `test` row; `spend_usd` above 0 and at most 0.50; `meter.jsonl` shows real calls |
+
+The paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
 
 ## What you get, what you build
 
 Given, unchanged by you:
 
 - `scenarios/<name>/`: `datenorm`, `datenorm-hard`, `capitals`, `graphrag`. Each holds its manifest, starter repo, agent spec, gold data, evaluators and scripts
-- `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`
+- `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`; and `configs/e2e/plateau.yaml` for the end-to-end tests
 - credentials: one `.env` (gitignored, from `.env.example`) holding the provider keys; Pi's `auth.json`
-- Inngest skills, MCP servers and docs; Pi's docs; the end-to-end test instructions
+- Inngest skills, MCP servers and docs; Pi's docs; the end-to-end test instructions (the nights of [[#Goal and done signal]] as a procedure)
 - comments in the pack that name files you don't have (a `docs/` page, a source path) are leftovers: this spec replaces them
 
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
@@ -222,9 +243,9 @@ Validation at parse:
 
 | command | does |
 |---|---|
-| `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--direction TEXT] [--rounds N] [--no-wait] [--mock]` | Starts a night and follows it |
+| `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--direction TEXT] [--rounds N] [--no-wait] [--mock [--mock-offline N]]` | Starts a night and follows it |
 | `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` | More rounds on an ended night; default: the newest ended night under the config's results |
-| `run-night stop --night ID` | Hard stop |
+| `run-night stop --night ID` | Hard stop: sends the stop event with reason `manual` |
 | `run-night resume --night ID` | Ends a pause for credits |
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>` from local time. A valid id is 1 to 48 letters, digits or hyphens, not starting with a hyphen
@@ -249,6 +270,7 @@ Validation at parse:
 | lessons | A JSON object with an empty `ops` list |
 - program calls get canned answers at zero cost: chat `mock`, embeddings `[1, 0, 0, 0]` per input, decisions `{}`, rerank every score 0
 - skipped: the model checks, the round-start smoke test, web research (it would reach the real web); lessons are never applied
+- `--mock-offline N` (only with `--mock`) imitates a lost connection. The coder's model calls number 2 to N+1 of the night's first experiment are answered as failed calls: an assistant message with stop reason `error` and the error text `fetch failed`. Every other call is answered as above. The number travels in the start event
 
 ## Experiment lifecycle
 
@@ -569,6 +591,7 @@ Problem: coders stopped at about half their time, with open tasks or no measurem
 | `cancelled` | the night was stopped |
 
 - every stop but `cancelled` commits: partial work is still a result. `cancelled` destroys the sandbox and fails the step
+- a turn that ends on a failed model call that is not a credit error (a lost connection, after Pi's own retries) is a stop like any other: the send-back rules apply, so the session carries on once calls succeed again. `agent_error` is only for a prompt call that threw
 - before the commit the worker reads from the sandbox: `/tmp/notes.md` (cut to 3,000 characters), `/tmp/tasks.json` and `/tmp/train-score.json` (saved under `exps/<exp>/`)
 - commit: the sandbox's `.git` is replaced, the tree is committed once on the parent commit (squashing whatever the coder committed), exported as a git bundle and imported as `refs/exp/<exp>`. Message: `<exp id>: <hypothesis>`. In order: the parent's git bundle, uploaded at create, stays in the sandbox outside `/repo`; delete `/repo/.git`; start a new repository on `main`; fetch the parent from that bundle and soft-reset to it; add everything (so `.gitignore` applies); commit, an empty commit allowed, as `codeclimb <codeclimb@localhost>`; bundle `main`; the host reads the bundle and force-fetches `main` into the experiment's ref
 - hypothesis recorded: the reviewer's if the round had one, else the last `APPROACH` line of the closing message, backticks and asterisks stripped, cut to 300 characters. With no such line: the closing message's last non-empty line, else `(no summary)`
@@ -841,7 +864,7 @@ Source of truth is git plus `results.jsonl`. The runtime's traces and scores mir
 
 | event | data | sent by |
 |---|---|---|
-| `codeclimb/night.start` | `night_id`, `config`, optional `continue` (`rescore`, optional `direction`), optional `direction` (a new night's; never beside `continue`) | CLI, API (continue) |
+| `codeclimb/night.start` | `night_id`, `config`, optional `continue` (`rescore`, optional `direction`), optional `direction` (a new night's; never beside `continue`), optional `mock_offline` (a mock night's) | CLI, API (continue) |
 | `codeclimb/night.stop` | `night_id`, optional `reason` | CLI, API, the failure and cancel handlers |
 | `codeclimb/night.resume` | `night_id` | CLI, API |
 | `codeclimb/night.finished` (the lessons event) | `night_id`, `scenario`, `config` | the night at its end; the stop cleanup. Only when lessons are on |
@@ -1057,7 +1080,7 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 2. Experiment repository, the sandbox interface, the Docker backend, bundle transfer
 3. Pi sessions with sandbox tools, mock models, the coder with its end-of-experiment commit
 4. Evaluator with standard metrics; the metering proxy with the relay and the replay cache
-5. The night loop on the dev server: children, record, review, notes, test eval, `done.json`; then the first two mock nights
-6. Stop, cleanup, crash resume, pause and resume
-7. Noise run, repair, send-backs, trajectory, continue, seed, rescore, lessons; then the third mock night
+5. The night loop on the dev server: children, record, review, notes, test eval, `done.json`; then mock nights 1 and 2
+6. Stop, cleanup, crash resume, pause and resume; then mock nights 3 to 6
+7. Noise run, repair, send-backs, trajectory, continue, seed, rescore, lessons; then mock night 7
 8. Worker API, app, export, tracing

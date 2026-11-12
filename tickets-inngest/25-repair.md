@@ -1,10 +1,10 @@
-# 24: Repair: one fix attempt for a commit that failed before scoring
+# 25: Repair: one fix attempt for a commit that failed before scoring
 
 **What to build:** When an experiment has a commit with changed files but `check` errors or a failed evaluation (not a credit stop), the loop records the failed attempt and starts `e1` from the failed commit with the masked errors and a fix-only prompt. `e1` is decided against the same checkpoint and stands for the round.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Repair", "Round loop", "Keep rule", "Prompt", "Ids", "Notes, trajectory and rejected diffs", "Known gaps"
 
-**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks)
+**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check)
 
 **Status:** ready-for-agent
 
@@ -15,4 +15,4 @@
 - [ ] In a repaired round the log's last row stands for the round
 - [ ] End-to-end, mock, dev server: a scenario and config from test-only copies (inside the checkout but outside `scenarios/` and `configs/`, gitignored, each with its own name and a `results_path` directly under `runs/`) whose `check` reports an error for the mock commit (or whose program fails once) produces rows `r1-e0` with `error` and `r1-e1`, two notes, and one review; the night still prints `done`
 - [ ] Kept as the reference has it, do not fix: the repair's leak scan covers only the lines `e1` adds over `e0`
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them

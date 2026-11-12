@@ -1,10 +1,10 @@
-# 25: Continue: more rounds on an ended night, with an operator's direction
+# 26: Continue: more rounds on an ended night, with an operator's direction
 
 **What to build:** An operator can add rounds to a night that finished or was stopped. The sender reopens the night's files before the start event goes out, so the night reads as running at once; the continued run rebuilds its state from the rows, reviews, notes and `noise.json`, numbers its rounds on, and ends with its own test evaluation. A direction, on a continued or a new night, reaches every coder and reviewer after masking.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Continue, seed and rescore", "CLI", "Events", "Init", "Prompt", "Reviewer", "Files a night writes"
 
-**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks); 21 (Hard stop and cleanup: every dead night ends in stop.json)
+**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check); 21 (Hard stop and cleanup: every dead night ends in stop.json; mock night 4 passes)
 
 **Status:** ready-for-agent
 
@@ -17,4 +17,4 @@
 - [ ] End-to-end, mock, dev server: after a finished `datenorm-smoke --mock` night, `run-night continue --config configs/datenorm-smoke.yaml --rounds 1 --direction "try X"` follows the new round (it does not print `done` at its first poll), ends with `done`, leaves `done-r2.json` beside a new `done.json` with `rounds: 3`, a second `test` row, and round 3's coder prompt holds the direction
 - [ ] A night that ran with `--mock` continues on mock models and stays under `runs/mock/`, from the CLI and later from the API; the spec's `continue` syntax names no `--mock`, so the mechanism is the builder's choice (a flag, or reading the night's saved config) and is documented
 - [ ] End-to-end: a mock night stopped as soon as round 2's `code-state.json` appears and then continued reruns that round from scratch, with the old round's files under `unfinished/`
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them

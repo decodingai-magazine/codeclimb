@@ -4,7 +4,7 @@
 - this file: everything needed to build CodeClimb from scratch on the LangChain stack: LangGraph JS, the Agent Server (the self-hosted server `langgraphjs up` starts, with its own Postgres and Redis), LangSmith tracing and feedback, Docker sandboxes. It states architecture, contracts, features and numbers; it holds no code
 - status: built on the `langgraphjs up` server, moved from LangGraph's dev server on 2026-11-12 (decided in issue #26 after the go/no-go spike #27; the seven free end-to-end nights pass on it). Derived from the Inngest twin, which is built ([[codeclimb-spec-inngest|codeclimb-spec-inngest]], commit `e384bb5`). The platform facts below were measured on the pinned packages with a throwaway graph, and are stated as facts in [[#Platform facts]]. The build tickets, #20 to #32 included, are closed; what they left unmeasured or undecided is listed in [[#Open points for the build]]
 - use: handed to a coding agent that builds the whole application alone, with zero human input (the layer-2 benchmark of [[codeclimb-eval-spec|codeclimb-eval-spec]])
-- first build: on the `langchain` branch of the codeclimb repo, from this file alone (the repo holds a copy at `docs/codeclimb-spec-langchain.md`; change both together). The repo also gives `GLOSSARY.md`, `docs/adr/0001` to `0005` (0001, superseded: why the dev server; why steps own their abort signal; why one trace per experiment; why Docker only; 0005: why `langgraphjs up`) and the end-to-end skill `.claude/skills/codeclimb-e2e/SKILL.md`; all three repeat what this file says. Run the free end-to-end nights as the build reaches them ([[#Suggested build order]]), and the paid ones only when the operator says so. Nothing here needs `codeclimb-eval-spec`: that is for a later benchmark
+- first build: on the `langchain` branch of the codeclimb repo, from this file alone (the repo holds a copy at `docs/codeclimb-spec-langchain.md`; change both together). The repo also gives `GLOSSARY.md`, `docs/adr/0001` to `0005` (0001, superseded: why the dev server; why steps own their abort signal; why one trace per experiment; why Docker only; 0005: why `langgraphjs up`) and the end-to-end skill `.claude/skills/codeclimb-e2e/SKILL.md`; all three repeat what this file says. Run the free end-to-end nights as the build reaches them ([[#Suggested build order]]), and the paid one only when the operator says so. Nothing here needs `codeclimb-eval-spec`: that is for a later benchmark
 - stack-specific parts: [[#Durable runtime on LangGraph]], [[#Tracing]], [[#Deployment and environment]], plus the stack's names in the npm scripts, the result row and the control operations. Everything else is stack-neutral and matches the Inngest twin (the Inngest dev server with Docker sandboxes), so the two builds behave the same and their nights compare. Declared differences, each forced by this stack or decided for it:
   - one mode: the self-hosted Agent Server in containers on the operator's machine (`langgraphjs up`), with Docker sandboxes ([[#Deployment and environment]])
   - the worker API runs in its own process: it serves no `/v1`, a busy port is a startup error, and its token covers every route. The proxy has its own listener
@@ -41,11 +41,11 @@ You are done when the end-to-end tests pass. They run on the Agent Server (`npm 
 | 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
 | 7 | `npm run build:image:graphrag`, then `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | A scenario with three stages, a metered program, `check`, `scan` and lessons runs end to end |
 
-Nights 1, 2 and 6 write to `runs-langchain/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
+Nights 1, 2, 3 and 6 write to `runs-langchain/mock/<config-name>/`. For such a night `<id>`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
-| `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` | [[#CLI]], [[#Stops]] |
+| `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3) | [[#CLI]], [[#Stops]] |
 | `nights/<id>/done.json` exists; `stop.json` and `pause.json` don't | [[#Files a night writes]] |
 | `npm run validate-results -- runs-langchain/mock/<name>/results.jsonl` passes | [[#Result row]] |
 | `results.jsonl` has a row per experiment of every round, plus a `test` row | [[#Round loop]] |
@@ -72,36 +72,33 @@ Nights 3 to 7 add:
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, lessons, export, the worker API and the app. Build them to this spec. The paid end-to-end tests run on real models and spend money. Run one only when the operator says so for that scenario, and name its ceiling first. They write to `runs-langchain/<results folder>/`, with no `mock` in the path:
+Also required, though these nights don't reach them: real-model nights, pause and resume, continue, seed, lessons, export, the worker API and the app. Build them to this spec. One paid end-to-end test runs on real models and spends money. Run it only when the operator says so for that run, and name its ceiling first. It writes to `runs-langchain/<results folder>/`, with no `mock` in the path:
 
 | # | night | ceiling | passes when |
 |---|---|---|---|
 | 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $0.50 | `done`; a `test` row; `spend_usd` above 0 and at most 0.50; `meter.jsonl` shows real calls |
-| 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $0.50 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
-| 10 | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | the cost cap: `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20. Mock models cost 0, so only real models reach this cap |
-| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $0.50 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
 
-Every paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
+The paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
 
 ## What you get, what you build
 
 Given, unchanged by you:
 
 - `scenarios/<name>/`: `datenorm`, `datenorm-hard`, `capitals`, `graphrag`. Each holds its manifest, starter repo, agent spec, gold data, evaluators and scripts
-- `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`; and `configs/e2e/` (`plateau`, `budget`, `overfit`) for the end-to-end tests
-- the scaffold: `package.json` (the LangGraph and LangSmith packages pinned; scripts `server`, `typecheck`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:scenario:overfit`), `langgraph.json` and `src/hello.ts` (a placeholder graph: replace both), `docker/` (the two Dockerfiles; the server's compose override joins them, [[#Deployment and environment]]), `tsconfig.json`, `.env.example`. `zod` is in `package.json` and not required by this spec: keep it or drop it. The Pi packages are not installed yet
+- `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`; and `configs/e2e/plateau.yaml` for the end-to-end tests
+- the scaffold: `package.json` (the LangGraph and LangSmith packages pinned; scripts `server`, `typecheck`, `build:image`, `build:image:graphrag`, `build:dataset`), `langgraph.json` and `src/hello.ts` (a placeholder graph: replace both), `docker/` (the two Dockerfiles; the server's compose override joins them, [[#Deployment and environment]]), `tsconfig.json`, `.env.example`. `zod` is in `package.json` and not required by this spec: keep it or drop it. The Pi packages are not installed yet
 - credentials: one `.env` (gitignored, from `.env.example`) holding the provider keys and `LANGSMITH_API_KEY` (a free Developer-plan key), which the Agent Server needs to boot and which also serves tracing and feedback; Pi's `auth.json`
 - the LangChain skills, docs MCP and LangSmith MCP (the `langchain-plugins` marketplace), Pi's docs, and the end-to-end test instructions (`.claude/skills/codeclimb-e2e/SKILL.md`: the nights of [[#Goal and done signal]] as a procedure)
 - comments in the pack that name files you don't have (a `docs/` page, a source path) are leftovers: this spec replaces them
 
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
 
-- npm scripts: `server` (the Agent Server), `server:logs`, `server:stop`, `api` (the worker API and the watchdog), `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `build:scenario:overfit` (given), `export`, `lessons`, `dev` (the app), `build:app` (the app's production build), `typecheck`, `test` (unit tests)
+- npm scripts: `server` (the Agent Server), `server:logs`, `server:stop`, `api` (the worker API and the watchdog), `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `export`, `lessons`, `dev` (the app), `build:app` (the app's production build), `typecheck`, `test` (unit tests)
 - graphs, in `langgraph.json`: `night`, `stop`, `lessons`
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
   - `codeclimb-graphrag`: `codeclimb-python` plus `scenarios/graphrag/requirements.txt` installed system-wide with `uv pip`; build context `scenarios/graphrag`
-- host tools: Node 24, Docker, `git`, `tar`, `bash`, `python3`, `uv` on the operator's machine (the CLI, the API, export, the dataset and scenario builds, `lessons` by hand); the same tools plus a Docker CLI in the server image, where a night's host commands run (graphrag's through `uv`). "Host" in the scenario contract, the evaluator and the coder means the Agent Server's side of a sandbox: the server container ([[#Deployment and environment]])
+- host tools: Node 24, Docker, `git`, `tar`, `bash`, `python3`, `uv` on the operator's machine (the CLI, the API, export, the dataset builds, `lessons` by hand); the same tools plus a Docker CLI in the server image, where a night's host commands run (graphrag's through `uv`). "Host" in the scenario contract, the evaluator and the coder means the Agent Server's side of a sandbox: the server container ([[#Deployment and environment]])
 - everything in [[#CLI]], [[#Files a night writes]], [[#Result row]], [[#Worker API]] and [[#Deployment and environment]]
 
 Dependencies, pinned to exact versions. These are the versions this spec's SDK facts hold for:
@@ -1281,7 +1278,5 @@ Tickets #26 to #32, the move to `langgraphjs up`, are closed, and what they sett
 
 Changes to stack-neutral parts that the Inngest twin does not have yet. Until it does, these are the only places where the two specs differ outside the declared differences:
 
-- the done signal's nights 3 to 7 (plateau, stop mid-round, kill and restart, lost connection, graphrag-smoke) and the configs under `configs/e2e/`
-- `--mock-offline N`, and the rule that a turn ended by a failed model call is sent back like any other stop
 - the round-start check of `stop.json`, listed in the round loop
 - the word "savepoint" for the coder's own commits. The prompts and messages still say "checkpoint" for them ("commit a checkpoint in the sandbox", "restore the checkpoint"); they change in both specs together

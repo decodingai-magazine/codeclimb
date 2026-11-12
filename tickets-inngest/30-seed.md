@@ -1,10 +1,10 @@
-# 29: Seed: a new night that starts from an ended night's kept commit
+# 30: Seed: a new night that starts from an ended night's kept commit
 
 **What to build:** Instead of the starter, a seeded night's round 0 is an alias of the seed night's kept commit, with that commit's dev metrics as the checkpoint round 1 must beat and the seed night's noise carried over. The new night has its own id, budget and trajectory, which opens with a `<start>` note naming where it came from.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Continue, seed and rescore", "Init", "Ids", "CLI", "Noise margin", "Notes, trajectory and rejected diffs", "Files a night writes"
 
-**Blocked by:** 25 (Continue: more rounds on an ended night, with an operator's direction); 27 (Lessons distillation: what a night learned reaches the next night)
+**Blocked by:** 26 (Continue: more rounds on an ended night, with an operator's direction); 28 (Lessons distillation: what a night learned reaches the next night)
 
 **Status:** ready-for-agent
 
@@ -15,4 +15,4 @@
 - [ ] The seed night's `noise.json` carries over when the scoring hashes are equal, so no A/A run happens; the trajectory starts with the `<start>` note for coders and reviewers
 - [ ] The seed setting comes from the config's `seed` or `--seed`; a later continue of a seeded night reads `night.json`'s `seed`
 - [ ] End-to-end, mock, dev server: after a `datenorm-smoke --mock` night that kept round 1, `run-night --config configs/datenorm-smoke.yaml --mock --seed latest` starts from `<night>-r0-seed` pointing at that kept commit, records no `noise` row, and ends with `done`
-- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"
+- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them

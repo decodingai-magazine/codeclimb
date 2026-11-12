@@ -1,14 +1,15 @@
 # CodeClimb on Inngest: build tickets
 
-39 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
+41 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
 
 - one file per ticket, `<NN>-<slug>.md`, numbered in dependency order: a ticket is blocked only by lower numbers
 - every ticket names the spec sections it implements by heading; the spec is the contract, the ticket only scopes it. Constants are in the spec's "Every number in one place"
 - the given inputs (`scenarios/`, `configs/`, the image definitions, `.env`, the end-to-end test instructions) are present in the build environment; tickets consume them and never change them. A test that needs a different scenario or config uses a test-only copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` directly under `runs/`, so test nights never mix into the given configs' results
-- tickets 01 to 39 are `ready-for-agent` and need no paid call: provider and OpenRouter paths are tested against fakes; whole nights run with `--mock`
-- end-to-end checks need Docker, `npm run dev:inngest` and `npm run worker` running; the worker has no hot reload, so restart it after a code change
+- tickets 01 to 40 are `ready-for-agent` and need no paid call: provider and OpenRouter paths are tested against fakes; whole nights run with `--mock`
+- ticket 41, night 8 of "Goal and done signal" (`capitals-smoke` on real models, paid), is `ready-for-human`: it runs only with the operator's go-ahead for that run, after its ceiling was named. Ticket 40, the final acceptance, does not wait for it
+- end-to-end checks need Docker, `npm run dev:inngest` and `npm run worker` running; the worker has no hot reload, so restart it after a code change. Nights run one at a time, each under a fresh night id
 - after any code change: `npm run typecheck`, then `npm test`
-- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11, the first two mock nights of the spec's done signal pass at ticket 20, and the third at ticket 28. Tickets 21 to 38 are gated on ticket 20, directly or through a blocker (all but ticket 26, the pure lessons file), and those that touch the loop rerun its check
+- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11 and nights 1 to 3 of the done signal pass at ticket 20. Tickets 21 to 39 are gated on ticket 20, directly or through a blocker (all but ticket 27, the pure lessons file), and those that touch the loop rerun its check
 
 ## Phases
 
@@ -27,26 +28,29 @@
 | 11 | Model checks, soft stops, smoke test | 19 |
 | 12 | Check table passes on the base mock nights | 20 |
 | 13 | Hard stop and cleanup | 21 |
-| 14 | Crash resume | 22 |
-| 15 | Pause for credits | 23 |
-| 16 | Repair | 24 |
-| 17 | Continue | 25 |
-| 18 | Lessons | 26 to 27 |
-| 19 | Multi-stage mock night | 28 |
-| 20 | Seed and rescore | 29 to 30 |
-| 21 | Worker API | 31 |
-| 22 | Export | 32 |
-| 23 | App | 33 to 35 |
-| 24 | Tracing | 36 |
-| 25 | Real-model paths | 37 to 38 |
-| 26 | Final acceptance | 39 |
-| 27 | Operator-gated nights | none: the spec has nothing for this phase |
+| 14 | Crash resume | 22 to 23 |
+| 15 | Pause for credits | 24 |
+| 16 | Repair | 25 |
+| 17 | Continue | 26 |
+| 18 | Lessons | 27 to 28 |
+| 19 | Multi-stage mock night | 29 |
+| 20 | Seed and rescore | 30 to 31 |
+| 21 | Worker API | 32 |
+| 22 | Export | 33 |
+| 23 | App | 34 to 36 |
+| 24 | Tracing | 37 |
+| 25 | Real-model paths | 38 to 39 |
+| 26 | Final acceptance | 40 |
+| 27 | Operator-gated nights | 41 |
 
-- phase 12 is the gate: the first two mock nights of "Goal and done signal" pass every row of the first table before any phase after it starts
-- phase 19: the done signal's third mock night, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 28, after repair and lessons, which it exercises, and runs again with the other two in ticket 39. Before it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 34, 35)
-- phase 25: the OpenRouter and Pi backends and the web research guard. The model check and the credit test are built with the Pi sessions (ticket 08) and wired in tickets 19 and 23
-- phase 27: the spec names no paid real-model night and no spend ceiling, so no ticket
-- the spec names an end-to-end check only for the three mock nights. Hard stop, crash resume, pause, repair, continue, lessons, seed, rescore, the worker API, export and the app get the checks their tickets define, on mock nights on the dev server
+- phase 9: ticket 17 also wires the `plateau` stop, so that nights 1 and 3 of "Goal and done signal", both on capitals, pass their own checks there; night 2 passes its own in ticket 18 (phase 10)
+- phase 12 is the gate: nights 1 to 3 of "Goal and done signal" pass every row of their tables before any phase after it starts. Nights 4 to 7 pass in the tickets that build what they prove (21, 22, 23, 29), and all seven run together in ticket 40
+- phase 14: ticket 23, `--mock-offline`, belongs here: a lost connection is a failure the coder's session survives
+- phase 19: night 7, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 29, after repair and lessons, which it exercises. Before it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 35, 36)
+- phase 25: the OpenRouter and Pi backends and the web research guard. The model check and the credit test are built with the Pi sessions (ticket 08) and wired in tickets 19 and 24
+- phase 27: the one paid night, night 8. It runs only with the operator's go-ahead
+- pause, repair, continue, lessons, seed, rescore, the worker API, export and the app have no named end-to-end night. They get the checks their tickets define, on mock nights on the dev server
+- `deadline`, `budget`, `tokens`, `thresholds` and `outage` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3). Ticket 19 checks `deadline` and `thresholds` on mock nights with test-only config copies, and the others in unit tests
 
 ## Tickets
 
@@ -66,30 +70,32 @@
 14. **Send-backs, reserve and wrap-up** (`14-send-backs-reserve-wrap-up.md`). Blocked by: 09. Delivers: A coder that stops early is sent back to work, and is told once to wrap up when its reserve starts.
 15. **Metering proxy: ledgers, routes, refusals and mock answers** (`15-metering-proxy.md`). Blocked by: 08. Delivers: The HTTP proxy that is a program's only path to a model: it meters every call into a per-token ledger, refuses what is not allowed, and answers mock nights with canned replies.
 16. **Replay cache: repeated program calls get the same answer** (`16-replay-cache.md`). Blocked by: 15. Delivers: Unchanged code scores the same on the next evaluation, because a repeated model call is answered from the night's cache.
-17. **Metered nights on Docker: relay, meter variables, both ledgers, cost metrics** (`17-metered-path-docker.md`). Blocked by: 09, 10, 11, 15. Delivers: A program in a Docker sandbox reaches models only through the proxy, in a coder's shell and in an evaluation, and a metered mock night records its calls.
-18. **Noise run: the A/A evaluation and the measured margin** (`18-noise-run.md`). Blocked by: 11, 12, 16, 17. Delivers: The night measures how much the same commit moves between two evaluations, and every keep must beat that margin.
-19. **Model checks, every soft stop and the round-start smoke test** (`19-model-checks-soft-stops-smoke-test.md`). Blocked by: 11, 17. Delivers: A night stops softly for every reason the spec names, and no round starts when models or the proxy path are down.
-20. **Done signal: both mock nights pass the end-to-end checks** (`20-done-signal-mock-nights.md`). Blocked by: 13, 14, 17, 18, 19. Delivers: A repeatable end-to-end check that runs the two mock nights back to back and asserts every row of the done-signal table.
-21. **Hard stop and cleanup: every dead night ends in stop.json** (`21-hard-stop-cleanup.md`). Blocked by: 11, 20. Delivers: `run-night stop`, a failed night and a cancelled run all end the same way: work aborted, sandboxes swept, `stop.json` written, the follower released.
-22. **Crash and resume: a retried coder or evaluator step picks up its work** (`22-crash-resume.md`). Blocked by: 14, 20, 21. Delivers: A worker crash in the middle of an experiment or an evaluation costs a retry, not the night.
-23. **Pause for credits and resume** (`23-pause-for-credits.md`). Blocked by: 20, 22. Delivers: Running out of credits pauses the night at no cost instead of scoring an outage; `run-night resume` continues where it stopped.
-24. **Repair: one fix attempt for a commit that failed before scoring** (`24-repair.md`). Blocked by: 20. Delivers: A commit that broke the repository check or crashed in evaluation gets one repair attempt, and the round is decided on the repair.
-25. **Continue: more rounds on an ended night, with an operator's direction** (`25-continue-and-direction.md`). Blocked by: 20, 21. Delivers: `run-night continue` reopens an ended night under the same id and runs more rounds from its kept commit.
-26. **Lessons file: format, operations and gates** (`26-lessons-file-ops.md`). Blocked by: 02. Delivers: The pure half of the memory across nights: parse and write `lessons.md`, apply operations, enforce every gate.
-27. **Lessons distillation: what a night learned reaches the next night** (`27-lessons-distillation.md`). Blocked by: 20, 21, 26. Delivers: When a night ends, its notes and reviews are distilled into a lessons proposal, applied to the scenario's `lessons.md` when the mode says so.
-28. **Multi-stage mock night: graphrag-smoke passes its checks** (`28-multi-stage-mock-night.md`). Blocked by: 20, 24, 27. Delivers: The graphrag scenario, with three stages and a metered program, runs a whole mock night, and the done-signal check covers the third night.
-29. **Seed: a new night that starts from an ended night's kept commit** (`29-seed.md`). Blocked by: 25, 27. Delivers: `run-night --seed ID|latest|best` starts a night from the code and dev metrics an earlier night was kept on.
-30. **Rescore: a kept commit is scored again when the scoring changed** (`30-rescore.md`). Blocked by: 18, 25, 29. Delivers: When a scenario's evaluators or gold changed since a kept commit was scored, a continued or seeded night first scores that commit again.
-31. **Worker API: read nights, stop, resume, continue** (`31-worker-api.md`). Blocked by: 23, 25. Delivers: The worker serves an HTTP API from which any client can read nights and control them.
-32. **Export: a kept commit as files, as a git repository, or pushed to a remote** (`32-export.md`). Blocked by: 31. Delivers: An operator can take a night's result out of `experiments.git` from the command line or through the worker API.
-33. **App: scaffold, worker-API route, Nights list, Inngest scaffold** (`33-app-scaffold-nights-list.md`). Blocked by: 31. Delivers: A Next.js app on loopback that lists every night through the worker API.
-34. **App: the Night page with status, controls, tiles and the live experiment** (`34-app-night-page-controls.md`). Blocked by: 33. Delivers: An operator can watch one night and stop, resume or continue it from the browser.
-35. **App: metric tables, convergence chart, heatmap, experiment detail and export** (`35-app-night-page-analysis.md`). Blocked by: 32, 34. Delivers: The Night page explains a night: how metrics moved, what each experiment changed, and a download of the result.
-36. **Tracing and the scores mirror** (`36-tracing-scores.md`). Blocked by: 20. Delivers: A night's model calls, tool calls, sandbox operations and metered calls show up as spans, and dev metrics as scores on the experiment's run.
-37. **Proxy backends: OpenRouter and Pi** (`37-proxy-backends.md`). Blocked by: 15, 20. Delivers: On a real-model night the proxy forwards a program's calls to OpenRouter or through Pi, charges what each cost, and turns a credit signal into a credit stop.
-38. **Web research for the coder, behind the guard** (`38-web-research-guard.md`). Blocked by: 20. Delivers: On a real night the coder can search and read the web through three guarded tools, and can never reach the project's own repository.
-39. **Final acceptance: the whole spec, checked once more** (`39-final-acceptance.md`). Blocked by: every ticket from 21 to 38. Delivers: A last pass that proves the finished build against the spec's done signal and fixed contracts, with no paid call.
+17. **Metered nights on Docker: relay, ledgers, cost metrics; mock nights 1 and 3 pass** (`17-metered-path-docker.md`). Blocked by: 09, 10, 11, 15. Delivers: A program in a Docker sandbox reaches models only through the proxy, in a coder's shell and in an evaluation; the `plateau` stop; mock nights 1 (`capitals-smoke`) and 3 (the plateau night) pass their own checks.
+18. **Noise run: the A/A evaluation and the measured margin; mock night 2 passes** (`18-noise-run.md`). Blocked by: 11, 12, 16, 17. Delivers: The night measures how much the same commit moves between two evaluations, and every keep must beat that margin; mock night 2 (`datenorm-smoke`) passes its own checks.
+19. **Model checks, every soft stop and the round-start smoke test** (`19-model-checks-soft-stops-smoke-test.md`). Blocked by: 11, 17, 18. Delivers: A night stops softly for every reason the spec names, and no round starts when models or the proxy path are down.
+20. **Check table: mock nights 1 to 3 as one repeatable check** (`20-check-table-mock-nights-1-to-3.md`). Blocked by: 13, 14, 17, 18, 19. Delivers: Nights 1 to 3 of the done signal as one repeatable check that asserts every row the spec lists for them; later tickets rerun it.
+21. **Hard stop and cleanup: every dead night ends in stop.json; mock night 4 passes** (`21-hard-stop-cleanup.md`). Blocked by: 11, 20. Delivers: `run-night stop`, a failed night and a cancelled run all end the same way: work aborted, sandboxes swept, `stop.json` written, the follower released. Mock night 4, the hard stop mid-round, passes.
+22. **Crash and resume: a retried coder or evaluator step picks up its work; mock night 5 passes** (`22-crash-resume.md`). Blocked by: 14, 20, 21. Delivers: A worker crash in the middle of an experiment or an evaluation costs a retry, not the night. Mock night 5, the killed and restarted worker, passes.
+23. **Lost connection mid-turn; mock night 6 passes** (`23-lost-connection-mid-turn.md`). Blocked by: 18, 20. Delivers: `--mock-offline N` and the rule that a turn ended by a failed model call is sent back; mock night 6 passes.
+24. **Pause for credits and resume** (`24-pause-for-credits.md`). Blocked by: 20, 22. Delivers: Running out of credits pauses the night at no cost instead of scoring an outage; `run-night resume` continues where it stopped.
+25. **Repair: one fix attempt for a commit that failed before scoring** (`25-repair.md`). Blocked by: 20. Delivers: A commit that broke the repository check or crashed in evaluation gets one repair attempt, and the round is decided on the repair.
+26. **Continue: more rounds on an ended night, with an operator's direction** (`26-continue-and-direction.md`). Blocked by: 20, 21. Delivers: `run-night continue` reopens an ended night under the same id and runs more rounds from its kept commit.
+27. **Lessons file: format, operations and gates** (`27-lessons-file-ops.md`). Blocked by: 02. Delivers: The pure half of the memory across nights: parse and write `lessons.md`, apply operations, enforce every gate.
+28. **Lessons distillation: what a night learned reaches the next night** (`28-lessons-distillation.md`). Blocked by: 20, 21, 27. Delivers: When a night ends, its notes and reviews are distilled into a lessons proposal, applied to the scenario's `lessons.md` when the mode says so.
+29. **Multi-stage mock night: graphrag-smoke, mock night 7, passes its checks** (`29-multi-stage-mock-night.md`). Blocked by: 20, 25, 28. Delivers: The graphrag scenario, with three stages and a metered program, runs a whole mock night: mock night 7 passes its checks.
+30. **Seed: a new night that starts from an ended night's kept commit** (`30-seed.md`). Blocked by: 26, 28. Delivers: `run-night --seed ID|latest|best` starts a night from the code and dev metrics an earlier night was kept on.
+31. **Rescore: a kept commit is scored again when the scoring changed** (`31-rescore.md`). Blocked by: 18, 26, 30. Delivers: When a scenario's evaluators or gold changed since a kept commit was scored, a continued or seeded night first scores that commit again.
+32. **Worker API: read nights, stop, resume, continue** (`32-worker-api.md`). Blocked by: 24, 26. Delivers: The worker serves an HTTP API from which any client can read nights and control them.
+33. **Export: a kept commit as files, as a git repository, or pushed to a remote** (`33-export.md`). Blocked by: 32. Delivers: An operator can take a night's result out of `experiments.git` from the command line or through the worker API.
+34. **App: scaffold, worker-API route, Nights list, Inngest scaffold** (`34-app-scaffold-nights-list.md`). Blocked by: 32. Delivers: A Next.js app on loopback that lists every night through the worker API.
+35. **App: the Night page with status, controls, tiles and the live experiment** (`35-app-night-page-controls.md`). Blocked by: 34. Delivers: An operator can watch one night and stop, resume or continue it from the browser.
+36. **App: metric tables, convergence chart, heatmap, experiment detail and export** (`36-app-night-page-analysis.md`). Blocked by: 33, 35. Delivers: The Night page explains a night: how metrics moved, what each experiment changed, and a download of the result.
+37. **Tracing and the scores mirror** (`37-tracing-scores.md`). Blocked by: 20. Delivers: A night's model calls, tool calls, sandbox operations and metered calls show up as spans, and dev metrics as scores on the experiment's run.
+38. **Proxy backends: OpenRouter and Pi** (`38-proxy-backends.md`). Blocked by: 15, 20. Delivers: On a real-model night the proxy forwards a program's calls to OpenRouter or through Pi, charges what each cost, and turns a credit signal into a credit stop.
+39. **Web research for the coder, behind the guard** (`39-web-research-guard.md`). Blocked by: 20. Delivers: On a real night the coder can search and read the web through three guarded tools, and can never reach the project's own repository.
+40. **Final acceptance: the free end-to-end suite and the fixed contracts** (`40-final-acceptance.md`). Blocked by: every ticket from 21 to 39. Delivers: The seven mock nights of the done signal, one after the other, on a freshly started dev server and worker; then the audit of the fixed contracts, the constants and the known gaps. No paid call.
+41. **Paid night 8: capitals-smoke on real models, with the operator's go-ahead** (`41-paid-night-8-capitals-smoke.md`). Blocked by: 40. Delivers: The one paid night of the done signal, `capitals-smoke` on real models, run only with the operator's go-ahead and under its ceiling.
 
 ## Critical path
 
-01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 23 → 31 → 33 → 34 → 35 → 39.
+01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 24 → 32 → 34 → 35 → 36 → 40 → 41.
