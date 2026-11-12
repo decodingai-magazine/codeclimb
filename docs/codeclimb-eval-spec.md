@@ -46,7 +46,7 @@
 - `task.toml`: `[agent] timeout_sec = 28800`, `[verifier] timeout_sec = 7200` (placeholders until phase B), `environment_mode = "separate"`; `artifacts = [{ source = "/app", exclude = ["node_modules", "runs-inngest", "runs-langchain"] }]`; `cpus`, `memory_mb`, `storage_mb` set after the reference gate
 - keys in a trial:
   - Claude Code: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`)
-  - LangChain, every arm and the verifier: one benchmark-only `LANGSMITH_API_KEY` (free Developer plan) in `/app/.env`, with `LANGSMITH_TRACING=false`. The Agent Server exits without it. The `mcp-docs` lever on LangChain is the `langsmith` MCP, not the key
+  - LangChain, every arm and the verifier: one benchmark-only `LANGSMITH_API_KEY` (free Developer plan) in `/app/.env`, with `LANGSMITH_TRACING=false`. The operator exports it as `CODECLIMB_BENCH_LANGSMITH_API_KEY`; Harbor hands the host environment to `docker compose`, the compose files map it to `LANGSMITH_API_KEY` in `main`, and the trial image's entrypoint (`write-env.sh`) or the verifier's `test.sh` writes `/app/.env`. `artifacts` exclude `.env`, so the key reaches no job file (checked 2026-11-12: no file under the job folder holds it) and no image layer The Agent Server exits without it. The `mcp-docs` lever on LangChain is the `langsmith` MCP, not the key
   - Inngest: none
   - no provider keys: mock nights need none, and app spend stays out of the build cost
 
@@ -186,6 +186,8 @@
 | reference | the verifier scores `done` = 1 on each stack's reference build |
 | flake | the verifier run 3× on each reference build gives 1 each time |
 | floor | Harbor's `nop` agent (given inputs only) passes no night check. Its `reward` is the floor, reported beside every cell |
+
+- measured floors (2026-11-12, build checks only): Inngest 0.2 (`install`); LangChain 0.6 (`install`, `typecheck`, `image`), because its build spec gives a scaffold with `typecheck` and `build:image` scripts. Floors differ by stack, one more reason to compare arms within a stack only. The LangChain floor's verifier takes 16 min, most of it the 600 s wait for a `npm run server` that never returns (the scaffold's placeholder serves on 2024, not 8123)
 | blocklist | from inside a trial, `curl github.com` and a `WebFetch` of the repo both fail; `inngest.com` and `docs.langchain.com` load |
 | transcripts | 2 failed + 2 passed trials read; scores match what happened |
 

@@ -1,0 +1,23 @@
+# The verifier's own copy of the trial topology (environment/docker-compose.yaml): the same sidecar, the same block.
+services:
+  main:
+    # Shares the sidecar's network namespace: 127.0.0.1 and the Docker bridge are the same on both sides.
+    network_mode: "service:dind"
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      # The operator's benchmark-only key (free Developer plan); test.sh puts it into /app/.env.
+      LANGSMITH_API_KEY: ${CODECLIMB_BENCH_LANGSMITH_API_KEY:?set CODECLIMB_BENCH_LANGSMITH_API_KEY, the benchmark-only LangSmith key}
+    volumes:
+      # The same paths in both containers: the Agent Server's container bind-mounts both from the sidecar daemon.
+      - app:/app
+      - pi:/root/.pi
+    depends_on:
+      dind: { condition: service_healthy }
+  dind:
+    extends: { file: ../../shared/dind.compose.yaml, service: dind }
+    volumes:
+      - app:/app
+      - pi:/root/.pi
+volumes:
+  app: {}
+  pi: {}

@@ -1,0 +1,34 @@
+# The trial container of the LangChain task. /app is baked in, then shadowed by a named volume the Docker sidecar
+# shares (docker-compose.yaml); the volume starts as a copy of the image's /app.
+FROM node:24-bookworm
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 git curl ca-certificates procps \
+  && rm -rf /var/lib/apt/lists/* \
+  && git config --system user.name codeclimb \
+  && git config --system user.email codeclimb@localhost \
+  && git config --system init.defaultBranch main \
+  && git config --system --add safe.directory '*'
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /usr/local/bin/
+# The Docker CLI with its compose and buildx plugins, talking to the sidecar's daemon.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
+
+# Claude Code, preinstalled: Harbor's own install would hit its agent-setup timeout. The stack CLI is a
+# devDependency of the given package.json.
+RUN npm install -g @anthropic-ai/claude-code@2.1.322 && npm cache clean --force
+
+# Pi's docs, from the npm release the build spec pins: GitHub, where they also live, is blocked in a trial.
+RUN mkdir -p /docs/pi /tmp/pi && cd /tmp/pi \
+  && npm pack @earendil-works/pi-coding-agent@1.3.0 --silent \
+  && tar xzf earendil-works-pi-coding-agent-1.3.0.tgz \
+  && cp -r package/docs/. package/README.md package/examples /docs/pi/ \
+  && rm -rf /tmp/pi
+
+WORKDIR /app
+COPY app/ /app/
+RUN git init -q && git add -A && git commit -q -m "given inputs"
+
+# Writes /app/.env from the operator's benchmark-only LangSmith key at container start, so the key is in no layer.
+COPY write-env.sh /usr/local/bin/write-env.sh
+ENTRYPOINT ["/usr/local/bin/write-env.sh"]
