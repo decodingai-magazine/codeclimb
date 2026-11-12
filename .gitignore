@@ -3,3 +3,7 @@ jobs/
 node_modules/
 __pycache__/
 .env
+
+# assemble.py output
+tasks/*/environment/app/
+tasks/*/assembled.json

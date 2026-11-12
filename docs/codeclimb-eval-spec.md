@@ -286,9 +286,18 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 
 - `assemble.py <stack>` builds a task's `environment/app/` from files on this branch only: the shared given inputs, `specs/<stack>/given/`, `SPEC.md`, `E2E.md`
 - configs: copied from the root `configs/` unchanged
+- only files on the branch or about to be: tracked, or untracked and not ignored (`git ls-files --cached --others --exclude-standard`), so a stray `.env`, `node_modules/` or `__pycache__/` never reaches `/app`
+- the reference SHAs it scans for are constants in `assemble.py`: update them when a reference is re-pinned
 - `SPEC.md`: the build spec with `[[note|alias]]` → `alias` and `[[#Section]]` → `Section`. The build specs themselves are kept clean of the repo path, commit SHAs, issue numbers, branch names, this benchmark, and any skill or MCP an arm carries
-- fail the assemble if the output contains a commit SHA of a reference build, `01-Projects`, `codeclimb-eval-spec`, `benchmark` (case-insensitive) or the name of a skill pack or MCP server
-- records the sha256 of `SPEC.md`, of the given inputs and of the pile, for `trials.jsonl`
+- fail the assemble, naming each file and string, if the output contains a commit SHA of a reference build, `01-Projects` or `codeclimb-eval-spec` (anywhere), or `benchmark` or the name of a skill pack or MCP server (`pocock`, `langchain-skills`, `langsmith-skills`, `langchain-mcp`, `langsmith-mcp`, `langchain-docs`, `inngest-dev`), case-insensitive
+  - the second group is checked only in the files the benchmark writes (`SPEC.md`, `E2E.md`, `AGENTS.md`, `given/`): the shared given inputs are vendored unchanged, and the graphrag corpus discusses benchmarks and names a skill author
+  - not checkable by name: the `inngest` plugin and the `langsmith` MCP, whose names the build specs use for the stack itself
+- the `AGENTS.md` stub is one line, `<!-- harbor-canary GUID … -->`, without Harbor's usual "BENCHMARK DATA …" sentence
+- the shared given inputs in `/app` are `scenarios/`, `configs/`, `docker/`; `LICENSE` stays out
+- Inngest `given/`: main's `.gitignore` with `runs/` replaced by `runs-inngest/` plus `generated/`, the build spec's folders. `package.json` holds `inngest` 4.25.0 only and two scripts: `dev:inngest` (the CLI pinned at `inngest-cli@1.52.0`, pointed at `http://localhost:3000/api/inngest`, discovery off) and `hello` (`INNGEST_DEV=1 node src/hello.ts`: Node 24 runs TypeScript, so no `tsx`). `src/hello.ts` serves the `hello-world` function on `test/hello.world` at that URL. Checked 2026-11-12: `npm ci --ignore-scripts` exits 0 and the dev server lists `codeclimb-hello-world`
+- records the sha256 of `SPEC.md`, of the given inputs (every other file of `/app` except `E2E.md` and `AGENTS.md`) and of the pile (`specs/<stack>/tickets/`), for `trials.jsonl`, in `tasks/codeclimb-<stack>/assembled.json` (gitignored). A tree's sha256 is over its sorted `<path> <file sha256>` lines
+- `git init` and the one commit happen in the task image, not in the assemble
+- tests: `python3 -m unittest assemble_test`
 
 ## Open points
 

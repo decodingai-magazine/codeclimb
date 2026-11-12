@@ -1,0 +1,13 @@
+{
+  "name": "codeclimb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:inngest": "npx --ignore-scripts=false --allow-scripts=inngest-cli inngest-cli@1.52.0 dev -u http://localhost:3000/api/inngest --no-discovery",
+    "hello": "INNGEST_DEV=1 node src/hello.ts"
+  },
+  "dependencies": {
+    "inngest": "4.25.0"
+  }
+}
