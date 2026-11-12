@@ -4,10 +4,13 @@ An adapter knows how to start and stop a stack's services, where their logs are,
 how to crash its runtime (night 5), and the name of its runs folder.
 """
 
+import http.client
 import os
 import signal
 import subprocess
 import time
+import traceback
+from collections.abc import Callable
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -37,7 +40,8 @@ def spawn(app: Path, name: str, cmd: list[str], logs: Path) -> Process:
 
 
 def kill_group(p: Process, sig: int = signal.SIGTERM, wait_s: float = 15) -> None:
-    """Signal a service and its children; SIGKILL whatever is left after `wait_s`."""
+    """Signal a service and its children, then SIGKILL the group: a child that ignored the first
+    signal (the inngest binary under npm) must not keep its port."""
     try:
         os.killpg(p.proc.pid, sig)
     except ProcessLookupError:
@@ -45,11 +49,36 @@ def kill_group(p: Process, sig: int = signal.SIGTERM, wait_s: float = 15) -> Non
     try:
         p.proc.wait(timeout=wait_s)
     except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(p.proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    p.proc.wait()
+
+
+def run_group(cmd: list[str], cwd: Path, timeout_s: float) -> tuple[int, str]:
+    """Run a command in its own process group; on a timeout kill the whole group. Returns (exit code, output);
+    -1 on a timeout."""
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        out, _ = proc.communicate(timeout=timeout_s)
+        return proc.returncode, out.decode(errors="replace")
+    except subprocess.TimeoutExpired:
         try:
-            os.killpg(p.proc.pid, signal.SIGKILL)
+            os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        p.proc.wait()
+        out, _ = proc.communicate()
+        return -1, f"timed out after {timeout_s:.0f}s\n" + out.decode(errors="replace")
+
+
+def guarded(check: Callable[..., tuple[bool, str]], *args: object) -> tuple[bool, str]:
+    """A check that raises fails, with its traceback as detail."""
+    try:
+        return check(*args)
+    except Exception:
+        return False, traceback.format_exc()[-1500:]
 
 
 def answers(url: str) -> bool:
@@ -59,7 +88,7 @@ def answers(url: str) -> bool:
             return r.status < 500
     except urllib.error.HTTPError as e:
         return e.code < 500
-    except (urllib.error.URLError, OSError):
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError):
         return False
 
 

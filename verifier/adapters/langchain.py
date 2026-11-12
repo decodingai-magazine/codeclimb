@@ -1,10 +1,9 @@
 """LangChain: the Agent Server stack (`langgraphjs up`), which `npm run server` starts and waits for."""
 
-import subprocess
 import time
 from pathlib import Path
 
-from adapters import Adapter, Services, answers, kill_group, spawn, wait_for
+from adapters import Adapter, Services, answers, kill_group, run_group, spawn, wait_for
 
 SERVER = "http://127.0.0.1:8123/ok"
 
@@ -31,4 +30,4 @@ class LangChain(Adapter):
     def stop_services(self, services: Services) -> None:
         for p in services.processes:
             kill_group(p)
-        subprocess.run(["npm", "run", "server:stop"], cwd=services.app, capture_output=True, timeout=300)
+        run_group(["npm", "run", "server:stop"], services.app, 300)

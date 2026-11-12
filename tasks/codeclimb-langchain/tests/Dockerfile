@@ -1,6 +1,6 @@
 # The verifier container of the LangChain task: the trial image's tools without the harness; /app arrives as the
 # trial's artifact, onto a named volume the verifier's own sidecar shares.
-FROM node:24-bookworm
+FROM node:24-trixie
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 git curl ca-certificates procps \

@@ -1,6 +1,6 @@
 # The trial container of the LangChain task. /app is baked in, then shadowed by a named volume the Docker sidecar
 # shares (docker-compose.yaml); the volume starts as a copy of the image's /app.
-FROM node:24-bookworm
+FROM node:24-trixie
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 git curl ca-certificates procps \

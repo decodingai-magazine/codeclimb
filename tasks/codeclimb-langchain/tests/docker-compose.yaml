@@ -7,6 +7,8 @@ services:
       DOCKER_HOST: tcp://127.0.0.1:2375
       # The operator's benchmark-only key (free Developer plan); test.sh puts it into /app/.env.
       LANGSMITH_API_KEY: ${CODECLIMB_BENCH_LANGSMITH_API_KEY:?set CODECLIMB_BENCH_LANGSMITH_API_KEY, the benchmark-only LangSmith key}
+      # The key's region: a key from the other region gets 403 and the server exits.
+      LANGSMITH_ENDPOINT: ${CODECLIMB_BENCH_LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
     volumes:
       # The same paths in both containers: the Agent Server's container bind-mounts both from the sidecar daemon.
       - app:/app

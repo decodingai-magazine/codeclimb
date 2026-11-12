@@ -41,12 +41,13 @@
   - runs folder: `runs-inngest/` on Inngest, `runs-langchain/` on LangChain, so the two never clash. Each build spec fixes its name; a config's `results_path` is relative to it, so the configs are byte-identical on both stacks
   - not given, because the build specs have the harness write them: `.dockerignore`, the LangChain compose override
   - out of `/app` (they are arms): `AGENTS.md` guidance, `.mcp.json`, `.claude/`, `docs/agents/`
+- base image `node:24-trixie` (git 2.47, Python 3.13), on both stacks, in the trial and the verifier: bookworm's git 2.39 prints `%aI` as `+00:00`, which fails a LangChain reference unit test that expects `Z`
 - `environment/`: Node 24, Python, `uv` 0.13.5, `git`, Docker CLI with the compose and buildx plugins, Claude Code 2.1.322 preinstalled (Harbor's own install hit the 360 s agent-setup timeout in the dummy run; Harbor skips its install when `claude` is present), stack CLI pinned (`inngest-cli@1.52.0`, not `@latest`; LangChain's is a devDependency), Pi docs at `/docs/pi/` in every arm (they live on GitHub, which is blocked), taken from the npm release the build specs pin (`@earendil-works/pi-coding-agent@1.3.0`: `docs/`, `README.md`, `examples/`) instead of a GitHub commit
 - `/app` in the image: `git init` + one commit (`given inputs`), so the harness starts on a repository with no history. Checked in the built image: one commit, clean tree
-- `task.toml`: `[agent] timeout_sec = 28800`, `[verifier] timeout_sec = 7200` (placeholders until phase B), `environment_mode = "separate"`; `artifacts = [{ source = "/app", exclude = ["node_modules", "runs-inngest", "runs-langchain"] }]`; `cpus`, `memory_mb`, `storage_mb` set after the reference gate
+- `task.toml`: `[agent] timeout_sec = 28800`, `[verifier] timeout_sec = 7200` (placeholders until phase B), `environment_mode = "separate"`; `artifacts = [{ source = "/app", exclude = [".env", "node_modules", "runs-inngest", "runs-langchain"] }]`; `cpus`, `memory_mb`, `storage_mb` set after the reference gate
 - keys in a trial:
   - Claude Code: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`)
-  - LangChain, every arm and the verifier: one benchmark-only `LANGSMITH_API_KEY` (free Developer plan) in `/app/.env`, with `LANGSMITH_TRACING=false`. The operator exports it as `CODECLIMB_BENCH_LANGSMITH_API_KEY`; Harbor hands the host environment to `docker compose`, the compose files map it to `LANGSMITH_API_KEY` in `main`, and the trial image's entrypoint (`write-env.sh`) or the verifier's `test.sh` writes `/app/.env`. `artifacts` exclude `.env`, so the key reaches no job file (checked 2026-11-12: no file under the job folder holds it) and no image layer The Agent Server exits without it. The `mcp-docs` lever on LangChain is the `langsmith` MCP, not the key
+  - LangChain, every arm and the verifier: one benchmark-only `LANGSMITH_API_KEY` (free Developer plan) in `/app/.env`, with `LANGSMITH_TRACING=false`. The operator exports it as `CODECLIMB_BENCH_LANGSMITH_API_KEY`, and its region's endpoint as `CODECLIMB_BENCH_LANGSMITH_ENDPOINT` (default the US one; with an EU key and no endpoint the server exits with code 3); Harbor hands the host environment to `docker compose`, the compose files map it to `LANGSMITH_API_KEY` in `main`, and the trial image's entrypoint (`write-env.sh`) or the verifier's `test.sh` writes `/app/.env`. `artifacts` exclude `.env`, so the key reaches no job file (checked 2026-11-12: no file under the job folder holds it) and no image layer. The Agent Server exits without it. The `mcp-docs` lever on LangChain is the `langsmith` MCP, not the key
   - Inngest: none
   - no provider keys: mock nights need none, and app spend stays out of the build cost
 
@@ -143,6 +144,12 @@
 - `done` = 1 if every check passes: secondary, reported beside `reward`
 - the harness sees these checks (they are its done signal), so the verifier reruns them itself on a clean copy: separate verifier container, the build arrives through `artifacts` only, `npm ci --ignore-scripts`, rebuild images, start services, empty results directory. Results the harness left behind count for nothing
 - one suite for both stacks, written against stack-neutral outputs (CLI, `results.jsonl`, `nights/<id>/`, `experiments.git`). An adapter per stack holds only: start services, stop services, service logs, crash the runtime (night 5: kill the worker, or kill the server container), and the runs folder name
+- the first table's rows, as `checks.<row>` (one per row, counted) and `checks.night<n>.<row>` (per night, reported, not counted): `cli-done`, `end-files`, `validate-results`, `row-per-experiment`, `mock-commit`, `code-state`, `reviews`, `send-backs`, `notes`, `decision-reason`, `keep-rule` (`datenorm-smoke` and `capitals-smoke` nights only), `spend-zero`, `meter` (`capitals-smoke` only), `no-leftover-sandbox`. Code: `verifier/nights.py`, unit tests `verifier/nights_test.py`
+- if `services-up` fails, no night runs and every night check fails at once: the floor run stays short
+- a check that raises fails with its traceback; a stage that crashes records a failed `<stage>-crashed` check; `reward.json` is always written. Every command runs in its own process group, killed whole on a timeout
+- grading from the host: `verifier/grade.sh <build dir> <stack> [<out dir>]` runs the verifier image and topology of `tasks/codeclimb-<stack>/tests/` with plain `docker compose`, the build copied into its `/app` volume, so a host run gets its own daemon and never meets another stack's `cc-meter` or `:8123` on the host
+- measured 2026-11-12, `langchain@2ab1ad3` (the branch head, with `results_path` relative to the runs folder) through `grade.sh`: the 5 build checks and the 14 first-table rows all pass, in 225 s
+- a broken metering path (the relay pointed at a host that does not exist) fails `meter` with 0 calls while `cli-done` passes: `run-night` still prints `done`. The failed evaluations also start repair `e1` experiments, so `send-backs` and `notes` fail with it (measured 2026-11-12, same build)
 - a negative check counts only with its positive one ("no `cc-<id>` container" counts only if `done.json` exists)
 - regrade (`source_jobs`) works after a verifier fix, with no new trials
 - `/logs/verifier/reward.json`:
@@ -186,10 +193,10 @@
 | reference | the verifier scores `done` = 1 on each stack's reference build |
 | flake | the verifier run 3× on each reference build gives 1 each time |
 | floor | Harbor's `nop` agent (given inputs only) passes no night check. Its `reward` is the floor, reported beside every cell |
-
-- measured floors (2026-11-12, build checks only): Inngest 0.2 (`install`); LangChain 0.6 (`install`, `typecheck`, `image`), because its build spec gives a scaffold with `typecheck` and `build:image` scripts. Floors differ by stack, one more reason to compare arms within a stack only. The LangChain floor's verifier takes 16 min, most of it the 600 s wait for a `npm run server` that never returns (the scaffold's placeholder serves on 2024, not 8123)
 | blocklist | from inside a trial, `curl github.com` and a `WebFetch` of the repo both fail; `inngest.com` and `docs.langchain.com` load |
 | transcripts | 2 failed + 2 passed trials read; scores match what happened |
+
+- measured floors (2026-11-12, build checks only): Inngest 0.2 (`install`); LangChain 0.6 (`install`, `typecheck`, `image`), because its build spec gives a scaffold with `typecheck` and `build:image` scripts. Floors differ by stack, one more reason to compare arms within a stack only. The LangChain floor's verifier takes 16 min, most of it the 600 s wait for a `npm run server` that never returns (the scaffold's placeholder serves on 2024, not 8123)
 
 ### Jobs, repeats, cost
 
