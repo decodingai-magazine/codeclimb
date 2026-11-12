@@ -3,7 +3,7 @@
 A coder reads train with its gold, so a night on this scenario must reach a top score, and test must
 equal dev. It proves the loop climbs when the answer is in reach. Never use it to judge a program.
 
-    python3 scenarios/datenorm/scripts/build_overfit.py --out runs/e2e/scenarios/datenorm-overfit
+    python3 scenarios/datenorm/scripts/build_overfit.py --out generated/datenorm-overfit
 
 The copy is whole (evaluators, gold, starter, spec); only gold/splits.json differs. An existing copy is
 replaced only if this script made it.

@@ -6,6 +6,8 @@
 .claude/worktrees
 runs
 runs-langchain
+runs-inngest
+generated
 web/.next
 .langgraph_api
 **/.venv

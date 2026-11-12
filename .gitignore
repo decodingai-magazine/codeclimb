@@ -26,3 +26,7 @@ __pycache__/
 web/.next/
 web/next-env.d.ts
 runs-langchain/
+runs-inngest/
+
+# generated scenarios (npm run build:scenario:overfit), shared by both stacks
+generated/

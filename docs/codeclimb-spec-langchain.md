@@ -79,7 +79,7 @@ Also required, though these nights don't reach them: real-model nights, pause an
 | 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $0.50 | `done`; a `test` row; `spend_usd` above 0 and at most 0.50; `meter.jsonl` shows real calls |
 | 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $0.50 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
 | 10 | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | the cost cap: `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20. Mock models cost 0, so only real models reach this cap |
-| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $0.50 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
+| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $0.50 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm, built into `generated/datenorm-overfit` (gitignored, shared with the Inngest twin), whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
 
 Every paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
 
@@ -1113,7 +1113,7 @@ The server image, built by `langgraphjs up` from `langgraph.json`:
 - base `langchain/langgraphjs-api:0.17.1-node24` (Node 24). The `:24` tag floats, so `langgraph.json` pins `api_version` to `0.17.1`, the version the platform facts were measured on
 - `ADD .` of the checkout, then `npm ci` with lifecycle scripts off, and `tsx` loading the graphs
 - extra image lines (`dockerfile_lines`): `git` and Debian's `docker-cli` from apt, `git config --system --add safe.directory '*'`, and `ENV NPM_CONFIG_IGNORE_SCRIPTS=true`. `python3`, `uv`, `tar` and `bash` come with the base image
-- `.dockerignore`: `**/.env*` except `.env.example`, `.git`, `**/node_modules`, `.claude/worktrees`, `runs`, `runs-langchain`, `web/.next`, `.langgraph_api`, `**/.venv`, `**/__pycache__`. Without it the keys, the night output, the host's own native modules and, in the main checkout, every worktree would go into the image
+- `.dockerignore`: `**/.env*` except `.env.example`, `.git`, `**/node_modules`, `.claude/worktrees`, `runs`, `runs-langchain`, `runs-inngest`, `generated`, `web/.next`, `.langgraph_api`, `**/.venv`, `**/__pycache__`. Without it the keys, the night output, the host's own native modules and, in the main checkout, every worktree would go into the image
 - `env: ".env"`: the server container gets the `.env` keys. The path must resolve inside the project
 
 The compose override, `docker/langgraph-up.compose.yaml`, named in `langgraph.json`'s `docker_compose_file`. The CLI merges it into its own compose file, so it adds to the `langgraph-api` service. Adding it and changing `langgraph.json` touched given inputs, with the operator's go-ahead (ticket #29); a further change needs it again.
