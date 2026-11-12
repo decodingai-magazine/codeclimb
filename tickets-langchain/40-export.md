@@ -1,4 +1,4 @@
-# 39: Export
+# 40: Export
 
 **What to build:** An operator takes a kept commit out of `experiments.git`: as plain files in a folder, as a git repository whose history is the kept lineage on branch `codeclimb/<exp id>`, or as a push of that lineage to a remote branch. The same is available from `npm run export` and from the worker API, which can also serve it as a download.
 
@@ -7,9 +7,9 @@
 - "Interfaces" > "Worker API": the two export rows of the endpoint table; "the exportable experiments" of the live view
 - "Data and files" > "Experiment repository"; "Result row": `parent_id` and `decision` (the kept lineage)
 
-**Not yet:** the app's Export control (ticket 40).
+**Not yet:** the app's Export control (ticket 42).
 
-**Blocked by:** 37 (Worker API)
+**Blocked by:** 38 (Worker API)
 
 **Status:** ready-for-agent
 

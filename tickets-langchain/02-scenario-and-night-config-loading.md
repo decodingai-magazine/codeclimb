@@ -19,7 +19,7 @@
 - [ ] Every yaml under `configs/` and `configs/e2e/` whose scenario directory exists loads; the result holds the parsed scenario and paths relative to the checkout
 - [ ] Load fails when `scenario.yaml` or `starter/` is missing, when `lessons` names a missing file, when stage names repeat or break the pattern, when there is no stage, and when a `diagnostics` regex is bad
 - [ ] Defaults match the field table (`plateau_rounds`, thinking levels, `standard_metrics`, `noise_margin`, `lessons` by scenario)
-- [ ] Validation errors: reviewer equal to coder under the spec's rule; unparsable `deadline`; `latency_metric` / `cost_metric` prefixes; `noise_margin.min` above `max`; non-positive thresholds or weights; a weight on a non-threshold metric; `lessons` not `off` without scenario lessons; a results directory not directly under `runs-langchain/`
+- [ ] Validation errors: reviewer equal to coder under the spec's rule; unparsable `deadline`; `latency_metric` / `cost_metric` prefixes; `noise_margin.min` above `max`; `max_rounds` below 1; a `max_tokens` that is not a positive integer; no threshold; non-positive thresholds or weights; `min_efficiency_gain` outside (0, 1); a thinking level or a `lessons` mode outside the listed values; a weight on a non-threshold metric; `lessons` not `off` without scenario lessons; a results directory not directly under `runs-langchain/`
 - [ ] A `sandbox` value other than `docker` is read as `docker` with a printed note
 - [ ] `deadline` accepts an ISO time and the durations `90m`, `8h`, `30s`
 - [ ] A night id is valid only as 1 to 48 letters, digits or hyphens, not starting with a hyphen; the default id has the form `n<YYYYMMDD>-<HHMMSS>` from local time

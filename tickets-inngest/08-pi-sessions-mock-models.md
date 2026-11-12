@@ -8,6 +8,7 @@
 
 **Status:** ready-for-agent
 
+- [ ] Any Pi provider works as `<provider>/<id>`; credentials come from env keys or from Pi's `auth.json` (`~/.pi/agent/auth.json`, or the file `CODECLIMB_PI_AUTH_PATH` names) (unit test of the path choice)
 - [ ] Session isolation as in "Coder": empty agent directory, a resource loader returning nothing from the host, in-memory settings with compaction on and 4 retries, working directory `/repo`; exactly the four sandbox tools active, `grep`, `find`, `ls` off
 - [ ] Tool operations route to the sandbox interface, with the bash semantics and the access check of "Pi facts found while building"; a bash command without its own timeout gets 10 minutes; the session's environment is not exposed to the shell
 - [ ] File-backed sessions (create and reopen) and in-memory sessions with no tools both exist; cost and tokens are read from each assistant message end

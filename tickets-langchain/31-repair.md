@@ -10,7 +10,7 @@
 - "Memory within and across nights" > "Notes, trajectory and rejected diffs": the note of a failed attempt that gets a repair; in a repaired round the last row stands
 - "Known gaps": the repair's leak scan covers only what `e1` adds over `e0`
 
-**Not yet:** the worker API's rule that `e1` takes over the live view (ticket 37).
+**Not yet:** the worker API's rule that `e1` takes over the live view (ticket 38).
 
 **Blocked by:** 17 (Reviewer); 19 (Check, leak scan and guardrails); 25 (Check table: mock nights 1 to 3 as one repeatable check)
 

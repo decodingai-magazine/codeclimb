@@ -17,7 +17,7 @@
 - [ ] The reset kills every process but the sandbox's keep-alive, wipes `/repo`, `/work`, `/eval`, `/tmp` (sparing the process-id files) and the home cache, and clones the commit into `/repo`; running it twice gives the same state
 - [ ] A commit with a `uv.lock` gets its environment in `/repo/.venv` within 3 minutes; a failure fails the evaluation with a `uv.lock: …` error
 - [ ] Per stage: inputs are written on the host to `evals/<eval>/<stage>/inputs.jsonl` and uploaded with the stage's `files`; the run uses cwd `/repo`, the `eval_min` timeout, `/repo/.venv/bin` first on the path, and sends its output to `run.log`, which is saved on the host after a clean exit too
-- [ ] Outputs are downloaded to `evals/<eval>/<stage>/outputs/` with the run's files at the top level
+- [ ] Outputs are tarred from inside the out directory, saved as `outputs.tar` and unpacked to `evals/<eval>/<stage>/outputs/` with the run's files at the top level
 - [ ] On dev a clean run with no output ends the evaluation as failed; on test every stage runs
 - [ ] The score uses `details` on dev when the stage has it, else `score`; the report is flattened with ticket 04's metrics
 - [ ] A timeout, a non-zero exit, a bad timings file or a scorer failure gives `ok: false` with an error holding the run log's last 2,000 characters; an `inputs` failure or an infrastructure failure throws

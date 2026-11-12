@@ -7,7 +7,7 @@
 - "CLI" > "Mock mode": the canned program answers
 - "Every number in one place": proxy rows "request body" and "coder retry window"; the rounding row (cost)
 
-**Not yet:** the OpenRouter and Pi upstreams (ticket 42); the relay and the networks (ticket 21); opening tokens from the coder and the evaluator (ticket 22); credit stops beyond the callback's signature (ticket 29).
+**Not yet:** the OpenRouter and Pi upstreams (ticket 44); the relay and the networks (ticket 21); opening tokens from the coder and the evaluator (ticket 22); credit stops beyond the callback's signature (ticket 29).
 
 **Blocked by:** 04 (Stage reports and standard metrics)
 

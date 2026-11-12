@@ -18,11 +18,11 @@
 **Status:** ready-for-agent
 
 - [ ] The night starts the lessons operation at its end, and the stop cleanup starts it for a night that didn't finish, reading the config from `night.json`; neither starts it when the mode is `off` or the scenario declares no lessons
-- [ ] The lessons run goes to the scenario's lessons thread (UUID v5 of `lessons/<scenario>`, created if missing) with `enqueue`
+- [ ] The lessons run goes to the scenario's lessons thread (UUID v5 of `lessons/<scenario>`, created if missing) with `enqueue` and `durability: "sync"`
 - [ ] A night is distilled when it has notes or reviews for rounds past its newest applied proposal, and skipped when a proposal folder for its last such round exists; a second run for the same night changes nothing
 - [ ] The model's input holds only those rounds' notes and reviews (feedback, hypothesis), the spec without `lessons.md`, and `lessons.md` with numbered bullets; never `done.json`, a test evaluation or a review prompt
 - [ ] The session runs on the reviewer's model and effort, in memory, with no tools; a credit error fails the step and its retries run it again
-- [ ] `apply` writes the scenario's `lessons.md` unless the file changed since the proposal or the night was a mock; it never commits; `proposal.json` records `applied`
+- [ ] `apply` writes the scenario's `lessons.md` unless the file changed since the proposal or the night was a mock; it never commits; `propose` writes the proposal only; `proposal.json` records `applied`
 - [ ] `night.json` records the sha256 of the `lessons.md` each variation's coders read
 - [ ] `npm run lessons -- distill --config … --night ID [--apply]`, `lessons apply --config … --night ID` and `lessons format --config … [--check]` work; a night under `runs-langchain/mock/` is distilled as a mock
 - [ ] Tests on mock models with a temporary scenario that declares lessons: after a mock night, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false` and the scenario's `lessons.md` is unchanged; a stopped night gets a proposal too

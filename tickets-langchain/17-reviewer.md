@@ -17,7 +17,7 @@
 **Status:** ready-for-agent
 
 - [ ] The session is in memory, has no tools, runs on `reviewer_model` with `reviewer_thinking` and its own system prompt carrying the spec's rules
-- [ ] The prompt holds what the spec lists, with the metric selection rule (thresholds, gates and headlines always; the rest as diagnostics, or every scorer metric without headlines)
+- [ ] The prompt holds what the spec lists (the scenario's protocol files among it, a `path#Heading` entry giving that one section), with the metric selection rule (thresholds, gates and headlines always; the rest as diagnostics, or every scorer metric without headlines)
 - [ ] Each evidence cap behaves as its table row says: per-item errors, the run log (dropped lines, flagged lines first, whole lines), the diff, the checkpoint source, the unchanged stages by output hash
 - [ ] An `unchanged` experiment is reviewed with the checkpoint's scores, the note that nothing was tested and the coder's closing message
 - [ ] The reply is read from its first opening brace to its last closing brace; `feedback` must be a string and `hypothesis` non-empty; a missing `verdict` is allowed; one retry asking for JSON only, then the review fails

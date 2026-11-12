@@ -12,7 +12,7 @@
 - "Decision and calibration" > "Noise margin": the fresh share in the margin
 - "Goal and done signal": nights 1 and 3
 
-**Not yet:** real upstreams (ticket 42); a credit stop on a program call (ticket 29); the smoke test's path check (ticket 24); the A/A run and its ledger with the replay cache off (ticket 23).
+**Not yet:** real upstreams (ticket 44); a credit stop on a program call (ticket 29); the smoke test's path check (ticket 24); the A/A run and its ledger with the replay cache off (ticket 23).
 
 **Blocked by:** 17 (Reviewer); 18 (Send-backs, reserve and wrap-up); 21 (Relay and path to the proxy)
 
@@ -25,6 +25,6 @@
 - [ ] A broken path after a stage's run throws instead of scoring
 - [ ] The row's `program_usd` and `dev_usd`, the cost metrics and the night's spend follow the spec; the margin's fresh share uses `model_calls` and `model_calls_replayed`
 - [ ] `npm run run-night -- --config configs/capitals-smoke.yaml --mock` passes every row of the done signal's table: among them `evals/*/meter.jsonl` lists the program's calls with no `error`, capitals scores 0 and keeps nothing, `spend_usd` is 0
-- [ ] `npm run run-night -- --config configs/e2e/plateau.yaml --mock` prints `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left
+- [ ] `npm run run-night -- --config configs/e2e/plateau.yaml --mock` passes every row of the done signal's table, with `plateau` as its `stop_reason`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left
 - [ ] `datenorm-smoke --mock` still prints `done`, gets no token and stays on the default bridge
 - [ ] `npm run typecheck` and `npm test` pass

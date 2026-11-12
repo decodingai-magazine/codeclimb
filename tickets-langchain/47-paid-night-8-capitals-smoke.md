@@ -1,4 +1,4 @@
-# 45: Paid night 8: capitals-smoke on real models, with the operator's go-ahead
+# 47: Paid night 8: capitals-smoke on real models, with the operator's go-ahead
 
 **What to build:** Nothing new. The finished build runs the one paid end-to-end night of the done signal, `capitals-smoke` on real models, on a running `npm run server`. It spends money, so it runs only when the operator says so for that run, after its ceiling was named. Anything the night shows broken is fixed in the ticket that owns it, and the night is run again with a new go-ahead.
 
@@ -11,7 +11,7 @@
 
 **Not yet:** nothing is deferred.
 
-**Blocked by:** 44 (Final acceptance: the free end-to-end suite and the fixed contracts)
+**Blocked by:** 46 (Final acceptance: the free end-to-end suite and the fixed contracts)
 
 **Status:** ready-for-human
 

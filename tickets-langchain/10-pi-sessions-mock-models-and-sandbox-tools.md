@@ -9,7 +9,7 @@
 - "What you get, what you build": the Pi rows of the dependency table (already installed by ticket 01)
 - "Every number in one place": coder rows "default bash timeout" and "Pi retries; compaction"
 
-**Not yet:** provider models, credentials and web research (ticket 43); the coder's prompt and stop rules (tickets 11, 12); `--mock-offline` and `mock_credit` (tickets 28, 29); program calls (ticket 20).
+**Not yet:** provider models, credentials and web research (ticket 45); the coder's prompt and stop rules (tickets 11, 12); `--mock-offline` and `mock_credit` (tickets 28, 29); program calls (ticket 20).
 
 **Blocked by:** 08 (Sandbox interface and Docker backend)
 

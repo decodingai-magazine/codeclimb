@@ -11,7 +11,7 @@
 - "Known gaps": the bullets on the sweeper's wait, on a step rerunning from its start, and on lost in-process memory
 - "Goal and done signal": night 5
 
-**Not yet:** the watchdog (ticket 38): night 5 needs none. The resume after a pause for credits (ticket 29).
+**Not yet:** the watchdog (ticket 39): night 5 needs none. The resume after a pause for credits (ticket 29).
 
 **Blocked by:** 23 (Noise run; mock night 2 passes in full); 25 (Check table: mock nights 1 to 3 as one repeatable check)
 

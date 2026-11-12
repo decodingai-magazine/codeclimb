@@ -13,13 +13,13 @@
 - "Platform facts": the cancel facts (cancel without `wait`; the run reads interrupted while its step may still run)
 - "Goal and done signal": night 4
 
-**Not yet:** starting the lessons operation from the stop cleanup (ticket 34); timers and their guards (ticket 30); the watchdog (ticket 38). This ticket replaces ticket 15's interim catch with the stop operation.
+**Not yet:** starting the lessons operation from the stop cleanup (ticket 34); timers and their guards (ticket 30); the watchdog (ticket 39). This ticket replaces ticket 15's interim catch with the stop operation.
 
 **Blocked by:** 15 (Tracer night: `datenorm-smoke` on mock models); 25 (Check table: mock nights 1 to 3 as one repeatable check)
 
 **Status:** ready-for-agent
 
-- [ ] The stop operation writes `stop.json` first (`at`, `reason`), only when the night has no `done.json`, and the first stop wins; then it creates a server run of `stop` on the night's stop thread (created if missing, `enqueue`)
+- [ ] The stop operation writes `stop.json` first (`at`, `reason`), only when the night has no `done.json`, and the first stop wins; then it creates a server run of `stop` on the night's stop thread (created if missing, `enqueue`, `durability: "sync"`)
 - [ ] The `stop` graph, step by step: cancel the night's pending and running server runs with action `interrupt` and without waiting; abort the night's live registry entries; sweep sandboxes by the prefix `cc-<night>`; write `stop.json` if still missing
 - [ ] The stop cleanup finds the night's folder by scanning, since its input holds only the night id
 - [ ] The night's catch: rethrows a graph interrupt untouched; on an abort with no `stop.json` writes reason `cancelled`, starts the stop operation, rethrows; on any other error writes reason `failed`, starts the stop operation, rethrows; there is no cleanup in a `finally`

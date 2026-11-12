@@ -1,4 +1,4 @@
-# 38: Watchdog
+# 39: Watchdog
 
 **What to build:** While `npm run api` runs, a watchdog recovers nights a crash left behind that the Agent Server cannot recover itself. Every 60 s it looks at every night that has neither `done.json` nor `stop.json` and reads the night's newest thread. It resumes an errored thread, at most twice, then stops the night; it stops a night whose thread is lost; it leaves every other night alone.
 
@@ -11,7 +11,7 @@
 
 **Not yet:** nothing is deferred.
 
-**Blocked by:** 27 (Crash resume; mock night 5 passes); 37 (Worker API)
+**Blocked by:** 27 (Crash resume; mock night 5 passes); 38 (Worker API)
 
 **Status:** ready-for-agent
 

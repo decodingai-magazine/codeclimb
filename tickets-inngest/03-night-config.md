@@ -8,8 +8,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] All five given configs parse; unit tests cover every default of the config table
-- [ ] Unit tests cover each validation: reviewer must differ from coder (string comparison, thinking levels included), deadline forms (ISO, `90m`, `8h`, `30s`), `latency_` / `cost_` prefixes, thresholds ≥ 1 and > 0, weights only for threshold metrics, `min_efficiency_gain` in (0, 1), `lessons` not `off` without scenario lessons, `max_tokens` a positive integer
+- [ ] The five given configs and `configs/e2e/plateau.yaml` parse; unit tests cover every default of the config table
+- [ ] Unit tests cover each validation: reviewer must differ from coder (string comparison, thinking levels included), deadline forms (ISO, `90m`, `8h`, `30s`), `latency_` / `cost_` prefixes, thresholds ≥ 1 and > 0, weights only for threshold metrics, `min_efficiency_gain` in (0, 1), `lessons` not `off` without scenario lessons, `max_tokens` a positive integer, `max_rounds` ≥ 1, and a missing required field
 - [ ] Relative `scenario` and `results_path` resolve against the directory the command is started in; the config in the event carries paths relative to the checkout and resolves on the worker against `CODECLIMB_ROOT` (default: its cwd) (unit tests)
 - [ ] A results directory not directly under `<root>/runs/` (or `<root>/runs/mock/` for a mock night) is refused; the mock transform moves `runs/<name>/…` to `runs/mock/<name>/…` (unit tests)
 - [ ] Night id: the default `n<YYYYMMDD>-<HHMMSS>` from local time, and the validity rule (1 to 48 letters, digits or hyphens, no leading hyphen) (unit tests)

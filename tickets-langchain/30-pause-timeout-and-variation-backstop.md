@@ -17,12 +17,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] The timer operation creates a server run of `stop` on the night's timer thread (UUID v5 of `timer/<night_id>`, created if missing, `enqueue`) with `afterSeconds`, `reason: failed` and a guard
+- [ ] The timer operation creates a server run of `stop` on the night's timer thread (UUID v5 of `timer/<night_id>`, created if missing, `enqueue`) with `afterSeconds`, `durability: "sync"`, `reason: failed` and a guard
 - [ ] The night creates one timer at each pause, due in 3 days, guarded by the pause number, and one at the start of each variation, due in 4 days, guarded by the variation number; both are created inside steps
 - [ ] When a timer fires, the stop graph checks the guard first: it does nothing if that pause has ended, or if that variation has ended or is no longer the newest
 - [ ] When the guard passes, the stop graph writes `stop.json` with reason `failed` and runs the cleanup of ticket 26
 - [ ] A finished night's pending timers do nothing when they fire
 - [ ] Unit tests with a faked client and night folders cover each guard outcome for both timers
-- [ ] On a running server, with the delays shortened through a test-only input: a mock night paused by `mock_credit` and left alone ends with `stop.json` (`failed`) and no `cc-<id>` container; the same night resumed before the timer fires finishes with `done.json` and is not stopped when the timer fires later
+- [ ] On a running server, on a mock night paused by `mock_credit`: the timer thread holds the night's two pending delayed runs, one due in 3 days with the pause number and one due in 4 days with the variation number. A test then calls the timer operation itself with a delay of a few seconds and that pause's number: the night ends with `stop.json` (`failed`) and no `cc-<id>` container. A second such night, resumed before that short timer fires, finishes with `done.json` and is not stopped when the timer fires
 - [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal"
 - [ ] `npm run typecheck` and `npm test` pass

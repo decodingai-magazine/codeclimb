@@ -18,6 +18,7 @@
 - [ ] `retryOn` is false for CodeClimb's non-retriable error, for CodeClimb's timeout error and for an abort of the server run
 - [ ] On its last attempt, or at once for a non-retriable error, the step returns its failure as data and the wrapper throws it in the entrypoint; a test entrypoint that catches it ends its run in success
 - [ ] Each attempt gets one abort signal built from the server run's signal, its backstop timer and its live registry entry; the body receives it as an argument
+- [ ] The backstop is set per step by its caller: 35 minutes for a host-command step and 30 minutes for every other step, unless the caller gives another (the code step and the evaluation do)
 - [ ] A backstop timer that fires aborts the signal and the step then fails with CodeClimb's timeout error, not retried
 - [ ] An abort is recognized by `signal.aborted`, never by error text
 - [ ] The live registry maps an experiment or evaluation id to an abort function and its night id; aborting a night aborts all its entries; an entry is removed when its step ends

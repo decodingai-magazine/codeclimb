@@ -18,10 +18,14 @@
 **Status:** ready-for-agent
 
 - [ ] Experiments and evaluations are plain functions inside the `night` entrypoint; their steps are named `<experiment or evaluation id>/<step>`; every clock read, random choice and I/O sits inside a step; steps return small JSON
-- [ ] Init builds the bundle, imports the starter as `<night>-r0-starter`, computes the deadline and writes `night.json` with the keys the spec lists that apply so far
+- [ ] Init builds the bundle, imports the starter as `<night>-r0-starter`, computes the deadline and writes `night.json` with the keys the spec lists that apply so far; the night resolves the config's paths against `CODECLIMB_ROOT`
+- [ ] Backstops: the code step gets `experiment_min × 3 + 30` minutes per attempt; an evaluation gets `eval_min × stages × 3 + 15` minutes over all its steps; a fired backstop makes the experiment or the evaluation an `error` outcome
 - [ ] The coder runs on a fresh sandbox from the checkpoint; the evaluator's sandbox is created after the coder's is destroyed; an evaluation is skipped with no commit or unchanged files
 - [ ] A failure of an experiment or an evaluation becomes an `error` outcome and the night goes on; a graph interrupt and an abort of the server run are rethrown
-- [ ] `run-night` validates the config (exit 2 on a usage or validation error), starts the night, prints new rows every 5 s, prints `done` with `done.json` or `stopped` with `stop.json`, and exits 0; Ctrl-C detaches; `--no-wait` exits after the start
+- [ ] `run-night` validates the config (exit 2 on a usage or validation error), starts the night, prints new rows every 5 s, prints `done` with `done.json` or `stopped` with `stop.json`, and exits 0; Ctrl-C detaches; `--no-wait` exits after the start; `--sandbox docker` is accepted
+- [ ] Starting a night id that already has a thread starts nothing: `run-night` prints a note and follows the running night
+- [ ] Experiment rows carry `stack: langchain`, `backend: docker`, the cost and timing fields, `infra_errors` and `evaluator_instance`; an experiment that was never evaluated still has `eval_id` `<exp>-eval`; the test evaluation is `<night>-test-r<N>` on the sandbox `cc-<night>-test-r<N>`
+- [ ] `done.json` holds the keys the spec lists, `spend_usd` at 4 decimals; with nothing kept, the test evaluation runs on the round-0 commit and `kept` names it with `dev_score` 0; `test_metrics` is null when the test evaluation failed
 - [ ] On `datenorm-smoke --mock` these rows of the done signal's table hold: `run-night` prints `done` with `stop_reason` `max_rounds` after exactly 2 rounds; `done.json` exists and `stop.json` and `pause.json` don't; `validate-results` passes; `results.jsonl` has a row per experiment of every round plus a `test` row; `refs/exp/<id>-r1-e0` shows the mock commit and its diff adds `MOCK.md`; `exps/*/code-state.json` has `stop: done` and `exps/*/session/` holds a session file; every experiment row has `decision_reason`; round 1 is kept at dev accuracy 0.125; `done.json` has `spend_usd: 0`; `docker ps` shows no `cc-<id>` container
 - [ ] A night whose init fails (a config naming a bundle command that fails, in a test) ends with `nights/<id>/stop.json` holding `reason: failed`, and `run-night` prints `stopped`
 - [ ] `npm run typecheck` and `npm test` pass

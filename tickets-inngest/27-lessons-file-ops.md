@@ -4,7 +4,7 @@
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Lessons across nights", "Every number in one place"
 
-**Blocked by:** 02 (Scenario contract: load, host commands, masking, scoring hashes, report flattening)
+**Blocked by:** 02 (Scenario contract: load, host commands, masking, scoring hashes, report flattening); 03 (Night config: parse, defaults, validation, night ids, results paths)
 
 **Status:** ready-for-agent
 

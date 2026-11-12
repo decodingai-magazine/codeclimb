@@ -20,6 +20,8 @@
 - [ ] A metered config adds the endpoint variables, the models, the experiment's budget, the 402 and the replay rule; an unmetered config has none of it
 - [ ] A standard metric that is not optimized stays out unless a gate or threshold names it
 - [ ] The workflow has four steps for an experiment and the review step only for a repair; a repair prompt says to fix the failure and nothing else and that there is no second repair
+- [ ] The intro names `/spec/spec` as the copy of the spec and `/spec/train` as the only labeled data; `<hypothesis>` holds the reviewer's hypothesis when the round has one
+- [ ] Every rule of the spec's list of rules the prompt must carry is in the prompt, each checked by a unit test
 - [ ] The prompt names the minutes available and the round's end time, and asks for the final `APPROACH:` line
 - [ ] The prompt contains neither "You stopped with" nor "change no more code"
 - [ ] Unit tests cover the above; `npm run typecheck` and `npm test` pass

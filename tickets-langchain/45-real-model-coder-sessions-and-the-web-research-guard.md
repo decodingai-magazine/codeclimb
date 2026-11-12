@@ -1,6 +1,6 @@
-# 43: Real-model coder sessions and the web research guard
+# 45: Real-model coder sessions and the web research guard
 
-**What to build:** On a real-model night the coder, the reviewer and the lessons sessions run on any Pi provider named `<provider>/<id>`, with credentials from env keys or Pi's `auth.json`, and their cost is Pi's catalog price per message. The coder can also research the web through three tools of `pi-web-access`, behind a guard that pins the tool list, forces safe inputs, and keeps the project's own repository and other unsafe hosts out of reach.
+**What to build:** On a real-model night every Pi session runs on any Pi provider named `<provider>/<id>`, with credentials from env keys or Pi's `auth.json`, and their cost is Pi's catalog price per message. The coder can also research the web through three tools of `pi-web-access`, behind a guard that pins the tool list, forces safe inputs, and keeps the project's own repository and other unsafe hosts out of reach.
 
 **Spec sections:**
 - "Coder": the bullets on providers and credentials and on web research
@@ -22,6 +22,6 @@
 - [ ] Each call's input is edited in place as the table says: kept inputs, forced `provider`, `workflow`, `includeContent`, `mode` and `proxy`
 - [ ] Fetch rules: http(s) only; a github.com `/blob/` URL becomes its raw-file URL; other github.com pages and the listed video hosts are refused
 - [ ] The checkout's GitHub `origin` is off limits on every host the spec lists, and links to it are cut from search results; with no GitHub origin there is no such rule
-- [ ] Web research is off in mock mode; the reviewer and lessons sessions never get it
+- [ ] Web research is off in mock mode; a session with no tools never gets it
 - [ ] Unit tests cover the input edits, the fetch rules and the repository rule on plain inputs, and that a real-model session is built with the guard loaded last; `npm run typecheck` and `npm test` pass
 - [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal": a mock session gets no web tools

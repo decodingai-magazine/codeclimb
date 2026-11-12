@@ -1,4 +1,4 @@
-# 37: Worker API
+# 38: Worker API
 
 **What to build:** `npm run api` starts the worker API in its own process on `127.0.0.1:7421`. A client can list nights, read one night's summary, live view and report, and stop, resume or continue a night. Status comes from the night's files, never from the Agent Server.
 
@@ -10,7 +10,7 @@
 - "Deployment and environment": `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT`, `CODECLIMB_WORKER_TOKEN`, the env file
 - "Every number in one place": the API row
 
-**Not yet:** the export endpoints (ticket 39); the watchdog (ticket 38); the app (ticket 40). The API serves no `/v1`.
+**Not yet:** the export endpoints (ticket 40); the watchdog (ticket 39); the app (ticket 41). The API serves no `/v1`.
 
 **Blocked by:** 29 (Pause for credits and resume); 32 (Continue)
 
