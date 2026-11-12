@@ -102,7 +102,7 @@ Given, unchanged by you:
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
 
 - npm scripts: `server` (the Agent Server), `server:logs`, `server:stop`, `api` (the worker API and the watchdog), `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `build:scenario:overfit`, `export`, `lessons`, `dev` (the app), `build:app` (the app's production build), `typecheck`, `test` (unit tests)
-  - `build:scenario:overfit` runs the given `scenarios/datenorm/scripts/build_overfit.py` with `--out` set to the `scenario` path that `configs/e2e/overfit.yaml` names
+  - `build:scenario:overfit` runs the given `scenarios/datenorm/scripts/build_overfit.py` with `--out` set to the `scenario` path that `configs/e2e/overfit.yaml` names: `generated/datenorm-overfit`, a gitignored folder shared by every stack
 - graphs, in `langgraph.json`: `night`, `stop`, `lessons`
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
