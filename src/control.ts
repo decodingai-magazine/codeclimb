@@ -9,7 +9,7 @@ import { findNightDir, type StopReason, writeStopIfMissing } from "./night/files
 import type { NightInput } from "./night/types.ts";
 import { type ReopenOptions, reopenNight } from "./night/variation.ts";
 
-export const serverUrl = () => process.env.CODECLIMB_SERVER_URL ?? "http://127.0.0.1:2024";
+export const serverUrl = () => process.env.CODECLIMB_SERVER_URL ?? "http://127.0.0.1:8123";
 const client = () => new Client({ apiUrl: serverUrl() });
 
 export type StartResult = { started: true; threadId: string } | { started: false; threadId: string };

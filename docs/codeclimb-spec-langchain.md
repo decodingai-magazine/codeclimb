@@ -1002,7 +1002,7 @@ Rules the loop depends on:
 - steps take plain data and return small JSON (SHAs, metrics, paths); large state stays on disk
 - file writes inside steps are idempotent: rows deduplicate by `eval_id`, other files are rewritten whole
 - the Agent Server holds in-memory state (the live registry, the proxy's ledgers and cache). Every graph therefore runs in the one Agent Server process that holds the disk: one server per checkout, one night at a time, with 4 concurrent runs (a night, a stop, a lessons run, a spare). A second night on the same server is not supported. Importing the graph module has no side effects beyond registering the tracer: the proxy starts on first use, and listeners and timers start inside steps
-- a code change reaches the server only through a new image: `npm run server` again, which rebuilds from `ADD .` and recreates the server container. To a running night that is a kill: it reruns the running step and loses the in-memory state. What `up --watch` does to a running night was not measured ([[#Open points for the build]])
+- a code change reaches the server only through a new image: `npm run server` again, which rebuilds from `ADD .` and recreates the server container. To a running night that is a kill: it reruns the running step and loses the in-memory state. `server` never passes `up --watch`: its effect on a running night was not measured, and a watch rebuild would be the same kill at a moment nobody chose
 - a server restarted onto new code cannot replay a night started by older code: let running nights finish first
 
 State the night carries across rounds: the checkpoint, feedback, failures, hypothesis, log, history, spend, tokens, per-round spends and tokens, rounds without a keep, the costliest evaluation, the deadline, the pause count, the round, the noise and the A/A run count, the stop reason.
@@ -1042,7 +1042,10 @@ Measured on the `langgraphjs up` server on 2026-11-12 (spike #27): image `langch
 | The base image has `python3` (3.12), `uv` (0.13.6) and `tar`, but no `git` and no Docker CLI. With `git` and Debian's `docker-cli` added and the host's Docker socket mounted, the container creates, runs and destroys sandboxes on the host's daemon | The image lines ([[#Deployment and environment]]) |
 | With no Python pinned, uv in the container picks the newest CPython for graphrag's `requires-python >=3.14` (3.15), for which `pydantic-core` has no wheel, so the bundle command fails trying to build it. With `UV_PYTHON=3.14`, graphrag's host commands (`bundle`, `check`, `scan`) run and a mock graphrag night finishes with the same decisions as on the dev server. uv's downloaded Python and its cache live in the container's home and are lost when the container is recreated | `UV_PYTHON=3.14` in the compose override |
 | A metered mock night writes its meter rows through: sandbox → `cc-meter-relay:8080` on `cc-meter` → the server container's alias on `cc-meter` → the proxy bound on `0.0.0.0` at its fixed port | [[#Metering proxy]] |
-| The generated compose publishes the server's port 8000 as 8123 on every interface of the host, not on loopback | Bind it to `127.0.0.1` ([[#Open points for the build]]) |
+| The generated compose publishes the server's port 8000 as `<port>:8000`, on every interface of the host, and the CLI merges it after the override, so the override can add a binding but not replace this one (measured with `docker compose config`). Docker Desktop ignores a network's `com.docker.network.bridge.host_binding_ipv4` (measured on Docker 29.4.3). `up` also swallows a failed build or an exited container, and its own wait for `/ok` is 10 s and not fatal | `server` rewrites that one line ([[#Deployment and environment]]) and polls `/ok` itself |
+| CLI 1.7.1 honours `api_version` for the JS image: it builds from `langchain/langgraphjs-api:<api_version>-node<node_version>` | `api_version: 0.17.1` pins the image |
+| The server reads `N_JOBS_PER_WORKER` (default 10) for the number of runs it executes at once | `N_JOBS_PER_WORKER=4` in the override |
+| Git in the container reads a worktree's `origin` once the checkout's git directory (`git rev-parse --git-common-dir`) is mounted at its host path and `safe.directory` is `*` (the mounted files belong to another user) | The git directory mount; the web-research guard works from a worktree |
 | The `:24` base image tag floats; `up --no-pull` uses the local copy | Pin `api_version` |
 | The generated Dockerfile copies the project with `ADD .` | A `.dockerignore` |
 | `durability: "sync"` is honoured but not strict. With `exit`, a step that finished 8 s before a kill of the server container runs again after `up`. With `sync`, its result is in Postgres 1 s into the next step and it is not redone. But the write is asynchronous (a batching checkpointer, 5 ms batch window, its own ingestion loop): a kill issued 6 ms after a step finished lost that step, and it ran again. The bound, about 1 s, was not narrowed | A kill reruns the running step and at most the last second's results; the idempotent-write rules still apply |
@@ -1100,30 +1103,31 @@ What the switch fixes and what it does not: [[#Durable runtime on LangGraph]], [
 
 The server image, built by `langgraphjs up` from `langgraph.json`:
 
-- base `langchain/langgraphjs-api:24` (Node 24). The tag floats, so `langgraph.json` pins `api_version` to `0.17.1`, the version the platform facts were measured on
+- base `langchain/langgraphjs-api:0.17.1-node24` (Node 24). The `:24` tag floats, so `langgraph.json` pins `api_version` to `0.17.1`, the version the platform facts were measured on
 - `ADD .` of the checkout, then `npm ci` with lifecycle scripts off, and `tsx` loading the graphs
-- extra image lines (`dockerfile_lines`): `git` and Debian's `docker-cli` from apt, and `ENV NPM_CONFIG_IGNORE_SCRIPTS=true`. `python3`, `uv`, `tar` and `bash` come with the base image
-- `.dockerignore`: `.env*` except `.env.example`, `.git`, `node_modules`, `runs`, `runs-langchain`, `web/.next`, `**/.venv`, `**/__pycache__`. Without it the keys, the night output and the host's own native modules would go into the image
+- extra image lines (`dockerfile_lines`): `git` and Debian's `docker-cli` from apt, `git config --system --add safe.directory '*'`, and `ENV NPM_CONFIG_IGNORE_SCRIPTS=true`. `python3`, `uv`, `tar` and `bash` come with the base image
+- `.dockerignore`: `**/.env*` except `.env.example`, `.git`, `**/node_modules`, `.claude/worktrees`, `runs`, `runs-langchain`, `web/.next`, `.langgraph_api`, `**/.venv`, `**/__pycache__`. Without it the keys, the night output, the host's own native modules and, in the main checkout, every worktree would go into the image
 - `env: ".env"`: the server container gets the `.env` keys. The path must resolve inside the project
 
 The compose override, `docker/langgraph-up.compose.yaml`, named in `langgraph.json`'s `docker_compose_file`. The CLI merges it into its own compose file, so it adds to the `langgraph-api` service. Adding it and changing `langgraph.json` touch given inputs: they need the operator's go-ahead (ticket #29).
 
-- mounts: the host's Docker socket (`/var/run/docker.sock`); the checkout at its own host path (`CODECLIMB_HOST_ROOT`), so an absolute path in a night's input names the same file on both sides; Pi's `auth.json` at `/pi/auth.json`
-- environment: `CODECLIMB_ROOT` = `CODECLIMB_HOST_ROOT`; `CODECLIMB_PI_AUTH_PATH=/pi/auth.json`; `CODECLIMB_SERVER_URL=http://127.0.0.1:8000` (the graphs call the server they run in); `CODECLIMB_PROXY_HOST=0.0.0.0` and `CODECLIMB_PROXY_PORT=8090`; `CODECLIMB_RELAY_TARGET=codeclimb-server`; `UV_PYTHON=3.14`
+- mounts: the host's Docker socket (`/var/run/docker.sock`); the checkout at its own host path (`CODECLIMB_HOST_ROOT`), so an absolute path in a night's input names the same file on both sides; the checkout's git directory read-only at its host path (`CODECLIMB_HOST_GIT_DIR`: a worktree's `.git` is a file naming a directory outside the checkout); Pi's `auth.json` (`CODECLIMB_HOST_PI_AUTH`) read-write at `/pi/auth.json`, since Pi writes refreshed subscription tokens back in place; the volume `uv` at `/uv`
+- environment: `CODECLIMB_ROOT` = `CODECLIMB_HOST_ROOT`; `CODECLIMB_PI_AUTH_PATH=/pi/auth.json`; `CODECLIMB_SERVER_URL=http://127.0.0.1:8000` (the graphs call the server they run in); `CODECLIMB_PROXY_HOST=0.0.0.0` and `CODECLIMB_PROXY_PORT=8090`; `CODECLIMB_RELAY_TARGET=codeclimb-server`; `N_JOBS_PER_WORKER=4` (the 4 concurrent runs); `UV_PYTHON=3.14`, and `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR` and `UV_PROJECT_ENVIRONMENT` under `/uv`, so uv's Python and cache survive a container recreate and the container's Linux venv never replaces a scenario's own `.venv` in the checkout. The one project environment serves every uv scenario in turn: uv re-syncs it when the scenario changes
 - networks: the project's default network (Postgres, Redis) and the external network `cc-meter`, with the alias `codeclimb-server`
-- the published port: `127.0.0.1:8123` only ([[#Open points for the build]])
+- the published port: `127.0.0.1:8123` only. The override cannot replace the CLI's binding ([[#Platform facts]]), so `server` puts its own `docker` first on `PATH` for `up` (`src/cli/server-docker/docker`): it rewrites the `<port>:8000` line of the compose file `up` pipes on stdin to `127.0.0.1:<port>:8000` and passes every other call to the real `docker` unchanged. After `/ok` answers, `server` checks the container's published port and stops the stack when it is bound beyond loopback
 
 Commands:
 
-- `npm run server`: sets `CODECLIMB_HOST_ROOT` to the checkout, creates `cc-meter` when it is missing (an external network must exist before `up`), runs `langgraphjs up` and waits until `/ok` answers. Run it again after a code change: it rebuilds the image and recreates the server container, which to a running night is a kill
-- one command shows the server container's logs (ticket #29 names it)
-- the stack stops with `docker compose down` on its project. Without `-v` Postgres keeps every thread; with `-v` they are gone, and so is every night's crash resume. `server` never passes `up --recreate`, which recreates the volumes too
+- `npm run server` (`src/cli/server.ts`): checks that `.env` exists; sets `CODECLIMB_HOST_ROOT`, `CODECLIMB_HOST_GIT_DIR` and `CODECLIMB_HOST_PI_AUTH` (creating a missing `auth.json` as `{}`, as Pi does, since Docker would otherwise create a directory in its place); creates `cc-meter` when it is missing (an external network must exist before `up`); runs `langgraphjs up --port 8123 --no-pull --wait` with its `docker` first on `PATH`; then polls `/ok` for up to 5 minutes and fails when the server container exits or the deadline passes. Run it again after a code change: it rebuilds the image and recreates the server container, which to a running night is a kill
+- `npm run server:logs`: follows the server container's logs (`docker compose logs --follow langgraph-api` on the project)
+- `npm run server:stop`: `docker compose down` on the project. Without `-v` Postgres keeps every thread; with `-v` they are gone, and so is every night's crash resume. `server` never passes `up --recreate`, which recreates the volumes too
+- the compose project's name is the CLI's: the checkout folder's name and the sha256 of its path, both lowercased; the server container is `<project>-langgraph-api-1`
 
 Environment:
 
 - env file: one `.env` (gitignored; `.env.example` lists every key), loaded first by the CLI and the API, and named in `langgraph.json`'s `env` for the server container. Values already in the shell win
 - `LANGSMITH_API_KEY` is required: without it the server does not start. With `LANGSMITH_TRACING=false` nothing is traced; mock nights and CI run that way, with a key
-- the machine stays on until the night ends; on macOS it must not sleep (`caffeinate -i`), and how `server` keeps it awake now that `up` returns is ticket #29's
+- the machine stays on until the night ends; on macOS it must not sleep: `server` starts a detached `caffeinate -i docker wait <server container>`, which keeps the Mac awake as long as the server container runs and ends with it
 - a sandbox keeps running while its server is away
 - the app, the API and the Agent Server's published port bind loopback only by default. Inside its container the server and the proxy bind every interface: only the compose project's network and `cc-meter` reach them
 - one server per machine for metered nights: the relay is shared ([[#Known gaps]])
@@ -1137,12 +1141,15 @@ Environment:
 | `LANGSMITH_ENDPOINT`, `LANGSMITH_WORKSPACE_ID` | The API endpoint, which must match the key's region (`https://eu.api.smith.langchain.com` for an EU key); the workspace when the key reaches more than one |
 | `CODECLIMB_SERVER_URL` | Where the CLI, the API and the graphs reach the Agent Server (default `http://127.0.0.1:8123`; in the server container `http://127.0.0.1:8000`) |
 | `CODECLIMB_HOST_ROOT` | The checkout's absolute path on the host, set by `server`; mounted at the same path in the server container |
+| `CODECLIMB_HOST_GIT_DIR`, `CODECLIMB_HOST_PI_AUTH` | Set by `server` for the override: the checkout's git directory and the host's `auth.json` |
+| `N_JOBS_PER_WORKER` | Runs the server executes at once: 4 |
 | `CODECLIMB_ROOT` | The checkout the server resolves config paths and `runs-langchain/` against (default: its working directory; in the server container `CODECLIMB_HOST_ROOT`) |
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT` | The worker API (default `127.0.0.1:7421`) |
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer; where the app reaches the API |
 | `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds; in the server container `0.0.0.0` and 8090 |
 | `CODECLIMB_RELAY_TARGET` | Where the relay forwards: the server container's alias on `cc-meter`, `codeclimb-server` |
 | `UV_PYTHON` | uv's Python for the host commands in the server container: 3.14 |
+| `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR`, `UV_PROJECT_ENVIRONMENT` | uv's Python, cache and project environment in the server container: `/uv/python`, `/uv/cache`, `/uv/venv` on the `uv` volume |
 
 Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Server loads the graph module itself, in the image); `tsc` for types; Node's test runner for unit tests of the pure parts (keep rule, stops, schema, flattening, metering, lessons ops). Next.js and React for the app, `yaml` for configs, `node:http` for the API and the proxy. The graphs are a separate app from the Next.js one, so Pi's native dependencies stay out of its bundle. Scenario code: any language behind the contract.
 
@@ -1162,7 +1169,7 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | loop | pause timeout; variation backstop | 3 days; 4 days |
 | runtime | step attempts | 3 (2 retries) |
 | runtime | backstop timers per attempt | code `experiment_min × 3 + 30` min; an evaluation `eval_min × stages × 3 + 15` min; host command 35 min; other steps 30 min |
-| runtime | concurrent runs | 4 |
+| runtime | concurrent runs (`N_JOBS_PER_WORKER`) | 4 |
 | runtime | durability; a step's result stored | `sync` on every server run; within about 1 s of the step's end |
 | runtime | runs sweeper: a killed run restarts after `up` | about 2 min (sweep every 2 min) |
 | runtime | server-run attempts after restarts | 3 on the dev server; not re-measured on this server (#31) |
@@ -1196,7 +1203,8 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | proxy | OpenRouter call timeout; model check timeout | 5 min; 30 s |
 | proxy | embeddings prices per million tokens | 0.02 (small), 0.13 (large) |
 | ports | Agent Server published on `127.0.0.1`; Agent Server inside its container; worker API; relay; proxy in the server container | 8123; 8000; 7421; 8080; 8090 |
-| server image | base image; `api_version`; uv's Python for host commands | `langchain/langgraphjs-api:24`; 0.17.1; 3.14 |
+| server image | base image; `api_version`; uv's Python for host commands | `langchain/langgraphjs-api:0.17.1-node24`; 0.17.1; 3.14 |
+| server | wait for `/ok` after `up` | 5 min |
 | sandbox | size | 2 vCPU and 2 GiB |
 | API | stale after; request body | 60 min; 1 MB |
 | app / CLI | polling | night 5 s; list 10 s; CLI follow 5 s |
@@ -1239,16 +1247,7 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 
 Points the `langgraphjs up` spike (#27) left open. Each is a decision for the ticket named, made there and written back into this spec; none is a fact yet.
 
-- #29, image and compose:
-  - how the published port binds to `127.0.0.1` only: the generated compose publishes 8123 on every interface
-  - whether CLI 1.7.1 honours `api_version` for the JS image; if not, how the image is pinned
-  - how 4 concurrent runs are set on this server: `langgraphjs up` 1.7.1 has no flag for it (its flags: config, compose file, port, recreate, no-pull, watch, wait, Postgres URI)
-  - what `up --watch` does to a running night (not measured), and whether the edit loop uses it
-  - the mount mode of Pi's `auth.json`: the spike mounted it read-only and never used it (mock nights), and a subscription login may need to write refreshed tokens back
-  - a volume for uv's Python and cache, so a container recreate does not download Python 3.14 again
-  - how `server` keeps a Mac awake now that `up` returns
-  - the one command for the server container's logs
-  - a git worktree: its `.git` is a file naming the main checkout's git directory, which is not mounted, so git in the container may not read the checkout's `origin` and the web-research guard's own-repository rule would switch itself off. And `langgraph.json`'s `env` must resolve inside the project (the spike linked the main checkout's `.env`)
+- #29, image and compose: settled and written into [[#Deployment and environment]] and [[#Platform facts]]. One stays open: `langgraph.json`'s `env` must resolve inside the project, so a git worktree needs its own `.env` (a symlink to the main checkout's works; `server` stops when there is none)
 - #30, metering:
   - the relay's `cc.meter.target` label and the target comparison in "the path is up": the spike's relay forwards to the target but compares only the port
   - the relay test of `npm test`, which removes `cc-meter-relay` at its end

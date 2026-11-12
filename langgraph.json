@@ -1,9 +1,15 @@
 {
   "node_version": "24",
+  "api_version": "0.17.1",
   "graphs": {
     "night": "./src/graphs/night.ts:night",
     "stop": "./src/graphs/stop.ts:stop",
     "lessons": "./src/graphs/lessons.ts:lessons"
   },
-  "env": ".env"
+  "env": ".env",
+  "docker_compose_file": "docker/langgraph-up.compose.yaml",
+  "dockerfile_lines": [
+    "RUN apt-get update && apt-get install -y --no-install-recommends git docker-cli && rm -rf /var/lib/apt/lists/* && git config --system --add safe.directory '*'",
+    "ENV NPM_CONFIG_IGNORE_SCRIPTS=true"
+  ]
 }

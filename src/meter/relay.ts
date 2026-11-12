@@ -6,7 +6,10 @@ export const RELAY = "cc-meter-relay";
 export const RELAY_PORT = 8080;
 export const RELAY_URL = `http://${RELAY}:${RELAY_PORT}/v1`;
 
-/** A TCP forwarder written with Python's standard library: 8080 → the host alias and the proxy's port. */
+/** Where the relay forwards: the server container's alias on cc-meter (CODECLIMB_RELAY_TARGET), else the host alias. */
+const relayTarget = () => process.env.CODECLIMB_RELAY_TARGET ?? "host.docker.internal";
+
+/** A TCP forwarder written with Python's standard library: 8080 → the target and the proxy's port. */
 const forwarder = (port: number) => `
 import socket, threading
 def pipe(a, b):
@@ -21,7 +24,7 @@ def pipe(a, b):
             try: s.shutdown(socket.SHUT_RDWR)
             except OSError: pass
 def handle(c):
-    try: u = socket.create_connection(("host.docker.internal", ${port}))
+    try: u = socket.create_connection(("${relayTarget()}", ${port}))
     except OSError:
         c.close(); return
     threading.Thread(target=pipe, args=(c, u), daemon=True).start()

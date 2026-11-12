@@ -1,0 +1,12 @@
+# The server image's `ADD .` (langgraphjs up): keep keys, night output, host-native modules and worktrees out.
+**/.env*
+!.env.example
+.git
+**/node_modules
+.claude/worktrees
+runs
+runs-langchain
+web/.next
+.langgraph_api
+**/.venv
+**/__pycache__

@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "server": "langgraphjs dev --host 127.0.0.1 --port 2024 --no-browser --no-reload -n 4",
+    "server": "tsx src/cli/server.ts",
+    "server:logs": "tsx src/cli/server.ts logs",
+    "server:stop": "tsx src/cli/server.ts stop",
     "dev": "next dev web -H 127.0.0.1",
     "build:app": "next build web",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",

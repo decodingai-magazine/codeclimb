@@ -1,0 +1,43 @@
+# Extra compose file for `langgraphjs up` (named in langgraph.json's docker_compose_file); spec: Deployment and environment.
+# The CLI merges it before its own compose (Postgres, Redis, langgraph-api), so it adds to the langgraph-api service.
+# `npm run server` (src/cli/server.ts) sets the CODECLIMB_HOST_* variables below and publishes the port on 127.0.0.1.
+services:
+  langgraph-api:
+    environment:
+      # The checkout is mounted at its own host path: an absolute path in a night's input names the same file on both sides.
+      CODECLIMB_ROOT: ${CODECLIMB_HOST_ROOT:?run the server with npm run server}
+      CODECLIMB_PI_AUTH_PATH: /pi/auth.json
+      # The graphs call the server they run in.
+      CODECLIMB_SERVER_URL: http://127.0.0.1:8000
+      # The proxy binds every interface on a fixed port; the relay reaches it by name on cc-meter.
+      CODECLIMB_PROXY_HOST: 0.0.0.0
+      CODECLIMB_PROXY_PORT: "8090"
+      CODECLIMB_RELAY_TARGET: codeclimb-server
+      # A night, a stop, a lessons run and a spare.
+      N_JOBS_PER_WORKER: "4"
+      # graphrag's host commands (uv run) need requires-python >=3.14; left alone, uv takes 3.15, for which
+      # pydantic-core has no wheel. uv's Python, cache and project environment live on the uv volume: they survive a
+      # container recreate, and the container's Linux venv stays out of the checkout's own `.venv`.
+      UV_PYTHON: "3.14"
+      UV_PYTHON_INSTALL_DIR: /uv/python
+      UV_CACHE_DIR: /uv/cache
+      UV_PROJECT_ENVIRONMENT: /uv/venv
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CODECLIMB_HOST_ROOT}:${CODECLIMB_HOST_ROOT}
+      # The checkout's git directory, which a worktree keeps outside the checkout (read-only: the server only reads it).
+      - ${CODECLIMB_HOST_GIT_DIR:?run the server with npm run server}:${CODECLIMB_HOST_GIT_DIR}:ro
+      # Read-write: Pi writes refreshed subscription tokens back.
+      - ${CODECLIMB_HOST_PI_AUTH:?run the server with npm run server}:/pi/auth.json
+      - uv:/uv
+    networks:
+      default: {}
+      cc-meter:
+        aliases: [codeclimb-server]
+
+volumes:
+  uv: {}
+
+networks:
+  cc-meter:
+    external: true
