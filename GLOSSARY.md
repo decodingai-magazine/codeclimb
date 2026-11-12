@@ -102,7 +102,7 @@ LangSmith's run of an application over a dataset. CodeClimb does not use it.
 _Avoid_: experiment
 
 **Agent Server**:
-The process that runs the graphs and, inside them, the agent sessions. Here it is LangGraph's dev server on the operator's machine, the only mode.
+The process that runs the graphs and, inside them, the agent sessions. Here it is LangGraph's self-hosted server, started by `langgraphjs up` in Docker on the operator's machine with its own Postgres and Redis, the only mode.
 _Avoid_: the worker, prod, cloud
 
 **Worker API**:

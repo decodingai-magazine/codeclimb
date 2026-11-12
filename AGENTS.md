@@ -18,7 +18,8 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 - LangChain ecosystem; full docs: https://docs.langchain.com/llms.txt, or the `langchain-docs` MCP
     - Use the TypeScript pages, not the Python ones: the two APIs differ (Python's `retry_policy` is `retry` on a JS task)
     - LangGraph JS (`@langchain/langgraph`): the functional API (`entrypoint`, `task`, `interrupt`)
-    - Agent Server: `npm run server` (`langgraphjs up`: the server container plus its own Postgres and Redis) serves the graphs in `langgraph.json` at http://127.0.0.1:8123. A code change needs `npm run server` again, which rebuilds the image. It runs one night at a time
+    - Agent Server: `npm run server` (`langgraphjs up`: the server container plus its own Postgres and Redis) serves the graphs in `langgraph.json` at http://127.0.0.1:8123. A code change needs `npm run server` again, which rebuilds the image. It runs one night at a time. `npm run server:stop` stops the stack and keeps every thread in Postgres
+    - The server needs `.env` with `LANGSMITH_API_KEY` to boot. A git worktree needs its own `.env`: symlink the main checkout's
     - LangSmith (`langsmith`): tracing and feedback only
 - Pi (`@earendil-works/pi-coding-agent`): the coder, the reviewer and the lessons sessions run on its SDK; full docs: https://github.com/earendil-works/pi
 - Docker: every sandbox is a local container, so Docker must be running for any night
@@ -34,10 +35,11 @@ With `npm run server` running, use the local Agent Server REST API:
 - Thread state: `curl -s http://127.0.0.1:8123/threads/<thread_id>/state`
 - Thread history: `curl -s -X POST http://127.0.0.1:8123/threads/<thread_id>/history -H 'content-type: application/json' -d '{}'`
 - Runs on a thread: `curl -s http://127.0.0.1:8123/threads/<thread_id>/runs`
+- Server logs: `npm run server:logs` (the server container, `<project>-langgraph-api-1`, named in `npm run server`'s last line)
 
 Output is JSON. Use jq to filter.
 A night's own state is in its files under `runs-langchain/`, not in the server: read `nights/<id>/` first.
-Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (link printed by `npm run server`).
+Traces: LangSmith project `$LANGSMITH_PROJECT`, through the `langsmith` MCP or LangGraph Studio (https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123).
 If access is denied, ask the user to review the session's permissions.
 
 ## Conversational Style

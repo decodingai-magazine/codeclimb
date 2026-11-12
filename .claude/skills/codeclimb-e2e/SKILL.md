@@ -12,8 +12,10 @@ Eleven scenarios. 1 to 7 run on mock models and cost nothing: run all seven, in 
 ## Setup
 
 1. `docker images` lists `codeclimb-python` and, for scenario 7, `codeclimb-graphrag`. If not: `npm run build:image`, `npm run build:image:graphrag`. Scenario 7's host commands need `uv`.
-2. `npm run server` is running on the code under test. It has no hot reload: restart it after every code change.
-3. No other night is running on this server (`docker ps` shows no `cc-` container). One server runs one night at a time.
+2. `.env` exists with `LANGSMITH_API_KEY` (the server does not boot without it); in a git worktree, a symlink to the main checkout's `.env`.
+3. `npm run server` has run on the code under test and printed its last line, `server: http://127.0.0.1:8123 (container <project>-langgraph-api-1) ...`. It builds the image from the checkout, so run it again after every code change. `curl -s http://127.0.0.1:8123/ok` answers.
+4. No other night is running on this server (`docker ps` shows no `cc-` container). One server runs one night at a time.
+5. When done: `npm run server:stop`. It keeps every thread in Postgres; `down -v` would drop them.
 
 Give every night a fresh id with `--night-id` (for example `plateau-$(date +%H%M%S)`): an id that was used before is refused.
 
@@ -87,7 +89,7 @@ A failure in the coder or the review falls back quietly in some paths. Read `cod
 - Every round has an experiment row with a `decision_reason`, and there is one `test` row.
 - Every evaluation has `N/evals/<eval>/extraction/inputs.jsonl`.
 - Every experiment with a commit has `N/exps/<exp>/check.json`.
-- Where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`.
+- Where an evaluation succeeded, its scenario metric names start with `extraction.`, `graph.` or `retrieval.`; the metering metrics (`cost_*`, `latency_total_s`, `model_calls*`) sit beside them.
 - Within a minute of `done`, `runs-langchain/mock/graphrag-smoke/lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and `git status` shows the scenario's `lessons.md` unchanged.
 - `docker ps` shows no `cc-<id>` container.
 

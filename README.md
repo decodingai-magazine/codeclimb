@@ -1,38 +1,50 @@
 # codeclimb (LangChain stack)
 
-CodeClimb on the LangChain ecosystem: LangGraph JS for orchestration and durability, LangSmith for tracing and sandboxes. The Inngest implementation lives on `main`.
-
-Status: dev environment only. `src/hello.ts` is a placeholder graph; the CodeClimb graphs replace it.
+CodeClimb on the LangChain ecosystem: LangGraph JS for orchestration and durability, LangSmith for tracing and feedback, Docker for sandboxes. The Inngest implementation lives on `main`. The build spec is `docs/codeclimb-spec-langchain.md`.
 
 ## Layout
 
-- `src/`: graphs, registered in `langgraph.json`
+- `src/`: graphs (registered in `langgraph.json`), CLI, worker API, sandboxes, metering proxy
+- `web/`: the app (Next.js)
 - `configs/`: night configs (YAML)
 - `scenarios/`: scenarios (spec, starter, gold, scripts)
-- `docker/`: sandbox images
+- `docker/`: sandbox images and the server's compose override
 
-## Local development
+## Local setup
 
-Requires Node.js 24+.
+Requires Node.js 24+ and Docker.
 
 ```bash
 npm install --ignore-scripts
-cp .env.example .env         # set LANGSMITH_API_KEY
-npm run server               # Agent Server at http://127.0.0.1:2024, Studio link in the output
+cp .env.example .env           # set LANGSMITH_API_KEY: the server does not boot without it
+npm run build:image            # codeclimb-python sandbox image
+npm run build:image:graphrag   # codeclimb-graphrag, for the graphrag scenario
+npm run server                 # Agent Server at http://127.0.0.1:8123
 ```
 
-Check it:
+`npm run server` runs `langgraphjs up`: it builds the server image from the checkout and starts three containers (the server, its Postgres and its Redis). Run it again after a code change. In a git worktree, symlink `.env` to the main checkout's.
 
 ```bash
-curl -s http://127.0.0.1:2024/ok
-curl -s -X POST http://127.0.0.1:2024/runs/wait -H 'content-type: application/json' -d '{"assistant_id":"hello","input":{"name":"codeclimb"}}'
+curl -s http://127.0.0.1:8123/ok
+npm run server:logs            # follow the server container's logs
+npm run server:stop            # stop the stack; Postgres keeps every thread
 ```
 
-Type check: `npm run typecheck`.
-
-## Sandbox images
+## A night
 
 ```bash
-npm run build:image            # codeclimb-python
-npm run build:image:graphrag   # codeclimb-graphrag
+npm run run-night -- --config configs/capitals-smoke.yaml --mock   # mock models, costs nothing
+npm run api                                                         # worker API at http://127.0.0.1:7421
+npm run dev                                                         # the app
 ```
+
+Night output goes to `runs-langchain/`.
+
+## Checks
+
+```bash
+npm run typecheck
+npm test
+```
+
+End-to-end nights: `.claude/skills/codeclimb-e2e/SKILL.md`.
