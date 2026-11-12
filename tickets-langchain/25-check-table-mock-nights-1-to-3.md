@@ -3,7 +3,7 @@
 **What to build:** The first three nights of the done signal become one command or script an agent can run: on a running `npm run server`, with `LANGSMITH_TRACING=false`, it runs `capitals-smoke --mock`, `datenorm-smoke --mock` and `configs/e2e/plateau.yaml --mock` one after the other and checks every row the spec lists for each. Whatever earlier tickets left short of the table is fixed here. Every later ticket that touches the loop reruns this check; ticket 44 extends it to the seven nights.
 
 **Spec sections:**
-- "Goal and done signal": nights 1, 2 and 3; the check table for nights 1 and 2; night 3's row of the second table
+- "Goal and done signal": nights 1, 2 and 3; the check table for nights 1, 2 and 3; night 3's row of the second table
 - "CLI" > "Mock mode": where a mock night's results go
 - "Data and files" > "Files a night writes"
 - "Durable runtime on LangGraph" > "Cleanup": a finished night's sweep
