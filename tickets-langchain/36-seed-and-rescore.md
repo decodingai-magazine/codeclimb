@@ -13,7 +13,7 @@
 
 **Not yet:** nothing is deferred.
 
-**Blocked by:** 33, 35
+**Blocked by:** 25 (Check table: mock nights 1 to 3 as one repeatable check); 32 (Continue); 34 (Lessons distillation: graph, trigger and CLI)
 
 **Status:** ready-for-agent
 
@@ -25,6 +25,8 @@
 - [ ] Rescore runs before the round loop with no stop check, smoke test, coder, review, note or history line: the kept commit gets the name `<night>-r<N>-e0`, is evaluated on dev, and its row has `kind: experiment`, `eval_id` `<night>-r<N>-e0-eval`, null `parent_id` and `model`, and `decision: keep` with the new metrics, or the old ones when that evaluation failed
 - [ ] The rescore round counts toward `max_rounds` (the CLI and continue add 1); the noise is measured again afterwards
 - [ ] A continued night gets the rescore flag in its start input; a seeded night works it out in init by comparing the seed night's scoring hashes with the current ones
-- [ ] Unit tests cover `latest` and `best`, the refusals, and the rescore flag and row, by passing differing scoring-hash maps; no test edits `gold/` or `evaluators/`
+- [ ] Unit tests cover `latest` and `best`, the refusals, and the rescore flag and row, by passing differing scoring-hash maps; no test edits the given `gold/` or `evaluators/`
 - [ ] On mock models: after `datenorm-smoke --mock` finishes, `run-night --config configs/datenorm-smoke.yaml --mock --seed latest --rounds 1` prints `done`; the new night's `night.json` names the seed; `refs/exp/<night>-r0-seed` points at the seed night's kept commit; round 1's row has `parent_id` `<night>-r0-seed`; there is no `noise` row in the new night
+- [ ] On mock models, with a temporary copy of a scenario and its config (inside the checkout but outside `scenarios/` and `configs/`, each with its own name and a results directory directly under `runs-langchain/`): finish a night, change a file under the copy's `evaluators/`, then continue it; the first new row is the rescore row as specified, a `noise` row follows when the checkpoint has metrics, and the night ends with `done`
+- [ ] The three mock nights of ticket 25 still pass every check of "Goal and done signal"
 - [ ] `npm run typecheck` and `npm test` pass

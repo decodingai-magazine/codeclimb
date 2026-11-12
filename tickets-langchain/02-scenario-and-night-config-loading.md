@@ -10,9 +10,9 @@
 - "Mock mode": where a mock night's results go
 - "Worker API": "finding nights" (the scan of `runs-langchain/` and `runs-langchain/mock/` for a night id)
 
-**Not yet:** the model check (ticket 29); running any scenario command (ticket 03); the `run-night` command itself (ticket 15).
+**Not yet:** the model check (ticket 24); running any scenario command (ticket 03); the `run-night` command itself (ticket 15).
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

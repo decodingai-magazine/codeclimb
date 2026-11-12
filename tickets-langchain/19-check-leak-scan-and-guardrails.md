@@ -9,9 +9,9 @@
 - "Reviewer": repository-check notes and guardrails in what it reads
 - "Open points for the build": the failing `scan` in the check step
 
-**Not yet:** repairing a commit with `check` errors (ticket 27): until then such a round ends as `error`.
+**Not yet:** repairing a commit with `check` errors (ticket 31): until then such a round ends as `error`.
 
-**Blocked by:** 17
+**Blocked by:** 17 (Reviewer)
 
 **Status:** ready-for-agent
 

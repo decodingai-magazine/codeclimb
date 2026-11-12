@@ -4,7 +4,7 @@
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Lessons across nights", "Events", "Cleanup", "Durable runtime on Inngest", "Mock mode", "Files a night writes", "Known gaps"
 
-**Blocked by:** 21 (Done signal: both mock nights pass the end-to-end checks); 26 (Lessons file: format, operations and gates)
+**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks); 21 (Hard stop and cleanup: every dead night ends in stop.json); 26 (Lessons file: format, operations and gates)
 
 **Status:** ready-for-agent
 
@@ -18,4 +18,4 @@
 - [ ] `npm run lessons -- distill --config … --night ID [--apply]` and `npm run lessons -- apply --config … --night ID` work by hand
 - [ ] End-to-end, mock, dev server, on a scenario and config that declare lessons (the given ones if any does, else test-only copies (inside the checkout but outside `scenarios/` and `configs/`, gitignored, each with its own name and a `results_path` directly under `runs/`)): a finished mock night produces a proposal folder with an empty op list and `applied: false`, and the scenario's `lessons.md` is unchanged
 - [ ] Kept as the reference has it, do not fix: a continued night stopped a second time reuses `lessons-<night>-stop`
-- [ ] Both mock nights of ticket 21 still pass every check of "Goal and done signal"
+- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"

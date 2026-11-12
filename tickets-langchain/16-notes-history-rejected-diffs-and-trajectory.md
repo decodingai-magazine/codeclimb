@@ -10,7 +10,7 @@
 
 **Not yet:** the reviewer's verdict in a note and the feedback in a trajectory (ticket 17): both parts are empty until then. The `<start>` note of a seeded night (ticket 36).
 
-**Blocked by:** 03, 15
+**Blocked by:** 03 (Host commands, placeholders and masking); 15 (Tracer night: `datenorm-smoke` on mock models)
 
 **Status:** ready-for-agent
 

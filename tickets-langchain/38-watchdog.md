@@ -11,7 +11,7 @@
 
 **Not yet:** nothing is deferred.
 
-**Blocked by:** 25, 37
+**Blocked by:** 27 (Crash resume; mock night 5 passes); 37 (Worker API)
 
 **Status:** ready-for-agent
 
@@ -21,5 +21,5 @@
 - [ ] A thread that is busy, interrupted or idle is left alone, so a killed night waiting for the server's runs sweeper is not touched
 - [ ] One check alone never acts: a night between its failure and its `stop.json`, or between its start and the server's first write, is left alone
 - [ ] Unit tests with a faked client and a faked clock cover each rule and the two-check delay
-- [ ] Night 5 of ticket 25 still passes with `npm run api` running during the kill: the watchdog creates no run and writes no `stop.json`
+- [ ] Night 5 of ticket 27 still passes with `npm run api` running during the kill: the watchdog creates no run and writes no `stop.json`
 - [ ] `npm run typecheck` and `npm test` pass

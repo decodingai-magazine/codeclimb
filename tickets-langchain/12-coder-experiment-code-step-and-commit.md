@@ -9,9 +9,9 @@
 - "Data and files" > "Files a night writes": the `exps/<exp>/` row
 - "Every number in one place": coder rows "idle watchdog", "notes", "`APPROACH`; unchanged closing message"
 
-**Not yet:** send-backs and the wrap-up (ticket 18): the coder gets one prompt and stops; the dev ledger and meter variables (ticket 23), so `devUsd` is 0; a rerun that finds a state file (ticket 25) beyond returning a stored `code-result.json`; the `credits` stop and `paused` state (ticket 28).
+**Not yet:** send-backs and the wrap-up (ticket 18): the coder gets one prompt and stops; the dev ledger and meter variables (ticket 22), so `devUsd` is 0; a rerun that finds a state file (ticket 27) beyond returning a stored `code-result.json`; the `credits` stop and `paused` state (ticket 29).
 
-**Blocked by:** 03, 07, 09, 10, 11
+**Blocked by:** 03 (Host commands, placeholders and masking); 07 (Experiment repository); 09 (Step wrapper, abort signal and live registry); 10 (Pi sessions: mock models and sandbox tools); 11 (Coder prompt)
 
 **Status:** ready-for-agent
 

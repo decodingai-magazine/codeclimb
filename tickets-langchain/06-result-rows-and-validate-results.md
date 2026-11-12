@@ -8,7 +8,7 @@
 
 **Not yet:** building rows from a round (ticket 15).
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

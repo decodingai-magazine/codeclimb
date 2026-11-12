@@ -8,9 +8,9 @@
 - "Experiment lifecycle" > "Round loop": step 13
 - "Every number in one place": config and loop rows
 
-**Not yet:** running the A/A evaluation or deciding when it is due (ticket 20); the `outage` stop (ticket 29); wiring into the night (ticket 15).
+**Not yet:** running the A/A evaluation or deciding when it is due (ticket 23); the `outage` stop (ticket 24); wiring into the night (ticket 15).
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

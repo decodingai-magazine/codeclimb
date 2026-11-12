@@ -10,7 +10,7 @@
 
 **Not yet:** the sandbox half of the commit (ticket 12); export to the operator (ticket 39).
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

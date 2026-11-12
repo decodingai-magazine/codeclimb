@@ -15,4 +15,4 @@
 - [ ] The seed night's `noise.json` carries over when the scoring hashes are equal, so no A/A run happens; the trajectory starts with the `<start>` note for coders and reviewers
 - [ ] The seed setting comes from the config's `seed` or `--seed`; a later continue of a seeded night reads `night.json`'s `seed`
 - [ ] End-to-end, mock, dev server: after a `datenorm-smoke --mock` night that kept round 1, `run-night --config configs/datenorm-smoke.yaml --mock --seed latest` starts from `<night>-r0-seed` pointing at that kept commit, records no `noise` row, and ends with `done`
-- [ ] Both mock nights of ticket 21 still pass every check of "Goal and done signal"
+- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"

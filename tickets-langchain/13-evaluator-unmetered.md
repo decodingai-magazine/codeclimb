@@ -8,9 +8,9 @@
 - "Data and files" > "Files a night writes": the `evals/<eval>/` row
 - "Every number in one place": the evaluator rows
 
-**Not yet:** the meter token, the meter variables and the path check after a run (ticket 23), so cost metrics are all 0 and no `meter.jsonl` is written; credit stops (ticket 28).
+**Not yet:** the meter token, the meter variables and the path check after a run (ticket 22), so cost metrics are all 0 and no `meter.jsonl` is written; credit stops (ticket 29).
 
-**Blocked by:** 03, 04, 07, 08, 09
+**Blocked by:** 03 (Host commands, placeholders and masking); 04 (Stage reports and standard metrics); 07 (Experiment repository); 08 (Sandbox interface and Docker backend); 09 (Step wrapper, abort signal and live registry)
 
 **Status:** ready-for-agent
 

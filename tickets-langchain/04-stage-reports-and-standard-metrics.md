@@ -7,9 +7,9 @@
 - "Evaluator" > "Standard metrics": the latency and cost bullets
 - "Every number in one place": the rounding row
 
-**Not yet:** producing those files (tickets 13, 21); naming optimized metrics to the agents (tickets 11, 17).
+**Not yet:** producing those files (tickets 13, 20); naming optimized metrics to the agents (tickets 11, 17).
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

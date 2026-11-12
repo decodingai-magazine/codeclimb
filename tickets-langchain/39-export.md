@@ -9,7 +9,7 @@
 
 **Not yet:** the app's Export control (ticket 40).
 
-**Blocked by:** 37
+**Blocked by:** 37 (Worker API)
 
 **Status:** ready-for-agent
 

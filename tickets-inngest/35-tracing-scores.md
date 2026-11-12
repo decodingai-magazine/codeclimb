@@ -4,7 +4,7 @@
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Tracing", "Durable runtime on Inngest", "Files a night writes"
 
-**Blocked by:** 21 (Done signal: both mock nights pass the end-to-end checks)
+**Blocked by:** 20 (Done signal: both mock nights pass the end-to-end checks)
 
 **Status:** ready-for-agent
 
@@ -13,4 +13,4 @@
 - [ ] The Inngest client carries the extended-traces and score middlewares; only `worker` and `worker:cloud` preload `@inngest/otel`
 - [ ] Scores: in the evaluator child, one step per metric, named from the sorted metric names, targeting the experiment child's run id that the child returns and the parent passes on; the primary and headline metrics, or every metric when the scenario has no headlines; only for a successful evaluation; a failed score call is swallowed (unit tests with a fake step and score client)
 - [ ] No decision path imports or reads traces or scores
-- [ ] Both mock nights of ticket 21 still pass every check of "Goal and done signal"
+- [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"

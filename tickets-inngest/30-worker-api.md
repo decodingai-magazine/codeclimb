@@ -4,7 +4,7 @@
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Worker API", "Deployment and environment", "Continue, seed and rescore", "Cleanup", "Metering proxy", "Every number in one place"
 
-**Blocked by:** 24 (Pause for credits and resume); 25 (Continue: more rounds on an ended night, with an operator's direction)
+**Blocked by:** 23 (Pause for credits and resume); 25 (Continue: more rounds on an ended night, with an operator's direction)
 
 **Status:** ready-for-agent
 

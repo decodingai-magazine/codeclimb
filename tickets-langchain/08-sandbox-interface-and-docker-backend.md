@@ -8,9 +8,9 @@
 - "What you get, what you build": the `codeclimb-python` image (consumed here)
 - "Every number in one place": the sandbox row; evaluator "reset; git helper"
 
-**Not yet:** the refusal to create a sandbox for a night that has a `stop.json` (ticket 24); the `cc-meter` network and the relay (ticket 22), though create already takes a network name; the evaluator's reset (ticket 13).
+**Not yet:** the refusal to create a sandbox for a night that has a `stop.json` (ticket 26); the `cc-meter` network and the relay (ticket 21), though create already takes a network name; the evaluator's reset (ticket 13).
 
-**Blocked by:** 07
+**Blocked by:** 07 (Experiment repository)
 
 **Status:** ready-for-agent
 

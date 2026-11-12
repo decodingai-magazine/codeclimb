@@ -11,9 +11,9 @@
 - "Data and files": "Files a night writes" (`night.json`, `done.json`, `results.jsonl`), "Result row" (experiment and test rows)
 - "Goal and done signal": the check table
 
-**Not yet:** the smoke test (29), the noise run (20), check and scan (19), repair (27), review, notes and history (16, 17), send-backs (18), metering (23), pauses (28), lessons (33), `continue`, `stop` and `resume` commands (35, 24, 28). Until ticket 24 the night's catch writes `stop.json` (`failed` or `cancelled`) and sweeps its own sandboxes itself, so `run-night` never hangs; ticket 24 replaces that with the stop operation. Round 2's hypothesis stays empty until ticket 17.
+**Not yet:** the smoke test (24), the noise run (23), check and scan (19), repair (31), review, notes and history (16, 17), send-backs (18), metering (22), pauses (29), lessons (34), `continue`, `stop` and `resume` commands (32, 26, 29). Until ticket 26 the night's catch writes `stop.json` (`failed` or `cancelled`) and sweeps its own sandboxes itself, so `run-night` never hangs; ticket 26 replaces that with the stop operation. Round 2's hypothesis stays empty until ticket 17.
 
-**Blocked by:** 05, 06, 12, 13, 14
+**Blocked by:** 05 (Weighted score, keep rule, noise margin and stop checks); 06 (Result rows and `validate-results`); 12 (Coder experiment: code step and commit); 13 (Evaluator, unmetered); 14 (Threads and the start operation)
 
 **Status:** ready-for-agent
 

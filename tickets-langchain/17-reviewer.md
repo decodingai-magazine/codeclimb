@@ -10,9 +10,9 @@
 - "Data and files": `reviews/r<N>.json`, `r<N>.prompt.md`; the row fields `reviewer_usd` and `t_review`
 - "Every number in one place": the reviewer rows
 
-**Not yet:** the A/A pair in the prompt (ticket 20 supplies it); repository-check notes (ticket 19); a credit error pausing the night (ticket 28).
+**Not yet:** the A/A pair in the prompt (ticket 23 supplies it); repository-check notes (ticket 19); a credit error pausing the night (ticket 29).
 
-**Blocked by:** 16
+**Blocked by:** 16 (Notes, history, rejected diffs and trajectory)
 
 **Status:** ready-for-agent
 

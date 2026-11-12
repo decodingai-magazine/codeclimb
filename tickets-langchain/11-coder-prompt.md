@@ -7,9 +7,9 @@
 - "Evaluator" > "Standard metrics": which optimized metrics are named to the coder
 - "Coder" > "Send-backs, reserve and wrap-up": only the rule that no prompt text contains "You stopped with" or "change no more code"
 
-**Not yet:** building the trajectory (ticket 16), which arrives here as text; the send-back and wrap-up messages (ticket 18); the short restart prompt after a crash or a pause (tickets 25, 28).
+**Not yet:** building the trajectory (ticket 16), which arrives here as text; the send-back and wrap-up messages (ticket 18); the short restart prompt after a crash or a pause (tickets 27, 29).
 
-**Blocked by:** 02, 05
+**Blocked by:** 02 (Scenario and night config loading); 05 (Weighted score, keep rule, noise margin and stop checks)
 
 **Status:** ready-for-agent
 

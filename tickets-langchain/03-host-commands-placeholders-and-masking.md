@@ -9,7 +9,7 @@
 
 **Not yet:** calling these from a night (tickets 13, 15, 19); `check.json` (ticket 19). The host command takes an abort signal as a parameter; the step wrapper that supplies it is ticket 09.
 
-**Blocked by:** 02
+**Blocked by:** 02 (Scenario and night config loading)
 
 **Status:** ready-for-agent
 

@@ -9,9 +9,9 @@
 - "Known gaps": the bullet on the mock coder's 8 send-backs and the 3-minute floor
 - "Every number in one place": coder rows "reserve" and "send-backs"
 
-**Not yet:** repairs get no send-backs, but repair itself is ticket 27; the send-back after a failed model call is exercised in ticket 26.
+**Not yet:** repairs get no send-backs, but repair itself is ticket 31; the send-back after a failed model call is exercised in ticket 28.
 
-**Blocked by:** 15
+**Blocked by:** 15 (Tracer night: `datenorm-smoke` on mock models)
 
 **Status:** ready-for-agent
 

@@ -1,6 +1,6 @@
 # 10: Evaluator: an unmetered evaluation with latency metrics
 
-**What to build:** Given a commit and a split, an evaluation creates its own sandbox, resets it, builds the commit's environment, and for each stage writes inputs on the host, runs the program in the sandbox, downloads the outputs and scores them on the host. It returns aggregates only; per-item data stays on disk. A program failure is an outcome with `ok: false`, never a thrown error. Metering is added in ticket 18.
+**What to build:** Given a commit and a split, an evaluation creates its own sandbox, resets it, builds the commit's environment, and for each stage writes inputs on the host, runs the program in the sandbox, downloads the outputs and scores them on the host. It returns aggregates only; per-item data stays on disk. A program failure is an outcome with `ok: false`, never a thrown error. Metering is added in ticket 17.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Evaluator", "Standard metrics", "Stage reports become metrics", "Files a night writes", "Ids"
 

@@ -11,7 +11,7 @@
 
 **Not yet:** nothing is deferred. No OpenTelemetry SDK package is added.
 
-**Blocked by:** 23
+**Blocked by:** 22 (Metered nights: mock nights 1 and 3 pass); 25 (Check table: mock nights 1 to 3 as one repeatable check)
 
 **Status:** ready-for-agent
 
@@ -22,5 +22,5 @@
 - [ ] A rerun step opens a new root; a step that needs another step's root gets its run id as plain data in its input
 - [ ] After a successful dev evaluation, the primary and headline metrics (every metric when the scenario has no headlines) are sent as feedback on the experiment's root, one per metric from the sorted names, with a `feedbackId` derived from the evaluation id and the metric; a failed feedback call is swallowed; no decision reads feedback
 - [ ] Unit tests with a faked LangSmith client cover the span tree of a scripted session, the root metadata, the stable feedback ids, and the no-op mode
-- [ ] The mock nights of tickets 20 and 23 still pass with `LANGSMITH_TRACING=false`; with tracing on, a `datenorm-smoke --mock` night finishes and each experiment's root is found in the project by its `night_id`
+- [ ] The three mock nights of ticket 25 still pass with `LANGSMITH_TRACING=false`; with tracing on, a `datenorm-smoke --mock` night finishes and each experiment's root is found in the project by its `night_id`
 - [ ] `npm run typecheck` and `npm test` pass

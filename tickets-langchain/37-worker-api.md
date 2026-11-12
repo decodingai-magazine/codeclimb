@@ -12,7 +12,7 @@
 
 **Not yet:** the export endpoints (ticket 39); the watchdog (ticket 38); the app (ticket 40). The API serves no `/v1`.
 
-**Blocked by:** 28, 35
+**Blocked by:** 29 (Pause for credits and resume); 32 (Continue)
 
 **Status:** ready-for-agent
 
@@ -23,7 +23,8 @@
 - [ ] `GET /api/nights/:id/live` returns the summary, the current round's experiment (phase, elapsed, coder and dev spend, tokens), the row count and the exportable experiments; the phase follows the spec's rule, and a repair `e1` takes over once its folder exists
 - [ ] `GET /api/nights/:id/report` returns the night's rows, reviews, config extract and diffs as JSON
 - [ ] `POST /api/nights/:id/stop` writes `stop.json` (`app`) at once and runs the stop operation; `POST …/resume` runs the resume operation
-- [ ] `POST /api/nights/:id/continue` takes `{direction?, rounds ≥ 1}`, reopens the night as ticket 35 does and starts the variation; it answers 409 when the night can't continue
+- [ ] `POST /api/nights/:id/continue` takes `{direction?, rounds ≥ 1}`, reopens the night as ticket 32 does and starts the variation; it answers 409 when the night can't continue
 - [ ] A request body over 1 MB is refused; there is no endpoint that starts a new night
 - [ ] Tests start the API on a free port against temporary night folders and a faked Agent Server client, and cover every endpoint, each status and each phase; against a finished mock night, `/api/nights/:id` reads `finished` and the report holds its rows
+- [ ] On a running server, on mock models: a POST to `/api/nights/:id/stop` stops a running night, and a POST to `/api/nights/:id/continue` adds a round to a finished one
 - [ ] `npm run typecheck` and `npm test` pass

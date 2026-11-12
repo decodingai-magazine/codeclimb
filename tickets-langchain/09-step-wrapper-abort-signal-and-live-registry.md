@@ -8,9 +8,9 @@
 - "Platform facts": the library-behaviour table
 - "Every number in one place": runtime rows "step attempts" and "backstop timers per attempt"
 
-**Not yet:** any real step body; the stop operation that fires the registry (ticket 24). Step bodies stay free of LangGraph imports: this wrapper, the graph definitions and the control operations are the only places it appears.
+**Not yet:** any real step body; the stop operation that fires the registry (ticket 26). Step bodies stay free of LangGraph imports: this wrapper, the graph definitions and the control operations are the only places it appears.
 
-**Blocked by:** 01
+**Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 

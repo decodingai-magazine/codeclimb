@@ -7,9 +7,9 @@
 - "Durable runtime on LangGraph": the "Threads" table and its bullets; the requirements table rows "One night id, one night" and "The loop survives a crash" (`durability: "sync"` on every server run)
 - "CLI": the two bullets on a night id that was used before and on a night id that already has a thread
 
-**Not yet:** the stop, resume, lessons and timer operations (tickets 24, 28, 33); the `night` graph is still ticket 01's placeholder.
+**Not yet:** the stop, resume, lessons and timer operations (tickets 26, 29, 34); the `night` graph is still ticket 01's placeholder.
 
-**Blocked by:** 02
+**Blocked by:** 02 (Scenario and night config loading)
 
 **Status:** ready-for-agent
 

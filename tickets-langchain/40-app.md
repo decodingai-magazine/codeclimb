@@ -11,7 +11,7 @@
 
 **Not yet:** nothing is deferred. Nights start only from the CLI: the app has no start control.
 
-**Blocked by:** 34, 39
+**Blocked by:** 35 (Graphrag mock night; mock night 7 passes); 39 (Export)
 
 **Status:** ready-for-agent
 
@@ -26,4 +26,5 @@
 - [ ] `npm run build:app` succeeds and the app's bundle pulls in no Pi, LangGraph or Docker code
 - [ ] Unit tests cover the view-model functions (tiles, chart series, heatmap rows) on the rows of a finished mock night
 - [ ] With `npm run api` running over a finished mock `datenorm-smoke` night and a finished mock `graphrag-smoke` night, the nights list and both night pages answer an HTTP fetch with status 200 and show the night's id, status `finished` and its rounds
+- [ ] Through the app, with `npm run api` and the server running, on mock models: Stop on a night that is still running ends it and the page shows `stopped`; the Continue form adds a round to a finished night
 - [ ] `npm run typecheck` and `npm test` pass
