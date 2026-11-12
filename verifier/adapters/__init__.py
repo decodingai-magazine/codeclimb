@@ -118,6 +118,14 @@ class Adapter:
     def wait_until_up(self, services: Services, timeout_s: float) -> tuple[bool, str]:
         raise NotImplementedError
 
+    def crash_runtime(self, services: Services) -> list[str]:
+        """Night 5: kill the runtime that runs the night's steps, with no warning. Returns what it killed."""
+        raise NotImplementedError
+
+    def restart_runtime(self, services: Services) -> tuple[bool, str]:
+        """Night 5: start the runtime again, and nothing else; (answering, detail)."""
+        raise NotImplementedError
+
     def stop_services(self, services: Services) -> None:
         for p in reversed(services.processes):
             kill_group(p)

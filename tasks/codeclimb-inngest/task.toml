@@ -8,7 +8,7 @@ description = "Build CodeClimb on Inngest from its build spec until the seven mo
 
 [verifier]
 # Placeholders until phase B measures them.
-timeout_sec = 7200.0
+timeout_sec = 10800.0
 environment_mode = "separate"
 
 [agent]

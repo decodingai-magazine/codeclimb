@@ -20,7 +20,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adapters import ADAPTERS, Adapter, Services, guarded, run_group  # noqa: E402
-from nights import FIRST_TABLE, FIRST_TABLE_NIGHTS, Night, run_night  # noqa: E402
+from nights import (  # noqa: E402
+    FIRST_TABLE,
+    FIRST_TABLE_NIGHTS,
+    NIGHT7_CARRIES,
+    NIGHT7_TABLE,
+    Night,
+    crash_resume,
+    hard_stop,
+    lost_connection,
+    plateau_stop,
+    run_night,
+    run_night7,
+)
 
 # Seconds. A command past its limit fails its check.
 INSTALL_S = 900
@@ -41,8 +53,9 @@ class Run:
     app: Path
     adapter: Adapter
     checks: list[Check] = field(default_factory=list)
-    # Per-night results of the night checks: reported, not counted (a row counts once, in `checks`).
-    per_night: dict[str, int] = field(default_factory=dict)
+    # Reported, not counted: per-night results of the night checks (a row counts once, in `checks`) and the
+    # stages that crashed.
+    reported: dict[str, int] = field(default_factory=dict)
     services: Services | None = None
     services_up: bool = False
     tag: str = field(default_factory=lambda: f"v{int(time.time()) % 10**8}")
@@ -91,31 +104,69 @@ def build_checks(run: Run) -> None:
     run.services_up = run.record("services-up", up, detail if up else detail + "\n" + run.adapter.service_logs(run.services))
 
 
-def first_table(run: Run) -> None:
-    """Nights 1, 2, 3 and 6, then one check per row of the first table: a row passes only if it
-    holds in every night it applies to."""
-    nights: list[Night] = []
+def nights(run: Run) -> None:
+    """The seven nights in order, one at a time, then one check per row: a row of the first table passes only if
+    it holds in every night it applies to (nights 1, 2, 3, 6, and 7 for the rows it carries); each added row of
+    nights 3 to 6 and each row of night 7's own table counts once."""
+    app, runs, tag = run.app, run.adapter.RUNS, run.tag
+    first: dict[int, Night] = {}
+    added: dict[str, tuple[bool, str]] = {}
+    night7: Night | None = None
+    night7_detail = "services not up: no night ran"
     if run.services_up:
-        for n, config, extra in FIRST_TABLE_NIGHTS:
-            night = run_night(run.app, run.adapter.RUNS, n, config, f"{run.tag}-n{n}", extra)
-            print(f"[verifier] night {n} ({config}) exited {night.exit_code}", flush=True)
-            nights.append(night)
+        assert run.services is not None
+        configs = {n: (config, extra) for n, config, extra in FIRST_TABLE_NIGHTS}
+        for n in range(1, 8):
+            started = time.monotonic()
+            if n in configs:
+                config, extra = configs[n]
+                first[n] = run_night(app, runs, n, config, f"{tag}-n{n}", extra)
+                note = f"exited {first[n].exit_code}"
+            elif n == 4:
+                added["hard-stop"] = guarded(hard_stop, app, runs, run.adapter.LOGS, f"{tag}-n4")
+                note = "pass" if added["hard-stop"][0] else "FAIL"
+            elif n == 5:
+                added["crash-resume"] = guarded(crash_resume, app, runs, run.adapter, run.services, tag)
+                note = "pass" if added["crash-resume"][0] else "FAIL"
+            else:
+                night7, night7_detail = run_night7(app, runs, f"{tag}-n7")
+                note = f"exited {night7.exit_code}" if night7 else "no night: graphrag image not built"
+            print(f"[verifier] night {n}: {note} ({time.monotonic() - started:.0f}s)", flush=True)
+
     for row, applies_to, check in FIRST_TABLE:
-        mine = [nt for nt in nights if applies_to is None or nt.name in applies_to]
+        mine = [nt for nt in first.values() if applies_to is None or nt.name in applies_to]
+        if row in NIGHT7_CARRIES:
+            mine += [night7] if night7 else []
         results = []
         for nt in mine:
             ok, detail = guarded(check, nt)
-            run.per_night[f"night{nt.n}.{row}"] = int(ok)
+            run.reported[f"night{nt.n}.{row}"] = int(ok)
             results.append((ok, f"night {nt.n}: {detail}"))
+        missing = run.services_up and row in NIGHT7_CARRIES and night7 is None
+        if missing:
+            results.append((False, f"night 7: {night7_detail}"))
         passed = bool(results) and all(ok for ok, _ in results)
         detail = "\n".join(d for _, d in results) if results else "services not up: no night ran"
         run.record(row, passed, detail)
 
+    no_night = (False, "services not up: no night ran")
+    run.record("plateau-stop", *(guarded(plateau_stop, first[3]) if 3 in first else no_night))
+    run.record("hard-stop", *added.get("hard-stop", no_night))
+    run.record("crash-resume", *added.get("crash-resume", no_night))
+    run.record("lost-connection", *(guarded(lost_connection, first[6]) if 6 in first else no_night))
+    for row, check in NIGHT7_TABLE:
+        run.record(row, *(guarded(check, night7) if night7 else (False, night7_detail)))
 
-STAGES: list[Callable[[Run], None]] = [build_checks, first_table]
+
+STAGES: list[Callable[[Run], None]] = [build_checks, nights]
+
+# Every counted check, in order: N is this list's length on both stacks.
+BUILD_CHECKS = ["install", "typecheck", "unit-tests", "image", "services-up"]
+ADDED_ROWS = ["plateau-stop", "hard-stop", "crash-resume", "lost-connection"]
+CHECKS = BUILD_CHECKS + [row for row, _, _ in FIRST_TABLE] + ADDED_ROWS + [row for row, _ in NIGHT7_TABLE]
 
 
-def reward_of(checks: list[Check], per_night: dict[str, int], leak: int) -> dict[str, float | int]:
+def reward_of(checks: list[Check], reported: dict[str, int], leak: int) -> dict[str, float | int]:
     passed = sum(c.passed for c in checks)
     out: dict[str, float | int] = {
         "reward": passed / len(checks),
@@ -123,7 +174,7 @@ def reward_of(checks: list[Check], per_night: dict[str, int], leak: int) -> dict
         "leak": leak,
     }
     out.update({f"checks.{c.name}": int(c.passed) for c in checks})
-    out.update({f"checks.{k}": v for k, v in per_night.items()})
+    out.update({f"checks.{k}": v for k, v in reported.items()})
     return out
 
 
@@ -142,14 +193,22 @@ def main() -> None:
                 stage(run)
             except Exception:
                 # A crashed stage fails the checks it had not recorded; reward.json is still written.
-                run.record(f"{stage.__name__}-crashed", False, traceback.format_exc())
+                crash = traceback.format_exc()
+                run.reported[f"{stage.__name__}-crashed"] = 0
+                print(f"[verifier] {stage.__name__} crashed\n{crash}", flush=True)
+                done = {c.name for c in run.checks}
+                for name in CHECKS:
+                    if name not in done and (stage is not build_checks or name in BUILD_CHECKS):
+                        run.record(name, False, f"not reached: {stage.__name__} crashed\n{crash}")
     finally:
         if run.services is not None:
             run.adapter.stop_services(run.services)
+    if [c.name for c in run.checks] != CHECKS:
+        print(f"[verifier] warning: checks differ from CHECKS: {[c.name for c in run.checks]}", flush=True)
     # The trajectory scan sets this (leak scan ticket); until then nothing is scanned.
     leak = 0
 
-    reward = reward_of(run.checks, run.per_night, leak)
+    reward = reward_of(run.checks, run.reported, leak)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(reward, indent=1) + "\n")
     (args.out.parent / "checks.json").write_text(
