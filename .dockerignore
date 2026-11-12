@@ -1,0 +1,10 @@
+.env*
+!.env.example
+.git
+node_modules
+runs
+runs-langchain
+web/.next
+.langgraph_api
+**/.venv
+**/__pycache__

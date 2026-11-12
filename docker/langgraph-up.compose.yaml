@@ -1,0 +1,30 @@
+# Extra compose file for `langgraphjs up` (named in langgraph.json's docker_compose_file).
+# It is merged before the CLI's own compose (Postgres, Redis, langgraph-api), so it adds to the langgraph-api service.
+# CODECLIMB_HOST_ROOT: the checkout's absolute path on the host; it is mounted at the same path, so absolute
+# paths in a night's input mean the same file on both sides.
+services:
+  langgraph-api:
+    environment:
+      CODECLIMB_ROOT: ${CODECLIMB_HOST_ROOT:?set CODECLIMB_HOST_ROOT to the checkout}
+      CODECLIMB_PI_AUTH_PATH: /pi/auth.json
+      # The graphs call the server they run in.
+      CODECLIMB_SERVER_URL: http://127.0.0.1:8000
+      # The proxy binds every interface on a fixed port; the relay reaches it by name on cc-meter.
+      CODECLIMB_PROXY_HOST: 0.0.0.0
+      CODECLIMB_PROXY_PORT: "8090"
+      CODECLIMB_RELAY_TARGET: codeclimb-server
+      # graphrag's host commands (uv run) need requires-python >=3.14; left alone, uv takes 3.15, for which
+      # pydantic-core has no wheel and would need a Rust and C toolchain.
+      UV_PYTHON: "3.14"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CODECLIMB_HOST_ROOT}:${CODECLIMB_HOST_ROOT}
+      - ${HOME}/.pi/agent/auth.json:/pi/auth.json:ro
+    networks:
+      default: {}
+      cc-meter:
+        aliases: [codeclimb-server]
+
+networks:
+  cc-meter:
+    external: true

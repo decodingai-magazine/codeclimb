@@ -3,7 +3,13 @@
   "graphs": {
     "night": "./src/graphs/night.ts:night",
     "stop": "./src/graphs/stop.ts:stop",
-    "lessons": "./src/graphs/lessons.ts:lessons"
+    "lessons": "./src/graphs/lessons.ts:lessons",
+    "spike": "./src/graphs/spike.ts:spike"
   },
-  "env": ".env"
+  "env": ".env",
+  "docker_compose_file": "docker/langgraph-up.compose.yaml",
+  "dockerfile_lines": [
+    "RUN apt-get update && apt-get install -y --no-install-recommends git docker-cli && rm -rf /var/lib/apt/lists/*",
+    "ENV NPM_CONFIG_IGNORE_SCRIPTS=true"
+  ]
 }
