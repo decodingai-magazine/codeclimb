@@ -1,0 +1,54 @@
+# graphrag: 22 Decoding AI documents (6 train, 8 dev, 8 test; README.md, Documents).
+# Extraction, graph building and retrieval, each scored on gold input (README.md, Scoring).
+# Host commands run in this directory through uv (pyproject.toml); the program runs in the sandbox.
+name: graphrag
+image: codeclimb-graphrag          # npm run build:image:graphrag
+bundle: uv run python scripts/export_agent.py --out {out}
+protocol: [spec/evaluator/evaluate.md, "README.md#Scoring"]
+check: uv run python scripts/check_repo.py --repo {repo} --out {report}
+# Lessons across nights: the lessons.md the distiller edits after each night (codeclimb/lessons.ts).
+lessons: spec/agent/lessons.md
+scan: uv run python scripts/scan_text.py --text {text} --out {report}
+# The metrics every round reports, per stage. The night config's thresholds decide a keep.
+headline:
+  - extraction.mentions.f1
+  - extraction.relations.undirected.f1
+  - graph.b_cubed.recall
+  - retrieval.by_kind.single_hop.metrics.edge_recall_at_k.mean
+  - retrieval.by_kind.single_hop.metrics.answer_mrr.mean
+# What the reviewer reads to explain the headlines: precision against recall, what a builder that
+# merges nothing new scores, how much junk a query returned beside its answer, and the counters that
+# catch a run that wrote nothing or wrote rows for the wrong part. With the headlines and thresholds
+# it is everything the evaluators report.
+diagnostics:
+  - '^extraction\.mentions\.(precision|recall)$'
+  - '^extraction\.relations\.undirected\.(precision|recall)$'
+  - '^extraction\.relations\.unresolved_ends$'
+  - '^extraction\.documents\.(empty|predicted_rows_outside_held_out)$'
+  - '^graph\.baselines\.history_only\.recall$'
+  - '^graph\.surfaces\.'
+  - '^retrieval\.by_kind\.single_hop\.metrics\.edge_precision\.mean$'
+  - '^retrieval\.rows\.envelopes_outside_held_out$'
+# PYTHONHASHSEED: a set's order stays the same across runs, so a model request built from one repeats
+# exactly and the night's cache can answer it.
+stages:
+  - name: extraction
+    inputs: uv run python evaluators/extraction.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+    run: PYTHONHASHSEED=0 python -m graphrag extraction --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/extraction.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details
+  - name: graph
+    inputs: uv run python evaluators/graph.py inputs --split {split} --mode gold-history --out {inputs}
+    run: PYTHONHASHSEED=0 python -m graphrag graph --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl
+    score: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/graph.py score --split {split} --mode gold-history --predictions {out}/predictions.jsonl --out {report} --details
+  - name: retrieval
+    inputs: uv run python evaluators/retrieval.py inputs --split {split} --out {inputs}
+    files:
+      /eval/root/corpus: corpus
+      /eval/graph.json: gold/graph.json   # the full gold graph (accepted risk, docs/scenario-contract.md Q23)
+    run: PYTHONHASHSEED=0 python -m graphrag retrieval --root /eval/root --inputs {inputs} --out {out}/predictions.jsonl --graph /eval/graph.json
+    score: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report}
+    details: uv run python evaluators/retrieval.py score --split {split} --predictions {out}/predictions.jsonl --out {report} --details

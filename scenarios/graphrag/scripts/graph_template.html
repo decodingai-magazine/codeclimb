@@ -1,0 +1,517 @@
+<!doctype html>
+<!-- The page scripts/visualize.py fills (string.Template: the title, CDN scripts and data slots).
+     Plain browser JS on sigma + graphology + d3-force. Text from the data (names, descriptions,
+     titles) is LLM-extracted, so it is only ever set as textContent, never as HTML. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$title</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* The dashboard's dark theme (app/globals.css). */
+    --bg: #0b0b0c; --surface-2: #141416; --surface-3: #1c1c1f;
+    --fg: #f4f4f5; --fg-2: #c8c8cd; --fg-3: #85858c;
+    --border: #222225; --border-strong: #303034; --accent: #e8574c;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+    --text-xs: 11px; --text-sm: 13px; --text-base: 14px; --text-lg: 16px;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-base); overflow: hidden; }
+  a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--fg-2); }
+  .eyebrow { font-size: var(--text-xs); letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-3); }
+
+  header { position: fixed; inset: 0 0 auto 0; height: 44px; display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-4); padding: 0 var(--space-4); border-bottom: 1px solid var(--border); background: var(--bg); z-index: 3; }
+  header .eyebrow { white-space: nowrap; }
+  header .count { color: var(--fg); font-weight: 700; }
+  header .meta { font-size: var(--text-xs); color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  #graph { position: fixed; inset: 44px 0 0 0; }
+  #labels { position: fixed; inset: 44px 0 0 0; pointer-events: none; z-index: 1; overflow: hidden; }
+  .cluster { position: absolute; transform: translate(-50%, -50%); text-align: center; white-space: nowrap;
+    text-shadow: 0 0 6px var(--bg), 0 0 12px var(--bg), 0 0 2px var(--bg); }
+  .cluster b { display: block; font-size: var(--text-base); font-weight: 700; color: var(--fg); }
+  .cluster span { font-size: var(--text-sm); }
+
+  .card { position: fixed; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; z-index: 2; }
+  #legend { top: 60px; left: var(--space-4); width: 280px; padding: var(--space-4); }
+  #legend .eyebrow { margin-bottom: var(--space-3); }
+  .types { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .types button { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 12px 1fr auto; align-items: center;
+    gap: var(--space-2); padding: 3px 4px; border-radius: 4px; cursor: pointer; font-size: var(--text-sm); color: var(--fg-2); }
+  .types button:hover { background: var(--surface-3); }
+  .types button:focus-visible { outline: 1px solid var(--fg-3); }
+  .types button[aria-pressed="false"] { opacity: 0.35; }
+  .types .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .types .dot.hollow { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--fg-2); }
+  .types .dot.ringed { box-shadow: 0 0 0 1.5px var(--accent); }
+  .types .bar { width: 10px; height: 2px; border-radius: 1px; }
+  #diff .eyebrow { margin: var(--space-4) 0 var(--space-2); }
+  #diff .scores { font-size: var(--text-xs); color: var(--fg-3); line-height: 1.6; margin-bottom: var(--space-2); }
+  .types .n { color: var(--fg-3); font-variant-numeric: tabular-nums; }
+  .search { width: 100%; margin-top: var(--space-3); padding: 6px 8px; background: var(--bg); color: var(--fg); font: inherit; font-size: var(--text-sm);
+    border: 1px solid var(--border-strong); border-radius: 4px; }
+  .search:focus { outline: none; border-color: var(--fg-3); }
+  .toggle { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--text-sm); color: var(--fg-2); cursor: pointer; }
+  .toggle input { accent-color: var(--fg-2); margin: 0; }
+
+  #zoom { left: var(--space-4); bottom: var(--space-4); display: flex; align-items: center; gap: 2px; padding: 4px; }
+  #zoom button { all: unset; cursor: pointer; min-width: 32px; height: 30px; padding: 0 6px; box-sizing: border-box; display: grid; place-items: center;
+    border-radius: 4px; color: var(--fg-2); font-size: var(--text-sm); }
+  #zoom button:hover { background: var(--surface-3); color: var(--fg); }
+  #zoom button:focus-visible { outline: 1px solid var(--fg-3); }
+  #zoom button[aria-pressed="true"] { background: var(--surface-3); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border-strong); }
+  #zoom .pct { min-width: 56px; text-align: center; color: var(--fg-3); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  #zoom .sep { width: 1px; height: 20px; background: var(--border-strong); margin: 0 4px; }
+
+  #hint { position: fixed; right: var(--space-4); bottom: var(--space-4); font-size: var(--text-xs); color: var(--fg-3); z-index: 2;
+    display: flex; align-items: center; gap: var(--space-2); text-align: right; }
+  .ring { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--fg); flex: none; }
+
+  #panel { top: 60px; right: var(--space-4); bottom: 60px; width: 360px; padding: var(--space-4); overflow-y: auto; display: none; }
+  #panel.open { display: block; }
+  #panel h2 { margin: var(--space-2) 0 var(--space-1); font-size: var(--text-lg); font-weight: 700; overflow-wrap: anywhere; }
+  #panel .close { all: unset; cursor: pointer; float: right; color: var(--fg-3); padding: 0 4px; font-size: var(--text-lg); line-height: 1; }
+  #panel .close:hover { color: var(--fg); }
+  #panel .chip { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--fg-2); }
+  #panel p { margin: var(--space-2) 0; color: var(--fg-2); font-size: var(--text-sm); line-height: 1.55; }
+  #panel h3 { margin: var(--space-4) 0 var(--space-2); }
+  #panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--text-sm); color: var(--fg-2); }
+  #panel li { line-height: 1.45; overflow-wrap: anywhere; }
+  #panel .rel { color: var(--fg-3); }
+  #panel .link { all: unset; cursor: pointer; color: var(--fg); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+  #panel .link:hover { text-decoration-color: var(--fg-2); }
+
+  #offline { position: fixed; inset: 44px 0 0 0; display: none; place-items: center; color: var(--fg-2); text-align: center; padding: var(--space-5); }
+
+  @media (max-width: 720px) {
+    #legend { width: auto; right: var(--space-4); }
+    #panel { left: var(--space-4); width: auto; top: auto; bottom: 64px; max-height: 55vh; }
+    #hint { display: none; }
+  }
+</style>
+$cdn_scripts
+</head>
+<body>
+<header>
+  <div class="eyebrow"><span class="count" id="count"></span> <span id="headline"></span></div>
+  <div class="meta" id="meta"></div>
+</header>
+<div id="graph"></div>
+<div id="labels"></div>
+<section class="card" id="legend" aria-label="Entity types">
+  <div class="eyebrow">Entity types</div>
+  <ul class="types" id="types"></ul>
+  <input class="search" id="search" type="search" placeholder="Find an entity…" aria-label="Find an entity">
+  <div id="diff"></div>
+  <label class="toggle"><input type="checkbox" id="docs"> Show documents</label>
+</section>
+<nav class="card" id="zoom" aria-label="Zoom"></nav>
+<div id="hint"><span class="ring" aria-hidden="true"></span><span id="ringNote"></span></div>
+<aside class="card" id="panel" aria-live="polite"></aside>
+<div id="offline">The graph needs an internet connection to load sigma.js, graphology and d3-force from jsdelivr.</div>
+<script id="data" type="application/json">$data_json</script>
+<script>
+(function () {
+  "use strict";
+  if (typeof Sigma === "undefined" || typeof graphology === "undefined" || typeof d3 === "undefined" || !d3.forceSimulation) {
+    document.getElementById("offline").style.display = "grid";
+    return;
+  }
+  var DATA = JSON.parse(document.getElementById("data").textContent);
+  var G = DATA.graph, META = DATA.meta;
+
+  // Type colors: the screenshot's cluster palette, on the dashboard's dark background.
+  var TYPES = {
+    method: {label: "Methods", color: "#3ec6b5"},
+    tool: {label: "Tools", color: "#f0b63c"},
+    system: {label: "Systems", color: "#a68cf0"},
+    model: {label: "Models", color: "#6f8ff0"},
+    organization: {label: "Organizations", color: "#e05fa8"},
+    person: {label: "People", color: "#7cc68a"},
+    document: {label: "Documents", color: "#9aa0a6"}
+  };
+  var DIM = "#1f1f23", RING = "#f4f4f5", EDGE = "#2a2a2f", EDGE_DOC = "#24262a";
+  var LABEL_RATIO = 0.5;  // entity labels from 2x zoom up
+  // A diff page marks each entity and relation against gold (scripts/visualize.py --diff).
+  var DIFF = META.diff || null;
+  var STATUS = {
+    matched: {label: "Matched gold", edge: "#2f5a43", hot: "#7cc68a"},
+    wrong_type: {label: "Wrong type", edge: null, hot: null},
+    extra: {label: "Not in gold", edge: "#5a2824", hot: "#e8574c"},
+    missed: {label: "Missed", edge: "#2a3a5e", hot: "#6f8ff0"}
+  };
+  var EXTRA_FILL = "#e8574c";
+  var PRESETS = [1, 2, 4, 8, 16];
+
+  function el(tag, props, kids) {
+    var n = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      if (k === "text") n.textContent = props[k];
+      else if (k === "class") n.className = props[k];
+      else if (k.slice(0, 2) === "on") n.addEventListener(k.slice(2), props[k]);
+      else n.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function plural(n, one, many) { return n.toLocaleString() + " " + (n === 1 ? one : many); }
+  function trim(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+  // --- Header ------------------------------------------------------------------------
+  document.getElementById("count").textContent = G.nodes.length.toLocaleString();
+  document.getElementById("headline").textContent = "entities in the " + META.split + " graph" + (DIFF ? ", against gold" : "");
+  document.getElementById("meta").textContent = "night " + META.night + " · " + META.exp + (META.kept ? " (kept)" : "") + " · eval " + META.eval +
+    " · " + plural(G.edges.length, "relation", "relations") + " · " + plural(G.documents.length, "document", "documents");
+
+  // --- Clusters: one per entity type, biggest first, on a ring; documents in the middle ---
+  var byType = {};
+  G.nodes.forEach(function (n) { (byType[n.type] = byType[n.type] || []).push(n); });
+  var order = Object.keys(byType).sort(function (a, b) { return byType[b].length - byType[a].length; });
+  var SPREAD = 7;  // graph units per sqrt(node) of cluster radius
+  var radius = {};
+  order.forEach(function (t) { radius[t] = SPREAD * Math.sqrt(byType[t].length) + 10; });
+  var maxR = Math.max.apply(null, order.map(function (t) { return radius[t]; }));
+  var docR = SPREAD * Math.sqrt(G.documents.length) + 10;
+  var ringR = Math.max(maxR * 1.45, docR + maxR * 1.05);
+  var centre = {document: {x: 0, y: 0}};
+  order.forEach(function (t, i) {
+    var a = -Math.PI / 2 + (2 * Math.PI * i) / order.length;
+    centre[t] = {x: ringR * Math.cos(a), y: ringR * Math.sin(a)};
+  });
+
+  // --- Graph -------------------------------------------------------------------------
+  var graph = new graphology.Graph({type: "directed", multi: false, allowSelfLoops: false});
+  var info = {};
+  function rand(seed) { var x = Math.sin(seed) * 10000; return x - Math.floor(x); }
+  G.nodes.forEach(function (n, i) {
+    info[n.id] = n;
+    var c = centre[n.type], r = radius[n.type] * Math.sqrt(rand(i + 1)), a = 2 * Math.PI * rand(i + 7.3);
+    var color = (TYPES[n.type] || TYPES.document).color;
+    var look = {color: color, borderColor: n.pick ? RING : color, borderSize: n.pick ? 0.12 : 0};
+    // On a diff page: missed is hollow in its gold type's color, not in gold is red, a wrong type keeps
+    // its predicted type's color inside a red ring.
+    if (n.status === "missed") look = {color: "#0b0b0c", borderColor: color, borderSize: 0.3};
+    else if (n.status === "extra") look = {color: EXTRA_FILL, borderColor: EXTRA_FILL, borderSize: 0};
+    else if (n.status === "wrong_type") look = {color: color, borderColor: EXTRA_FILL, borderSize: 0.22};
+    graph.addNode(n.id, Object.assign({
+      label: n.name, x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a), size: 1.3 + 0.6 * Math.sqrt(n.mentions || 2),
+      kind: n.type, status: n.status || null
+    }, look));
+  });
+  var docIndex = {};
+  G.documents.forEach(function (d, i) {
+    var id = "doc:" + d.uri, r = docR * Math.sqrt(rand(i + 101)), a = 2 * Math.PI * rand(i + 57.1);
+    docIndex[d.uri] = d;
+    info[id] = {id: id, type: "document", name: d.title, doc: d};
+    graph.addNode(id, {label: trim(d.title, 48), x: r * Math.cos(a), y: r * Math.sin(a), size: 3.2, color: TYPES.document.color,
+      borderColor: TYPES.document.color, borderSize: 0, kind: "document"});
+  });
+  G.edges.forEach(function (e) {
+    graph.addEdge(e.source, e.target, {kind: "related_to", label: e.label + (e.weight > 1 ? " ×" + e.weight : ""), size: 0.25 + 0.2 * e.weight,
+      color: e.status ? STATUS[e.status].edge : EDGE, status: e.status || null});
+  });
+  G.nodes.forEach(function (n) {
+    n.docs.forEach(function (uri) {
+      if (docIndex[uri] && !graph.hasEdge("doc:" + uri, n.id)) graph.addEdge("doc:" + uri, n.id, {kind: "mentions", size: 0.3, color: EDGE_DOC});
+    });
+  });
+
+  // --- Layout: settle the clouds once, then draw them still ---------------------------
+  var simNodes = graph.mapNodes(function (id, a) { return {id: id, x: a.x, y: a.y, r: a.size, kind: a.kind}; });
+  var sim = d3.forceSimulation(simNodes)
+    .force("x", d3.forceX(function (n) { return centre[n.kind].x; }).strength(0.14))
+    .force("y", d3.forceY(function (n) { return centre[n.kind].y; }).strength(0.14))
+    .force("repel", d3.forceManyBody().strength(-2.2).distanceMax(40))
+    .force("collide", d3.forceCollide(function (n) { return n.r + 0.9; }).iterations(2))
+    .stop();
+  for (var i = 0; i < 320; i++) sim.tick();
+  simNodes.forEach(function (n) { graph.mergeNodeAttributes(n.id, {x: n.x, y: n.y}); });
+  // Each label sits on its cloud's centroid, the visible middle once collisions spread it.
+  var centroid = {};
+  simNodes.forEach(function (n) {
+    var c = centroid[n.kind] = centroid[n.kind] || {x: 0, y: 0, n: 0};
+    c.x += n.x; c.y += n.y; c.n += 1;
+  });
+  Object.keys(centroid).forEach(function (k) { centroid[k].x /= centroid[k].n; centroid[k].y /= centroid[k].n; });
+
+  // --- State -------------------------------------------------------------------------
+  var hiddenTypes = {}, hiddenStatus = {}, hiddenEdgeStatus = {};
+  var showDocs = false;
+  var pinned = null, hovered = null, ratio = 1;
+  function shown(node) {
+    var k = graph.getNodeAttribute(node, "kind");
+    if (k === "document") return showDocs;
+    return !hiddenTypes[k] && !hiddenStatus[graph.getNodeAttribute(node, "status")];
+  }
+  function focus() { return pinned || hovered; }
+
+  function nodeReducer(node, data) {
+    var out = Object.assign({}, data);
+    if (!shown(node)) { out.hidden = true; return out; }
+    var f = focus();
+    var labelled = ratio <= LABEL_RATIO;
+    if (f) {
+      if (node === f) { out.highlighted = true; out.zIndex = 2; return out; }
+      if (graph.areNeighbors(f, node)) { out.zIndex = 1; return out; }
+      out.color = DIM; out.borderColor = DIM; out.label = ""; return out;
+    }
+    if (!labelled) out.label = "";
+    return out;
+  }
+  // Sizes are in graph units, so nodes grow with the zoom; edges keep their on-screen width.
+  function edgeReducer(edge, data) {
+    var out = Object.assign({}, data, {size: data.size * Math.min(ratio, 1)});
+    var s = graph.source(edge), t = graph.target(edge);
+    if (!shown(s) || !shown(t) || hiddenEdgeStatus[data.status]) { out.hidden = true; return out; }
+    var f = focus();
+    if (!f) { out.label = undefined; return out; }
+    if (s !== f && t !== f) { out.hidden = true; return out; }
+    var other = s === f ? t : s;
+    out.color = data.status ? STATUS[data.status].hot : (TYPES[graph.getNodeAttribute(other, "kind")] || TYPES.document).color;
+    out.size = (data.size + 0.6) * Math.min(ratio, 1);
+    out.zIndex = 1;
+    return out;
+  }
+
+  var renderer = new Sigma(graph, document.getElementById("graph"), {
+    itemSizesReference: "positions",
+    zoomToSizeRatioFunction: function (r) { return r; },
+    defaultNodeType: "ring",
+    defaultEdgeType: "line",
+    renderEdgeLabels: true,
+    labelRenderedSizeThreshold: 0,
+    labelDensity: 0.6,
+    labelGridCellSize: 60,
+    labelFont: "JetBrains Mono, ui-monospace, monospace",
+    labelSize: 11,
+    labelColor: {color: "#c8c8cd"},
+    edgeLabelFont: "JetBrains Mono, ui-monospace, monospace",
+    edgeLabelSize: 10,
+    edgeLabelColor: {color: "#85858c"},
+    zIndex: true,
+    allowInvalidContainer: true,
+    minCameraRatio: 1 / 32,
+    maxCameraRatio: 2,
+    nodeProgramClasses: {
+      ring: Sigma.rendering.createNodeBorderProgram({
+        borders: [
+          {size: {attribute: "borderSize", defaultValue: 0}, color: {attribute: "borderColor"}},
+          {size: {value: 0.08}, color: {value: "#0b0b0c"}},
+          {size: {fill: true}, color: {attribute: "color"}}
+        ]
+      })
+    },
+    defaultDrawNodeHover: function (ctx, data, settings) {
+      var size = settings.labelSize, font = settings.labelFont;
+      ctx.font = "500 " + size + "px " + font;
+      var w = ctx.measureText(data.label || "").width, x = data.x + data.size + 4, y = data.y;
+      if (!data.label) return;
+      ctx.fillStyle = "#141416"; ctx.strokeStyle = "#303034"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(x - 4, y - size / 2 - 5, w + 8, size + 10); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#f4f4f5"; ctx.fillText(data.label, x, y + size / 3);
+    },
+    nodeReducer: nodeReducer,
+    edgeReducer: edgeReducer
+  });
+  var camera = renderer.getCamera();
+
+  // --- Cluster labels: HTML over the canvas, moved with the camera --------------------
+  var labelLayer = document.getElementById("labels");
+  var clusterEls = {};
+  Object.keys(centroid).forEach(function (k) {
+    var t = TYPES[k] || TYPES.document;
+    var n = k === "document" ? G.documents.length : byType[k].length;
+    var span = el("span", {text: plural(n, k === "document" ? "document" : "entity", k === "document" ? "documents" : "entities")});
+    span.style.color = t.color;
+    clusterEls[k] = el("div", {class: "cluster"}, [el("b", {text: t.label}), span]);
+    labelLayer.appendChild(clusterEls[k]);
+  });
+  function placeClusters() {
+    Object.keys(clusterEls).forEach(function (k) {
+      var node = clusterEls[k];
+      var visible = k === "document" ? showDocs : !hiddenTypes[k];
+      node.style.display = visible && !focus() ? "" : "none";
+      if (!visible) return;
+      var p = renderer.graphToViewport(centroid[k]);
+      node.style.left = p.x + "px";
+      node.style.top = p.y + "px";
+    });
+  }
+  renderer.on("afterRender", placeClusters);
+  placeClusters();
+
+  // --- Zoom bar ------------------------------------------------------------------------
+  var zoomBar = document.getElementById("zoom");
+  var pct = el("span", {class: "pct", text: "100%"});
+  var presetButtons = PRESETS.map(function (z) {
+    return el("button", {type: "button", text: z + "×", "aria-label": "Zoom to " + z + " times", onclick: function () { camera.animate({ratio: 1 / z}, {duration: 300}); }});
+  });
+  [
+    el("button", {type: "button", text: "−", "aria-label": "Zoom out", onclick: function () { camera.animatedUnzoom({duration: 200, factor: 1.5}); }}),
+    pct,
+    el("button", {type: "button", text: "+", "aria-label": "Zoom in", onclick: function () { camera.animatedZoom({duration: 200, factor: 1.5}); }}),
+    el("span", {class: "sep"})
+  ].concat(presetButtons).concat([
+    el("span", {class: "sep"}),
+    el("button", {type: "button", text: "Fit", "aria-label": "Fit the graph to the screen", onclick: function () { camera.animatedReset({duration: 300}); }})
+  ]).forEach(function (b) { zoomBar.appendChild(b); });
+
+  camera.on("updated", function (state) {
+    ratio = state.ratio;
+    pct.textContent = Math.round(100 / ratio) + "%";
+    presetButtons.forEach(function (b, i) { b.setAttribute("aria-pressed", String(Math.abs(1 / ratio - PRESETS[i]) < 0.01)); });
+    renderer.refresh({skipIndexation: true});
+  });
+  presetButtons[0].setAttribute("aria-pressed", "true");
+
+  // --- Legend ------------------------------------------------------------------------
+  var typeList = document.getElementById("types");
+  order.forEach(function (k) {
+    var t = TYPES[k] || {label: k, color: TYPES.document.color};
+    var dot = el("span", {class: "dot"}); dot.style.background = t.color;
+    var b = el("button", {type: "button", "aria-pressed": "true", title: "Show or hide " + t.label.toLowerCase(), onclick: function () {
+      hiddenTypes[k] = !hiddenTypes[k];
+      b.setAttribute("aria-pressed", String(!hiddenTypes[k]));
+      renderer.refresh({skipIndexation: true});
+    }}, [dot, el("span", {text: t.label}), el("span", {class: "n", text: byType[k].length.toLocaleString()})]);
+    typeList.appendChild(el("li", null, [b]));
+  });
+  document.getElementById("docs").addEventListener("change", function (e) {
+    showDocs = e.target.checked;
+    renderer.refresh({skipIndexation: true});
+  });
+  if (DIFF) {
+    var diffBox = document.getElementById("diff");
+    var sc = META.scores;
+    var pr = function (m) { return "P " + m.precision.toFixed(3) + " · R " + m.recall.toFixed(3) + " · F1 " + m.f1.toFixed(3); };
+    var toggle = function (hidden, k, mark, n) {
+      var b = el("button", {type: "button", "aria-pressed": "true", onclick: function () {
+        hidden[k] = !hidden[k];
+        b.setAttribute("aria-pressed", String(!hidden[k]));
+        refresh();
+      }}, [mark, el("span", {text: STATUS[k].label}), el("span", {class: "n", text: (n || 0).toLocaleString()})]);
+      return el("li", null, [b]);
+    };
+    var dotFor = function (k) {
+      var d = el("span", {class: "dot" + (k === "missed" ? " hollow" : k === "wrong_type" ? " ringed" : "")});
+      d.style.background = k === "extra" ? EXTRA_FILL : "#c8c8cd";
+      return d;
+    };
+    var barFor = function (k) { var b = el("span", {class: "bar"}); b.style.background = STATUS[k].hot; return b; };
+    diffBox.appendChild(el("div", {class: "eyebrow", text: "Entities against gold"}));
+    diffBox.appendChild(el("div", {class: "scores", text: "mentions " + pr(sc.mentions)}));
+    diffBox.appendChild(el("ul", {class: "types"}, ["matched", "wrong_type", "extra", "missed"].map(function (k) {
+      return toggle(hiddenStatus, k, dotFor(k), DIFF.entities[k]);
+    })));
+    diffBox.appendChild(el("div", {class: "eyebrow", text: "Relations against gold"}));
+    diffBox.appendChild(el("div", {class: "scores", text: "undirected " + pr(sc.relations)}));
+    diffBox.appendChild(el("ul", {class: "types"}, ["matched", "extra", "missed"].map(function (k) {
+      return toggle(hiddenEdgeStatus, k, barFor(k), DIFF.relations[k]);
+    })));
+    document.querySelector("#hint .ring").style.display = "none";
+  }
+  document.getElementById("ringNote").textContent = (DIFF
+    ? "Colors are the extraction evaluator's matching, per document; coined gold rows are never missed"
+    : "In the most documents (top " + G.nodes.filter(function (n) { return n.pick; }).length + ")") +
+    " · hover to trace · click to pin · double-click for details · scroll to zoom";
+
+  // --- Hover, pin, details -------------------------------------------------------------
+  function refresh() { renderer.refresh({skipIndexation: true}); }
+  renderer.on("enterNode", function (e) { hovered = e.node; refresh(); });
+  renderer.on("leaveNode", function () { hovered = null; refresh(); });
+  renderer.on("clickNode", function (e) { pinned = pinned === e.node ? null : e.node; refresh(); });
+  renderer.on("clickStage", function () { pinned = null; refresh(); });
+  renderer.on("doubleClickNode", function (e) { e.preventSigmaDefault(); pinned = e.node; refresh(); openPanel(e.node); });
+
+  function goTo(node) {
+    if (!shown(node)) {
+      var k = graph.getNodeAttribute(node, "kind");
+      if (k === "document") { showDocs = true; document.getElementById("docs").checked = true; }
+      else { hiddenTypes[k] = false; }
+    }
+    pinned = node;
+    refresh();
+    var d = renderer.getNodeDisplayData(node);
+    if (d) camera.animate({x: d.x, y: d.y, ratio: Math.min(ratio, 0.25)}, {duration: 400});
+    openPanel(node);
+  }
+  function nodeLink(id) {
+    var n = info[id];
+    return el("button", {class: "link", type: "button", text: n.name, onclick: function () { goTo(id); }});
+  }
+
+  var panel = document.getElementById("panel");
+  function closePanel() { panel.classList.remove("open"); panel.replaceChildren(); }
+  function openPanel(id) {
+    var n = info[id], t = TYPES[n.type] || TYPES.document;
+    var dot = el("span", {class: "dot"}); dot.style.cssText = "width:8px;height:8px;border-radius:50%;background:" + t.color;
+    var kids = [
+      el("button", {class: "close", type: "button", "aria-label": "Close details", text: "×", onclick: closePanel}),
+      el("span", {class: "chip"}, [dot, n.type]),
+      el("h2", {text: n.name})
+    ];
+    if (n.type === "document") {
+      kids.push(el("p", null, [el("a", {href: n.doc.uri, target: "_blank", rel: "noopener noreferrer", text: n.doc.uri})]));
+      if (n.doc.published) kids.push(el("p", {text: "Published " + n.doc.published}));
+      var named = graph.outNeighbors(id).map(function (x) { return info[x]; }).sort(function (a, b) { return b.mentions - a.mentions; });
+      kids.push(el("h3", {class: "eyebrow", text: plural(named.length, "entity", "entities") + " named"}));
+      kids.push(el("ul", null, named.map(function (m) { return el("li", null, [nodeLink(m.id), el("span", {class: "rel", text: " · " + m.type})]); })));
+    } else {
+      if (n.aliases.length) kids.push(el("p", {text: "Also: " + n.aliases.join(", ")}));
+      if (n.description) kids.push(el("p", {text: n.description}));
+      if (n.status === "missed") kids.push(el("p", {text: "Missed: gold has it in " + plural(n.docs.length, "document", "documents") + ", and no predicted row matched it."}));
+      else kids.push(el("p", {text: plural(n.mentions, "mention", "mentions") + " in " + plural(n.docs.length, "document", "documents") + (n.pick ? " · ringed" : "")}));
+      if (n.status === "extra") kids.push(el("p", {text: "Not in gold: no gold row of its type shares a name or alias with it."}));
+      if (n.status === "wrong_type") kids.push(el("p", {text: "Wrong type: gold has it as a " + n.gold_type + "."}));
+      if (n.status === "matched" && n.rows && (n.rows.extra || n.rows.wrong_type)) {
+        kids.push(el("p", {text: "Matched in " + plural(n.rows.matched, "row", "rows") + "; " + ((n.rows.extra || 0) + (n.rows.wrong_type || 0)) + " more did not match."}));
+      }
+      kids.push(el("h3", {class: "eyebrow", text: n.status === "missed" ? "Missed in" : "Documents"}));
+      kids.push(el("ul", null, n.docs.map(function (uri) {
+        var d = docIndex[uri];
+        return el("li", null, [el("a", {href: uri, target: "_blank", rel: "noopener noreferrer", text: d ? d.title : uri})]);
+      })));
+      var rels = [];
+      graph.forEachOutEdge(id, function (edge, a, s, target) { if (a.kind === "related_to") rels.push(["→", a.label, target, a.status]); });
+      graph.forEachInEdge(id, function (edge, a, source) { if (a.kind === "related_to") rels.push(["←", a.label, source, a.status]); });
+      kids.push(el("h3", {class: "eyebrow", text: plural(rels.length, "relation", "relations")}));
+      kids.push(el("ul", null, rels.map(function (r) {
+        return el("li", null, [el("span", {class: "rel", text: r[0] + " " + r[1] + " "}), nodeLink(r[2]), r[3] ? el("span", {class: "rel", text: " · " + STATUS[r[3]].label.toLowerCase()}) : null]);
+      })));
+    }
+    panel.replaceChildren.apply(panel, kids);
+    panel.classList.add("open");
+    panel.scrollTop = 0;
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { closePanel(); pinned = null; refresh(); }
+  });
+
+  // --- Search ------------------------------------------------------------------------
+  var search = document.getElementById("search");
+  search.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    var q = search.value.trim().toLowerCase();
+    if (!q) return;
+    var best = null, bestScore = -1;
+    G.nodes.forEach(function (n) {
+      var names = [n.name].concat(n.aliases).map(function (s) { return s.toLowerCase(); });
+      var score = names.some(function (s) { return s === q; }) ? 3 : names.some(function (s) { return s.indexOf(q) === 0; }) ? 2 : names.some(function (s) { return s.indexOf(q) >= 0; }) ? 1 : 0;
+      if (score > bestScore || (score === bestScore && best && n.mentions > best.mentions)) { if (score > 0) { best = n; bestScore = score; } }
+    });
+    if (best) goTo(best.id);
+  });
+})();
+</script>
+</body>
+</html>

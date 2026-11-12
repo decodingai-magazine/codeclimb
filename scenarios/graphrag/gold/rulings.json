@@ -1,0 +1,915 @@
+{
+ "merges": [
+  {
+   "type": "method",
+   "keep": "LLM",
+   "absorb": [
+    "Large Language Model"
+   ],
+   "why": "acronym and expansion of one model class; both already carry LLM/LLMs as surfaces"
+  },
+  {
+   "type": "tool",
+   "keep": "Gemini SDK",
+   "absorb": [
+    "Google GenAI SDK",
+    "google-genai"
+   ],
+   "why": "one SDK: google-genai is its Python package name, Google GenAI SDK its full name"
+  },
+  {
+   "type": "tool",
+   "keep": "Neo4j agent-memory",
+   "absorb": [
+    "neo4j-labs/agent-memory"
+   ],
+   "why": "the GitHub repo path of the same library"
+  },
+  {
+   "type": "method",
+   "keep": "error analysis",
+   "absorb": [
+    "error analysis framework",
+    "error analysis flywheel"
+   ],
+   "why": "one practice (label traces pass/fail, cluster failures, fix, grow the dataset); the flywheel already claims 'error analysis framework'"
+  },
+  {
+   "type": "system",
+   "keep": "harness",
+   "absorb": [
+    "agent harness"
+   ],
+   "why": "the corpus uses 'harness' only for the agent harness; both carry harness/harnesses"
+  },
+  {
+   "type": "system",
+   "keep": "observability platform",
+   "absorb": [
+    "LLM observability platform"
+   ],
+   "why": "every observability platform in this corpus traces LLM and tool calls"
+  },
+  {
+   "type": "system",
+   "keep": "writer agent",
+   "absorb": [
+    "writer assistant"
+   ],
+   "why": "the same writing-agent example app; both carry 'writing agent'"
+  },
+  {
+   "type": "system",
+   "keep": "agent memory",
+   "absorb": [
+    "memory for AI agents"
+   ],
+   "why": "both carry 'memory systems'; the article title phrase for the same system"
+  },
+  {
+   "type": "method",
+   "keep": "Orchestrator-Worker",
+   "absorb": [
+    "orchestrator-worker pattern"
+   ],
+   "why": "the pattern's full name; the same orchestrator-worker pattern"
+  },
+  {
+   "type": "method",
+   "keep": "overengineering",
+   "absorb": [
+    "over-engineering"
+   ],
+   "why": "one word, hyphenated or not"
+  },
+  {
+   "type": "method",
+   "keep": "microcompaction",
+   "absorb": [
+    "microcompact"
+   ],
+   "why": "one mechanism: replacing old tool outputs with placeholders, without LLM calls",
+   "in_log": "folded in its one document: microcompact is an alias on the context-engineering-for-coding-agents microcompaction mention, so no same_as row"
+  },
+  {
+   "type": "organization",
+   "keep": "Decoding AI Magazine",
+   "absorb": [
+    "Decoding AI"
+   ],
+   "why": "the same publication; the newsletter grew into the magazine"
+  },
+  {
+   "type": "method",
+   "keep": "Folder-per-Type",
+   "absorb": [
+    "organizing by type"
+   ],
+   "why": "one anti-pattern: folders by kind of file (prompts/, nodes/, agents/, tools/) that scatter one feature's logic"
+  },
+  {
+   "type": "method",
+   "keep": "Evaluator-Optimizer",
+   "absorb": [
+    "generator-evaluator loop"
+   ],
+   "why": "one pattern: one LLM generates, another evaluates, looping until the output passes"
+  },
+  {
+   "type": "model",
+   "keep": "Qwen3.6 35B",
+   "absorb": [
+    "Qwen/Qwen3.6-35B-A3B-FP8"
+   ],
+   "why": "the Hugging Face model id of the same Decode default model"
+  },
+  {
+   "type": "system",
+   "keep": "unified memory layer",
+   "absorb": [
+    "memory layer",
+    "unified memory"
+   ],
+   "why": "one component: the unified memory layer an agent reads and writes, called by either half of its name",
+   "in_log": "folded: every mention row of either surface was renamed to unified memory layer, keeping both names as aliases, and the two rows in agentic-graphrag and how-to-implement-a-unified-memory-from-scratch became one; no same_as row"
+  },
+  {
+   "type": "method",
+   "keep": "resolution",
+   "absorb": [
+    "name resolution"
+   ],
+   "why": "the same write-path step: canonical-name matching before deduplication",
+   "in_log": "folded: the name resolution row in how-to-implement-a-unified-memory-from-scratch was renamed to resolution, keeping name resolution as an alias; no same_as row"
+  },
+  {
+   "type": "method",
+   "keep": "NL query",
+   "absorb": [
+    "agentic search"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch"
+   ],
+   "why": "the article names one read mode both ways: 'NL query is agentic search'",
+   "in_log": "folded in how-to-implement-a-unified-memory-from-scratch: one row, agentic search an alias; the type_of row between them removed"
+  }
+ ],
+ "kept_separate": [
+  {
+   "type": "model",
+   "names": [
+    "gemini-1.5-flash",
+    "gemini-2.5-flash",
+    "gemini-3.8-flash",
+    "gemini-1.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "Gemini Flash Lite"
+   ],
+   "why": "distinct versions"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Lambda",
+    "AWS Lambda"
+   ],
+   "why": "Lambda is the neocloud GPU provider, not AWS Lambda"
+  },
+  {
+   "type": "method",
+   "names": [
+    "tool calls",
+    "tool calling"
+   ],
+   "why": "the request the LLM emits vs the request-execute-respond practice"
+  },
+  {
+   "type": "method",
+   "names": [
+    "traces",
+    "tracing"
+   ],
+   "why": "the artifact vs the practice"
+  },
+  {
+   "type": "method",
+   "names": [
+    "synthetic data",
+    "synthetic data generation"
+   ],
+   "why": "the artifact vs the practice"
+  },
+  {
+   "type": "method",
+   "names": [
+    "TerminalBench 2.0",
+    "Terminal-Bench"
+   ],
+   "why": "a version vs the benchmark family"
+  },
+  {
+   "type": "system",
+   "names": [
+    "runtime",
+    "agent runtime"
+   ],
+   "why": "durable execution layer vs remote control plane, different designs"
+  },
+  {
+   "type": "system",
+   "names": [
+    "LLM-as-judge",
+    "Evaluator"
+   ],
+   "why": "evaluators include code metrics"
+  },
+  {
+   "type": "system",
+   "names": [
+    "AI PR Reviewer",
+    "pull request reviewer agent"
+   ],
+   "why": "two different projects"
+  },
+  {
+   "type": "method",
+   "names": [
+    "single mutable collection",
+    "single knowledge graph collection"
+   ],
+   "why": "two different designs from two articles"
+  },
+  {
+   "type": "organization",
+   "names": [
+    "Neo4j",
+    "Neo4j-Labs",
+    "Neo4j Labs"
+   ],
+   "why": "the company and its labs team; Neo4j-Labs and Neo4j Labs are one team spelled two ways"
+  }
+ ],
+ "retypes": [
+  {
+   "name": "ZTRON",
+   "from": "tool",
+   "to": "organization",
+   "why": "the author's start-up, typed organization in 8 other documents"
+  },
+  {
+   "name": "Second Brain",
+   "from": "tool",
+   "to": "system",
+   "why": "the author's Obsidian second brain, typed system everywhere else"
+  },
+  {
+   "name": "microcompact",
+   "from": "tool",
+   "to": "method",
+   "why": "the mechanism that clears old tool outputs, the document's microcompaction"
+  },
+  {
+   "name": "Decoding AI",
+   "from": "tool",
+   "to": "organization",
+   "why": "the author's newsletter, the publication typed organization as Decoding AI Magazine"
+  },
+  {
+   "name": "Global Ontology",
+   "from": "tool",
+   "to": "method",
+   "why": "an ontology is a data model the article designs, not software"
+  },
+  {
+   "name": "application layer",
+   "from": "method",
+   "to": "system",
+   "why": "an architecture layer, like the serving layer"
+  },
+  {
+   "name": "Pydantic",
+   "from": "tool",
+   "to": "organization",
+   "docs": [
+    "https://www.decodingai.com/p/the-coding-agent-loop"
+   ],
+   "why": "the company develops Logfire; the tool keeps its own entity"
+  }
+ ],
+ "drops": [
+  {
+   "type": "tool",
+   "names": [
+    "AskUserQuestion",
+    "FINAL",
+    "FileEdit",
+    "FileRead",
+    "FileWrite",
+    "Glob",
+    "Grep",
+    "ToDoAdd",
+    "ToDoRead",
+    "ToolSearch",
+    "agent tool",
+    "ask_user",
+    "computer_screen_shoot_tool",
+    "create_summary",
+    "deep_search_memory",
+    "edit",
+    "fetch_wikipedia_content",
+    "glob",
+    "google_drive_document_search_tool",
+    "google_search",
+    "grep",
+    "image_audio_search_tool",
+    "image_document_search_tool",
+    "image_to_image_search_tool",
+    "ingest_conversation",
+    "ingest_file",
+    "ingest_url",
+    "llm_query",
+    "lsp tool",
+    "nl_query_memory",
+    "perplexity_search",
+    "query_memory",
+    "read",
+    "scrape_url",
+    "search_memory",
+    "skill dispatcher tool",
+    "task tool",
+    "text_image_search_tool",
+    "todo_write",
+    "url_context",
+    "web_fetch",
+    "write",
+    "write_memory"
+   ],
+   "why": "a tool an agent calls (a function exposed through tool calling), not a software tool"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Bash"
+   ],
+   "except_docs": [
+    "https://www.decodingai.com/p/llm-knowledge-base-obsidian-readwise-notebooklm",
+    "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026"
+   ],
+   "why": "the agent's shell tool; these two documents mean the bash shell itself"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "$graphLookup",
+    "$text",
+    "$vectorSearch",
+    "AgentChain",
+    "AgentDeps",
+    "AgentTurnHandler",
+    "BaseMetric",
+    "BatchWriter",
+    "CommandExecutor",
+    "ContextBuilder",
+    "DeferredToolRequests",
+    "DockerBackend",
+    "DocumentProcessor",
+    "FileScanner",
+    "InteractionQueues",
+    "KitaruAgent",
+    "LocalExecutor",
+    "LspClient",
+    "MaxStepsMetric",
+    "MemoryClient.get_context()",
+    "ModalBackend",
+    "ModelRetry",
+    "ProviderStrategy",
+    "RunContext",
+    "Runner",
+    "SANDBOX_MODE",
+    "SYNTHESIS_FOOTER",
+    "SandboxExecutor",
+    "Send",
+    "StateGraph",
+    "ToolCalledMetric",
+    "ToolNode",
+    "ToolNotCalledMetric",
+    "ToolReturnPart",
+    "ToolStrategy",
+    "TypedDict",
+    "UsageLimitExceeded",
+    "VectorDBClient",
+    "_enrich",
+    "_run_attempt",
+    "_spawn_child",
+    "add_messages",
+    "append_session_summary",
+    "asyncio.Semaphore",
+    "asyncio.gather",
+    "bind_tools",
+    "build_agent",
+    "build_summary_message",
+    "compress_memory_file",
+    "create_agent",
+    "dataclasses",
+    "db.index.vector.queryNodes",
+    "execute_run",
+    "format_skill_payload",
+    "make_judge",
+    "model_json_schema()",
+    "run_task",
+    "should_compact",
+    "split_tail",
+    "summarize_for_compaction",
+    "summarize_session",
+    "wrap_for_recording"
+   ],
+   "why": "a code symbol (function, class, constant, environment variable, error or API operator), not a software tool"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "BashAgent",
+    "ChunkingAgent",
+    "Code Reviewer",
+    "EvalAgent",
+    "Explore subagent",
+    "General Purpose",
+    "OutputAgent",
+    "Plan",
+    "PlanningAgent",
+    "QueryAgent",
+    "RAGAgent",
+    "ReportAgent",
+    "SchemaAgent",
+    "WeaveAgent"
+   ],
+   "why": "an agent or subagent role inside a system, not a software tool"
+  },
+  {
+   "type": "tool",
+   "names": [
+    ".claude/agents/*.md",
+    ".decode/MEMORY.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "MEMORY.md",
+    "SKILL.md",
+    "index.yaml",
+    "research.md",
+    "settings.json"
+   ],
+   "why": "a file, not a piece of software"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "/clear",
+    "/compact",
+    "/loop",
+    "decode remote attempts",
+    "decode remote deploy",
+    "decode remote logs",
+    "decode remote run",
+    "decode run",
+    "make kitaru-seed"
+   ],
+   "why": "a command of a CLI or app, not a piece of software"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "/article-guideline",
+    "/day",
+    "/demo-4-review-swarm",
+    "/demo-5-sandbox-feature-pr",
+    "/dream",
+    "/edd",
+    "/grill-me",
+    "/llm-wiki",
+    "/night",
+    "/research",
+    "/research-distill",
+    "/research-lint",
+    "/research-render",
+    "/research_create",
+    "/research_distill",
+    "/research_search",
+    "/scaffold",
+    "/squid:plan",
+    "/subagent-tmux",
+    "Kitaru skills",
+    "Stop Hook",
+    "assistant-learn",
+    "assistant-memory",
+    "clear-backlog",
+    "decode-connection-error",
+    "decode_request_limit",
+    "demo-5-sandbox-feature-pr",
+    "demo-6-article-kg",
+    "rlm-research-analyzer"
+   ],
+   "why": "a script, hook or skill (prompt files and scripts), not a piece of software"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "AI Agents Foundations Series",
+    "AI Agents Foundations series",
+    "AI Evals & Observability series",
+    "AI Evals series",
+    "Agent Engineering: Building Multi-Agent Systems",
+    "Building a Coding Agent From Scratch",
+    "Decoding AI Roadmaps",
+    "LLM Engineer's Handbook"
+   ],
+   "why": "a course, book or article series, not a piece of software"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Agent Optimization",
+    "Agent Optimizer",
+    "Decoding AI Magazine chat",
+    "Deep Research",
+    "Diagnostics",
+    "Gemini Deep Research",
+    "GitHub Action",
+    "Modal Auto Endpoints",
+    "Modal Endpoints",
+    "Modal Sandboxes",
+    "Modal endpoints",
+    "Test Suites",
+    "dspy.RLM",
+    "dynamic workflows"
+   ],
+   "why": "a feature of a product, not a piece of software of its own"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Diagnostics Enricher",
+    "Weave stack"
+   ],
+   "why": "an internal component of a system, not a piece of software of its own"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Document Ontology",
+    "Person Ontology",
+    "Resource Description Framework"
+   ],
+   "why": "an ontology or a data model the article describes, not a piece of software; typed method where the article engages with it (Global Ontology, its Person and Document sub-ontologies, RDF)"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "FastAPI"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-design-python-ai-projects"
+   ],
+   "why": "named only in lists of examples"
+  },
+  {
+   "type": "method",
+   "names": [
+    "data partitioning"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/agentic-graphrag"
+   ],
+   "why": "a verb in passing; sharding carries the practice"
+  },
+  {
+   "type": "person",
+   "names": [
+    "Matt Pocock"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026"
+   ],
+   "why": "a credit aside"
+  },
+  {
+   "type": "system",
+   "names": [
+    "composite resolver"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "an internal component of neo4j-labs/agent-memory"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Codex",
+    "Gemini CLI"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "sample entities inside the worked memory-graph example, not tools the article engages with"
+  },
+  {
+   "type": "organization",
+   "names": [
+    "Anthropic"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/understanding-neo4j-graph-agent-memory-system"
+   ],
+   "why": "a sample Organization node inside the worked example"
+  },
+  {
+   "type": "tool",
+   "names": [
+    "Squid"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/the-context-layer"
+   ],
+   "why": "named only in a bullet list of the author's skills"
+  },
+  {
+   "type": "method",
+   "names": [
+    "GraphRAG",
+    "agentic GraphRAG"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/llm-wiki-agent-memory"
+   ],
+   "why": "only the topic of a demo's links and question"
+  },
+  {
+   "type": "model",
+   "names": [
+    "Claude"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+    "https://www.decodingai.com/p/squid-my-agentic-coding-setup-may-2026"
+   ],
+   "why": "'my Claude subscription' names the plan, not weights"
+  },
+  {
+   "type": "method",
+   "names": [
+    "harness interface"
+   ],
+   "docs": [
+    "https://www.decodingai.com/p/coding-agents-in-remote-headless"
+   ],
+   "why": "Decode's internal interface, defined as two code symbols"
+  }
+ ],
+ "renames": [
+  {
+   "type": "method",
+   "from": "autonomous loop",
+   "to": "agent loop",
+   "except_docs": [
+    "https://www.decodingai.com/p/ai-workflows-vs-agents-the-autonomy"
+   ],
+   "why": "these documents say only 'agent loop' / 'agentic loop'; the extractor reused the earlier canonical name"
+  },
+  {
+   "type": "system",
+   "from": "sandbox",
+   "to": "sandboxing",
+   "docs": [
+    "https://www.decodingai.com/p/recursive-language-models"
+   ],
+   "why": "the document writes only 'sandboxing', the practice (a method), not the sandbox itself",
+   "to_type": "method"
+  },
+  {
+   "type": "method",
+   "from": "tool calling",
+   "to": "tool call",
+   "docs": [
+    "https://www.decodingai.com/p/agentic-harness-system-design"
+   ],
+   "why": "the document writes only 'a single tool call', one invocation, which is the tool calls node"
+  }
+ ],
+ "add_aliases": [
+  {
+   "doc": "https://www.decodingai.com/p/ai-agents-foundations-course",
+   "type": "system",
+   "name": "agent memory",
+   "alias": "memory",
+   "why": "the document's own word for it"
+  },
+  {
+   "doc": "https://www.decodingai.com/p/building-vertical-ai-agents-case-study-1",
+   "type": "organization",
+   "name": "DBOS, Inc.",
+   "alias": "DBOS",
+   "why": "the document's own word for it ('the DBOS team')"
+  },
+  {
+   "doc": "https://www.decodingai.com/p/recursive-language-models",
+   "type": "method",
+   "name": "zigzag pattern",
+   "alias": "zigzag retrieval patterns",
+   "why": "the document's own phrase"
+  },
+  {
+   "doc": "https://www.decodingai.com/p/how-to-implement-a-unified-memory-from-scratch",
+   "type": "tool",
+   "name": "Neo4j agent-memory",
+   "alias": "Neo4j’s agent memory",
+   "why": "the document's own phrase"
+  }
+ ],
+ "accept_aliases": [
+  {
+   "entity": "Qwen3-Coder",
+   "alias": "qwen/qwen3-coder:free",
+   "why": "the provider's model id"
+  },
+  {
+   "entity": "Ralph Loops",
+   "alias": "Ralph Wiggum Loop",
+   "why": "the full name"
+  },
+  {
+   "entity": "Likert scales",
+   "alias": "1-5 likert scales",
+   "why": "the scale the corpus means"
+  },
+  {
+   "entity": "Evaluator-Optimizer",
+   "alias": "evaluator-optimizer pattern",
+   "why": "the pattern's full name"
+  },
+  {
+   "entity": "AlignEval",
+   "alias": "aligneval.com",
+   "why": "its domain"
+  },
+  {
+   "entity": "harness",
+   "alias": "agentic harness",
+   "why": "the corpus's shorthand"
+  },
+  {
+   "entity": "harness",
+   "alias": "agentic harnesses",
+   "why": "the corpus's shorthand"
+  },
+  {
+   "entity": "RAG pipelines",
+   "alias": "Retrieval-Augmented Generation (RAG) pipeline",
+   "why": "expansion of the whole name"
+  },
+  {
+   "entity": "DDD glossary",
+   "alias": "Domain-Driven Design (DDD) glossary",
+   "why": "expansion of the whole name"
+  },
+  {
+   "entity": "CI pipeline",
+   "alias": "Continuous Integration (CI) pipeline",
+   "why": "expansion of the whole name"
+  },
+  {
+   "entity": "orchestrator",
+   "alias": "orchestrator agent",
+   "why": "the corpus's shorthand"
+  },
+  {
+   "entity": "POLE+O",
+   "alias": "POLE+O ontology",
+   "why": "POLE+O is the ontology"
+  },
+  {
+   "entity": "POLE+O",
+   "alias": "POLE+O data model",
+   "why": "POLE+O is the data model"
+  },
+  {
+   "entity": "ZenML",
+   "alias": "ZenML Labs",
+   "why": "the company's full name"
+  },
+  {
+   "entity": "coding agent",
+   "alias": "AI coding agents",
+   "why": "the same class"
+  },
+  {
+   "entity": "single agent",
+   "alias": "single agent with tools",
+   "why": "the same architecture"
+  }
+ ],
+ "negative_aliases": [
+  {
+   "type": "tool",
+   "entity": "OpenTelemetry",
+   "alias": "OTLP",
+   "why": "the wire protocol inside the project, a component not the project"
+  },
+  {
+   "type": "tool",
+   "entity": "Neo4j agent-memory",
+   "alias": "the SDK",
+   "why": "a generic noun phrase, not a name"
+  },
+  {
+   "type": "system",
+   "entity": "AI workflow",
+   "alias": "workflow",
+   "why": "a workflow is not necessarily an AI workflow; a relation, not an alias"
+  },
+  {
+   "type": "system",
+   "entity": "AI workflow",
+   "alias": "workflows",
+   "why": "a workflow is not necessarily an AI workflow; a relation, not an alias"
+  },
+  {
+   "type": "method",
+   "entity": "train/dev/test split",
+   "alias": "data partitioning",
+   "why": "data partitioning is not necessarily a train/dev/test split; a relation, not an alias"
+  },
+  {
+   "type": "method",
+   "entity": "autonomous loop",
+   "alias": "agentic loop",
+   "why": "an agent loop is not necessarily an autonomous loop; a relation, not an alias"
+  },
+  {
+   "type": "system",
+   "entity": "sandbox",
+   "alias": "sandboxing",
+   "why": "the practice, not the sandbox"
+  },
+  {
+   "type": "system",
+   "entity": "multi-agent system",
+   "alias": "multi-agent architectures",
+   "why": "a method node of its own (the architecture pattern); one string never carries two types"
+  }
+ ],
+ "coined_labels": [
+  {
+   "type": "method",
+   "name": "train/dev/test split",
+   "why": "the documents describe splitting into train, dev and test sets"
+  },
+  {
+   "type": "method",
+   "name": "regex parsing",
+   "why": "'you parse it with regex'"
+  },
+  {
+   "type": "method",
+   "name": "organizing by type",
+   "why": "'the anti-pattern organizes by type'"
+  },
+  {
+   "type": "method",
+   "name": "organizing by actionability",
+   "why": "'the correct pattern organizes by actionability'"
+  },
+  {
+   "type": "method",
+   "name": "system-prompt-level mocking",
+   "why": "injecting the user's context into system-prompt sections"
+  },
+  {
+   "type": "method",
+   "name": "semantic search",
+   "why": "'semantic and text search'"
+  },
+  {
+   "type": "method",
+   "name": "human-in-the-loop",
+   "why": "'the human is in the loop on purpose'"
+  },
+  {
+   "type": "system",
+   "name": "file-backed memory",
+   "why": "'a file-backed design'"
+  },
+  {
+   "type": "system",
+   "name": "workflow orchestrator",
+   "why": "the pipeline orchestrator (Prefect, DBOS), kept apart from the agent orchestrator; the body writes only 'orchestrator'"
+  }
+ ],
+ "relabels": [
+  {
+   "from": "applies_to",
+   "to": "applied_to",
+   "why": "one claim spelled two ways; applied_to is the majority (68 vs 19)"
+  }
+ ]
+}
