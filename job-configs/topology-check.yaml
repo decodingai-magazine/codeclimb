@@ -1,0 +1,9 @@
+# The topology check (docs/adr/0001). Run it with tasks/topology-check/run.sh, which adds the job mount.
+job_name: topology-check
+n_attempts: 1
+n_concurrent_trials: 1
+tasks: [{ path: tasks/topology-check }]
+environment:
+  type: docker
+agents:
+  - name: oracle

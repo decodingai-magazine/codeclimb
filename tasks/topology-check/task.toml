@@ -1,0 +1,19 @@
+schema_version = "1.4"
+artifacts = [{ source = "/app", exclude = ["node_modules"] }]
+
+[task]
+name = "codeclimb/topology-check"
+version = "1.0.0"
+description = "Proves the trial topology of docs/adr/0001 inside Harbor. Not a benchmark task."
+
+[verifier]
+timeout_sec = 600.0
+environment_mode = "separate"
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+network_mode = "public"
+build_timeout_sec = 900.0
+os = "linux"

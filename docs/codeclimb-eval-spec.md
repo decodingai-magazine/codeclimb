@@ -52,7 +52,7 @@
 
 ### Trial environment
 
-- one Docker daemon per trial: a `docker:27-dind` sidecar (`privileged: true`, `DOCKER_TLS_CERTDIR: ""`) in `environment/docker-compose.yaml`, with `DOCKER_HOST: tcp://dind:2375` on `main`. The same shape on both stacks
+- one Docker daemon per trial: a `docker:27-dind` sidecar (`privileged: true`, `DOCKER_TLS_CERTDIR: ""`) in `environment/docker-compose.yaml`, with `DOCKER_HOST: tcp://127.0.0.1:2375` on `main`, which shares the sidecar's network namespace. The same shape on both stacks
 - measured 2026-11-12 with plain `docker compose` (Docker Desktop 29.4.3, arm64) on both reference builds, `capitals-smoke` and `datenorm-smoke` with `--mock`. With `main` in its own network namespace neither build passes both nights: the Inngest relay's host-gateway alias points at the sidecar, where no proxy listens; the LangChain server publishes `127.0.0.1:8123` on the sidecar and bind-mounts an empty `/app` from the sidecar's filesystem
 - what makes both pass:
   - `main` has `network_mode: "service:dind"`, so `127.0.0.1` and the Docker bridge are the same on both sides
@@ -61,12 +61,20 @@
   - a healthcheck on `dind` (`docker info`) that `main` waits for: the daemon is not ready in its first seconds
   - Inngest: `CODECLIMB_PROXY_HOST=172.17.0.1`, the sidecar's bridge address, preset by the environment in the trial and in the verifier. The default loopback bind is unreachable from the relay, and a wrong bind address is a property of this environment, not of the stack
 - scope of the measurement: nights 1 and 2 only. Nights 3 to 7 are unmeasured in this topology (night 5 kills and restarts the runtime; night 7 builds the graphrag image and runs host commands through `uv`)
-- `(guess)` Harbor accepts `network_mode` on its `main` service: measured with plain compose only. First check, in a Harbor dummy task, for the agent environment and the separate verifier environment: the topology itself; the image's baked `/app` still shows when `/app` is a shared named volume; `environment.mounts` into `/app` still works; `artifacts` still collects `/app`
+- Harbor accepts the topology (measured 2026-11-12, Harbor 0.25.0, the `topology-check` task with the `oracle` agent: 18 of 18 checks, twice), in the trial container and in the separate verifier container:
+  - Harbor respects `network_mode` on its `main` service; `docker run` works from the trial and from the verifier, each on its own sidecar
+  - the first Docker call needs no retry. Harbor starts the stack with `up --wait`, and `main` depends on the sidecar being healthy; the probe shows the outcome, the compose file gives the reason
+  - the `/app` baked into the image is visible in `main` although `/app` is a named volume the sidecar mounts first, and a container on the sidecar daemon that bind-mounts `/app` reads and writes the same files
+  - `artifacts` delivers `/app` to the verifier, where a container on the verifier's own sidecar reads it; `exclude` keeps `node_modules` out
+  - a job-level mount into `/app` shows up in the trial, and its files travel to the verifier with the artifact. Its source must be an absolute path: Harbor's compose project directory is the task's `environment/` folder, so a relative source names a folder there, which Docker creates empty and mounts, silently. So mounts are passed on the command line (`--mounts`, built from the repo root), not written in a job file
+  - with the blocked hosts on the sidecar service, `curl https://github.com` fails in the trial and in the verifier, while the open web loads and `npm ci` passes in both
+  - recorded, not graded: a container on the sidecar daemon still reaches GitHub (the hole below)
+- repeat it, $0: `tasks/topology-check/run.sh`
 - sizes: the sidecar's volume peaked at 0.9 GB on Inngest and 6.5 GB on LangChain (the server image alone is 2 GB). A cold `npm run server` takes 2 minutes; each mock night 6 to 16 s
 - the LangChain server needs `/app` to be a git checkout, so the verifier runs `git init` + one commit on the copy it receives
 - a failed metering path does not fail a night: `run-night` still prints `done` and exits 0. Only the `meter.jsonl` check and `decision_reason` show it
 - not the host socket: `cc-meter` and `cc-meter-relay` are global names, and `docker ps` checks would see other trials. Fallback: host socket + one trial at a time
-- the verifier needs the same daemon: `tests/docker-compose.yaml` holds the same topology for the separate verifier environment. Job-level `environment.mounts` and `extra_docker_compose` are agent-only. `artifacts` re-upload `/app` to the same path in the verifier, dropping symlinks (fine: it runs `npm ci`). Fallback, if the verifier environment cannot hold the topology: `tests/run.py --app <artifact dir> --stack <s>` on the host after the job
+- the verifier needs the same daemon: `tests/docker-compose.yaml` holds the same topology for the separate verifier environment. Job-level mounts and `extra_docker_compose` are agent-only. `artifacts` re-upload `/app` to the same path in the verifier, dropping symlinks (fine: it runs `npm ci`). The host fallback (`tests/run.py --app <artifact dir> --stack <s>` after the job) is not needed on local Docker; it stays for a provider without Docker-in-Docker
 
 ### Network: everything except GitHub
 
@@ -119,7 +127,7 @@
   - why not `/to-spec` or `/implement-spec`: the spec exists, and `/implement-spec`'s parallel worktree subagents would add a third variable (concurrency)
 - zero-human patches, in the prompt template, not in the skills:
   - `/code-review` asks for a fixed point: use `/app`'s root commit
-  - tickets are local files, never GitHub or another tracker. The setup skill's output is pre-written and added per job through `environment.mounts`: `docs/agents/issue-tracker.md` (local markdown, `.scratch/codeclimb/issues/<NN>-<slug>.md`, spec at `.scratch/codeclimb/spec.md`), `docs/agents/domain.md` (single-context), and an `## Agent skills` block in the `AGENTS.md` stub (verified: a read-only bind mount of a host dir shows up in the harness's `/app`; the harness copies files out of it). No `triage-labels.md`
+  - tickets are local files, never GitHub or another tracker. The setup skill's output is pre-written and added per job through a mount (`--mounts` on the command line, with an absolute source path): `docs/agents/issue-tracker.md` (local markdown, `.scratch/codeclimb/issues/<NN>-<slug>.md`, spec at `.scratch/codeclimb/spec.md`), `docs/agents/domain.md` (single-context), and an `## Agent skills` block in the `AGENTS.md` stub (verified: a read-only bind mount of a host dir shows up in the harness's `/app`; the harness copies files out of it). No `triage-labels.md`
   - the template defines the closed state: `/implement` sets `Status: done` once the ticket's acceptance criteria pass
 - invocation (verified with a `disable-model-invocation: true` dummy skill): a user-only skill runs only from the prompt template's first line, never from the model. `/implement` is called once per ticket by the model, so the vendored copy drops `disable-model-invocation`
 - logged on top of the metrics: pile sha256, ticket count, tickets done, commits, `tdd` / `code-review` calls, compactions, $ and tokens per subagent (`code-review` runs 2 in parallel)
@@ -218,12 +226,13 @@ tasks/codeclimb-inngest/                               (codeclimb-langchain/: sa
   tests/docker-compose.yaml         daemon sidecar for the verifier
   tests/test.sh                     runs run.py → /logs/verifier/reward.json
   tests/run.py                      the checks; adapters/<stack>.py; leak scan
+tasks/topology-check/               not a benchmark task: proves the trial topology inside Harbor, $0
 context/<stack>/skills/             vendored skill dirs, pinned
 context/<stack>/docs-block.md
 context/pocock/skills/              implement (flag dropped), tdd, code-review, ...
 context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, AGENTS.md block
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
-job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml
+job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml    plus topology-check.yaml
 jobs/                               Harbor's job output, gitignored
 assemble.py                         given inputs + SPEC.md + E2E.md → a task's environment/app/; the pile → the pocock mount
 analyze.py                          job dirs → trials.jsonl → 2 × 2 effects
@@ -248,14 +257,15 @@ agents:
 extra_instruction_paths: [context/inngest/docs-block.md]
 ```
 
-- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps only `skills`; `mcp-docs` drops only `skills`. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and `environment.mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
+- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps only `skills`; `mcp-docs` drops only `skills`. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and, on the command line, `--mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
 - checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level. Not yet run: the subscription token path
 - commands:
+  - topology check, $0: `tasks/topology-check/run.sh`
   - assemble a task: `python assemble.py <stack>`
   - check a config, $0: `harbor run -c job-configs/<file>.yaml --print-config`
   - floor gate: `harbor run -p tasks/codeclimb-<stack> -a nop`
   - reference gate: `tests/run.py --app <git archive of the reference commit> --stack <stack>`, 3×
-  - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order
+  - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order. The `full-pocock` files also need `--mounts` with absolute paths, so they run through a small script, as `tasks/topology-check/run.sh` does
   - regrade after a verifier fix: `source_jobs` in a job file
   - analysis: `python analyze.py ./jobs`
 
@@ -281,5 +291,4 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 
 ## Open points
 
-- Harbor and the shared network mode: unverified inside Harbor, for both environments
 - how Harbor's `claude-code` agent takes the effort setting, and whether `max_budget_usd` means anything on a subscription: read from its source in phase A
