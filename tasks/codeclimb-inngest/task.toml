@@ -1,0 +1,20 @@
+schema_version = "1.4"
+artifacts = [{ source = "/app", exclude = [".env", "node_modules", "runs-inngest", "runs-langchain"] }]
+
+[task]
+name = "codeclimb/codeclimb-inngest"
+version = "1.0.0"
+description = "Build CodeClimb on Inngest from its build spec until the seven mock nights of E2E.md pass."
+
+[verifier]
+# Placeholders until phase B measures them.
+timeout_sec = 7200.0
+environment_mode = "separate"
+
+[agent]
+timeout_sec = 28800.0
+
+[environment]
+network_mode = "public"
+build_timeout_sec = 1800.0
+os = "linux"

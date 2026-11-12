@@ -1,0 +1,10 @@
+# The floor: Harbor's nop agent leaves the given inputs as they are, and the verifier grades them. $0.
+# Assemble first: python3 assemble.py inngest
+job_name: inngest-nop
+n_attempts: 1
+n_concurrent_trials: 1
+tasks: [{ path: tasks/codeclimb-inngest }]
+environment:
+  type: docker
+agents:
+  - name: nop

@@ -52,7 +52,7 @@ The benchmark spec marks every unverified fact with `(guess)`. Verify one before
 - Free checks, run them whenever a change touches what they cover:
   - a job file: `harbor run -c <job file> --print-config`
   - a task: `harbor run -p tasks/codeclimb-<stack> -a nop`
-  - the verifier: `tests/run.py --app <git archive of the reference commit> --stack <stack>`
+  - the verifier: `verifier/run.py --app <git archive of the reference commit> --stack <stack> --out <reward.json>`
 - If you create or modify a test file, run it and iterate on test or implementation until it passes.
 - Spend only when the user says so: any trial with a real harness uses the operator's subscription and needs the user's go-ahead for that run. No trial and no check uses a provider key.
 - When a regression test fixes a GitHub issue, add a comment with the issue number next to the test.

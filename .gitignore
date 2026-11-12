@@ -7,3 +7,5 @@ __pycache__/
 # assemble.py output
 tasks/*/environment/app/
 tasks/*/assembled.json
+tasks/codeclimb-*/instruction.md
+tasks/codeclimb-*/tests/verifier/

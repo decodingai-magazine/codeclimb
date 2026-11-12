@@ -1,0 +1,20 @@
+# The trial topology of docs/adr/0001: one Docker daemon per trial, a sidecar whose network namespace `main` shares.
+services:
+  main:
+    # Shares the sidecar's network namespace: 127.0.0.1 and the Docker bridge are the same on both sides.
+    network_mode: "service:dind"
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      # The sidecar's bridge address: the metering relay in a sandbox reaches the proxy there.
+      CODECLIMB_PROXY_HOST: 172.17.0.1
+    volumes:
+      # The same path in both containers, so a bind mount of /app handed to the sidecar daemon names the same files.
+      - app:/app
+    depends_on:
+      dind: { condition: service_healthy }
+  dind:
+    extends: { file: ../../shared/dind.compose.yaml, service: dind }
+    volumes:
+      - app:/app
+volumes:
+  app: {}

@@ -1,0 +1,28 @@
+# The Docker sidecar of every benchmark task (docs/adr/0001), shared by the trial and the verifier
+# environments through `extends`, so the GitHub block is one list.
+services:
+  dind:
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 2s
+      retries: 30
+    # The GitHub block. `main` shares this service's /etc/hosts; on `main` itself Docker rejects extra_hosts beside
+    # the shared network mode. No wildcards: every host name needs its own entry.
+    extra_hosts:
+      - "github.com:0.0.0.0"
+      - "www.github.com:0.0.0.0"
+      - "api.github.com:0.0.0.0"
+      - "codeload.github.com:0.0.0.0"
+      - "gist.github.com:0.0.0.0"
+      - "objects.githubusercontent.com:0.0.0.0"
+      - "raw.githubusercontent.com:0.0.0.0"
+      - "release-assets.githubusercontent.com:0.0.0.0"
+      - "github.io:0.0.0.0"
+      - "deepwiki.com:0.0.0.0"
+      - "gitmcp.io:0.0.0.0"
+      - "sourcegraph.com:0.0.0.0"
+      - "gitee.com:0.0.0.0"
