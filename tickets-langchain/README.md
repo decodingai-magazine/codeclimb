@@ -44,16 +44,14 @@
 | 23 | App | 40 |
 | 24 | Tracing | 41 |
 | 25 | Real-model paths | 42 to 43 |
-| 26 | Cloud deployment | none: the spec has nothing for this phase |
-| 27 | Final acceptance | 44 |
-| 28 | Operator-gated nights | 45 |
+| 26 | Final acceptance | 44 |
+| 27 | Operator-gated nights | 45 |
 
 - phase 3: ticket 09, the step wrapper, is the one place where a step body meets LangGraph; it comes before the coder and the evaluator because their bodies take its abort signal
 - phase 12 is the gate: nights 1 to 3 of "Goal and done signal" pass every row of their tables before any phase after it starts. Nights 4 to 7 pass in the tickets that build what they prove (26, 27, 28, 35), and all seven run together in ticket 44
 - phase 14: ticket 28, `--mock-offline`, belongs here: a lost connection is a failure the coder's session survives
 - phase 15: ticket 30 holds the pause timeout and the variation backstop, both timers
 - phase 21: ticket 38, the watchdog, runs in the worker API's process
-- phase 26: the spec names one deployment, the Agent Server with Docker sandboxes, built in ticket 01. It has no cloud mode and no second sandbox backend, so no ticket
 
 ## Breakdown
 

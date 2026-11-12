@@ -5,8 +5,8 @@
 - status: built on the `langgraphjs up` server, moved from LangGraph's dev server on 2026-11-12 (decided in issue #26 after the go/no-go spike #27; the seven free end-to-end nights pass on it). Derived from the Inngest twin, which is built ([[codeclimb-spec-inngest|codeclimb-spec-inngest]], commit `e384bb5`). The platform facts below were measured on the pinned packages with a throwaway graph, and are stated as facts in [[#Platform facts]]. The build tickets, #20 to #32 included, are closed; what they left unmeasured or undecided is listed in [[#Open points for the build]]
 - use: handed to a coding agent that builds the whole application alone, with zero human input (the layer-2 benchmark of [[codeclimb-eval-spec|codeclimb-eval-spec]])
 - first build: on the `langchain` branch of the codeclimb repo, from this file alone (the repo holds a copy at `docs/codeclimb-spec-langchain.md`; change both together). The repo also gives `GLOSSARY.md`, `docs/adr/0001` to `0005` (0001, superseded: why the dev server; why steps own their abort signal; why one trace per experiment; why Docker only; 0005: why `langgraphjs up`) and the end-to-end skill `.claude/skills/codeclimb-e2e/SKILL.md`; all three repeat what this file says. Run the free end-to-end nights as the build reaches them ([[#Suggested build order]]), and the paid ones only when the operator says so. Nothing here needs `codeclimb-eval-spec`: that is for a later benchmark
-- stack-specific parts: [[#Durable runtime on LangGraph]], [[#Tracing]], [[#Deployment and environment]], plus the stack's names in the npm scripts, the result row and the control operations. Everything else is stack-neutral and matches the Inngest twin's local mode (the Inngest dev server with Docker sandboxes), so the two builds behave the same and their nights compare. Declared differences, each forced by this stack or decided for it:
-  - one mode: the self-hosted Agent Server in containers on the operator's machine (`langgraphjs up`), with Docker sandboxes. No cloud mode, no remote sandboxes, no tunnels ([[#Deployment and environment]])
+- stack-specific parts: [[#Durable runtime on LangGraph]], [[#Tracing]], [[#Deployment and environment]], plus the stack's names in the npm scripts, the result row and the control operations. Everything else is stack-neutral and matches the Inngest twin (the Inngest dev server with Docker sandboxes), so the two builds behave the same and their nights compare. Declared differences, each forced by this stack or decided for it:
+  - one mode: the self-hosted Agent Server in containers on the operator's machine (`langgraphjs up`), with Docker sandboxes ([[#Deployment and environment]])
   - the worker API runs in its own process: it serves no `/v1`, a busy port is a startup error, and its token covers every route. The proxy has its own listener
   - what fires the live registry's aborts, and the sandbox create refusing a stopped night
   - step timeouts are CodeClimb's own timers, not the runtime's. Steps other than code and evaluation are capped at 30 minutes and host commands at 35, because nothing else bounds a hung step here
@@ -171,7 +171,6 @@ CodeClimb never reads a scenario's data. It only runs the commands in `scenario.
 | field | meaning |
 |---|---|
 | `name`, `image` | Scenario name; Docker image for coders and evaluators |
-| `inngest_image` (opt) | Read by the Inngest build only; ignored here |
 | `bundle` | Host: writes the coder's bundle to `{out}`; must contain `spec/`. Fails the night if its own leak check fails |
 | `stages[]` | At least one; unique names matching `^[a-z][a-z0-9_-]*$`; run in order |
 | `headline` (opt) | Metric names each round reports and logs. They decide nothing: the config's `thresholds` do |
@@ -244,7 +243,6 @@ One night optimizes the whole system: every stage, every round.
 Validation at parse:
 
 - the reviewer must differ from the coder: an error if `reviewer_model` equals `model` and `reviewer_thinking` is unset or equals `coder_thinking`. Compared as strings, so one model under two providers passes
-- a backend's maximum active time, if it has one, must hold `experiment_min` + 10 and `eval_min × stages` + 10 minutes. Docker has none, so nothing is checked on this stack
 - `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`; `noise_margin.min` must not exceed `max`
 - relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
 - the config travels in the start input with paths relative to the checkout; the Agent Server resolves them against `CODECLIMB_ROOT` (default: its cwd; in the server container the compose override sets it to the checkout's host path, where the checkout is mounted). CLI and server may run from different directories, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
@@ -653,7 +651,7 @@ Outcomes:
 - an `inputs` failure or an infrastructure failure throws → step retry, then the evaluation fails
 - a credit stop → no score; the night pauses and reruns it
 - the result returned to the night holds aggregates only (metrics, cost, timings, the sandbox instance id); per-item data stays on disk
-- a retried evaluation step looks its sandbox up by name and reuses it after the reset; on a backend with a maximum active time it makes a new one when the old one's age + `eval_min × stages` + 5 minutes would pass it. Destroying the sandbox is a step of its own and runs after a failed evaluation too
+- a retried evaluation step looks its sandbox up by name and reuses it after the reset. Destroying the sandbox is a step of its own and runs after a failed evaluation too
 
 ### Standard metrics
 
@@ -801,7 +799,7 @@ Path to the proxy:
 
 One interface; Pi's tools and the orchestrator call only this.
 
-- backend: create (name, image, optional commit to clone into `/repo`, optional spec directory for `/spec`, labels, network), find a live sandbox by name (to resume a crashed step), sweep by name prefix or by label; an optional maximum active time
+- backend: create (name, image, optional commit to clone into `/repo`, optional spec directory for `/spec`, labels, network), find a live sandbox by name (to resume a crashed step), sweep by name prefix or by label
 - sandbox: exec (cwd, timeout, abort signal, streamed output, stdin, per-command environment → exit code, stdout, stderr, timed out, aborted), read file, write file, is alive, instance id (changes when recreated under the same name), age, destroy
 - a backend must offer: exec that kills the whole process tree on timeout or abort, streamed output, file transfer at least as large as the largest git bundle or `/spec` folder, find by name, sweep
 - git holds the state, the image holds the environment: each sandbox = fresh image + commit
@@ -839,7 +837,7 @@ Docker backend:
 | fields | meaning |
 |---|---|
 | `night_id`, `exp_id`, `parent_id`, `eval_id`, `round` | Identity. `eval_id` is the unique row key. `parent_id` = the checkpoint's experiment; null on noise, rescore and test rows |
-| `stack`, `backend` | `langchain`; `docker`. The schema accepts `stack` `inngest` or `langchain` and `backend` `docker`, `inngest` or `langsmith`, so rows of both builds validate against one schema |
+| `stack`, `backend` | `langchain`; `docker`. The schema accepts `stack` `inngest` or `langchain` and `backend` `docker`, so rows of both builds validate against one schema |
 | `kind`, `split` | `experiment`, `noise`, `test`; `dev`, `test` |
 | `model`, `reviewer_model`, `hypothesis`, `commit` | What was tried. `model` is null on noise, rescore and test rows; `hypothesis` is null on test rows and a fixed sentence on noise and rescore rows |
 | `metrics` | Flat name → number |
@@ -1092,9 +1090,7 @@ Server behaviour measured on 2026-11-11 on the dev server only. The design still
 One mode: everything on your machine. The Agent Server is LangGraph's self-hosted server, which `langgraphjs up` builds into an image and starts in Docker with its own Postgres and Redis; the sandboxes are Docker containers beside it. Decided 2026-11-12 (issue #26, ADR 0005, `docs/adr/0005-langgraph-up-server.md`, which supersedes ADR 0001). What was left out, and why:
 
 - LangGraph's dev server (`langgraph dev`), the mode before: it keeps its state in memory, writes it to disk only after 3 quiet seconds and ignores a run's `durability`, so a kill lost finished steps and, right after a night's start, the night's thread. Removed, not kept beside this mode
-- the hosted Agent Server (LangSmith Deployment): every piece of a night's state is on the server's disk (`runs-langchain/`, `experiments.git`, the scenarios' `lessons.md`) or in its process's memory (the proxy's ledgers and cache, the live registry). A hosted deployment has no persistent disk, and the proxy would need a home outside it
 - an external or shared Postgres: `up` starts its own, and the server only connects to it
-- LangSmith Sandboxes: Docker costs nothing, and this build is for learning, not for production
 
 What the switch fixes and what it does not: [[#Durable runtime on LangGraph]], [[#Known gaps]].
 
@@ -1168,7 +1164,6 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | config | `plateau_rounds`; thinking coder / reviewer | 3; `medium` / `low` |
 | config | `min_efficiency_gain` | 0.10 |
 | config | `noise_margin` `min` / `max` | 0.002 / 0.005 |
-| config | slack a backend's maximum active time must leave | 10 min |
 | loop | smoke test | 7 tries, 5 min apart |
 | loop | A/A runs per night | at most 2 |
 | loop | repairs per round | 1 |
@@ -1194,7 +1189,6 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | coder | fresh restarts after a lost sandbox | 1 |
 | memory | trajectory budget | 48,000 characters |
 | memory | note heading reason; error reason in a history line | 300 characters each |
-| evaluator | sandbox overhead allowance | 5 min |
 | evaluator | environment build; reset; git helper | 3 min; 2 min; 2 min |
 | evaluator | host command timeout / output | 30 min / 64 MiB |
 | evaluator | error tail | 2,000 characters |

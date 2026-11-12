@@ -1,15 +1,14 @@
 # CodeClimb on Inngest: build tickets
 
-43 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
+39 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
 
 - one file per ticket, `<NN>-<slug>.md`, numbered in dependency order: a ticket is blocked only by lower numbers
 - every ticket names the spec sections it implements by heading; the spec is the contract, the ticket only scopes it. Constants are in the spec's "Every number in one place"
 - the given inputs (`scenarios/`, `configs/`, the image definitions, `.env`, the end-to-end test instructions) are present in the build environment; tickets consume them and never change them. A test that needs a different scenario or config uses a test-only copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` directly under `runs/`, so test nights never mix into the given configs' results
-- tickets 01 to 42 are `ready-for-agent` and need no paid call and no Inngest Cloud: provider, OpenRouter and Inngest Cloud paths are tested against fakes; whole nights run with `--mock`
-- ticket 43, the cloud nights, is `ready-for-human`: each night runs only with the operator's go-ahead for that run. Ticket 42, the final acceptance, does not wait for it
+- tickets 01 to 39 are `ready-for-agent` and need no paid call: provider and OpenRouter paths are tested against fakes; whole nights run with `--mock`
 - end-to-end checks need Docker, `npm run dev:inngest` and `npm run worker` running; the worker has no hot reload, so restart it after a code change
 - after any code change: `npm run typecheck`, then `npm test`
-- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11, the first two mock nights of the spec's done signal pass at ticket 20, and the third at ticket 28. Tickets 21 to 41 are gated on ticket 20, directly or through a blocker (all but ticket 26, the pure lessons file), and those that touch the loop rerun its check
+- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11, the first two mock nights of the spec's done signal pass at ticket 20, and the third at ticket 28. Tickets 21 to 38 are gated on ticket 20, directly or through a blocker (all but ticket 26, the pure lessons file), and those that touch the loop rerun its check
 
 ## Phases
 
@@ -40,14 +39,13 @@
 | 23 | App | 33 to 35 |
 | 24 | Tracing | 36 |
 | 25 | Real-model paths | 37 to 38 |
-| 26 | Cloud deployment | 39 to 41 |
-| 27 | Final acceptance | 42 |
-| 28 | Operator-gated nights | 43 |
+| 26 | Final acceptance | 39 |
+| 27 | Operator-gated nights | none: the spec has nothing for this phase |
 
 - phase 12 is the gate: the first two mock nights of "Goal and done signal" pass every row of the first table before any phase after it starts
-- phase 19: the done signal's third mock night, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 28, after repair and lessons, which it exercises, and runs again with the other two in ticket 42. Before it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 34, 35)
+- phase 19: the done signal's third mock night, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 28, after repair and lessons, which it exercises, and runs again with the other two in ticket 39. Before it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 34, 35)
 - phase 25: the OpenRouter and Pi backends and the web research guard. The model check and the credit test are built with the Pi sessions (ticket 08) and wired in tickets 19 and 23
-- phase 28: the spec names no paid real-model night and no spend ceiling, so ticket 43 holds the cloud nights only, on mock models
+- phase 27: the spec names no paid real-model night and no spend ceiling, so no ticket
 - the spec names an end-to-end check only for the three mock nights. Hard stop, crash resume, pause, repair, continue, lessons, seed, rescore, the worker API, export and the app get the checks their tickets define, on mock nights on the dev server
 
 ## Tickets
@@ -90,12 +88,8 @@
 36. **Tracing and the scores mirror** (`36-tracing-scores.md`). Blocked by: 20. Delivers: A night's model calls, tool calls, sandbox operations and metered calls show up as spans, and dev metrics as scores on the experiment's run.
 37. **Proxy backends: OpenRouter and Pi** (`37-proxy-backends.md`). Blocked by: 15, 20. Delivers: On a real-model night the proxy forwards a program's calls to OpenRouter or through Pi, charges what each cost, and turns a credit signal into a credit stop.
 38. **Web research for the coder, behind the guard** (`38-web-research-guard.md`). Blocked by: 20. Delivers: On a real night the coder can search and read the web through three guarded tools, and can never reach the project's own repository.
-39. **Cloud mode: the worker and the CLI against Inngest Cloud** (`39-cloud-mode.md`). Blocked by: 20. Delivers: The same code runs a night on Inngest Cloud with `worker:cloud` and `run-night:cloud`, with no mode flag in the loop.
-40. **Inngest Sandboxes backend** (`40-inngest-sandboxes-backend.md`). Blocked by: 22, 39. Delivers: The sandbox interface implemented on Inngest Sandboxes, so a cloud night can run its coders and evaluators in microVMs.
-41. **Public proxy path for Inngest Sandboxes: tunnels and the reachability probe** (`41-public-proxy-path-tunnels.md`). Blocked by: 17, 40. Delivers: A program in an Inngest sandbox reaches the metering proxy through a public URL, and a dead tunnel never becomes a score.
-42. **Final acceptance: the whole spec, checked once more** (`42-final-acceptance.md`). Blocked by: every ticket from 21 to 41. Delivers: A last pass that proves the finished build against the spec's done signal and fixed contracts, with no cloud or paid call.
-43. **Cloud nights: mock nights on Inngest Cloud, with the operator's go-ahead** (`43-cloud-nights.md`). Blocked by: 42. Delivers: The two mock nights that need Inngest Cloud (cloud worker on Docker, then Inngest Sandboxes), each run only with the operator's go-ahead.
+39. **Final acceptance: the whole spec, checked once more** (`39-final-acceptance.md`). Blocked by: every ticket from 21 to 38. Delivers: A last pass that proves the finished build against the spec's done signal and fixed contracts, with no paid call.
 
 ## Critical path
 
-01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 23 → 31 → 33 → 34 → 35 → 42 → 43.
+01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 23 → 31 → 33 → 34 → 35 → 39.

@@ -10,7 +10,7 @@
 
 - [ ] Spans: one chat span per assistant message (model, tokens, cache, finish reason, cost), one per tool call, one per sandbox exec, read and write, one per program operation of an evaluation, one per metered call under its evaluation (unit tests with an in-memory span exporter and a scripted event stream)
 - [ ] Without a provider every tracing call is a no-op and unit tests of other modules need no setup
-- [ ] The Inngest client carries the extended-traces and score middlewares; only `worker` and `worker:cloud` preload `@inngest/otel`
+- [ ] The Inngest client carries the extended-traces and score middlewares; only `worker` preloads `@inngest/otel`
 - [ ] Scores: in the evaluator child, one step per metric, named from the sorted metric names, targeting the experiment child's run id that the child returns and the parent passes on; the primary and headline metrics, or every metric when the scenario has no headlines; only for a successful evaluation; a failed score call is swallowed (unit tests with a fake step and score client)
 - [ ] No decision path imports or reads traces or scores
 - [ ] Both mock nights of ticket 20 still pass every check of "Goal and done signal"

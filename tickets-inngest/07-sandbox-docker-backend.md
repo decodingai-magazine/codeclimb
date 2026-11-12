@@ -8,7 +8,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] The interface has the backend operations (create, find by name, sweep by prefix or label, optional maximum active time) and the sandbox operations (exec, read file, write file, is alive, instance id, age, destroy) as the spec lists them
+- [ ] The interface has the backend operations (create, find by name, sweep by prefix or label) and the sandbox operations (exec, read file, write file, is alive, instance id, age, destroy) as the spec lists them
 - [ ] Docker tests against `codeclimb-python` (skipped with a clear message when Docker is absent): create with a commit puts it in `/repo` via a git bundle; create with a spec directory puts it in `/spec` via a tar; create replaces a stale sandbox of the same name and the instance id changes
 - [ ] Containers are limited to 2 CPUs and 2 GiB, carry `cc.managed=1`, `cc.night`, `cc.run`, and join the default bridge or the named network asked for
 - [ ] Exec returns exit code, stdout, stderr, timed-out and aborted flags; streams output; takes stdin and per-command environment; the host environment is not forwarded

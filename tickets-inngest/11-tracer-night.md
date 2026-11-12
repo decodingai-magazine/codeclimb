@@ -8,7 +8,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] `npm run worker` starts one long-running process that connects with `inngest/connect` (app id `codeclimb-worker`, instance id from `CODECLIMB_WORKER_ID`), loads the env file first, defaults `INNGEST_DEV` to `1` outside cloud mode, and on macOS holds `caffeinate -i`
+- [ ] `npm run worker` starts one long-running process that connects with `inngest/connect` (app id `codeclimb-worker`, instance id from `CODECLIMB_WORKER_ID`), loads the env file first, defaults `INNGEST_DEV` to `1`, and on macOS holds `caffeinate -i`
 - [ ] `run-night`, `run-experiment` and `run-evaluator` exist with 2 retries and the invoke and night backstop timeouts of the runtime table; the start event id is `night-start-<id>`; the Inngest SDK appears only in function definitions, the worker's connection and event sending
 - [ ] Replay rules hold: every clock read and I/O sits in a step, steps take and return small plain JSON, a child's failure is caught and becomes an outcome, file writes in steps are idempotent
 - [ ] Init follows "Init": the bundle rebuild that preserves `history/`, the starter imported as `<night>-r0-starter`, the deadline computed, `night.json` written with the fields of "Files a night writes" (including the scoring hashes and, when the scenario declares lessons, `lessons_sha256`)

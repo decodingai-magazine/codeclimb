@@ -10,7 +10,7 @@
 
 - [ ] `run-night stop --night ID` sends `codeclimb/night.stop`; `run-night`, `run-experiment` and `run-evaluator` each cancel on the stop event for their night
 - [ ] The live registry maps run id to an abort function and carries the night id; a stop aborts the night's running Pi session, which ends as `cancelled`, destroys its sandbox and fails the step
-- [ ] `night-stop-cleanup` aborts the night's live sessions, sweeps `cc-<night>` on every backend the worker reaches (one failing backend doesn't stop the others) and writes `stop.json` with `at` and `reason` (`manual`, `app`, `failed`, `cancelled`, or `stop` when the event names none); it writes nothing when `done.json` exists, and the first stop wins
+- [ ] `night-stop-cleanup` aborts the night's live sessions, sweeps `cc-<night>` and writes `stop.json` with `at` and `reason` (`manual`, `app`, `failed`, `cancelled`, or `stop` when the event names none); it writes nothing when `done.json` exists, and the first stop wins
 - [ ] `run-cancelled-cleanup` handles the platform's function-cancelled event: it aborts that run's session, sweeps the sandboxes that run created, and sends the stop event when the cancelled run was the night's parent (told apart by the triggering event it carries). Neither cleanup function sets a retry count
 - [ ] The night's failure handler sends the stop event; when `night.json` is missing it first creates `nights/<id>/` from the start event's results directory and writes `stop.json` with reason `failed`
 - [ ] A night's folder is found by scanning `<root>/runs/*/nights/<id>/night.json` and `<root>/runs/mock/*/nights/<id>/night.json` (the spec asks for the mock path although the reference lacks it)

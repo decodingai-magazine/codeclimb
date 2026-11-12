@@ -3,7 +3,7 @@
 - what CodeClimb is: an optimization loop where a coding agent rewrites a program in a sandbox, round after round, until the program meets evaluation thresholds. Nothing is fine-tuned or trained
 - this file: everything needed to build CodeClimb from scratch on the Inngest stack. It states architecture, contracts, features and numbers; it holds no code. As built in `~/Documents/01-Projects/codeclimb` at commit `e384bb5` (2026-11-11), branch `main`
 - use: handed to a coding agent that builds the whole application alone, with zero human input (the layer-2 benchmark of [[codeclimb-eval-spec|codeclimb-eval-spec]]). The twin for the other stack: [[codeclimb-spec-langchain|codeclimb-spec-langchain]]
-- stack-specific parts: [[#Durable runtime on Inngest]], [[#Inngest Sandboxes backend]], [[#Deployment and environment]]. Everything else is stack-neutral
+- stack-specific parts: [[#Durable runtime on Inngest]], [[#Deployment and environment]]. Everything else is stack-neutral
 - scenario used for real nights: [[graphrag-spec|graphrag-spec]]. Background: [[autoresearch-coding-framework-fit|autoresearch-coding-framework-fit]], [[agent-observability-harness-support|agent-observability-harness-support]]
 
 ## Goal and done signal
@@ -55,7 +55,7 @@ From the table above, these rows hold unchanged: `run-night` prints `done`, `don
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though the mock nights don't reach them: real-model nights, Inngest Cloud with Inngest Sandboxes, stop, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec.
+Also required, though the mock nights don't reach them: real-model nights, stop, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec.
 
 ## What you get, what you build
 
@@ -63,14 +63,13 @@ Given, unchanged by you:
 
 - `scenarios/<name>/`: `datenorm`, `datenorm-hard`, `capitals`, `graphrag`. Each holds its manifest, starter repo, agent spec, gold data, evaluators and scripts
 - `configs/*.yaml`: `capitals-smoke`, `datenorm-smoke`, `datenorm`, `graphrag-smoke`, `graphrag`
-- credentials: one `.env` (gitignored, from `.env.example`) for local and cloud mode, holding the provider and Inngest Cloud keys; Pi's `auth.json`
-- the image `codeclimb-graphrag:v2`, already published to the Inngest workspace (graphrag's `inngest_image`). If it is missing, build `codeclimb-graphrag` for `linux/amd64` and publish it under that tag
+- credentials: one `.env` (gitignored, from `.env.example`) holding the provider keys; Pi's `auth.json`
 - Inngest skills, MCP servers and docs; Pi's docs; the end-to-end test instructions
 - comments in the pack that name files you don't have (a `docs/` page, a source path) are leftovers: this spec replaces them
 
 You build everything else. Source layout is yours. These external contracts are fixed, because the tests and the operators use them:
 
-- npm scripts: `dev:inngest` (Inngest dev server), `worker`, `worker:cloud`, `run-night`, `run-night:cloud`, `validate-results`, `build:image`, `build:image:graphrag`, `export`, `lessons`, `tunnel`, `tunnel:cloudflare`, `dev`, `build`, `start` (the app), `typecheck`, `test` (unit tests)
+- npm scripts: `dev:inngest` (Inngest dev server), `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `export`, `lessons`, `dev`, `build`, `start` (the app), `typecheck`, `test` (unit tests)
 - Docker images:
   - `codeclimb-python` (every Python scenario): Python 3.14 slim, `git`, CA certificates, `uv` 0.13.5; system git identity `codeclimb` / `codeclimb@localhost`, default branch `main`, every directory safe; workdir `/repo`; `PYTHONDONTWRITEBYTECODE=1`, `UV_PYTHON_PREFERENCE=only-system`, `UV_PYTHON_DOWNLOADS=never`; command `sleep infinity`. It needs `bash`, `setsid`, `tar` and `python3`. Gold, evaluators and keys never enter an image
   - `codeclimb-graphrag`: `codeclimb-python` plus `scenarios/graphrag/requirements.txt` installed system-wide with `uv pip`; build context `scenarios/graphrag`
@@ -84,13 +83,13 @@ Dependencies, pinned to exact versions. These are the versions this spec's SDK f
 | `@earendil-works/pi-coding-agent` | 1.3.0 | The Pi SDK |
 | `@earendil-works/pi-ai` | 1.3.0 | The version the SDK itself depends on, so one copy installs. Source of the scripted (faux) provider. Two copies break mock mode |
 | `pi-web-access` | 0.47.0 | Web research. Its extension is the default export of the package's built entry file; it ships no types |
-| `inngest` | 4.25.0 | `inngest/connect` for the worker; `inngest/experimental` for extended traces, scores and the sandbox client |
-| `@inngest/otel` | 0.2.2 | Preloaded with Node's import flag by `worker` and `worker:cloud` only |
+| `inngest` | 4.25.0 | `inngest/connect` for the worker; `inngest/experimental` for extended traces and scores |
+| `@inngest/otel` | 0.2.2 | Preloaded with Node's import flag by `worker` only |
 | `@opentelemetry/api` | 1.10.0 | Used directly for spans |
 | `next`, `react`, `react-dom` | 16.4.2, 19.3.1, 19.3.1 | The app only |
 | `yaml`, `tsx`, `typescript` | 2.9.1, 4.23.15, 6.0.3 | |
 
-- `worker`, `run-night` and `dev` set `INNGEST_DEV=1`; `worker:cloud` and `run-night:cloud` set `CODECLIMB_ENV=cloud`
+- `worker`, `run-night` and `dev` set `INNGEST_DEV=1`
 - `dev:inngest` runs the Inngest CLI's dev command through `npx`, with install scripts allowed for that package (it downloads its binary in one)
 - install with lifecycle scripts off
 
@@ -100,8 +99,8 @@ Dependencies, pinned to exact versions. These are the versions this spec's SDK f
 |---|---|---|
 | CLI (`run-night`) | parse and validate the config, check models, send start / stop / resume / continue, follow `results.jsonl` | your machine |
 | worker | durable functions, Pi sessions (coder, reviewer, lessons), the scenario's host commands, worker API, metering proxy. One long-running process | your machine |
-| durable runtime | runs the night loop: memoized steps, child runs, cancel, wait-for-event. It never runs CodeClimb's code itself: it calls the worker | Inngest dev server or Inngest Cloud |
-| sandboxes | the coder's shell and files; the program under evaluation | Docker or Inngest Sandboxes |
+| durable runtime | runs the night loop: memoized steps, child runs, cancel, wait-for-event. It never runs CodeClimb's code itself: it calls the worker | Inngest dev server |
+| sandboxes | the coder's shell and files; the program under evaluation | Docker |
 | metering proxy | the only path from a program to a model; holds the keys, meters every call, replays repeated calls | worker, `/v1` |
 | worker API + app | read nights, stop, resume, continue, export. The app is one client of the API; it never runs Pi or sandboxes | worker; Next.js on `127.0.0.1` |
 | experiment store | `experiments.git` + `results.jsonl` + `nights/<id>/`, the source of truth. No database | worker's disk |
@@ -139,7 +138,6 @@ CodeClimb never reads a scenario's data. It only runs the commands in `scenario.
 | field | meaning |
 |---|---|
 | `name`, `image` | Scenario name; Docker image for coders and evaluators |
-| `inngest_image` (opt) | The same image published to the Inngest workspace, for scenarios that need more than Inngest's base image |
 | `bundle` | Host: writes the coder's bundle to `{out}`; must contain `spec/`. Fails the night if its own leak check fails |
 | `stages[]` | At least one; unique names matching `^[a-z][a-z0-9_-]*$`; run in order |
 | `headline` (opt) | Metric names each round reports and logs. They decide nothing: the config's `thresholds` do |
@@ -188,7 +186,7 @@ One night optimizes the whole system: every stage, every round.
 | field | default | meaning |
 |---|---|---|
 | `scenario` | required | Scenario directory |
-| `sandbox` | required | `docker` or `inngest` |
+| `sandbox` | required | `docker` |
 | `max_rounds` | required | ≥ 1 |
 | `max_tokens` | none | Cap on coder + reviewer tokens; a positive integer |
 | `plateau_rounds` | 3 | Stop after that many rounds in a row kept nothing; 0 = never |
@@ -212,7 +210,6 @@ One night optimizes the whole system: every stage, every round.
 Validation at parse:
 
 - the reviewer must differ from the coder: an error if `reviewer_model` equals `model` and `reviewer_thinking` is unset or equals `coder_thinking`. Compared as strings, so one model under two providers passes
-- on `sandbox: inngest`: `experiment_min` ≤ 50 and `eval_min × stages` ≤ 50 (a sandbox gets one hour). Checked again after a `--sandbox` override
 - `deadline` must parse; `standard_metrics.latency_metric` starts with `latency_`, `cost_metric` with `cost_`
 - relative paths in a config (`scenario`, `results_path`) resolve against the directory `run-night` is started in, not the yaml's folder
 - the config travels in the start event with paths relative to the checkout; the worker resolves them against `CODECLIMB_ROOT` (default: its cwd). CLI and worker may run from different directories on one machine, as long as both resolve the same results directory: following, continue and seed read it from the CLI's side
@@ -225,14 +222,14 @@ Validation at parse:
 
 | command | does |
 |---|---|
-| `run-night --config <yaml> [--night-id ID] [--sandbox docker\|inngest] [--seed ID\|latest\|best] [--direction TEXT] [--rounds N] [--no-wait] [--mock]` | Starts a night and follows it |
+| `run-night --config <yaml> [--night-id ID] [--sandbox docker] [--seed ID\|latest\|best] [--direction TEXT] [--rounds N] [--no-wait] [--mock]` | Starts a night and follows it |
 | `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` | More rounds on an ended night; default: the newest ended night under the config's results |
 | `run-night stop --night ID` | Hard stop |
 | `run-night resume --night ID` | Ends a pause for credits |
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>` from local time. A valid id is 1 to 48 letters, digits or hyphens, not starting with a hyphen
 - `--rounds` on a new night replaces `max_rounds`. `--no-wait` starts the night and exits without following
-- a local night (dev server) always runs on Docker: a config's `sandbox: inngest` is turned into `docker`, with a printed note. Inngest Sandboxes need Inngest Cloud
+- a night always runs on Docker: a config's `sandbox: inngest` is turned into `docker`, with a printed note
 - following: every 5 s print new rows of the night (round, kind, split, short experiment id, primary metric, decision, spend, hypothesis); print `done` with `done.json` and exit when it appears; print `stopped` with `stop.json`; print where a pause stopped and how to resume. Ctrl-C detaches; the night keeps running
 - `--direction` on a new night sets the operator's direction for every round, as on a continued one. It travels in the start event and is masked with `scan` in a step of its own, right after init
 - `--seed` never with `continue`
@@ -615,7 +612,7 @@ Outcomes:
 - an `inputs` failure or an infrastructure failure throws → step retry, then the evaluation fails
 - a credit stop → no score; the night pauses and reruns it
 - the result returned to the parent holds aggregates only (metrics, cost, timings, the sandbox instance id); per-item data stays on disk
-- a retried evaluation step looks its sandbox up by name and reuses it after the reset; on Inngest it makes a new one when the old one's age plus the evaluation would pass the hour. Destroying the sandbox is a step of its own and runs after a failed evaluation too
+- a retried evaluation step looks its sandbox up by name and reuses it after the reset. Destroying the sandbox is a step of its own and runs after a failed evaluation too
 
 ### Standard metrics
 
@@ -750,30 +747,19 @@ Replay cache. Problem: identical code scored 0.722 to 0.767 on one metric across
 
 Path to the proxy:
 
-- listener: the proxy has its own listener, one per worker, started on first use: `CODECLIMB_PROXY_HOST` (default `127.0.0.1`) and `CODECLIMB_PROXY_PORT` (default a random free port; 7422 in cloud mode). The relay and the tunnels point at that port. The worker API also serves the same handler under `/v1` on its own port, but nothing depends on that: a worker whose API port is busy still has its proxy
+- listener: the proxy has its own listener, one per worker, started on first use: `CODECLIMB_PROXY_HOST` (default `127.0.0.1`) and `CODECLIMB_PROXY_PORT` (default a random free port). The relay points at that port. The worker API also serves the same handler under `/v1` on its own port, but nothing depends on that: a worker whose API port is busy still has its proxy
 - Docker, metered: sandboxes join a plain network `cc-meter` and see the proxy at `http://cc-meter-relay:8080/v1`
 - the relay: a container `cc-meter-relay` from the scenario's image, started on the default bridge with the host-gateway alias `host.docker.internal`, running a small TCP forwarder written with Python's standard library (port 8080 → the alias and the proxy's port), labelled `cc.meter=1` and `cc.meter.port=<port>`, with no managed label, then attached to `cc-meter`. It is shared by nights, never swept, reused while it runs with the same port label and recreated otherwise. Concurrent callers must not remove a relay another just started
 - reaching the host: Docker Desktop reaches a loopback bind through the alias. On Linux a loopback bind is unreachable from the relay, so the proxy must bind the Docker bridge's gateway address: use `CODECLIMB_PROXY_HOST` when set, and when it is unset on Linux pick that address automatically
 - Docker, unmetered: the default bridge. Both have internet access; only a token gets a program to a model
-- Inngest Sandboxes: a public URL ending in `/v1`. Only the proxy is published; per-ledger tokens guard it. Every metered night on Inngest Sandboxes needs it (`configs/graphrag.yaml` is one):
-
-| piece | contract |
-|---|---|
-| `tunnel:cloudflare` | A `cloudflared` quick tunnel to the proxy's port on loopback (`CODECLIMB_PROXY_PORT`, default 7422), with its metrics server pinned to `127.0.0.1:20241` |
-| `tunnel` | An `ngrok` HTTP tunnel to the same address |
-| Cloudflare lookup | GET `/quicktunnel` on the metrics server; the reply's `hostname` is the public host |
-| ngrok lookup | GET `/api/tunnels` on port 4040; the tunnel whose `public_url` starts with `https://` and whose `config.addr` ends in the proxy's port |
-| Order | `CODECLIMB_METER_URL`, a trailing slash dropped; else Cloudflare; else ngrok. `/v1` is added to a tunnel's URL. Each lookup waits 2 s at most. None found is an error naming both scripts and the variable |
-- "the path is up" is checked before a coder starts, before an evaluator opens, after each stage's run, and in the round-start smoke test. What the check is depends on the backend:
-  - Docker: `cc-meter` and the relay exist, the relay runs, and its port label equals the proxy's port; otherwise recreate it. There is no HTTP probe from the worker: the relay's name resolves only inside the network
-  - Inngest Sandboxes: the worker sends a POST with no token to `<public url>/_op`. It passes only on status 401 with the proxy's own error type in the body. 3 tries, 5 s apart, 15 s each. The probe carries a header that keeps the proxy from logging its own 401 as a warning
-- why: a tunnel past its limit still answers, with its own error, and a program that swallows errors would score as a bad program. An outage never becomes a score
+- "the path is up" is checked before a coder starts, before an evaluator opens, after each stage's run, and in the round-start smoke test: `cc-meter` and the relay exist, the relay runs, and its port label equals the proxy's port; otherwise recreate it. There is no HTTP probe from the worker: the relay's name resolves only inside the network
+- why: a program that swallows errors would score as a bad program. An outage never becomes a score
 
 ## Sandboxes
 
 One interface; Pi's tools and the orchestrator call only this.
 
-- backend: create (name, image, optional commit to clone into `/repo`, optional spec directory for `/spec`, labels, network), find a live sandbox by name (to resume a crashed step), sweep by name prefix or by label; an optional maximum active time
+- backend: create (name, image, optional commit to clone into `/repo`, optional spec directory for `/spec`, labels, network), find a live sandbox by name (to resume a crashed step), sweep by name prefix or by label
 - sandbox: exec (cwd, timeout, abort signal, streamed output, stdin, per-command environment → exit code, stdout, stderr, timed out, aborted), read file, write file, is alive, instance id (changes when recreated under the same name), age, destroy
 - a backend must offer: exec that kills the whole process tree on timeout or abort, streamed output, file transfer at least as large as the largest git bundle or `/spec` folder, find by name, sweep
 - git holds the state, the image holds the environment: each sandbox = fresh image + commit
@@ -792,15 +778,6 @@ Docker backend:
 - write file creates the parent directories
 - sweep filters on the managed label plus a name anchored at its start, or a label
 
-### Inngest Sandboxes backend
-
-- one microVM per sandbox, 2 vCPU and 2,048 MB, driven through the SDK's direct sandbox client inside steps
-- needs the cloud worker; refuse it in dev mode
-- one hour of active runtime per sandbox, then a pause that can't be extended. Hence the 50-minute caps in the config, a new sandbox per experiment and per evaluation, and a check before reusing an evaluator sandbox: age + `eval_min × stages` + 5 minutes must fit
-- no labels: track each run's sandbox names in the worker's memory; the night's prefix sweep covers a restarted worker
-- no `/spec` in the image and no network option: create uploads the bundle and sets the git defaults the Docker image bakes in. Egress is open with no allowlist
-- an image published to the workspace (`inngest_image`) for scenarios whose packages the base image can't load
-
 ## Data and files
 
 ### Experiment repository
@@ -818,7 +795,7 @@ Docker backend:
 | fields | meaning |
 |---|---|
 | `night_id`, `exp_id`, `parent_id`, `eval_id`, `round` | Identity. `eval_id` is the unique row key. `parent_id` = the checkpoint's experiment; null on noise, rescore and test rows |
-| `stack`, `backend` | `inngest`; `docker` or `inngest` |
+| `stack`, `backend` | `inngest`; `docker` |
 | `kind`, `split` | `experiment`, `noise`, `test`; `dev`, `test` |
 | `model`, `reviewer_model`, `hypothesis`, `commit` | What was tried. `model` is null on noise, rescore and test rows; `hypothesis` is null on test rows and a fixed sentence on noise and rescore rows |
 | `metrics` | Flat name → number |
@@ -871,7 +848,7 @@ Source of truth is git plus `results.jsonl`. The runtime's traces and scores mir
 
 ### Worker API
 
-Default `127.0.0.1:7421`. It also routes `/v1/*` to the metering proxy's handler, which has its own listener besides ([[#Metering proxy]]). No token on loopback; off loopback `CODECLIMB_WORKER_TOKEN` is required as a bearer on everything but `/v1`. A busy port is logged, not fatal: a local and a cloud worker may run side by side.
+Default `127.0.0.1:7421`. It also routes `/v1/*` to the metering proxy's handler, which has its own listener besides ([[#Metering proxy]]). No token on loopback; off loopback `CODECLIMB_WORKER_TOKEN` is required as a bearer on everything but `/v1`. A busy port is logged, not fatal.
 
 | endpoint | purpose |
 |---|---|
@@ -921,7 +898,7 @@ OpenTelemetry API, a no-op without a provider, built by hand on Pi's event strea
 
 ## Durable runtime on Inngest
 
-What the runtime must provide, and the Inngest feature that provides it. The step bodies stay framework-free; the Inngest SDK appears only in the function definitions, the Inngest sandbox backend, the worker's connection and where events are sent.
+What the runtime must provide, and the Inngest feature that provides it. The step bodies stay framework-free; the Inngest SDK appears only in the function definitions, the worker's connection and where events are sent.
 
 | requirement | Inngest | why |
 |---|---|---|
@@ -938,7 +915,6 @@ What the runtime must provide, and the Inngest feature that provides it. The ste
 | Lessons one at a time | `distill-lessons` with a concurrency of 1 per scenario; event ids `lessons-<night>-r<round>` and `lessons-<night>-stop` | No two edits of one file |
 | Scores mirror | The score middleware on the client and the step-level score call, in the evaluator child. The target is the experiment child's run id, which that child returns and the parent passes on. One step per metric, named from the sorted metric names (a memoized result's key order can differ on replay). Only for a successful evaluation; a failed score call is swallowed | Comparison in the dashboard |
 | Traces | The extended-traces middleware on the client plus the `@inngest/otel` preload at worker start | Our spans nest under the step |
-| Dev and cloud | Dev-server mode vs signing and event keys | No mode flag in the code |
 
 Rules the loop depends on:
 
@@ -947,7 +923,7 @@ Rules the loop depends on:
 - a child's failure is caught and becomes an outcome, so one bad experiment doesn't kill the night
 - steps take plain data and return small JSON (SHAs, metrics, paths); large state stays on disk
 - file writes inside steps are idempotent: rows deduplicate by `eval_id`, other files are rewritten whole
-- the worker holds in-memory state (live Pi aborts, the proxy's ledgers and cache, Inngest sandbox names), so children must run on the worker that holds the disk
+- the worker holds in-memory state (live Pi aborts, the proxy's ledgers and cache), so children must run on the worker that holds the disk
 - a worker restarted onto new code cannot replay a night started by older code: let running nights finish first
 
 State the parent carries across rounds: the checkpoint, feedback, failures, hypothesis, log, history, spend, tokens, per-round spends and tokens, rounds without a keep, the costliest evaluation, the deadline, the pause count, the round, the noise and the A/A run count, the stop reason.
@@ -956,10 +932,9 @@ State the parent carries across rounds: the checkpoint, feedback, failures, hypo
 
 One path for every hard stop:
 
-- `night-stop-cleanup`: abort the night's live Pi sessions in this worker, sweep its sandboxes by prefix on every backend the worker reaches, write `stop.json`, and send the lessons event for a night that didn't finish
+- `night-stop-cleanup`: abort the night's live Pi sessions in this worker, sweep its sandboxes by prefix, write `stop.json`, and send the lessons event for a night that didn't finish
 - `run-cancelled-cleanup`: abort that run's Pi session and sweep the sandboxes it created. If the cancelled run was the night's parent (a timeout or a stop), send the stop event too
 - a finished night sweeps its own prefix before `done.json`
-- one backend failing (no Docker on a cloud host) doesn't stop the others
 - a stopped or failed night must always end with a `stop.json`, mock nights included. `run-night` only exits when it sees `done.json` or `stop.json`, so a night that died without either leaves the command, and a test run, hanging
 - a night can fail before `night.json` exists (a failed model check, bundle command or init), and the stop cleanup then finds no folder. So the night's failure handler, which gets the start event and with it the results directory, creates `nights/<id>/` and writes `stop.json` with reason `failed` itself when `night.json` is missing, then sends the stop event. A night with a `stop.json` and no `night.json` can't be continued or used as a seed
 - `run-night` exits 0 after printing `done` or `stopped`: tests read the printed word and the files
@@ -968,51 +943,36 @@ One path for every hard stop:
 
 These cost time to find. They are not design choices.
 
-- `step.sandbox` has no file transfer: use the direct sandbox client inside steps (`sandboxes` on the Inngest client; its types are in `inngest/experimental`). The dev server forwards sandbox calls only after a login, so local nights use Docker
-- there is no lookup by name: list every page and filter by name and by a status that is not terminating, terminated or failed
-- create passes the name, vCPU, memory, the published image if any, a 45 s running timeout and `PYTHONDONTWRITEBYTECODE=1`. Retry it on a start timeout (destroy the stuck sandbox by the id the error carries), a taken name, a retryable error, or a result that is not running
-- a sandbox process has no stdin: upload the input to a temporary file and redirect from it
-- a process's output may not be retained: fall back to what was streamed
-- short command calls need an explicit working directory: `/` when `/repo` may be missing
-- a single command run stops being watched after about 5 minutes and can't be killed. Use it for helpers up to 2 minutes; run everything longer, streamed or abortable as a sandbox process: start, stream output, wait in 60 s slices, signal 9 with children
-- files up to 64 KiB come back fastest inline as base64; larger ones go through the file download. Upload doesn't create parent directories. A process keeps a bounded amount of output
-- launches sometimes hang in STARTING (about 2 in 20): give a start 45 s, destroy and retry, up to 6 times; a destroyed sandbox may hold its name for a moment
-- a paused sandbox found by name is resumed; one still starting gets 30 s
-- the base image is Nix-built with Python 3.14 and git but no pip and no `libstdc++`, so numpy can't load: graphrag publishes its own image, and a new `requirements.txt` needs a new image tag
-- the evaluator reset must not kill the guest agent's `init` processes or a published image's `sleep`
 - a killed worker's step resumes after about 2 minutes, when its lease expires
 - the function-cancelled event carries the triggering event, which tells the parent run from its children
 
 ## Deployment and environment
 
-Two modes, one code path, both with the worker on your machine. Why not a hosted worker: every piece of worker state is on disk, and a coder step outlives serverless limits.
+One mode, with the worker on your machine. Why not a hosted worker: every piece of worker state is on disk, and a coder step outlives serverless limits.
 
-| | local | cloud |
-|---|---|---|
-| orchestration | Inngest dev server (`dev:inngest`) | Inngest Cloud |
-| worker | `worker` (dev mode) | `worker:cloud` (`CODECLIMB_ENV=cloud`) |
-| CLI | `run-night` | `run-night:cloud` |
-| sandboxes | Docker | Docker or Inngest Sandboxes (`--sandbox inngest`) |
-| proxy | A random port, the relay | Port 7422, a tunnel for Inngest Sandboxes |
+| | local |
+|---|---|
+| orchestration | Inngest dev server (`dev:inngest`) |
+| worker | `worker` (dev mode) |
+| CLI | `run-night` |
+| sandboxes | Docker |
+| proxy | A random port, the relay |
 
-- env file: one `.env` (gitignored; `.env.example` lists every key), shared by local and cloud mode and loaded first by the CLI and the worker; values already in the shell win
-- outside cloud mode the CLI and the worker default `INNGEST_DEV` to `1`, and `dev` sets it for the app, so the Inngest Cloud keys in `.env` never switch a local run to cloud
-- cloud mode refuses to start without `INNGEST_SIGNING_KEY` and `INNGEST_EVENT_KEY`, or with `INNGEST_DEV` set (the SDK would quietly use the dev server)
+- env file: one `.env` (gitignored; `.env.example` lists every key), loaded first by the CLI and the worker; values already in the shell win
+- the CLI and the worker default `INNGEST_DEV` to `1`, and `dev` sets it for the app
 - the machine stays on until the night ends; on macOS the worker holds `caffeinate -i`
-- a sandbox keeps running while its worker is away, counting against its hour
+- a sandbox keeps running while its worker is away
 - the app and the API bind loopback only by default
 
 | variable | meaning |
 |---|---|
 | `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY` | Provider keys; `OPENROUTER_BASE_URL` points the proxy elsewhere, for tests |
 | `CODECLIMB_PI_AUTH_PATH` | Another `auth.json` |
-| `INNGEST_DEV`, `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY` | Dev or cloud |
-| `CODECLIMB_ENV` | `cloud` selects cloud mode |
+| `INNGEST_DEV` | Dev |
 | `CODECLIMB_ROOT` | The checkout the worker resolves config paths and `runs/` against |
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT` | The worker API (default `127.0.0.1:7421`); without `CODECLIMB_API_PORT` the port falls back to `PORT` |
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer; where the app reaches the worker |
 | `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds; on Linux Docker the `docker0` address |
-| `CODECLIMB_METER_URL` | A public proxy URL ending in `/v1` |
 | `CODECLIMB_WORKER_ID` | The worker's instance id (default `codeclimb-worker-local`) |
 
 Language: TypeScript on Node 24, ESM, run from source with `tsx`; `tsc` for types; Node's test runner for unit tests of the pure parts (keep rule, stops, schema, flattening, metering, lessons ops). Next.js and React for the app, `yaml` for configs, `node:http` for the API and the proxy. The worker is a separate app from the Next.js one, so Pi's native dependencies stay out of its bundle. Scenario code: any language behind the contract.
@@ -1024,7 +984,6 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx`; `tsc` for type
 | config | `plateau_rounds`; thinking coder / reviewer | 3; `medium` / `low` |
 | config | `min_efficiency_gain` | 0.10 |
 | config | `noise_margin` `min` / `max` | 0.002 / 0.005 |
-| config | Inngest cap on `experiment_min` and `eval_min × stages` | 50 min |
 | loop | smoke test | 7 tries, 5 min apart |
 | loop | A/A runs per night | at most 2 |
 | loop | repairs per round | 1 |
@@ -1044,7 +1003,6 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx`; `tsc` for type
 | coder | fresh restarts after a lost sandbox | 1 |
 | memory | trajectory budget | 48,000 characters |
 | memory | note heading reason; error reason in a history line | 300 characters each |
-| evaluator | sandbox overhead allowance | 5 min |
 | evaluator | environment build; reset; git helper | 3 min; 2 min; 2 min |
 | evaluator | host command timeout / output | 30 min / 64 MiB |
 | evaluator | error tail | 2,000 characters |
@@ -1060,12 +1018,9 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx`; `tsc` for type
 | proxy | request body | 16 MiB |
 | proxy | coder retry window | 5 s |
 | proxy | OpenRouter call timeout; model check timeout | 5 min; 30 s |
-| proxy | reachability check | 3 tries, 5 s apart, 15 s each |
 | proxy | embeddings prices per million tokens | 0.02 (small), 0.13 (large) |
-| proxy | ports | relay 8080; cloud proxy 7422; cloudflared metrics 20241; ngrok API 4040 |
+| proxy | ports | relay 8080 |
 | sandbox | size | 2 vCPU, 2 GiB |
-| sandbox (Inngest) | active life; helper limit; wait slice; start timeout; inline read | 60 min; 2 min; 60 s; 45 s; 64 KiB |
-| sandbox (Inngest) | create retries | 6 |
 | API | port; stale after; request body | 7421; 60 min; 1 MB |
 | app / CLI | polling | night 5 s; list 10 s; CLI follow 5 s |
 | git | starter commit date | 2026-01-01T00:00:00Z |
@@ -1076,15 +1031,14 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 ## Known gaps
 
 - a hard-stopped night has no test score; "finish now" would need a stop at the next round
-- `eval_min` limits a slow program: at 16 minutes per stage on Cloud, one extraction timed out. The coder's to fix; the reviewer reads why
+- `eval_min` limits a slow program: at 16 minutes per stage, one extraction timed out. The coder's to fix; the reviewer reads why
 - `scan` and `check` find copies, not paraphrases or encodings; the reviewer still reads the diff
 - proxy: no streaming, tools or non-text chat; operation attribution assumes one operation at a time; two nights on one worker share `cc-meter` and the single replay cache
-- sandboxes have open egress on both backends: only the missing keys keep a program from a model
+- sandboxes have open egress: only the missing keys keep a program from a model
 - a failed night start needs a new night id (the start event id is deduplicated)
 - the model check finds missing keys, not wrong ones: a bad key fails the first call as `agent_error`
 - one A/A pair is one sample; `min` and `max` bound it
 - `stack` is fixed to `inngest` in the row
-- Inngest: whether a sandbox from a snapshot starts a fresh hour; whether an egress allowlist is coming
 - the mock coder stops at once on every turn, so a mock session holds the full 8 send-backs and one wrap-up. With a 5-minute experiment and the 3-minute floor, all of them must start within the first 2 minutes
 - four places where this spec asks for more than the reference build does:
   - finding mock nights under `runs/mock/` for `stop.json` and the API. The reference scans `runs/*/nights/` only, so a stopped mock night leaves `run-night` waiting
@@ -1107,4 +1061,3 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 6. Stop, cleanup, crash resume, pause and resume
 7. Noise run, repair, send-backs, trajectory, continue, seed, rescore, lessons; then the third mock night
 8. Worker API, app, export, tracing
-9. Inngest Cloud: the cloud worker, the Inngest sandbox backend, tunnels
