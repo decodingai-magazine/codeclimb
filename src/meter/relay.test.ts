@@ -33,8 +33,10 @@ describe("meter relay", { skip }, () => {
 	after(async () => {
 		spawnSync("docker", ["rm", "-f", TARGET]);
 		spawnSync("docker", ["rm", "-f", RELAY]);
-		if (found?.port && found.target) {
-			process.env.CODECLIMB_RELAY_TARGET = found.target;
+		if (found?.port) {
+			// A relay with no target label predates it and forwards to the host alias: put it back with the default target.
+			if (found.target) process.env.CODECLIMB_RELAY_TARGET = found.target;
+			else delete process.env.CODECLIMB_RELAY_TARGET;
 			await ensureMeterPath(IMAGE, Number(found.port));
 		}
 		if (targetEnv === undefined) delete process.env.CODECLIMB_RELAY_TARGET;

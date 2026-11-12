@@ -8,7 +8,7 @@ CodeClimb on the LangChain stack runs in one mode. The Agent Server is the LangG
 
 ## Considered options
 
-- **LangSmith Deployment** (the hosted Agent Server), the original migration plan's cloud mode. Rejected: every piece of a night's state lives on the server's disk (`runs/`, `experiments.git`, the scenarios' `lessons.md`) or in its process memory (the metering proxy's ledgers and cache, the live registry of running agents). A hosted deployment has no persistent disk, and the proxy would need a home outside it.
+- **LangSmith Deployment** (the hosted Agent Server), the original migration plan's cloud mode. Rejected: every piece of a night's state lives on the server's disk (`runs-langchain/`, `experiments.git`, the scenarios' `lessons.md`) or in its process memory (the metering proxy's ledgers and cache, the live registry of running agents). A hosted deployment has no persistent disk, and the proxy would need a home outside it.
 - **`langgraph up`** (the server image with Postgres and Redis, on the operator's machine). It gives a real database, a save before the next step and a sweeper that reruns lost runs; we measured all three. Rejected: its container has no Docker, so with Docker as the only backend it would need the host's Docker socket (not tried), and a second mode doubles what must be built and tested.
 - **The dev server only** (chosen): the simplest build, at no cost. CodeClimb here is an educational build.
 

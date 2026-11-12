@@ -6,9 +6,6 @@ export const RELAY = "cc-meter-relay";
 export const RELAY_PORT = 8080;
 export const RELAY_URL = `http://${RELAY}:${RELAY_PORT}/v1`;
 
-/** Where the relay forwards: the server container's alias on cc-meter (CODECLIMB_RELAY_TARGET), else the host alias. */
-const relayTarget = () => process.env.CODECLIMB_RELAY_TARGET ?? "host.docker.internal";
-
 /** A TCP forwarder written with Python's standard library: 8080 → the target and the proxy's port. */
 const forwarder = (target: string, port: number) => `
 import socket, threading
@@ -35,17 +32,17 @@ while True:
     c, _ = srv.accept(); threading.Thread(target=handle, args=(c,), daemon=True).start()
 `;
 
-type RelayState = { running: boolean; port: string; target: string; onNetwork: boolean };
+type RelayState = { running: boolean; port: number; target: string; onNetwork: boolean };
 
 async function relayState(): Promise<RelayState | null> {
 	const r = await docker(["inspect", "--format", '{{.State.Running}} {{index .Config.Labels "cc.meter.port"}} {{index .Config.Labels "cc.meter.target"}} {{json .NetworkSettings.Networks}}', RELAY]);
 	if (r.code !== 0) return null;
 	const [running, port, target, ...nets] = r.stdout.toString().trim().split(" ");
-	return { running: running === "true", port: port ?? "", target: target ?? "", onNetwork: nets.join(" ").includes(`"${METER_NETWORK}"`) };
+	return { running: running === "true", port: Number(port), target: target ?? "", onNetwork: nets.join(" ").includes(`"${METER_NETWORK}"`) };
 }
 
 /** The relay forwards to this server's proxy: it runs, and its port and target labels match. */
-const matches = (s: RelayState | null, port: number, target: string) => !!s?.running && s.port === String(port) && s.target === target;
+const matches = (s: RelayState | null, port: number, target: string) => !!s?.running && s.port === port && s.target === target;
 
 let lock: Promise<void> = Promise.resolve();
 
@@ -56,12 +53,17 @@ export function ensureMeterPath(image: string, port: number): Promise<void> {
 	return next;
 }
 
+/** Create `cc-meter` when it is missing; another caller creating it first is fine. */
+export async function ensureMeterNetwork(): Promise<void> {
+	if ((await docker(["network", "inspect", METER_NETWORK])).code === 0) return;
+	const c = await docker(["network", "create", METER_NETWORK]);
+	if (c.code !== 0 && !/already exists/.test(c.stderr)) throw new Error(`docker network create ${METER_NETWORK} failed: ${c.stderr.trim()}`);
+}
+
 async function ensure(image: string, port: number): Promise<void> {
-	if ((await docker(["network", "inspect", METER_NETWORK])).code !== 0) {
-		const c = await docker(["network", "create", METER_NETWORK]);
-		if (c.code !== 0 && !/already exists/.test(c.stderr)) throw new Error(`docker network create ${METER_NETWORK} failed: ${c.stderr.trim()}`);
-	}
-	const target = relayTarget();
+	await ensureMeterNetwork();
+	// Where the relay forwards: the server container's alias on cc-meter (CODECLIMB_RELAY_TARGET), else the host alias.
+	const target = process.env.CODECLIMB_RELAY_TARGET ?? "host.docker.internal";
 	const s = await relayState();
 	if (s && matches(s, port, target)) {
 		if (!s.onNetwork) await docker(["network", "connect", METER_NETWORK, RELAY]);

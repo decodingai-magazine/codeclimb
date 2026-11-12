@@ -4,11 +4,11 @@
 //   npm run server:stop    stop the stack; Postgres keeps every thread (no -v)
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { METER_NETWORK } from "../meter/relay.ts";
+import { ensureMeterNetwork } from "../meter/relay.ts";
 
 const PORT = 8123;
 const READY_DEADLINE_MS = 5 * 60_000;
@@ -24,10 +24,7 @@ const lower = root.toLocaleLowerCase();
 const project = `${basename(lower)}-${createHash("sha256").update(lower).digest("hex")}`;
 const container = `${project}-langgraph-api-1`;
 
-function compose(args: string[]): never {
-	const r = spawnSync("docker", ["compose", "--project-name", project, ...args], { stdio: "inherit" });
-	process.exit(r.status ?? 1);
-}
+const compose = (args: string[]) => spawnSync("docker", ["compose", "--project-name", project, ...args], { stdio: "inherit" }).status ?? 1;
 
 async function healthy(): Promise<boolean> {
 	try {
@@ -51,16 +48,14 @@ async function up(): Promise<void> {
 		writeFileSync(piAuth, "{}", { mode: 0o600 });
 	}
 	// An external network must exist before `up`.
-	if (spawnSync("docker", ["network", "inspect", METER_NETWORK], { stdio: "ignore" }).status !== 0) {
-		const c = spawnSync("docker", ["network", "create", METER_NETWORK], { encoding: "utf8" });
-		if (c.status !== 0 && !/already exists/.test(c.stderr)) die(`docker network create ${METER_NETWORK} failed: ${c.stderr.trim()}`);
-	}
+	await ensureMeterNetwork().catch((e: Error) => die(e.message));
 
 	const shimDir = join(dirname(fileURLToPath(import.meta.url)), "server-docker");
 	const cli = join(root, "node_modules", ".bin", "langgraphjs");
 	// `up` swallows a failed build or a container that exits, and its own wait is 10 s: the pass-through records the
 	// compose status, and the /ok poll below decides the rest.
-	const upStatus = join(mkdtempSync(join(tmpdir(), "codeclimb-server-")), "status");
+	const statusDir = mkdtempSync(join(tmpdir(), "codeclimb-server-"));
+	const upStatus = join(statusDir, "status");
 	const r = spawnSync(cli, ["up", "--port", String(PORT), "--no-pull", "--wait"], {
 		cwd: root,
 		stdio: "inherit",
@@ -74,8 +69,9 @@ async function up(): Promise<void> {
 			CODECLIMB_UP_STATUS: upStatus,
 		},
 	});
-	if (r.error) die(`langgraphjs up failed: ${r.error.message}`);
 	const status = existsSync(upStatus) ? readFileSync(upStatus, "utf8").trim() : "missing";
+	rmSync(statusDir, { recursive: true, force: true });
+	if (r.error) die(`langgraphjs up failed: ${r.error.message}`);
 	if (status !== "0") die(`docker compose up failed (status ${status}); see the output above`);
 
 	const deadline = Date.now() + READY_DEADLINE_MS;
@@ -87,7 +83,7 @@ async function up(): Promise<void> {
 	}
 	const ports = spawnSync("docker", ["port", container, "8000"], { encoding: "utf8" }).stdout.trim().split("\n").filter(Boolean);
 	if (ports.length === 0 || ports.some((p) => !p.startsWith("127.0.0.1:"))) {
-		spawnSync("docker", ["compose", "--project-name", project, "stop"], { stdio: "inherit" });
+		compose(["stop"]);
 		die(`the server's port is published beyond loopback (${ports.join(", ")}); the stack was stopped`);
 	}
 	// A Mac must not sleep while the server runs: caffeinate lives as long as the server container.
@@ -97,6 +93,6 @@ async function up(): Promise<void> {
 
 const command = process.argv[2] ?? "up";
 if (command === "up") await up();
-else if (command === "logs") compose(["logs", "--follow", "langgraph-api"]);
-else if (command === "stop") compose(["down"]);
+else if (command === "logs") process.exit(compose(["logs", "--follow", "langgraph-api"]));
+else if (command === "stop") process.exit(compose(["down"]));
 else die(`unknown command ${command}: up, logs or stop`);

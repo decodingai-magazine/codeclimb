@@ -42,4 +42,4 @@ The operator wants durability from the runtime itself: once a step finishes, it 
 - the server image adds `git` and a Docker CLI to the base image; a compose override mounts the Docker socket, the checkout (at its host path) and Pi's `auth.json`, and puts the server container on `cc-meter`
 - the metering proxy binds every interface in the server container on a fixed port, and the shared relay forwards to the server container by name on `cc-meter`. The relay serves one server at a time
 - the server listens on `127.0.0.1:8123`
-- the spec's platform facts were re-measured on this server; those measured only on the dev server are marked as such until ticket #31 confirms them
+- the spec's platform facts were re-measured on this server; those measured only on the dev server are marked as such: they were not re-measured on this server

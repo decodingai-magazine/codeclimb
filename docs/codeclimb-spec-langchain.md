@@ -68,7 +68,7 @@ Nights 3 to 7 add:
 | 4 | `run-night` prints `stopped`; `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left | [[#Cleanup]] |
 | 5 | Kill once `exps/<id>-r2-e0/` exists, so round 1's row is in `results.jsonl`. If the night finishes before that happens, nothing is killed: run night 5 again. Record round 1's `code-state.json` (sha256 and mtime) and follow `docker events` for container creates across the kill. The server picks the killed run up by itself, about 2 minutes after `up` (its runs sweeper), with no watchdog and no manual resume. Then the night finishes: `done.json` exists, every `eval_id` is in `results.jsonl` once, round 1's `code-state.json` is unchanged (so round 1's coder did not run again), and no `cc-<id>-r1-` sandbox is created after the kill (the night resumed from its last stored step instead of replaying round 1). Only the step running at the kill reruns, on a new sandbox of the same name | [[#Crash and resume]], [[#Platform facts]] |
 | 6 | Every check of the table above; and `exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one | [[#Mock mode]], [[#End of an experiment]] |
-| 7 | It writes to `runs-langchain/mock/graphrag-smoke/`. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`; these checks hold either way. `run-night` prints `done`; `done.json` exists and `stop.json` doesn't; `validate-results` passes; every round has an experiment row with `decision_reason`, plus one `test` row; every evaluation has `evals/<eval>/extraction/inputs.jsonl`; every experiment with a commit has `exps/<exp>/check.json`; where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`; within a minute of `done`, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and the scenario's `lessons.md` is unchanged; no `cc-<id>` container is left | [[#Scenario contract]], [[#Evaluator]], [[#Repair]], [[#Lessons across nights]] |
+| 7 | It writes to `runs-langchain/mock/graphrag-smoke/`. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`; these checks hold either way. `run-night` prints `done`; `done.json` exists and `stop.json` doesn't; `validate-results` passes; every round has an experiment row with `decision_reason`, plus one `test` row; every evaluation has `evals/<eval>/extraction/inputs.jsonl`; every experiment with a commit has `exps/<exp>/check.json`; where an evaluation succeeded, its scenario metric names start with `extraction.`, `graph.` or `retrieval.`, beside the metering metrics (`cost_*`, `latency_total_s`, `model_calls*`) every row carries; within a minute of `done`, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and the scenario's `lessons.md` is unchanged; no `cc-<id>` container is left | [[#Scenario contract]], [[#Evaluator]], [[#Repair]], [[#Lessons across nights]] |
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
@@ -1067,7 +1067,7 @@ Library behaviour of `@langchain/langgraph` 1.7.3 and `langsmith` 0.12.0, measur
 | A step's body gets no config argument: it reads the abort signal and `executionInfo.nodeAttempt` through `getConfig()` | |
 | LangSmith: a `RunTree` with no parent, created inside a step of a traced server run, is a trace of its own. `createFeedback` called twice with one `feedbackId` stores one feedback, with the later score. A key used against the other region's endpoint gets 403 with an empty message | [[#Tracing]]; `LANGSMITH_ENDPOINT` must match the key's region |
 
-Server behaviour measured on 2026-11-11 on the dev server only. The design still depends on it; it was not re-measured on this server, and ticket #31 confirms each fact there (night 4 and the free suite exercise most of them):
+Server behaviour measured on 2026-11-11 on the dev server only. The design still depends on it; it was not re-measured on this server (night 4 and the free suite exercise most of them):
 
 | fact | consequence |
 |---|---|
@@ -1174,7 +1174,7 @@ Language: TypeScript on Node 24, ESM, run from source with `tsx` (the Agent Serv
 | runtime | server run time limit (`BG_JOB_TIMEOUT_SECS`) | 5 days (432000 s) |
 | runtime | durability; a step's result stored | `sync` on every server run; within about 1 s of the step's end |
 | runtime | runs sweeper: a killed run restarts after `up` | about 2 min (sweep every 2 min) |
-| runtime | server-run attempts after restarts | 3 on the dev server; not re-measured on this server (#31) |
+| runtime | server-run attempts after restarts | 3 on the dev server; not re-measured on this server |
 | runtime | watchdog interval; checks before it acts; resumes per thread | 60 s; 2; 2 |
 | coder | reserve | the last 20% of time or budget |
 | coder | send-backs | at most 8; none with < 3 min left |
@@ -1221,7 +1221,7 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 - `eval_min` limits a slow program: on the Inngest twin, at 16 minutes per stage, one extraction timed out. The coder's to fix; the reviewer reads why
 - `scan` and `check` find copies, not paraphrases or encodings; the reviewer still reads the diff
 - proxy: no streaming, tools or non-text chat; operation attribution assumes one operation at a time; one night per server, because two would share `cc-meter` and the single replay cache
-- one relay for every server: `cc-meter-relay` forwards to one server at a time. Two servers running metered nights on one machine (another checkout's, or the old dev server) recreate it in turn, each breaking the other's path until its next check. The relay test of `npm test` removes it at its end, with the same effect on a running night ([[#Open points for the build]])
+- one relay for every server: `cc-meter-relay` forwards to one server at a time. Two servers running metered nights on one machine (another checkout's, or the old dev server) recreate it in turn, each breaking the other's path until its next check. The relay test of `npm test` recreates it while it runs, with the same effect on a running night; at its end it puts back the relay it found, with that relay's port and target labels, or the default target `host.docker.internal` when the found relay has no target label (a relay from before the target label) ([[#Open points for the build]])
 - sandboxes have open egress: only the missing keys keep a program from a model, as on the Inngest twin
 - a failed night start needs a new night id (its thread exists)
 - the model check finds missing keys, not wrong ones: a bad key fails the first call as `agent_error`
