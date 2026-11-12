@@ -66,7 +66,7 @@ Nights 3 to 7 add:
 |---|---|---|
 | 3 | `run-night` prints `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; there is a `test` row; no `cc-<id>` container is left | [[#Stops]] |
 | 4 | `run-night` prints `stopped`; `stop.json` has `reason: manual`; there is no `done.json` and no `test` row; no `cc-<id>` container is left | [[#Cleanup]] |
-| 5 | Kill once `exps/<id>-r2-e0/` exists and the server's state file `.langgraph_api/.langgraphjs_api.checkpointer.json` is newer than `results.jsonl`, so round 1 is on disk. If the night finishes before that happens, nothing is killed: run night 5 again. After the restart the night finishes by itself: `done.json` exists, every `eval_id` is in `results.jsonl` once, and round 1's `code-state.json` is unchanged, so round 1 was not redone | [[#Crash and resume]], [[#Platform facts]] |
+| 5 | Kill once `exps/<id>-r2-e0/` exists, so round 1's row is in `results.jsonl`. If the night finishes before that happens, nothing is killed: run night 5 again. The server may have saved none of the night's steps (it writes its state only after 3 quiet seconds, and a mock night has none), so the restart can replay the night from its start: the night's files must make that replay redo nothing. After the restart the night finishes by itself: `done.json` exists, every `eval_id` is in `results.jsonl` once, and round 1's `code-state.json` is unchanged, so round 1's coder did not run again | [[#Crash and resume]], [[#Platform facts]] |
 | 6 | Every check of the table above; and `exps/<id>-r1-e0/session/` holds at least one assistant message with stop reason `error`, followed by assistant messages without one | [[#Mock mode]], [[#End of an experiment]] |
 | 7 | It writes to `runs/mock/graphrag-smoke/`. The mock program's answers are canned, so a stage may fail and a round may end in `error` with a repair `e1`; these checks hold either way. `run-night` prints `done`; `done.json` exists and `stop.json` doesn't; `validate-results` passes; every round has an experiment row with `decision_reason`, plus one `test` row; every evaluation has `evals/<eval>/extraction/inputs.jsonl`; every experiment with a commit has `exps/<exp>/check.json`; where an evaluation succeeded, its metric names start with `extraction.`, `graph.` or `retrieval.`; within a minute of `done`, `lessons/<id>-r<last round>/proposal.json` exists with `applied: false`, and the scenario's `lessons.md` is unchanged; no `cc-<id>` container is left | [[#Scenario contract]], [[#Evaluator]], [[#Repair]], [[#Lessons across nights]] |
 
@@ -76,10 +76,10 @@ Also required, though these nights don't reach them: real-model nights, pause an
 
 | # | night | ceiling | passes when |
 |---|---|---|---|
-| 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $1 | `done`; a `test` row; `spend_usd` above 0 and at most 1; `meter.jsonl` shows real calls |
-| 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $1 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
+| 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $0.50 | `done`; a `test` row; `spend_usd` above 0 and at most 0.50; `meter.jsonl` shows real calls |
+| 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $0.50 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
 | 10 | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | the cost cap: `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20. Mock models cost 0, so only real models reach this cap |
-| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $1 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
+| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $0.50 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
 
 Every paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
 

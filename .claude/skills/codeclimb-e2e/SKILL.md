@@ -62,10 +62,10 @@ A failure in the coder or the review falls back quietly in some paths. Read `cod
 2. `npm run run-night -- stop --night <id>`. It prints `stopped`.
 3. Wait 30 s, then check: `N/stop.json` has `reason: manual`; there is no `N/done.json`; `results.jsonl` has no `test` row for the night; `docker ps` shows no `cc-<id>` container.
 
-**5. Kill and restart.** The server writes its state to disk 3 s after its last change, so kill it only once round 1 is on disk.
+**5. Kill and restart.** The server writes its state to disk only after 3 quiet seconds, and a mock night has none, so the restart may replay the night from its start. The night's files must make that replay redo nothing.
 
 1. Start the night with `--no-wait`.
-2. Wait, up to 2 minutes, until both hold: `N/exps/<id>-r2-e0/` exists, and `.langgraph_api/.langgraphjs_api.checkpointer.json` is newer than `runs/mock/datenorm-smoke/results.jsonl`. If the night finishes first, nothing was killed: run scenario 5 again, up to 3 times, and only then report it as not run.
+2. Wait, up to 2 minutes, until `N/exps/<id>-r2-e0/` exists: round 1's row is in `results.jsonl`. If the night finishes first, nothing was killed: run scenario 5 again, up to 3 times, and only then report it as not run.
 3. Save a copy of `N/exps/<id>-r1-e0/code-state.json`.
 4. `kill -9` the process listening on port 2024 (`lsof -nP -t -iTCP:2024 -sTCP:LISTEN`), then start `npm run server` again. Start nothing else: the server reruns the night by itself.
 5. Wait for `N/done.json`, then check: every `eval_id` is in `results.jsonl` exactly once; round 1's `code-state.json` equals the saved copy (round 1 was not redone); the checks for a finished mock night hold.
@@ -88,10 +88,10 @@ Each spends real money. Before running one, ask the user and name the scenario a
 
 | # | Scenario | Command | Ceiling | Passes when |
 |---|---|---|---|---|
-| 8 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $1 | `done`; a `test` row; `spend_usd` above 0 and at most 1; `meter.jsonl` shows real calls |
-| 9 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $1 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
+| 8 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $0.50 | `done`; a `test` row; `spend_usd` above 0 and at most 0.50; `meter.jsonl` shows real calls |
+| 9 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $0.50 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
 | 10 | Cost cap | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20 |
-| 11 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $1 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
+| 11 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $0.50 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
 
 For every paid night also check: `N/done.json` exists with no `stop.json`; `validate-results` passes; `docker ps` shows no `cc-<id>` container.
 

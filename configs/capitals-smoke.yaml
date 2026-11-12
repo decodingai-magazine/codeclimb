@@ -16,6 +16,6 @@ thresholds:
 gates:
   schema_violations: 0
 budget_usd:
-  experiment: 0.5
-  night: 1.0
+  experiment: 0.25
+  night: 0.5
 results_path: runs/capitals-smoke/results.jsonl
