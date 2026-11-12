@@ -1,15 +1,15 @@
 # CodeClimb on Inngest: build tickets
 
-42 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
+43 tickets for building CodeClimb from scratch from `docs/codeclimb-spec-inngest.md`, with no existing code.
 
 - one file per ticket, `<NN>-<slug>.md`, numbered in dependency order: a ticket is blocked only by lower numbers
 - every ticket names the spec sections it implements by heading; the spec is the contract, the ticket only scopes it. Constants are in the spec's "Every number in one place"
 - the given inputs (`scenarios/`, `configs/`, the image definitions, `.env`, the end-to-end test instructions) are present in the build environment; tickets consume them and never change them. A test that needs a different scenario or config uses a test-only copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` directly under `runs/`, so test nights never mix into the given configs' results
-- tickets 01 to 41 are `ready-for-agent` and need no paid call and no Inngest Cloud: provider, OpenRouter and Inngest Cloud paths are tested against fakes; whole nights run with `--mock`
-- ticket 42, the cloud nights, is `ready-for-human`: each night runs only with the operator's go-ahead for that run. Ticket 41, the final acceptance, does not wait for it
+- tickets 01 to 42 are `ready-for-agent` and need no paid call and no Inngest Cloud: provider, OpenRouter and Inngest Cloud paths are tested against fakes; whole nights run with `--mock`
+- ticket 43, the cloud nights, is `ready-for-human`: each night runs only with the operator's go-ahead for that run. Ticket 42, the final acceptance, does not wait for it
 - end-to-end checks need Docker, `npm run dev:inngest` and `npm run worker` running; the worker has no hot reload, so restart it after a code change
 - after any code change: `npm run typecheck`, then `npm test`
-- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11 and the spec's done signal passes at ticket 20. Tickets 21 to 40 are gated on ticket 20, directly or through a blocker (all but ticket 26, the pure lessons file), and those that touch the loop rerun its check
+- the order follows the spec's "Suggested build order", cut so that a one-round mock night runs at ticket 11, the first two mock nights of the spec's done signal pass at ticket 20, and the third at ticket 28. Tickets 21 to 41 are gated on ticket 20, directly or through a blocker (all but ticket 26, the pure lessons file), and those that touch the loop rerun its check
 
 ## Phases
 
@@ -33,22 +33,22 @@
 | 16 | Repair | 24 |
 | 17 | Continue | 25 |
 | 18 | Lessons | 26 to 27 |
-| 19 | Multi-stage mock night | none: the spec has nothing for this phase |
-| 20 | Seed and rescore | 28 to 29 |
-| 21 | Worker API | 30 |
-| 22 | Export | 31 |
-| 23 | App | 32 to 34 |
-| 24 | Tracing | 35 |
-| 25 | Real-model paths | 36 to 37 |
-| 26 | Cloud deployment | 38 to 40 |
-| 27 | Final acceptance | 41 |
-| 28 | Operator-gated nights | 42 |
+| 19 | Multi-stage mock night | 28 |
+| 20 | Seed and rescore | 29 to 30 |
+| 21 | Worker API | 31 |
+| 22 | Export | 32 |
+| 23 | App | 33 to 35 |
+| 24 | Tracing | 36 |
+| 25 | Real-model paths | 37 to 38 |
+| 26 | Cloud deployment | 39 to 41 |
+| 27 | Final acceptance | 42 |
+| 28 | Operator-gated nights | 43 |
 
-- phase 12 is the gate: both mock nights of "Goal and done signal" pass every row of the table before any phase after it starts
-- phase 19: the done signal names two mock nights, both single-stage, so no ticket runs a multi-stage mock night. Multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 33, 34)
+- phase 12 is the gate: the first two mock nights of "Goal and done signal" pass every row of the first table before any phase after it starts
+- phase 19: the done signal's third mock night, `graphrag-smoke`, is the only multi-stage one. It passes in ticket 28, after repair and lessons, which it exercises, and runs again with the other two in ticket 42. Before it, multi-stage scenarios are covered by unit tests on report fixtures (tickets 02, 34, 35)
 - phase 25: the OpenRouter and Pi backends and the web research guard. The model check and the credit test are built with the Pi sessions (ticket 08) and wired in tickets 19 and 23
-- phase 28: the spec names no paid real-model night and no spend ceiling, so ticket 42 holds the cloud nights only, on mock models
-- the spec names an end-to-end check only for the two mock nights. Hard stop, crash resume, pause, repair, continue, lessons, seed, rescore, the worker API, export and the app get the checks their tickets define, on mock nights on the dev server
+- phase 28: the spec names no paid real-model night and no spend ceiling, so ticket 43 holds the cloud nights only, on mock models
+- the spec names an end-to-end check only for the three mock nights. Hard stop, crash resume, pause, repair, continue, lessons, seed, rescore, the worker API, export and the app get the checks their tickets define, on mock nights on the dev server
 
 ## Tickets
 
@@ -79,22 +79,23 @@
 25. **Continue: more rounds on an ended night, with an operator's direction** (`25-continue-and-direction.md`). Blocked by: 20, 21. Delivers: `run-night continue` reopens an ended night under the same id and runs more rounds from its kept commit.
 26. **Lessons file: format, operations and gates** (`26-lessons-file-ops.md`). Blocked by: 02. Delivers: The pure half of the memory across nights: parse and write `lessons.md`, apply operations, enforce every gate.
 27. **Lessons distillation: what a night learned reaches the next night** (`27-lessons-distillation.md`). Blocked by: 20, 21, 26. Delivers: When a night ends, its notes and reviews are distilled into a lessons proposal, applied to the scenario's `lessons.md` when the mode says so.
-28. **Seed: a new night that starts from an ended night's kept commit** (`28-seed.md`). Blocked by: 25, 27. Delivers: `run-night --seed ID|latest|best` starts a night from the code and dev metrics an earlier night was kept on.
-29. **Rescore: a kept commit is scored again when the scoring changed** (`29-rescore.md`). Blocked by: 18, 25, 28. Delivers: When a scenario's evaluators or gold changed since a kept commit was scored, a continued or seeded night first scores that commit again.
-30. **Worker API: read nights, stop, resume, continue** (`30-worker-api.md`). Blocked by: 23, 25. Delivers: The worker serves an HTTP API from which any client can read nights and control them.
-31. **Export: a kept commit as files, as a git repository, or pushed to a remote** (`31-export.md`). Blocked by: 30. Delivers: An operator can take a night's result out of `experiments.git` from the command line or through the worker API.
-32. **App: scaffold, worker-API route, Nights list, Inngest scaffold** (`32-app-scaffold-nights-list.md`). Blocked by: 30. Delivers: A Next.js app on loopback that lists every night through the worker API.
-33. **App: the Night page with status, controls, tiles and the live experiment** (`33-app-night-page-controls.md`). Blocked by: 32. Delivers: An operator can watch one night and stop, resume or continue it from the browser.
-34. **App: metric tables, convergence chart, heatmap, experiment detail and export** (`34-app-night-page-analysis.md`). Blocked by: 31, 33. Delivers: The Night page explains a night: how metrics moved, what each experiment changed, and a download of the result.
-35. **Tracing and the scores mirror** (`35-tracing-scores.md`). Blocked by: 20. Delivers: A night's model calls, tool calls, sandbox operations and metered calls show up as spans, and dev metrics as scores on the experiment's run.
-36. **Proxy backends: OpenRouter and Pi** (`36-proxy-backends.md`). Blocked by: 15, 20. Delivers: On a real-model night the proxy forwards a program's calls to OpenRouter or through Pi, charges what each cost, and turns a credit signal into a credit stop.
-37. **Web research for the coder, behind the guard** (`37-web-research-guard.md`). Blocked by: 20. Delivers: On a real night the coder can search and read the web through three guarded tools, and can never reach the project's own repository.
-38. **Cloud mode: the worker and the CLI against Inngest Cloud** (`38-cloud-mode.md`). Blocked by: 20. Delivers: The same code runs a night on Inngest Cloud with `worker:cloud` and `run-night:cloud`, with no mode flag in the loop.
-39. **Inngest Sandboxes backend** (`39-inngest-sandboxes-backend.md`). Blocked by: 22, 38. Delivers: The sandbox interface implemented on Inngest Sandboxes, so a cloud night can run its coders and evaluators in microVMs.
-40. **Public proxy path for Inngest Sandboxes: tunnels and the reachability probe** (`40-public-proxy-path-tunnels.md`). Blocked by: 17, 39. Delivers: A program in an Inngest sandbox reaches the metering proxy through a public URL, and a dead tunnel never becomes a score.
-41. **Final acceptance: the whole spec, checked once more** (`41-final-acceptance.md`). Blocked by: every ticket from 21 to 40. Delivers: A last pass that proves the finished build against the spec's done signal and fixed contracts, with no cloud or paid call.
-42. **Cloud nights: mock nights on Inngest Cloud, with the operator's go-ahead** (`42-cloud-nights.md`). Blocked by: 41. Delivers: The two mock nights that need Inngest Cloud (cloud worker on Docker, then Inngest Sandboxes), each run only with the operator's go-ahead.
+28. **Multi-stage mock night: graphrag-smoke passes its checks** (`28-multi-stage-mock-night.md`). Blocked by: 20, 24, 27. Delivers: The graphrag scenario, with three stages and a metered program, runs a whole mock night, and the done-signal check covers the third night.
+29. **Seed: a new night that starts from an ended night's kept commit** (`29-seed.md`). Blocked by: 25, 27. Delivers: `run-night --seed ID|latest|best` starts a night from the code and dev metrics an earlier night was kept on.
+30. **Rescore: a kept commit is scored again when the scoring changed** (`30-rescore.md`). Blocked by: 18, 25, 29. Delivers: When a scenario's evaluators or gold changed since a kept commit was scored, a continued or seeded night first scores that commit again.
+31. **Worker API: read nights, stop, resume, continue** (`31-worker-api.md`). Blocked by: 23, 25. Delivers: The worker serves an HTTP API from which any client can read nights and control them.
+32. **Export: a kept commit as files, as a git repository, or pushed to a remote** (`32-export.md`). Blocked by: 31. Delivers: An operator can take a night's result out of `experiments.git` from the command line or through the worker API.
+33. **App: scaffold, worker-API route, Nights list, Inngest scaffold** (`33-app-scaffold-nights-list.md`). Blocked by: 31. Delivers: A Next.js app on loopback that lists every night through the worker API.
+34. **App: the Night page with status, controls, tiles and the live experiment** (`34-app-night-page-controls.md`). Blocked by: 33. Delivers: An operator can watch one night and stop, resume or continue it from the browser.
+35. **App: metric tables, convergence chart, heatmap, experiment detail and export** (`35-app-night-page-analysis.md`). Blocked by: 32, 34. Delivers: The Night page explains a night: how metrics moved, what each experiment changed, and a download of the result.
+36. **Tracing and the scores mirror** (`36-tracing-scores.md`). Blocked by: 20. Delivers: A night's model calls, tool calls, sandbox operations and metered calls show up as spans, and dev metrics as scores on the experiment's run.
+37. **Proxy backends: OpenRouter and Pi** (`37-proxy-backends.md`). Blocked by: 15, 20. Delivers: On a real-model night the proxy forwards a program's calls to OpenRouter or through Pi, charges what each cost, and turns a credit signal into a credit stop.
+38. **Web research for the coder, behind the guard** (`38-web-research-guard.md`). Blocked by: 20. Delivers: On a real night the coder can search and read the web through three guarded tools, and can never reach the project's own repository.
+39. **Cloud mode: the worker and the CLI against Inngest Cloud** (`39-cloud-mode.md`). Blocked by: 20. Delivers: The same code runs a night on Inngest Cloud with `worker:cloud` and `run-night:cloud`, with no mode flag in the loop.
+40. **Inngest Sandboxes backend** (`40-inngest-sandboxes-backend.md`). Blocked by: 22, 39. Delivers: The sandbox interface implemented on Inngest Sandboxes, so a cloud night can run its coders and evaluators in microVMs.
+41. **Public proxy path for Inngest Sandboxes: tunnels and the reachability probe** (`41-public-proxy-path-tunnels.md`). Blocked by: 17, 40. Delivers: A program in an Inngest sandbox reaches the metering proxy through a public URL, and a dead tunnel never becomes a score.
+42. **Final acceptance: the whole spec, checked once more** (`42-final-acceptance.md`). Blocked by: every ticket from 21 to 41. Delivers: A last pass that proves the finished build against the spec's done signal and fixed contracts, with no cloud or paid call.
+43. **Cloud nights: mock nights on Inngest Cloud, with the operator's go-ahead** (`43-cloud-nights.md`). Blocked by: 42. Delivers: The two mock nights that need Inngest Cloud (cloud worker on Docker, then Inngest Sandboxes), each run only with the operator's go-ahead.
 
 ## Critical path
 
-01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 23 → 30 → 32 → 33 → 34 → 41 → 42.
+01 → 02 → 03 → 08 → 09 → 11 → 12 → 13 → 20 → 21 → 22 → 23 → 31 → 33 → 34 → 35 → 42 → 43.

@@ -1,10 +1,10 @@
-# 33: App: the Night page with status, controls, tiles and the live experiment
+# 34: App: the Night page with status, controls, tiles and the live experiment
 
 **What to build:** `/nights/<id>` shows a night's status and lets the operator act on it: Stop while it runs, Resume with the pause's reason while paused, a Continue form once it ended. Tiles summarize the night, and a panel shows the current round's experiment live. The page polls every 5 seconds.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "App", "Worker API"
 
-**Blocked by:** 32 (App: scaffold, worker-API route, Nights list, Inngest scaffold)
+**Blocked by:** 33 (App: scaffold, worker-API route, Nights list, Inngest scaffold)
 
 **Status:** ready-for-agent
 

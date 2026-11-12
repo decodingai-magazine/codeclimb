@@ -1,4 +1,4 @@
-# 35: Tracing and the scores mirror
+# 36: Tracing and the scores mirror
 
 **What to build:** Spans are built by hand on Pi's event stream with the OpenTelemetry API, which does nothing without a provider. On the worker the extended-traces middleware and the `@inngest/otel` preload nest them under the running step. Each successful dev evaluation also mirrors its primary and headline metrics as native scores on the experiment child's run. Nothing here is ever read by a decision.
 

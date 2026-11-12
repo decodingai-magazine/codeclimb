@@ -10,12 +10,13 @@
 
 Build the application so that a **night** (one run of the loop) works end to end: durable functions, sandboxes, coding-agent sessions, commits, evaluations, the review, the test evaluation and the result files.
 
-You are done when the end-to-end tests pass. They run two mock nights, one after the other, on the local dev server with Docker sandboxes:
+You are done when the end-to-end tests pass. They run three mock nights, one after the other, on the local dev server with Docker sandboxes:
 
 - `npm run run-night -- --config configs/capitals-smoke.yaml --mock`: the program calls a model through the metering proxy
 - `npm run run-night -- --config configs/datenorm-smoke.yaml --mock`: two rounds; round 1 is kept, a noise run follows, the review hands its hypothesis to round 2; no metering
+- `npm run run-night -- --config configs/graphrag-smoke.yaml --mock`: the multi-stage night: two rounds on a scenario with three stages (`extraction`, `graph`, `retrieval`), a metered program, a repository check, host commands through `uv`, a repair, and lessons at the end
 
-Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, all of these must hold:
+Each night writes to `runs/mock/<config-name>/`. For a night `<id>` of `capitals-smoke` or `datenorm-smoke`, all of these must hold:
 
 | check | contract it depends on |
 |---|---|
@@ -34,9 +35,27 @@ Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, all of thes
 | `capitals-smoke`: `evals/*/meter.jsonl` lists the program's calls, none with `error` | [[#Metering proxy]] |
 | `docker ps` shows no `cc-<id>` container | [[#Cleanup]] |
 
+The third night, `graphrag-smoke`, has its own checks, because a dev evaluation of it may fail. As built, it always does: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+
+From the table above, these rows hold unchanged: `run-night` prints `done`, `done.json`, `validate-results`, the mock commit of `r1-e0`, `code-state.json` and the session file, the reviews, `decision_reason`, `spend_usd: 0` and `docker ps`. These replace the others:
+
+| check | contract it depends on |
+|---|---|
+| `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row. A round has an `e1` row only after an `e0` row with decision `error`; no round has an `e2` | [[#Round loop]], [[#Repair]] |
+| every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither. `train-score.json` and `tasks.json` exist for both | [[#Send-backs, reserve and wrap-up]], [[#Repair]] |
+| `bundle/history/notes/r<round>-e<n>.md` per experiment, with a `mock note` coder part; the `mock verdict` reviewer part is on the note of the round's last experiment | [[#Notes, trajectory and rejected diffs]] |
+| every experiment has `exps/<exp>/check.json` with an empty `errors` list | [[#How a scenario is loaded]] |
+| every evaluation, dev and test, has `evals/<eval>/extraction/inputs.jsonl` with 8 lines (one per document of the split) and `extraction/run.log` | [[#Evaluator]] |
+| the test evaluation `evals/<id>-test-r<last round>/` holds `extraction/`, `graph/` and `retrieval/`, each with `inputs.jsonl`, `run.log`, `outputs/` and `report.json` | [[#Evaluator]], [[#Splits]] |
+| `metrics.json` exists for the test evaluation and for a dev evaluation only when every stage was scored. A dev row that was not scored holds the primary metric at 0 and nothing else | [[#Evaluator]], [[#Result row]] |
+| the `test` row and `done.json`'s `test_metrics` hold metrics of all three stages, named `extraction.…`, `graph.…` and `retrieval.…`, with `<stage>.output_bytes` for each. Every other name is a standard metric (`cost_*`, `model_calls*`, `latency_*`) | [[#Stage reports become metrics]], [[#Standard metrics]] |
+| every `evals/*/meter.jsonl` lists the program's calls, none with `error`; the `test` row has `model_calls` above 0 and `cost_usd` 0 | [[#Metering proxy]], [[#Mock mode]] |
+| `noise.json` and a `noise` row exist only if a round was kept | [[#Noise margin]] |
+| within a minute of `done`, `lessons/<id>-r<last round>/` holds `lessons.md`, `changes.md` and `proposal.json`; the proposal has an empty `ops` list and is not marked applied; `scenarios/graphrag/spec/agent/lessons.md` is unchanged | [[#Lessons across nights]], [[#Mock mode]] |
+
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files above are the evidence, not `stop_reason` alone.
 
-Also required, though the mock nights don't reach them: real-model nights, Inngest Cloud with Inngest Sandboxes, stop, pause and resume, continue, seed, lessons, export, the worker API and the app. Build them to this spec.
+Also required, though the mock nights don't reach them: real-model nights, Inngest Cloud with Inngest Sandboxes, stop, pause and resume, continue, seed, applied lessons, export, the worker API and the app. Build them to this spec.
 
 ## What you get, what you build
 
@@ -693,7 +712,7 @@ Problem: a night's notes and reviews die with its bundle. The scenario's `lesson
 - order of checks: every `edit` and `drop` first, then the `add`s, whatever their order in the reply. So a dropped lesson no longer counts as a near-duplicate and frees a place
 - rejected ops get one rewrite: the model is asked for the whole corrected list, which replaces the first and is checked again against the same file. An unparsable rewrite keeps the first list's accepted ops. Ops rejected twice are left out and listed in `changes.md`
 - over 200 lines → up to 2 prune rounds: drops, and edits shorter than the lesson they replace, with the bullets numbered again after the ops so far. A proposal still over is never applied
-- output, under `<results dir>/lessons/<night>-r<last round>/`: `lessons.md` (the new file), `changes.md` (each op beside the lesson it changes, rejected ops, prunes), `proposal.json` (ops, base sha256, cost, `applied`)
+- output, under `<results dir>/lessons/<night>-r<last round>/`: `lessons.md` (the new file), `changes.md` (each op beside the lesson it changes, rejected ops, prunes), `proposal.json` (ops, base sha256, cost; `applied: true` is added when the proposal is applied, and is absent before)
 - `apply` also writes the scenario's `lessons.md`, unless that file changed since the proposal or the night was a mock. It never commits: `git diff` is the review
 - `night.json` records the sha256 of the `lessons.md` each run's coders read
 - by hand: `lessons distill --config … --night ID [--apply]`, `lessons apply --config … --night ID`, `lessons format --config … [--check]`
@@ -1084,8 +1103,8 @@ Scenario numbers (thresholds, budgets, timeouts, models) live in `configs/*.yaml
 2. Experiment repository, the sandbox interface, the Docker backend, bundle transfer
 3. Pi sessions with sandbox tools, mock models, the coder with its end-of-experiment commit
 4. Evaluator with standard metrics; the metering proxy with the relay and the replay cache
-5. The night loop on the dev server: children, record, review, notes, test eval, `done.json`; then the two mock nights
+5. The night loop on the dev server: children, record, review, notes, test eval, `done.json`; then the first two mock nights
 6. Stop, cleanup, crash resume, pause and resume
-7. Noise run, repair, send-backs, trajectory, continue, seed, rescore, lessons
+7. Noise run, repair, send-backs, trajectory, continue, seed, rescore, lessons; then the third mock night
 8. Worker API, app, export, tracing
 9. Inngest Cloud: the cloud worker, the Inngest sandbox backend, tunnels

@@ -1,4 +1,4 @@
-# 28: Seed: a new night that starts from an ended night's kept commit
+# 29: Seed: a new night that starts from an ended night's kept commit
 
 **What to build:** Instead of the starter, a seeded night's round 0 is an alias of the seed night's kept commit, with that commit's dev metrics as the checkpoint round 1 must beat and the seed night's noise carried over. The new night has its own id, budget and trajectory, which opens with a `<start>` note naming where it came from.
 

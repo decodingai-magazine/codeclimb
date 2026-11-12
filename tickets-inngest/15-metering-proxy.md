@@ -1,6 +1,6 @@
 # 15: Metering proxy: ledgers, routes, refusals and mock answers
 
-**What to build:** A caller on the worker opens a ledger and gets a bearer token; a program holding that token can call chat, embeddings, decisions and rerank through `/v1`, and name its current operation through `/v1/_op`. Every call becomes a ledger row; refusals follow a fixed order and shape; closing the ledger returns its calls and revokes the token. In mock mode calls get canned answers at zero cost. The upstream is an interface: this ticket ships the mock one and tests with a stub. The replay cache (ticket 16), the route from a sandbox to the proxy (ticket 17) and the OpenRouter and Pi backends (ticket 36) are separate.
+**What to build:** A caller on the worker opens a ledger and gets a bearer token; a program holding that token can call chat, embeddings, decisions and rerank through `/v1`, and name its current operation through `/v1/_op`. Every call becomes a ledger row; refusals follow a fixed order and shape; closing the ledger returns its calls and revokes the token. In mock mode calls get canned answers at zero cost. The upstream is an interface: this ticket ships the mock one and tests with a stub. The replay cache (ticket 16), the route from a sandbox to the proxy (ticket 17) and the OpenRouter and Pi backends (ticket 37) are separate.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Metering proxy", "Mock mode", "Standard metrics", "Pause for credits", "Deployment and environment"
 

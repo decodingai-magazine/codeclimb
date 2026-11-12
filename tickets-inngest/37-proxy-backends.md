@@ -1,4 +1,4 @@
-# 36: Proxy backends: OpenRouter and Pi
+# 37: Proxy backends: OpenRouter and Pi
 
 **What to build:** On a real-model night the proxy forwards a program's calls upstream: `openrouter/<id>` models straight to OpenRouter with the worker's key, other chat models through Pi's model runtime, embeddings to OpenRouter or to the two priced OpenAI models. It charges what each call cost, treats the failure cases as the spec says, and turns a credit signal into a credit stop. Both backends sit behind the upstream interface of ticket 15; a mock night keeps the mock upstream.
 

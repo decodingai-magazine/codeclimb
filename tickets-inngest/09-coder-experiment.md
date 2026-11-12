@@ -1,6 +1,6 @@
 # 09: Coder experiment: from the prompt to one commit
 
-**What to build:** Given a checkpoint commit, a bundle and a night config, a coder experiment creates its sandbox, builds the prompt, drives one Pi session until an end-of-experiment stop, reads the coder's files out of the sandbox, commits `/repo` as one commit on the parent, and then runs the scenario's `check` and leak `scan` on the host. This is a framework-free step body: no durable runtime yet, and no send-backs (ticket 14), crash resume (ticket 22) or web research (ticket 37).
+**What to build:** Given a checkpoint commit, a bundle and a night config, a coder experiment creates its sandbox, builds the prompt, drives one Pi session until an end-of-experiment stop, reads the coder's files out of the sandbox, commits `/repo` as one commit on the parent, and then runs the scenario's `check` and leak `scan` on the host. This is a framework-free step body: no durable runtime yet, and no send-backs (ticket 14), crash resume (ticket 22) or web research (ticket 38).
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Coder", "Prompt", "End of an experiment", "Round loop", "Ids", "Files a night writes"
 

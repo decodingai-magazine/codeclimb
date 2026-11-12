@@ -1,6 +1,6 @@
 # 20: Done signal: both mock nights pass the end-to-end checks
 
-**What to build:** The spec's done signal becomes one command or script an agent can run: with the dev server and the worker up, it runs `capitals-smoke --mock` and then `datenorm-smoke --mock`, and checks every row of the table in "Goal and done signal" for both nights. Whatever earlier tickets left short of the table is fixed here. Every later ticket that touches the loop reruns this check.
+**What to build:** The spec's done signal becomes one command or script an agent can run: with the dev server and the worker up, it runs `capitals-smoke --mock` and then `datenorm-smoke --mock`, and checks every row of the table in "Goal and done signal" for both nights. The third night, `graphrag-smoke`, has its own checks and joins this check in ticket 28. Whatever earlier tickets left short of the table is fixed here. Every later ticket that touches the loop reruns this check.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Goal and done signal", "Mock mode", "Files a night writes", "Cleanup"
 

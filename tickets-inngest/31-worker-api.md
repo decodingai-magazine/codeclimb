@@ -1,6 +1,6 @@
-# 30: Worker API: read nights, stop, resume, continue
+# 31: Worker API: read nights, stop, resume, continue
 
-**What to build:** On `127.0.0.1:7421` the worker answers night summaries, the live state of the current experiment and a full report, all read from files so the answer doesn't depend on the durable runtime. It accepts stop, resume and continue, and routes `/v1/*` to the metering proxy's handler. Off loopback a bearer token is required. The export endpoints come with ticket 31.
+**What to build:** On `127.0.0.1:7421` the worker answers night summaries, the live state of the current experiment and a full report, all read from files so the answer doesn't depend on the durable runtime. It accepts stop, resume and continue, and routes `/v1/*` to the metering proxy's handler. Off loopback a bearer token is required. The export endpoints come with ticket 32.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Worker API", "Deployment and environment", "Continue, seed and rescore", "Cleanup", "Metering proxy", "Every number in one place"
 

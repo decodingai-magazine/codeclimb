@@ -1,10 +1,10 @@
-# 29: Rescore: a kept commit is scored again when the scoring changed
+# 30: Rescore: a kept commit is scored again when the scoring changed
 
 **What to build:** Old scores can't be compared with new ones once the scoring hashes differ. So such a night begins with one extra round before the loop: the kept commit gets a new experiment id, is evaluated on dev, and is recorded as kept with the new metrics. The noise is then measured again.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Continue, seed and rescore", "Splits", "Ids", "Result row", "Noise margin", "Pause for credits"
 
-**Blocked by:** 18 (Noise run: the A/A evaluation and the measured margin); 25 (Continue: more rounds on an ended night, with an operator's direction); 28 (Seed: a new night that starts from an ended night's kept commit)
+**Blocked by:** 18 (Noise run: the A/A evaluation and the measured margin); 25 (Continue: more rounds on an ended night, with an operator's direction); 29 (Seed: a new night that starts from an ended night's kept commit)
 
 **Status:** ready-for-agent
 

@@ -1,4 +1,4 @@
-# 37: Web research for the coder, behind the guard
+# 38: Web research for the coder, behind the guard
 
 **What to build:** `pi-web-access` gives the coder `web_search`, `fetch_content` and `get_search_content`, running on the host. Because that plugin registers more tools and resets the active list itself, a second extension loaded after it re-pins the tools, blocks every other plugin tool, rewrites each call's input and applies the fetch rules. Web research is off in mock mode.
 

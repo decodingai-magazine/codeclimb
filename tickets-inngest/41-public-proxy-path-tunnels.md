@@ -1,10 +1,10 @@
-# 40: Public proxy path for Inngest Sandboxes: tunnels and the reachability probe
+# 41: Public proxy path for Inngest Sandboxes: tunnels and the reachability probe
 
 **What to build:** Inngest sandboxes can't see the worker's loopback, so a metered night on them needs the proxy published: by `CODECLIMB_METER_URL`, a Cloudflare quick tunnel or an ngrok tunnel. The worker finds the public URL in that order and, wherever the Docker backend checks its relay, probes the URL and accepts only the proxy's own 401.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "Metering proxy", "Deployment and environment", "Round loop", "Evaluator", "Every number in one place"
 
-**Blocked by:** 17 (Metered nights on Docker: relay, meter variables, both ledgers, cost metrics); 39 (Inngest Sandboxes backend)
+**Blocked by:** 17 (Metered nights on Docker: relay, meter variables, both ledgers, cost metrics); 40 (Inngest Sandboxes backend)
 
 **Status:** ready-for-agent
 

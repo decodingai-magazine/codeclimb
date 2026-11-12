@@ -1,10 +1,10 @@
-# 32: App: scaffold, worker-API route, Nights list, Inngest scaffold
+# 33: App: scaffold, worker-API route, Nights list, Inngest scaffold
 
 **What to build:** `npm run dev` opens an app whose home page lists every night with its status, round, best primary value against its threshold and spend against budget, refreshed every 10 seconds. The browser never talks to the worker: a server route forwards to the worker API and adds the token. The app is a separate application from the worker and also carries the small Inngest scaffold the spec fixes.
 
 **Spec sections** (`docs/codeclimb-spec-inngest.md`): "App", "Worker API", "Deployment and environment", "What you get, what you build"
 
-**Blocked by:** 30 (Worker API: read nights, stop, resume, continue)
+**Blocked by:** 31 (Worker API: read nights, stop, resume, continue)
 
 **Status:** ready-for-agent
 
