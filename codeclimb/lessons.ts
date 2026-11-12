@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { basename, join } from "node:path";
 import type { NightConfig, ThinkingLevel } from "./config";
 import { isCreditError } from "./credits";
-import { nightPaths } from "./paths";
+import { nightDirs, nightPaths } from "./paths";
 import { createIsolatedSession } from "./pi/session";
 import { maskTerms } from "./scenario";
 
@@ -579,11 +579,8 @@ export function bundleLessonsSha(cfg: NightConfig, bundleDir: string): string | 
  * (its finish sent the lessons event) or isn't on this worker's disk. Found the way `markStopped` finds it.
  */
 export function stoppedNight(nightId: string): NightConfig | null {
-  const runs = join(process.env.CODECLIMB_ROOT ?? process.cwd(), "runs");
-  if (!existsSync(runs)) return null;
-  for (const scenario of readdirSync(runs)) {
-    const dir = join(runs, scenario, "nights", nightId);
-    if (existsSync(join(dir, "night.json")) && !existsSync(join(dir, "done.json"))) {
+  for (const { dir } of nightDirs().filter((n) => n.id === nightId)) {
+    if (!existsSync(join(dir, "done.json"))) {
       return (JSON.parse(readFileSync(join(dir, "night.json"), "utf8")) as { config: NightConfig }).config;
     }
   }

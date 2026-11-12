@@ -1,5 +1,5 @@
 // Validate results.jsonl against the row schema.
-//   npm run validate-results -- runs/datenorm/results.jsonl
+//   npm run validate-results -- runs-inngest/datenorm/results.jsonl
 //   npm run validate-results -- --schema   (print the JSON Schema)
 import { readFileSync } from "node:fs";
 import { RESULT_ROW_SCHEMA, validateRow } from "../codeclimb/results";

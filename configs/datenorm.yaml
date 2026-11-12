@@ -1,6 +1,6 @@
 scenario: scenarios/datenorm
 sandbox: docker
-max_rounds: 24
+max_rounds: 5
 plateau_rounds: 3
 deadline: 8h
 timeouts:
@@ -18,6 +18,6 @@ gates:
   schema_violations: 0
   latency_query_p95_ms: 50
 budget_usd:
-  experiment: 1.0
-  night: 40.0
-results_path: runs/datenorm/results.jsonl
+  experiment: 0.5
+  night: 3.0
+results_path: datenorm/results.jsonl

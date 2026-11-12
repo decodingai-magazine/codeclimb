@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { markStopped } from "./cleanup";
 
-function nightDir(root: string, nightId: string): string {
-  const dir = join(root, "runs", "scn", "nights", nightId);
+function nightDir(root: string, nightId: string, results = "scn"): string {
+  const dir = join(root, "runs-inngest", results, "nights", nightId);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "night.json"), "{}");
   return dir;
@@ -43,5 +43,13 @@ test("markStopped leaves a finished night alone", () => {
     writeFileSync(join(dir, "done.json"), "{}");
     markStopped("n2", "failed");
     assert.equal(existsSync(join(dir, "stop.json")), false);
+  });
+});
+
+test("markStopped finds a night under a nested results dir, such as a mock night's", () => {
+  withRoot((root) => {
+    const dir = nightDir(root, "n3", join("mock", "scn"));
+    markStopped("n3", "app");
+    assert.equal(reason(dir), "app");
   });
 });

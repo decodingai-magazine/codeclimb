@@ -103,7 +103,7 @@ npm run run-night -- --config configs/datenorm-smoke.yaml   # starts the night a
 npm run run-night -- stop --night <night_id>                # soft cancel: aborts Pi, destroys sandboxes
 npm run run-night -- resume --night <night_id>              # continue a night paused out of credits
 npm run run-night -- --config configs/capitals-smoke.yaml --mock   # scripted models, free: checks the loop end to end
-npm run validate-results -- runs/datenorm-smoke/results.jsonl
+npm run validate-results -- runs-inngest/datenorm-smoke/results.jsonl
 npm test                               # unit tests (keep rule, stops, schema)
 ```
 
@@ -140,7 +140,7 @@ The test eval gets its own evaluator too. A worker restart onto this code cannot
 
 - **Real:** Inngest, sandboxes, Pi sessions and their tools, commits, evals, the metering proxy, keep rules and reports.
 - **Scripted:** the coder appends a line to `MOCK.md` with bash, the reviewer keeps nothing, and a program's model calls get a canned answer at no cost. No provider is called, so `--mock` needs no credentials.
-- **Results** land in `runs/mock/<name>/`, away from real reports.
+- **Results** land in `runs-inngest/mock/<results_path>`, away from real reports.
 
 The `codeclimb-e2e` skill in `.claude/skills/` lists what to run and check.
 
@@ -153,6 +153,8 @@ A night pauses instead of failing when a provider reports it is out of credits. 
 - **What is kept.** A coder commits its partial work and resumes the same Pi session. Evaluations that finished stay; only the stopped ones rerun, and calls that failed are not scored. Sandboxes are destroyed while paused, so nothing bills.
 - **Resuming.** Add credits, then run `npm run run-night -- resume --night <night_id>` or press Resume on the night's page. Time spent paused doesn't count against the night's deadline. Still out of credits? It pauses again at the same place.
 - **Limits.** A pause lasts 3 days, then the night stops. Stop works while paused. A child function never waits: it returns the stop to `run-night`, which waits on `codeclimb/night.resume`, because a waiting child would hit its `step.invoke` timeout.
+
+A config's `results_path` is relative to this stack's runs folder, `runs-inngest/`: `results_path: datenorm-smoke/results.jsonl` writes `runs-inngest/datenorm-smoke/results.jsonl`. The configs are shared, unchanged, with the LangGraph stack, which writes to `runs-langchain/`. An absolute `results_path`, or one that leaves the runs folder (`..`), is refused when the config loads.
 
 All output lands under `dirname(results_path)`:
 
@@ -170,7 +172,7 @@ All output lands under `dirname(results_path)`:
 
 ### Run on Inngest Cloud
 
-The same worker and CLI can use Inngest Cloud instead of the dev server, with Docker sandboxes on your machine or Inngest Sandboxes (`--sandbox inngest`). Local nights always run on Docker: `npm run run-night` turns a config's `sandbox: inngest` into Docker and says so. Results land in the same `runs/` folders.
+The same worker and CLI can use Inngest Cloud instead of the dev server, with Docker sandboxes on your machine or Inngest Sandboxes (`--sandbox inngest`). Local nights always run on Docker: `npm run run-night` turns a config's `sandbox: inngest` into Docker and says so. Results land in the same `runs-inngest/` folders.
 
 1. Add the production keys to `.env`:
    - `INNGEST_EVENT_KEY`: create one under **Manage → Event Keys** in the Inngest dashboard.
@@ -219,7 +221,7 @@ The worker serves the API on `CODECLIMB_API_PORT` (default `127.0.0.1:7421`) nex
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/nights`, `GET /api/nights/:id` | Night summaries from `runs/*/nights/*` |
+| `GET /api/nights`, `GET /api/nights/:id` | Night summaries from every `runs-inngest/**/nights/*` |
 | `GET /api/nights/:id/live` | Summary plus the current round's experiment and the exportable experiments |
 | `GET /api/nights/:id/report` | The night's report data as JSON (`ReportData`), which the app renders |
 | `POST /api/nights/:id/stop` | Send `codeclimb/night.stop` |
@@ -357,7 +359,7 @@ npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@gith
 | `scenarios/graphrag/` | Three-stage GraphRAG scenario: `corpus/`, gold graph and retrieval queries, one evaluator CLI per stage, and a stub `python -m graphrag` starter |
 | `docker/graphrag.Dockerfile` | `codeclimb-graphrag`: `codeclimb-python` plus graphrag's `requirements.txt` |
 | `scenarios/datenorm-hard/` | A vaguer spec and 6 more families on top of `datenorm`. It reuses the `datenorm` generators. `HIDDEN_RULES.md` is the answer key and never reaches a sandbox |
-| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night) and `graphrag.yaml` (6 rounds on Inngest Cloud) |
+| `configs/` | `capitals-smoke.yaml`, `datenorm-smoke.yaml` and `graphrag-smoke.yaml` (short, Haiku via Copilot for the coders and reviewer), `datenorm.yaml` (a full night), `graphrag.yaml` (5 rounds; `--sandbox inngest` runs it on Inngest Sandboxes, on Cloud) and `e2e/` (end-to-end checks of the budget and plateau stops and of a climb, shared with the LangGraph stack; `overfit.yaml` needs a scenario only that stack generates) |
 
 ### Deviations from the spec in this iteration
 

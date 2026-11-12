@@ -31,7 +31,7 @@ primary_metric: accuracy
 thresholds: { accuracy: 0.9 }
 gates: { schema_violations: 0 }
 budget_usd: { experiment: 1, night: 5 }
-results_path: runs/r.jsonl
+results_path: core/r.jsonl
 `;
 const cfg = parseConfig(BASE_YAML, ROOT);
 
@@ -405,11 +405,23 @@ test("the mock reviewer's answer parses", () => {
   assert.equal(parseReview(textOf(reviewerReply()))?.hypothesis, "mock hypothesis");
 });
 
+test("results_path is relative to the runs folder; absolute paths and paths out of it are refused", () => {
+  const at = (p: string) => parseConfig(BASE_YAML.replace("results_path: core/r.jsonl", `results_path: ${p}`), ROOT).results_path;
+  assert.equal(at("datenorm-smoke/results.jsonl"), join(ROOT, "runs-inngest", "datenorm-smoke", "results.jsonl"));
+  assert.equal(at("a/b/../c/results.jsonl"), join(ROOT, "runs-inngest", "a", "c", "results.jsonl"));
+  for (const bad of ["/tmp/results.jsonl", "../runs/results.jsonl", "a/../../x.jsonl", "..", "."]) {
+    assert.throws(() => at(bad), /results_path .* must be a path inside runs-inngest\//, bad);
+  }
+});
+
 test("a mock config writes results apart from the real ones", () => {
-  const cfg = { results_path: "/x/runs/capitals-smoke/results.jsonl" } as NightConfig;
   const mock = mockConfig(cfg);
   assert.equal(mock.mock, true);
-  assert.equal(mock.results_path, "/x/runs/mock/capitals-smoke/results.jsonl");
+  assert.equal(mock.results_path, join(ROOT, "runs-inngest", "mock", "core", "r.jsonl"));
+  const nested = parseConfig(BASE_YAML.replace("results_path: core/r.jsonl", "results_path: a/b/results.jsonl"), ROOT);
+  assert.equal(mockConfig(nested).results_path, join(ROOT, "runs-inngest", "mock", "a", "b", "results.jsonl"));
+  // A config sent relative (base_dir ".") mocks the same way.
+  assert.equal(mockConfig(relativeConfig(cfg)).results_path, join(process.cwd(), "runs-inngest", "mock", "core", "r.jsonl"));
 });
 
 test("a reviewer may share the coder's model only at another thinking level", () => {

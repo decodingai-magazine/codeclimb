@@ -39,7 +39,7 @@ reviewer_model: p/c
 primary_metric: accuracy
 thresholds: { accuracy: 0.9 }
 budget_usd: { experiment: 1, night: 5 }
-results_path: runs/capitals/results.jsonl
+results_path: capitals/results.jsonl
 `;
 
 const LESSONS = `# What earlier attempts learned

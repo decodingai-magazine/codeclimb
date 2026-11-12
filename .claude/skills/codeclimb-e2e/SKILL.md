@@ -33,13 +33,13 @@ If a Cloud worker is running, it holds the API port. Start the dev worker with `
 
 ## What to check
 
-Each night writes to `runs/mock/<config-name>/`. For a night `<id>`, pass only if all of these hold:
+Each night writes to `runs-inngest/mock/<config-name>/` (the config's `results_path` under `runs-inngest/mock/`). For a night `<id>`, pass only if all of these hold:
 
 - `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds`, not a stop or a failure.
 - `nights/<id>/done.json` exists. `nights/<id>/stop.json` and `pause.json` don't.
-- `npm run validate-results -- runs/mock/<config-name>/results.jsonl` passes.
+- `npm run validate-results -- runs-inngest/mock/<config-name>/results.jsonl` passes.
 - `results.jsonl` has a row for every experiment of every round, plus a `test` row.
-- `git -C runs/mock/<config-name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`.
+- `git -C runs-inngest/mock/<config-name>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit, and its diff adds `MOCK.md`.
 - `nights/<id>/exps/*/code-state.json` has `stop: done`, and `nights/<id>/exps/*/session/` holds a session.
 - `nights/<id>/reviews/r<n>.json` exists for every round and has `feedback: mock feedback`.
 - `nights/<id>/exps/*/train-score.json` exists, and the session holds eight send-backs ("You stopped with N of N minutes"), the cap, then one wrap-up ("change no more code"): the mock stops at once on every turn.

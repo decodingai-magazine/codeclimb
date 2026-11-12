@@ -2,8 +2,9 @@
 // travels in the night.start event with paths relative to the checkout root, and the
 // worker resolves them against its own checkout (`rootConfig`), so a remote worker works.
 import { readFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
+import { RUNS_DIR } from "./paths";
 import { loadScenario, type Scenario } from "./scenario";
 
 /** Codeclimb's standard metrics as objectives. Off: still measured and reported, but not optimized. */
@@ -67,6 +68,10 @@ export type NightConfig = {
    * a round that beat the checkpoint on every threshold metric by 0.010.
    */
   noise_margin: { min: number; max: number; fixed: number | null; scale_by_replay: boolean };
+  /**
+   * In the YAML, relative to this stack's runs folder (`datenorm/results.jsonl` → `runs-inngest/datenorm/results.jsonl`),
+   * so one config serves every stack; parsed, resolved like the other paths (`resultsPath`).
+   */
   results_path: string;
   /** Directory relative paths resolve against. */
   base_dir: string;
@@ -138,7 +143,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
       experiment: Number(budget.experiment), night: Number(budget.night),
     },
     noise_margin: { min: nm.min ?? 0.002, max: nm.max ?? 0.005, fixed: nm.fixed ?? null, scale_by_replay: nm.scale_by_replay ?? true },
-    results_path: abs(req(raw, "results_path", "string")),
+    results_path: resultsPath(req(raw, "results_path", "string"), baseDir),
     base_dir: baseDir,
     lessons: (raw.lessons ?? (scenario.lessons ? "apply" : "off")) as LessonsMode,
     seed: raw.seed == null ? null : String(raw.seed),
@@ -202,6 +207,19 @@ export function checkSandboxLimits(cfg: NightConfig): void {
   }
 }
 
+/**
+ * A config's `results_path`, resolved under the runs folder of `baseDir`. An absolute path, or one that
+ * leaves the runs folder (`../x`, `a/../../x`), is refused: a config is shared across stacks, each with its own runs folder.
+ */
+export function resultsPath(p: string, baseDir: string): string {
+  const runs = resolve(baseDir, RUNS_DIR);
+  const rel = relative(runs, resolve(runs, p));
+  if (isAbsolute(p) || rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(`config: results_path "${p}" must be a path inside ${RUNS_DIR}/, relative to it (e.g. datenorm/results.jsonl)`);
+  }
+  return join(runs, rel);
+}
+
 export function loadConfig(path: string, baseDir = process.cwd()): NightConfig {
   return parseConfig(readFileSync(path, "utf8"), baseDir ?? dirname(resolve(path)));
 }
@@ -217,11 +235,11 @@ function mapPaths(cfg: NightConfig, f: (p: string) => string): NightConfig {
 /** The config as the CLI sends it: paths under `base_dir` relative to it, `base_dir` itself ".". */
 /**
  * The same night on scripted models: real sandboxes, evals and the whole loop, for free. Results go
- * to `runs/mock/<name>/`, so mock rows stay out of the real reports.
+ * to `runs-inngest/mock/<results_path>`, so mock rows stay out of the real reports.
  */
 export function mockConfig(cfg: NightConfig): NightConfig {
-  const dir = dirname(cfg.results_path);
-  return { ...cfg, mock: true, results_path: join(dirname(dir), "mock", basename(dir), basename(cfg.results_path)) };
+  const runs = resolve(cfg.base_dir, RUNS_DIR);
+  return { ...cfg, mock: true, results_path: join(runs, "mock", relative(runs, resolve(cfg.base_dir, cfg.results_path))) };
 }
 
 export function relativeConfig(cfg: NightConfig): NightConfig {

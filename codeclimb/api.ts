@@ -15,7 +15,7 @@ import { type NightConfig, relativeConfig } from "./config";
 import { reopenNight } from "./continuation";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
-import { nightPaths } from "./paths";
+import { nightDirs, nightPaths, runsRoot } from "./paths";
 import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
 import { loadScenario } from "./scenario";
@@ -48,17 +48,11 @@ type CodeState = {
   startedAt: number; coderUsd: number; devUsd?: number; tokens: number; tCode: number; finishedAt?: number; stop?: string;
 };
 
-/** Every night on this worker's disk: `runs/<scenario>/nights/<id>/night.json`. */
+/** Every night on this worker's disk: `runs-inngest/<results dir>/nights/<id>/night.json`. */
 function nightFiles(): { scenario: string; dir: string; night: NightFile }[] {
-  const runs = join(root(), "runs");
-  if (!existsSync(runs)) return [];
-  return readdirSync(runs).flatMap((scenario) => {
-    const nights = join(runs, scenario, "nights");
-    if (!existsSync(nights)) return [];
-    return readdirSync(nights).flatMap((id) => {
-      const night = readJson<NightFile>(join(nights, id, "night.json"));
-      return night?.config ? [{ scenario, dir: join(nights, id), night }] : [];
-    });
+  return nightDirs(runsRoot(root())).flatMap(({ scenario, dir }) => {
+    const night = readJson<NightFile>(join(dir, "night.json"));
+    return night?.config ? [{ scenario, dir, night }] : [];
   });
 }
 

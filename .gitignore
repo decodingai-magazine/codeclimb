@@ -19,7 +19,8 @@ npm-debug.log*
 # misc
 .DS_Store
 
-# codeclimb night runs (experiment repo, sessions, results)
+# codeclimb night runs (experiment repo, sessions, results); runs/ holds nights from before runs-inngest/
+runs-inngest/
 runs/
 __pycache__/
 .venv/

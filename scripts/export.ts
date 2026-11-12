@@ -1,6 +1,6 @@
 // Export one experiment's code from a night's experiments.git.
 //   npm run export -- --config configs/datenorm.yaml --exp best --to-dir ../datenorm-solution
-//   npm run export -- --results runs/datenorm/results.jsonl --exp <exp_id> --to-dir out --with-history
+//   npm run export -- --results runs-inngest/datenorm/results.jsonl --exp <exp_id> --to-dir out --with-history
 //   npm run export -- --config configs/datenorm.yaml --exp best --to-remote git@github.com:you/repo.git [--branch main]
 // `--exp best` is the kept commit of the most recently finished night.
 import { dirname, join, resolve } from "node:path";

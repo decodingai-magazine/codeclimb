@@ -17,6 +17,6 @@ gates:
   schema_violations: 0
   latency_query_p95_ms: 50
 budget_usd:
-  experiment: 1.0
-  night: 10.0
-results_path: runs/datenorm-smoke/results.jsonl
+  experiment: 0.2
+  night: 0.5
+results_path: datenorm-smoke/results.jsonl

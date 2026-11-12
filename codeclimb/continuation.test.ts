@@ -21,7 +21,7 @@ after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 function config(): NightConfig {
   const dir = mkdtempSync(join(tmpdir(), "cc-continue-"));
   dirs.push(dir);
-  return parseConfig(
+  const cfg = parseConfig(
     `scenario: scenarios/capitals
 sandbox: docker
 max_rounds: 2
@@ -32,10 +32,11 @@ reviewer_model: p/c
 primary_metric: accuracy
 thresholds: { accuracy: 0.9 }
 budget_usd: { experiment: 1, night: 5 }
-results_path: ${join(dir, "r.jsonl")}
+results_path: continue/r.jsonl
 `,
     ROOT,
   );
+  return { ...cfg, results_path: join(dir, "r.jsonl") };
 }
 
 const row = (night: string, round: number, e: number, decision: ResultRow["decision"], accuracy: number, extra: Partial<ResultRow> = {}): ResultRow => ({
