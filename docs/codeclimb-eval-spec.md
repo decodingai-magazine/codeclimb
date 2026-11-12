@@ -139,7 +139,7 @@
 - `reward` = checks passed / N, a fraction in [0, 1]; equal weights; no `solution/solve.sh`. N is fixed when both reference builds pass, and is the same number on both stacks
 - the checks, each counted once:
   - 5 build checks, in build order, so a half-built app scores above empty given inputs: `install` (`npm ci --ignore-scripts` exits 0), `typecheck`, `unit-tests` (`npm test`), `image` (`build:image` gives `codeclimb-python`), `services-up` (the stack's services answer within 60 s)
-  - night checks: one per row of the done signal's check tables. A row of the common table passes only if it passes in every night it applies to (nights 1, 2 and 6); the rows of nights 3, 4, 5 and 7 count once each
+  - night checks: one per row of the done signal's check tables. A row of the first table passes only if it holds in every night it applies to (nights 1, 2, 3 and 6, and the rows night 7 carries over); each added row of nights 3 to 6 and each row of night 7's own table counts once
 - `done` = 1 if every check passes: secondary, reported beside `reward`
 - the harness sees these checks (they are its done signal), so the verifier reruns them itself on a clean copy: separate verifier container, the build arrives through `artifacts` only, `npm ci --ignore-scripts`, rebuild images, start services, empty results directory. Results the harness left behind count for nothing
 - one suite for both stacks, written against stack-neutral outputs (CLI, `results.jsonl`, `nights/<id>/`, `experiments.git`). An adapter per stack holds only: start services, stop services, service logs, crash the runtime (night 5: kill the worker, or kill the server container), and the runs folder name
@@ -175,7 +175,7 @@
 - LangChain: `langchain`, at a new commit with the `results_path` relative to the runs folder. Until then the pin is `bce6a16`
 - configs are normalized across `main`, `langchain` and this branch, with `langchain`'s as the source of truth
 - rule: never grade a harness on a check a reference build fails. A build spec change that alters a check needs the reference to pass it; otherwise the check is dropped on both stacks
-- dropped on both stacks under this rule: night 7's check on `metrics.json` and the metrics of a dev evaluation that was not scored. The stacks differ there (Inngest writes `metrics.json` only when every stage was scored, LangChain always), so the done signals check only that the test evaluation has one
+- dropped on both stacks under this rule: night 7's check that a dev evaluation has a `metrics.json` only when every stage was scored. The stacks differ there (Inngest writes it only then, LangChain always), so the done signals check only that the test evaluation has one
 - the build specs are still being improved, so the pinned commits are re-checked by the reference gate after every spec change that touches the done signal
 - each build spec's "Known gaps" lists places where the spec asks more than its reference does. If a reference fails a check inside the trial image, patch the reference or drop the check
 

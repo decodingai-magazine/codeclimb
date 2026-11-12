@@ -26,7 +26,7 @@
 - [ ] Every experiment has `exps/<exp>/check.json` with an empty `errors` list
 - [ ] Every evaluation, dev and test, has `evals/<eval>/extraction/inputs.jsonl` with 8 lines and `extraction/run.log`
 - [ ] The test evaluation `evals/<id>-test-r<last round>/` holds `extraction/`, `graph/` and `retrieval/`, each with `inputs.jsonl`, `run.log`, `outputs/` and `report.json`
-- [ ] `metrics.json` exists for the test evaluation
+- [ ] `metrics.json` exists for the test evaluation; a dev row that was not scored holds the primary metric at 0 and nothing else
 - [ ] The `test` row and `done.json`'s `test_metrics` hold metrics named `extraction.…`, `graph.…` and `retrieval.…`, with `<stage>.output_bytes` for each stage; every other name is a standard metric (`cost_*`, `model_calls*`, `latency_*`)
 - [ ] Every `evals/*/meter.jsonl` lists the program's calls, none with `error`; the `test` row has `model_calls` above 0 and `cost_usd` 0
 - [ ] `noise.json` and a `noise` row exist only if a round was kept

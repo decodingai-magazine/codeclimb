@@ -89,7 +89,7 @@ From the first table, these rows hold unchanged: `run-night` prints `done`, `don
 | every experiment has `exps/<exp>/check.json` with an empty `errors` list | [[#How a scenario is loaded]] |
 | every evaluation, dev and test, has `evals/<eval>/extraction/inputs.jsonl` with 8 lines (one per document of the split) and `extraction/run.log` | [[#Evaluator]] |
 | the test evaluation `evals/<id>-test-r<last round>/` holds `extraction/`, `graph/` and `retrieval/`, each with `inputs.jsonl`, `run.log`, `outputs/` and `report.json` | [[#Evaluator]], [[#Splits]] |
-| `metrics.json` exists for the test evaluation | [[#Evaluator]] |
+| `metrics.json` exists for the test evaluation. A dev row that was not scored holds the primary metric at 0 and nothing else | [[#Evaluator]], [[#Result row]] |
 | the `test` row and `done.json`'s `test_metrics` hold metrics of all three stages, named `extraction.…`, `graph.…` and `retrieval.…`, with `<stage>.output_bytes` for each. Every other name is a standard metric (`cost_*`, `model_calls*`, `latency_*`) | [[#Stage reports become metrics]], [[#Standard metrics]] |
 | every `evals/*/meter.jsonl` lists the program's calls, none with `error`; the `test` row has `model_calls` above 0 and `cost_usd` 0 | [[#Metering proxy]], [[#Mock mode]] |
 | `noise.json` and a `noise` row exist only if a round was kept | [[#Noise margin]] |
