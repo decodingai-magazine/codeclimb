@@ -76,10 +76,10 @@ Also required, though these nights don't reach them: real-model nights, pause an
 
 | # | night | ceiling | passes when |
 |---|---|---|---|
-| 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $2 | `done`; a `test` row; `spend_usd` above 0 and at most 2; `meter.jsonl` shows real calls |
-| 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $10 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
+| 8 | `npm run run-night -- --config configs/capitals-smoke.yaml` | $1 | `done`; a `test` row; `spend_usd` above 0 and at most 1; `meter.jsonl` shows real calls |
+| 9 | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $1 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
 | 10 | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | the cost cap: `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20. Mock models cost 0, so only real models reach this cap |
-| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $4 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
+| 11 | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $1 | the loop climbs: `stop_reason` is `thresholds` within 4 rounds, and the `test` row's accuracy equals the kept commit's dev accuracy. The scenario is a generated copy of datenorm whose dev and test hold the 32 train items, so the coder can read every answer; its scores say nothing about the program |
 
 Every paid night must also end with `done.json` and no `stop.json`, pass `validate-results`, and leave no `cc-<id>` container.
 

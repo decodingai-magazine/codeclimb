@@ -88,10 +88,10 @@ Each spends real money. Before running one, ask the user and name the scenario a
 
 | # | Scenario | Command | Ceiling | Passes when |
 |---|---|---|---|---|
-| 8 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $2 | `done`; a `test` row; `spend_usd` above 0 and at most 2; `meter.jsonl` shows real calls |
-| 9 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $10 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
+| 8 | Capitals | `npm run run-night -- --config configs/capitals-smoke.yaml` | $1 | `done`; a `test` row; `spend_usd` above 0 and at most 1; `meter.jsonl` shows real calls |
+| 9 | Datenorm | `npm run run-night -- --config configs/datenorm-smoke.yaml` | $1 | `done`; at least one experiment row with `keep`; test accuracy above 0.125, the starter's dev score |
 | 10 | Cost cap | `npm run run-night -- --config configs/e2e/budget.yaml` | $0.20 | `stop_reason` is `budget` within 3 rounds; `spend_usd` under 0.20 |
-| 11 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $4 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
+| 11 | Overfit | `npm run build:scenario:overfit`, then `npm run run-night -- --config configs/e2e/overfit.yaml` | $1 | `stop_reason` is `thresholds` within 4 rounds; the `test` row's accuracy equals the kept commit's dev accuracy |
 
 For every paid night also check: `N/done.json` exists with no `stop.json`; `validate-results` passes; `docker ps` shows no `cc-<id>` container.
 

@@ -20,6 +20,6 @@ gates:
   schema_violations: 0
   latency_query_p95_ms: 50
 budget_usd:
-  experiment: 1.0
-  night: 4.0
+  experiment: 0.25
+  night: 1.0
 results_path: runs/e2e-overfit/results.jsonl

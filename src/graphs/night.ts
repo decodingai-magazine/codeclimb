@@ -15,7 +15,8 @@ import { NightStopped, Pauses } from "./pause.ts";
 import { type RoundState, runRescore, runRound } from "./round.ts";
 import { mockCredit, mockOffline } from "../pi/models.ts";
 import { VARIATION_TIMEOUT_S } from "../night/pause.ts";
-import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, step } from "../runtime/step.ts";
+import { HOST_COMMAND_BACKSTOP_MIN, isOwnFailure, NonRetriableError, step } from "../runtime/step.ts";
+import { checkNightModels, SMOKE_RETRIES, smokeTest, smokeWait, smokeWithRetries } from "../pi/check.ts";
 import { registerTracing } from "../tracing.ts";
 
 registerTracing();
@@ -27,10 +28,16 @@ export const night = entrypoint("night", async (input: NightInput) => {
 	const config = input.config;
 	const paths = nightPaths(root, config.results_path, id);
 	try {
-		const init = await step("init", (ctx) => {
+		const init = await step("init", async (ctx) => {
 			// Armed once per night: a resumed run takes init from its checkpoint and leaves the counter alone.
 			if (input.mock && input.mock_offline) mockOffline(input.mock_offline);
 			if (input.mock && input.mock_credit) mockCredit(input.mock_credit);
+			// The model check again, with the server's own credentials: a missing model or key is not retried.
+			try {
+				await checkNightModels(config, input.mock);
+			} catch (e) {
+				throw new NonRetriableError((e as Error).message);
+			}
 			return initNight(ctx, root, input);
 		}, { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		// The variation backstop: a timer due in 4 days that stops the variation unless it ended or a newer one began.
@@ -55,6 +62,18 @@ export const night = entrypoint("night", async (input: NightInput) => {
 			if (check.hard) return { night_id: id, stopped: true };
 			if (check.reason) {
 				stopReason = check.reason;
+				break;
+			}
+			// Before money goes into the round: the models are ready and the path to the proxy is up.
+			const down = input.mock
+				? null
+				: await smokeWithRetries(
+						(n) => step(`r${next}/smoke${n ? n : ""}`, async () => smokeTest(config, input.mock))(),
+						(n) => step(`r${next}/smoke-wait${n}`, (ctx) => smokeWait(ctx.signal))(),
+					);
+			if (down !== null) {
+				console.error(`night ${id}: round ${next} smoke test failed ${SMOKE_RETRIES + 1} times: ${down}`);
+				stopReason = "outage";
 				break;
 			}
 			round = next;

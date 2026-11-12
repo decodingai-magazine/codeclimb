@@ -10,6 +10,8 @@ import { type CreditStop, isCreditMessage } from "../night/pause.ts";
 import { NonRetriableError } from "../runtime/step.ts";
 import { sessionModel } from "../pi/models.ts";
 import { openSession } from "../pi/session.ts";
+import { originRepo } from "../pi/web.ts";
+import { serverRoot } from "../night/types.ts";
 import { traceSession, tracedSandbox } from "../spans.ts";
 import type { Sandbox, SandboxBackend } from "../sandbox/types.ts";
 import { PARENT_BUNDLE, pullCommit } from "../sandbox/transfer.ts";
@@ -92,6 +94,12 @@ interface CodeState {
 	/** A credit stop committed this; the rerun after the pause carries on from it. */
 	paused?: { commit: string };
 }
+
+/** The repository whose files hold the gold: the Agent Server checkout's GitHub `origin`, if it has one. */
+const goldRepos = (): string[] => {
+	const repo = originRepo(serverRoot());
+	return repo ? [repo] : [];
+};
 
 /** The last `APPROACH:` line, backticks and asterisks stripped; else the last non-empty line; else `(no summary)`. */
 export function approachOf(closing: string): string {
@@ -268,6 +276,8 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			sandbox: tracedSandbox(sb),
 			...(ledger ? { env: meterEnv(ledger.token) } : {}),
 			storage: { dir: sessionDir, ...(reopen ? { reopen } : {}) },
+			// Web research reaches the real web: off in mock mode.
+			...(req.mock ? {} : { web: { repos: goldRepos() } }),
 		});
 		untrace = traceSession(session);
 		session.subscribe((e) => {

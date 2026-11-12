@@ -6,6 +6,7 @@ import { type NightConfig, loadNightConfig } from "../config.ts";
 import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
 import { endedNights, resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
+import { checkNightModels } from "../pi/check.ts";
 import { defaultNightId, isValidNightId } from "../ids.ts";
 import { findNightDir, type NightPaths, nightPaths, readJson, writeStopIfMissing } from "../night/files.ts";
 import { type NightInput, type NightJson, serverRoot } from "../night/types.ts";
@@ -130,6 +131,7 @@ async function start(argv: string[]): Promise<void> {
 	}
 	const paths = nightPaths(root, config.results_path, nightId);
 	if (existsSync(paths.nightDir) && (await nightThreads(nightId)).length === 0) die(`night id ${nightId} was used before (${paths.nightDir}): pick another`);
+	await checkOrDie(config, values.mock);
 	let result: Awaited<ReturnType<typeof startNight>>;
 	try {
 		result = await startNight(input);
@@ -191,6 +193,7 @@ async function continueCommand(argv: string[]): Promise<void> {
 		die(`the Agent Server at ${serverUrl()} is not reachable (is \`npm run server\` running?)`);
 	}
 	const config = mock ? mockConfig : plain;
+	await checkOrDie(config, mock);
 	const paths = nightPaths(root, config.results_path, nightId);
 	let started: Awaited<ReturnType<typeof continueNight>>;
 	try {
@@ -203,6 +206,15 @@ async function continueCommand(argv: string[]): Promise<void> {
 	console.log(`continued night ${nightId} as variation ${input.variation} (thread ${started.thread}): rounds up to ${input.config.max_rounds}${input.continue?.rescore ? ", a rescore round first" : ""}`);
 	if (values["no-wait"]) return;
 	await follow(paths, nightId, config.primary_metric);
+}
+
+/** The model check on the CLI's side, before anything starts; the Agent Server checks again with its own credentials. */
+async function checkOrDie(config: NightConfig, mock: boolean): Promise<void> {
+	try {
+		await checkNightModels(config, mock);
+	} catch (error) {
+		die((error as Error).message);
+	}
 }
 
 function loadOrDie(file: string, mock: boolean): NightConfig {

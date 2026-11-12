@@ -14,6 +14,7 @@ import {
 	createReadToolDefinition,
 	createWriteToolDefinition,
 	defineTool,
+	type LoadExtensionsResult,
 	type ResourceLoader,
 	SessionManager,
 	SettingsManager,
@@ -21,6 +22,7 @@ import {
 import type { Thinking } from "../config.ts";
 import type { Sandbox } from "../sandbox/types.ts";
 import { modelRuntime } from "./models.ts";
+import { loadWeb, WEB_TOOLS } from "./web.ts";
 
 export const SANDBOX_TOOLS = ["read", "write", "edit", "bash"] as const;
 /** A bash command with no timeout of its own. */
@@ -31,11 +33,11 @@ let agentDir: string | undefined;
 /** An empty agent directory: nothing from the host's ~/.pi reaches a session. */
 const emptyAgentDir = () => (agentDir ??= mkdtempSync(join(tmpdir(), "cc-pi-agent-")));
 
-/** No extensions, skills, prompts, themes, AGENTS files or appended prompts; the system prompt is Pi's base unless given. */
-export function isolatedLoader(systemPrompt?: string): ResourceLoader {
-	const runtime = createExtensionRuntime();
+/** No skills, prompts, themes, AGENTS files or appended prompts, and only the given extensions; the system prompt is Pi's base unless given. */
+export function isolatedLoader(systemPrompt?: string, extensions?: LoadExtensionsResult): ResourceLoader {
+	const loaded = extensions ?? { extensions: [], errors: [], runtime: createExtensionRuntime() };
 	return {
-		getExtensions: () => ({ extensions: [], errors: [], runtime }),
+		getExtensions: () => loaded,
 		getSkills: () => ({ skills: [], diagnostics: [] }),
 		getPrompts: () => ({ prompts: [], diagnostics: [] }),
 		getThemes: () => ({ themes: [], diagnostics: [] }),
@@ -104,6 +106,8 @@ export interface SessionSpec {
 	systemPrompt?: string;
 	/** A session directory (file-backed), with an optional session file to reopen; omitted: in memory. */
 	storage?: { dir: string; reopen?: string };
+	/** Web research behind its guard (the coder outside mock mode); `repos` are the `owner/repo` slugs it never reads. */
+	web?: { repos: string[] };
 }
 
 export async function openSession(spec: SessionSpec): Promise<AgentSession> {
@@ -112,16 +116,18 @@ export async function openSession(spec: SessionSpec): Promise<AgentSession> {
 		: spec.storage.reopen
 			? SessionManager.open(spec.storage.reopen, spec.storage.dir, spec.cwd)
 			: SessionManager.create(spec.cwd, spec.storage.dir);
+	const names = [...(spec.sandbox ? SANDBOX_TOOLS : []), ...(spec.web ? WEB_TOOLS : [])];
+	const extensions = spec.web ? await loadWeb(spec.cwd, emptyAgentDir(), spec.web.repos, names) : undefined;
 	const options: CreateAgentSessionOptions = {
 		cwd: spec.cwd,
 		agentDir: emptyAgentDir(),
 		modelRuntime: await modelRuntime(),
 		model: spec.model,
 		thinkingLevel: spec.thinking,
-		resourceLoader: isolatedLoader(spec.systemPrompt),
+		resourceLoader: isolatedLoader(spec.systemPrompt, extensions),
 		sessionManager,
 		settingsManager: SettingsManager.inMemory({ compaction: { enabled: true }, retry: { enabled: true, maxRetries: PI_RETRIES } }),
-		...(spec.sandbox ? { tools: [...SANDBOX_TOOLS], customTools: sandboxTools(spec.sandbox, spec.cwd, spec.env) } : { noTools: "all" }),
+		...(names.length ? { tools: names, customTools: spec.sandbox ? sandboxTools(spec.sandbox, spec.cwd, spec.env) : [] } : { noTools: "all" }),
 	};
 	const { session } = await createAgentSession(options);
 	return session;
