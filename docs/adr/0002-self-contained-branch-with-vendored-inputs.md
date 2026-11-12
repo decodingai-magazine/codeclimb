@@ -8,6 +8,6 @@ Every file a trial or the verifier needs is a file on the `benchmark` branch: th
 
 ## Consequences
 
-- The two stacks' configs differ in one line only, the results directory (`runs-inngest/`, `runs-langchain/`), set when a task is assembled.
+- The two stacks' configs are byte-identical: a config's `results_path` is relative to the stack's runs folder (`runs-inngest/`, `runs-langchain/`), whose name each build spec fixes.
 - The reference builds stay on their own branches and are named here only by commit SHA. When a build spec gains a check, the reference must be patched on its branch and re-pinned, or the check is dropped on both stacks.
 - A change to a given input on `langchain` does not reach the benchmark until it is copied here.

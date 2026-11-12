@@ -4,6 +4,7 @@
 - status: from the 2026-11-12 design session. Every design decision is made. Items marked `(guess)` are unverified facts, listed again in Open points
 - this branch is self-contained: every file a trial or the verifier needs is on `benchmark`. Other branches appear only as commit SHAs in [Reference builds](#reference-builds)
 - this file is a copy of the Obsidian note `codeclimb-eval-spec`: change both together. Decisions that are hard to reverse: `docs/adr/`
+- benchmark tickets: GitHub issues, the sub-issues of #33 (`decodingai-magazine/codeclimb`)
 - words: `GLOSSARY.md`. Harness = the agent under test; Harbor = the tool that runs trials
 - subjects: `specs/inngest/spec.md` and `specs/langchain/spec.md` (the build specs), each with its pile of build tickets in `specs/<stack>/tickets/`. Until they move there, the build specs are `docs/codeclimb-spec-<stack>.md` and the piles `tickets-<stack>/`
 - background: the long-running coding agents wiki in the vault (`wiki/synthesis`)
@@ -37,7 +38,7 @@
   - per stack, in `specs/<stack>/given/`: `.env.example`, `tsconfig.json`, `package.json` + lockfile pinning only the stack SDK, one hello unit (LangChain: `langgraph.json` + `src/hello.ts`; Inngest: one function), `.gitignore`
   - where each comes from: the shared dirs and LangChain's `given/` are copies from `langchain@bce6a16` (its `package.json` and lockfile cut down to the stack SDK); Inngest's `given/` is copied from `main`, except the SDK-only `package.json` + lockfile and the hello function, which are written for the benchmark
   - re-check `configs/` against each build spec's "What you get" once the specs settle: `configs/e2e/budget.yaml` and `overfit.yaml` served paid nights, which are cut
-  - results directory: `runs-inngest/` on Inngest, `runs-langchain/` on LangChain, so the two never clash. It is the only line that differs between the two stacks' configs
+  - runs folder: `runs-inngest/` on Inngest, `runs-langchain/` on LangChain, so the two never clash. Each build spec fixes its name; a config's `results_path` is relative to it, so the configs are byte-identical on both stacks
   - not given, because the build specs have the harness write them: `.dockerignore`, the LangChain compose override
   - out of `/app` (they are arms): `AGENTS.md` guidance, `.mcp.json`, `.claude/`, `docs/agents/`
 - `/app` gets `git init` + one commit, no history
@@ -133,7 +134,7 @@
   - night checks: one per row of the done signal's check tables. A row of the common table passes only if it passes in every night it applies to (nights 1, 2 and 6); the rows of nights 3, 4, 5 and 7 count once each
 - `done` = 1 if every check passes: secondary, reported beside `reward`
 - the harness sees these checks (they are its done signal), so the verifier reruns them itself on a clean copy: separate verifier container, the build arrives through `artifacts` only, `npm ci --ignore-scripts`, rebuild images, start services, empty results directory. Results the harness left behind count for nothing
-- one suite for both stacks, written against stack-neutral outputs (CLI, `results.jsonl`, `nights/<id>/`, `experiments.git`). An adapter per stack holds only: start services, stop services, service logs, crash the runtime (night 5: kill the worker, or kill the server container), and the results directory name
+- one suite for both stacks, written against stack-neutral outputs (CLI, `results.jsonl`, `nights/<id>/`, `experiments.git`). An adapter per stack holds only: start services, stop services, service logs, crash the runtime (night 5: kill the worker, or kill the server container), and the runs folder name
 - a negative check counts only with its positive one ("no `cc-<id>` container" counts only if `done.json` exists)
 - regrade (`source_jobs`) works after a verifier fix, with no new trials
 - `/logs/verifier/reward.json`:
@@ -163,7 +164,7 @@
 
 - a reference build proves the verifier before any trial is graded. Both stacks have one
 - Inngest: `main`, at a new commit that adds what the Inngest build spec gained: `--mock-offline`, `configs/e2e/plateau.yaml`, the `runs-inngest/` results directory, and the normalized configs. Until that patch lands the pin is `e384bb5`, which cannot run nights 3 and 6 (read from the code: no `--mock-offline`, no `configs/e2e/`; not run)
-- LangChain: `langchain@bce6a16`
+- LangChain: `langchain`, at a new commit with the `results_path` relative to the runs folder. Until then the pin is `bce6a16`
 - configs are normalized across `main`, `langchain` and this branch, with `langchain`'s as the source of truth
 - rule: never grade a harness on a check a reference build fails. A build spec change that alters a check needs the reference to pass it; otherwise the check is dropped on both stacks
 - the build specs are still being improved, so the pinned commits are re-checked by the reference gate after every spec change that touches the done signal
@@ -181,7 +182,7 @@
 
 ### Jobs, repeats, cost
 
-- one job YAML per (stack × arm): `n_attempts`, `n_concurrent_trials: 1` (one subscription), `retry.max_retries: 1`, `agents[].override_timeout_sec`, `artifacts`
+- one job file per (stack × arm), in `job-configs/`: `n_attempts`, `n_concurrent_trials: 1` (one subscription), `retry.max_retries: 1`, `agents[].override_timeout_sec`, `artifacts`
 - every trial runs on the subscription. `cost_usd` is Claude Code's own estimate at API prices, the only $ figure
 - a per-trial cap, `kwargs: { max_budget_usd }`, set to 2× the costliest phase-B trial `(guess: it counts the same estimate on a subscription)`, with `override_error_policy: BudgetExceededError: { has_valid_reward: true }`. Harbor's default drops capped trials from the mean, which hides the expensive failures `(guess: Claude Code's cap raises this type)`
 - size of the job: the Inngest reference is ~8,900 lines of TypeScript + ~2,000 of tests. C + D + D2 = 30 trials; what they take from the subscription is unknown until B
@@ -222,7 +223,8 @@ context/<stack>/docs-block.md
 context/pocock/skills/              implement (flag dropped), tdd, code-review, ...
 context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, AGENTS.md block
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
-jobs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml
+job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml
+jobs/                               Harbor's job output, gitignored
 assemble.py                         given inputs + SPEC.md + E2E.md → a task's environment/app/; the pile → the pocock mount
 analyze.py                          job dirs → trials.jsonl → 2 × 2 effects
 docs/codeclimb-eval-spec.md         this file
@@ -250,10 +252,10 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 - checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level. Not yet run: the subscription token path
 - commands:
   - assemble a task: `python assemble.py <stack>`
-  - check a config, $0: `harbor run -c jobs/<file>.yaml --print-config`
+  - check a config, $0: `harbor run -c job-configs/<file>.yaml --print-config`
   - floor gate: `harbor run -p tasks/codeclimb-<stack> -a nop`
   - reference gate: `tests/run.py --app <git archive of the reference commit> --stack <stack>`, 3×
-  - every phase: `harbor run -c jobs/<file>.yaml`, arm files in shuffled order
+  - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order
   - regrade after a verifier fix: `source_jobs` in a job file
   - analysis: `python analyze.py ./jobs`
 
@@ -272,7 +274,7 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 ### Building `/app`
 
 - `assemble.py <stack>` builds a task's `environment/app/` from files on this branch only: the shared given inputs, `specs/<stack>/given/`, `SPEC.md`, `E2E.md`
-- configs: copied from the root `configs/`, with the results directory set to `runs-<stack>/`
+- configs: copied from the root `configs/` unchanged
 - `SPEC.md`: the build spec with `[[note|alias]]` → `alias` and `[[#Section]]` → `Section`. The build specs themselves are kept clean of the repo path, commit SHAs, issue numbers, branch names, this benchmark, and any skill or MCP an arm carries
 - fail the assemble if the output contains a commit SHA of a reference build, `01-Projects`, `codeclimb-eval-spec`, `benchmark` (case-insensitive) or the name of a skill pack or MCP server
 - records the sha256 of `SPEC.md`, of the given inputs and of the pile, for `trials.jsonl`

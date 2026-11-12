@@ -1,0 +1,17 @@
+{
+  "enabledPlugins": {
+    "mattpocock-skills@claude-plugins-official": true,
+    "langchain-skills@langchain-plugins": true,
+    "langsmith-skills@langchain-plugins": true,
+    "langchain-mcp@langchain-plugins": true,
+    "langsmith-mcp@langchain-plugins": false
+  },
+  "extraKnownMarketplaces": {
+    "langchain-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "langchain-ai/langchain-plugins"
+      }
+    }
+  }
+}
