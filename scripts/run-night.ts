@@ -52,11 +52,11 @@ async function follow(cfg: NightConfig, nightId: string): Promise<void> {
     }
     printed = rows.length;
     if (existsSync(doneJson)) {
-      console.log(`[run-night] done:\n${readFileSync(doneJson, "utf8")}`);
+      console.log(`done\n${readFileSync(doneJson, "utf8")}`);
       return;
     }
     if (existsSync(stopJson)) {
-      console.log(`[run-night] stopped: ${readFileSync(stopJson, "utf8")}`);
+      console.log(`stopped\n${readFileSync(stopJson, "utf8")}`);
       return;
     }
     const pausing = existsSync(pauseJson);
@@ -89,11 +89,11 @@ if (positionals[0] === "stop") {
     const done = join(found.dir, "done.json");
     const stop = join(found.dir, "stop.json");
     if (existsSync(done)) {
-      console.log(`[run-night] done:\n${readFileSync(done, "utf8")}`);
+      console.log(`done\n${readFileSync(done, "utf8")}`);
       break;
     }
     if (existsSync(stop)) {
-      console.log(`[run-night] stopped: ${readFileSync(stop, "utf8")}`);
+      console.log(`stopped\n${readFileSync(stop, "utf8")}`);
       break;
     }
     await new Promise((r) => setTimeout(r, 1000));
