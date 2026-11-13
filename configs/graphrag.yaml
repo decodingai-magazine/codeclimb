@@ -1,9 +1,10 @@
 scenario: scenarios/graphrag
 sandbox: docker
-max_rounds: 5
-deadline: 6h
+max_rounds: 24
+plateau_rounds: 9
+deadline: 24h
 timeouts:
-  experiment_min: 20
+  experiment_min: 30
   eval_min: 10
 model: anthropic/claude-opus-5-5
 coder_thinking: medium  # off | minimal | low | medium | high
@@ -23,5 +24,5 @@ thresholds:
   retrieval.by_kind.single_hop.metrics.answer_mrr.mean: 0.9
 budget_usd:
   experiment: 2.5
-  night: 15
+  night: 60
 results_path: graphrag/results.jsonl
