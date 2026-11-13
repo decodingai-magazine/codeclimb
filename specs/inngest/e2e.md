@@ -9,7 +9,7 @@ Mock metrics mean nothing: a score of 0 is expected. The checks prove that every
 1. Docker is running.
 2. Build the images: `npm run build:image`, then `npm run build:image:graphrag` (night 7). `docker images` lists `codeclimb-python` and `codeclimb-graphrag`. `uv` is on the path (night 7's host commands).
 3. Start the services, each in its own terminal, and leave them running:
-   - `npm run dev:inngest` (the Inngest dev server)
+   - `npm run dev:inngest` (the Inngest dev server), only if nothing answers at `http://127.0.0.1:8288`: when one already runs there, use it and don't start another
    - `npm run worker`
 4. After any code change, start the worker again, so it runs the code under test.
 5. Run one night at a time. Before each night, `docker ps` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: a start with a used id starts nothing.
