@@ -70,12 +70,48 @@ class LeakScan(unittest.TestCase):
         self.session([tool_use("1", "Bash", {"command": "docker run --rm curlimages/curl -s https://api.github.com/repos/x/y"})])
         self.assertEqual(self.leak(), 1)
 
-    def test_a_file_the_harness_wrote(self):
-        (self.app / "src/fetch.ts").write_text("const url = 'https://deepwiki.com/x/y';\n")
+    def test_a_dockerfile_the_harness_wrote_that_fetches_one(self):
+        (self.app / "docker").mkdir()
+        (self.app / "docker/Dockerfile").write_text(
+            "FROM node:24\n# see https://github.com/x/y\nRUN apt-get update && \\\n  git clone https://github.com/x/y /y\n"
+        )
+        hits = scan(self.app, self.logs, self.given)["hits"]
+        self.assertEqual(hits, ["/app/docker/Dockerfile: github.com x1"])  # the comment does not count
+
+    def test_a_github_dependency(self):
+        (self.app / "package.json").write_text('{"name": "codeclimb", "dependencies": {"y": "github:x/y"}}\n')
         self.assertEqual(self.leak(), 1)
 
-    def test_a_given_file_edited_to_name_one_more(self):
-        (self.app / "SPEC.md").write_text(SPEC + "Mirror: https://github.com/x/y\n")
+    def test_a_lockfile_resolved_from_github(self):
+        lock = {"packages": {"node_modules/y": {"resolved": "git+ssh://git@github.com/x/y.git#abc"}}}
+        (self.app / "package-lock.json").write_text(json.dumps(lock))
+        self.assertEqual(self.leak(), 1)
+
+    # A build is asked to name GitHub hosts in its own code (the sandbox's web block), and npm metadata links GitHub.
+    def test_a_reference_shaped_build_is_clean(self):
+        (self.app / "src/web.ts").write_text("export const BLOCKED = ['github.com', 'api.github.com'];\n")
+        (self.app / "src/web.test.ts").write_text("expect(blocked('https://raw.githubusercontent.com/x')).toBe(true);\n")
+        lock = {"packages": {"node_modules/y": {"resolved": "https://registry.npmjs.org/y/-/y-1.0.0.tgz",
+                                                "funding": {"url": "https://github.com/sponsors/x"}}}}
+        (self.app / "package-lock.json").write_text(json.dumps(lock))
+        self.session([tool_use("1", "Write", {"file_path": "/app/src/web.ts", "content": "['github.com']"}),
+                      tool_use("2", "Edit", {"file_path": "/app/src/web.ts", "old_string": "a", "new_string": "'gitee.com'"})])
+        self.assertEqual(self.leak(), 0)
+
+    def test_a_file_the_harness_wrote_that_names_the_owner(self):
+        (self.app / "src/notes.md").write_text("Found it in decodingai-magazine/codeclimb.\n")
+        self.assertEqual(self.leak(), 1)
+
+    def test_a_written_file_that_names_the_owner_in_a_session(self):
+        self.session([tool_use("1", "Write", {"file_path": "/app/x.md", "content": "decodingai-magazine"})])
+        self.assertEqual(self.leak(), 1)
+
+    def test_an_mcp_call_naming_one(self):
+        self.session([tool_use("1", "mcp__docs__fetch", {"url": "https://github.com/x/y"})])
+        self.assertEqual(self.leak(), 1)
+
+    def test_a_given_file_edited_to_name_the_owner(self):
+        (self.app / "SPEC.md").write_text(SPEC + "From Decoding AI Magazine.\n")
         self.assertEqual(self.leak(), 1)
 
     def test_a_given_file_edited_without_a_new_name(self):

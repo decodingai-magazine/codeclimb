@@ -28,9 +28,19 @@ HOST = re.compile(
 )
 
 
+def hosts_in(text: str) -> list[str]:
+    """Every blocked host in `text`, lowercased, in order."""
+    return [m.group(0).lower() for m in HOST.finditer(text)]
+
+
+def owner_in(text: str) -> list[str]:
+    """Every mention of the repo owner in `text`, lowercased, in order."""
+    return [m.group(0).lower() for m in OWNER.finditer(text)]
+
+
 def names_in(text: str) -> list[str]:
-    """Every blocked host or owner name in `text`, lowercased, in order."""
-    return [m.group(0).lower() for m in HOST.finditer(text)] + [m.group(0).lower() for m in OWNER.finditer(text)]
+    """Every blocked host or owner name in `text`."""
+    return hosts_in(text) + owner_in(text)
 
 
 def managed_settings() -> dict[str, object]:
