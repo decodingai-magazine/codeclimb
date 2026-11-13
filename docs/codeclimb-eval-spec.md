@@ -214,8 +214,9 @@
 ### Reference builds
 
 - a reference build proves the verifier before any trial is graded. Both stacks have one
-- Inngest: `main`, at a new commit that adds what the Inngest build spec gained: `--mock-offline`, `configs/e2e/plateau.yaml`, the `runs-inngest/` results directory, and the normalized configs. Until that patch lands the pin is `e384bb5`, which cannot run nights 3 and 6 (read from the code: no `--mock-offline`, no `configs/e2e/`; not run)
-- LangChain: `langchain`, at a new commit with the `results_path` relative to the runs folder. Until then the pin is `bce6a16`
+- Inngest: `main@bab033e`. It adds `--mock-offline N` (the coder's model calls 2 to N+1 of the night's first experiment fail as "fetch failed") and a `run-night stop` that waits for `stop.json` and prints `stopped` (`main@46a71b6` printed only that it sent the event, failing night 4). The plateau config, the `runs-inngest/` runs folder and configs equal to this branch's were already on `main`. `scenarios/` differs from this branch by one line, `inngest_image` in `graphrag/scenario.yaml`, which no evaluation reads
+  - measured 2026-11-13, by hand on the host per `specs/inngest/e2e.md`: all seven nights pass every check listed for them; typecheck and the 110 unit tests pass. Night 5's resumed coder holds 13 send-backs, not 8: its count starts again after the restart, as the build spec says, and C8 is not among night 5's checks. Night 6's first session holds six assistant messages with stop reason `error`, then normal ones
+- LangChain: `langchain@2ab1ad3`, with `results_path` relative to `runs-langchain/` and configs and `scenarios/` equal to this branch's. Its seven nights pass through the verifier (the measurement above)
 - configs are normalized across `main`, `langchain` and this branch, with `langchain`'s as the source of truth
 - rule: never grade a harness on a check a reference build fails. A build spec change that alters a check needs the reference to pass it; otherwise the check is dropped on both stacks
 - dropped on both stacks under this rule: night 7's check that a dev evaluation has a `metrics.json` only when every stage was scored. The stacks differ there (Inngest writes it only then, LangChain always), so the done signals check only that the test evaluation has one
