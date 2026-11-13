@@ -18,7 +18,9 @@ from pathlib import Path
 from blocked_hosts import names_in
 
 # Not the harness's own writing: installs, the runs folders, the scenario generator's output, the verifier's .env.
-SKIP_DIRS = frozenset({".git", "node_modules", "runs-inngest", "runs-langchain", "generated"})
+SKIP_DIRS = frozenset(
+    {".git", "node_modules", "runs-inngest", "runs-langchain", "generated", ".venv", "__pycache__", ".ruff_cache"}
+)
 SKIP_FILES = frozenset({".env"})
 MAX_BYTES = 5_000_000
 SEARCH_TOOLS = frozenset({"WebSearch"})
@@ -63,7 +65,7 @@ def app_files(app: Path) -> list[Path]:
     out = []
     for p in sorted(app.rglob("*")):
         rel = p.relative_to(app)
-        if rel.parts[0] in SKIP_DIRS or p.name in SKIP_FILES or not p.is_file() or p.is_symlink():
+        if SKIP_DIRS.intersection(rel.parts[:-1]) or p.name in SKIP_FILES or not p.is_file() or p.is_symlink():
             continue
         if p.stat().st_size <= MAX_BYTES:
             out.append(p)

@@ -2,7 +2,7 @@
 # The harness probes (#44): short Claude Code trials on the subscription, in the Inngest trial environment, with the
 # task's instruction replaced by a probe template and no verifier. Each probe uses the operator's subscription.
 #
-#   job-configs/probes/run.sh <probe>...     # one-line | network | budget | big
+#   job-configs/probes/run.sh <probe>...     # one-line | network | search | budget | big
 #
 # Reads CLAUDE_CODE_OAUTH_TOKEN from the repo's .env without printing it. Output: jobs/probe-<probe>-<time>/.
 set -euo pipefail
@@ -19,7 +19,7 @@ python3 assemble.py inngest > /dev/null
 for probe in "$@"; do
   extra=()
   case "$probe" in
-    one-line|network) template="$here/$probe.md" ;;
+    one-line|network|search) template="$here/$probe.md" ;;
     budget) template="$here/budget.md"; extra=(--ak max_budget_usd=0.01) ;;
     big)
       # 120 KB of filler before the one-line instruction: Harbor hands the instruction to the container in an

@@ -192,7 +192,12 @@ def main() -> None:
     started = time.monotonic()
     # Before any stage writes to /app. given.json is written by assemble.py into the task's copy of the verifier.
     given_path = Path(__file__).resolve().parent / "given.json"
-    leak = scan(run.app, args.agent_logs, json.loads(given_path.read_text()) if given_path.exists() else None)
+    try:
+        leak = scan(run.app, args.agent_logs, json.loads(given_path.read_text()) if given_path.exists() else None)
+    except Exception:
+        # reward.json is always written; a scan that crashed is not a clean trial.
+        leak = {"leak": 1, "sessions": 0, "crashed": traceback.format_exc()}
+        run.reported["leak-scan-crashed"] = 0
     try:
         for stage in STAGES:
             try:
