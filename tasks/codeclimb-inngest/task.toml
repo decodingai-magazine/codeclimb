@@ -11,11 +11,13 @@ version = "1.0.0"
 description = "Build CodeClimb on Inngest from its build spec until the seven mock nights of E2E.md pass."
 
 [verifier]
-# Placeholders until phase B measures them.
+# A passing reference build takes about 7 min here (measured in Harbor, 2026-11-13); a hung build runs into the
+# verifier's own limits, about 9100 s in all, and still writes reward.json before this one.
 timeout_sec = 10800.0
 environment_mode = "separate"
 
 [agent]
+# A placeholder until phase B measures it.
 timeout_sec = 28800.0
 
 [environment]

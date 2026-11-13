@@ -1,0 +1,21 @@
+# A reference build in place of a harness's: before the `nop` agent starts, this trial's /app volume is emptied and
+# filled with the build exported to CODECLIMB_REFERENCE_DIR (job-configs/reference.sh). `artifacts` then carries /app
+# to the separate verifier, the same path a harness's build takes. The build is never committed to this branch.
+# Paths resolve against the task's environment/ folder; CODECLIMB_REFERENCE_DIR is absolute.
+services:
+  reference-build:
+    # The task image, so the volume is set up the same way it is for `main`.
+    build: .
+    network_mode: none
+    entrypoint: []
+    command: ["sh", "-c", "find /app -mindepth 1 -delete && cp -R /reference/. /app/"]
+    volumes:
+      - app:/app
+      - ${CODECLIMB_REFERENCE_DIR:?set CODECLIMB_REFERENCE_DIR to the absolute path of an exported reference build}:/reference:ro
+  main:
+    # Harbor's own command for `main`, after creating the sessions folder a harness would leave: without it the
+    # sessions artifact fails to collect and Harbor refuses to regrade the trial. It stays empty (the leak scan reads
+    # 0 sessions).
+    command: ["sh", "-c", "mkdir -p /logs/agent/sessions/projects && sleep infinity"]
+    depends_on:
+      reference-build: { condition: service_completed_successfully }
