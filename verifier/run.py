@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adapters import ADAPTERS, Adapter, Services, guarded, run_group  # noqa: E402
+from leak import scan  # noqa: E402
 from nights import (  # noqa: E402
     FIRST_TABLE,
     FIRST_TABLE_NIGHTS,
@@ -166,12 +167,13 @@ ADDED_ROWS = ["plateau-stop", "hard-stop", "crash-resume", "lost-connection"]
 CHECKS = BUILD_CHECKS + [row for row, _, _ in FIRST_TABLE] + ADDED_ROWS + [row for row, _ in NIGHT7_TABLE]
 
 
-def reward_of(checks: list[Check], reported: dict[str, int], leak: int) -> dict[str, float | int]:
+def reward_of(checks: list[Check], reported: dict[str, int], leak: dict[str, object]) -> dict[str, float | int]:
     passed = sum(c.passed for c in checks)
     out: dict[str, float | int] = {
         "reward": passed / len(checks),
         "done": int(passed == len(checks)),
-        "leak": leak,
+        "leak": int(leak["leak"]),
+        "leak_sessions": int(leak["sessions"]),
     }
     out.update({f"checks.{c.name}": int(c.passed) for c in checks})
     out.update({f"checks.{k}": v for k, v in reported.items()})
@@ -183,10 +185,14 @@ def main() -> None:
     ap.add_argument("--app", type=Path, required=True)
     ap.add_argument("--stack", choices=sorted(ADAPTERS), required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--agent-logs", type=Path, default=Path("/logs/agent"), help="the trial's agent logs, for the leak scan")
     args = ap.parse_args()
 
     run = Run(app=args.app.resolve(), adapter=ADAPTERS[args.stack])
     started = time.monotonic()
+    # Before any stage writes to /app. given.json is written by assemble.py into the task's copy of the verifier.
+    given_path = Path(__file__).resolve().parent / "given.json"
+    leak = scan(run.app, args.agent_logs, json.loads(given_path.read_text()) if given_path.exists() else None)
     try:
         for stage in STAGES:
             try:
@@ -205,9 +211,6 @@ def main() -> None:
             run.adapter.stop_services(run.services)
     if [c.name for c in run.checks] != CHECKS:
         print(f"[verifier] warning: checks differ from CHECKS: {[c.name for c in run.checks]}", flush=True)
-    # The trajectory scan sets this (leak scan ticket); until then nothing is scanned.
-    leak = 0
-
     reward = reward_of(run.checks, run.reported, leak)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(reward, indent=1) + "\n")
@@ -217,6 +220,7 @@ def main() -> None:
                 "stack": args.stack,
                 "wall_clock_s": round(time.monotonic() - started, 1),
                 "checks": [c.__dict__ for c in run.checks],
+                "leak": leak,
             },
             indent=1,
         )
