@@ -9,3 +9,15 @@ tasks/*/environment/app/
 tasks/*/assembled.json
 tasks/codeclimb-*/instruction.md
 tasks/codeclimb-*/tests/verifier/
+
+# Left by the stack branches (langchain, inngest, main) when this checkout switches to benchmark
+.langgraph_api/
+runs/
+runs-inngest/
+runs-langchain/
+generated/
+web/
+.venv/
+.ruff_cache/
+*.tsbuildinfo
+.DS_Store
