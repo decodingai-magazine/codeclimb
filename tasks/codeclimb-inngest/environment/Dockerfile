@@ -17,6 +17,8 @@ COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins /usr/local/libex
 # The stack CLI, pinned, with the binary its install script downloads (from cli.inngest.com), and Claude Code,
 # preinstalled: Harbor's own install would hit its agent-setup timeout.
 RUN npm install -g inngest-cli@1.52.0 @anthropic-ai/claude-code@2.1.322 && npm cache clean --force
+# Claude Code's managed settings: WebFetch deny rules for the GitHub block (copied in by assemble.py).
+COPY managed-settings.json /etc/claude-code/managed-settings.json
 
 # Pi's docs, from the npm release the build spec pins: GitHub, where they also live, is blocked in a trial.
 RUN mkdir -p /docs/pi /tmp/pi && cd /tmp/pi \

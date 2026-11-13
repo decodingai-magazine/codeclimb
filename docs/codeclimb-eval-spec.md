@@ -24,13 +24,15 @@
 - primary claim: within a stack, the skills and MCP + docs effects of a 2 × 2
 - unit: one Harbor trial = (stack × arm × workflow). Zero human input
 - harness: Claude Code on Opus 5.5 (`anthropic/claude-opus-5-5`), effort `medium`, on the operator's Claude subscription; model id, effort and CLI version pinned. One harness and one model only: Codex is cut
+  - effort: Harbor's `claude-code` agent takes it as `kwargs.reasoning_effort` (`low` … `max`) and passes `--effort <level>` to `claude` (read from its source, Harbor 0.25.0). Measured 2026-11-13: the trial log's command line has `--effort medium`, the session file records `"effort":"medium"`; the ATIF trajectory and the stream's init event do not carry it. Model: `agent_info.model_info.name` and every agent step's `model_name` are `claude-opus-5-5`
+  - probes: `job-configs/probes/run.sh <probe>...` runs short trials in the Inngest trial environment, the task's instruction replaced by a template from `job-configs/probes/` and no verifier: `one-line`, `network`, `budget`, `big`. They use the subscription ($0.65 in all on 2026-11-13; each trial's environment setup takes about 21 s with a warm image)
 - learning goal: run this type of benchmark end to end. Small matrix, every gate exercised
 
 ### Task
 
 - 2 Harbor task dirs, `tasks/codeclimb-inngest/` and `tasks/codeclimb-langchain/`. Arms are job config, never task edits
 - `instruction.md`: ~15 lines. "Build the app specified in `/app/SPEC.md`. You are done when every check in `/app/E2E.md` passes; a verifier reruns them on a clean copy. No human will answer." Leading `harbor-canary` comment
-  - why not the spec itself: Harbor passes the instruction as a CLI argument; the specs are over 100 KB, near Linux's 128 KB per-argument cap `(guess: untested)`
+  - why not the spec itself: Harbor's `claude-code` agent hands the instruction to the container in one environment variable and pipes it to `claude --print` on stdin, so the cap should be Linux's 128 KiB per variable (read from the source, not measured); the specs are over 100 KB. A 120 KB instruction ran (measured 2026-11-13: the trajectory's first step holds all 122,873 characters, $0.38 for one turn), so the cap is not hit at that size, but a spec that grows past it would be
 - `/app/SPEC.md`: `specs/<stack>/spec.md` with wikilinks flattened ([Building `/app`](#building-app))
 - `/app/E2E.md`: `specs/<stack>/e2e.md`, the seven mock nights of the build spec's "Goal and done signal" as a procedure. Written once per stack from that spec, the same text on both stacks apart from the stack's service commands
 - `/app/` given inputs, the same shape on both stacks:
@@ -46,7 +48,7 @@
 - `/app` in the image: `git init` + one commit (`given inputs`), so the harness starts on a repository with no history. Checked in the built image: one commit, clean tree
 - `task.toml`: `[agent] timeout_sec = 28800`, `[verifier] timeout_sec = 10800` (placeholders until phase B; the verifier's own limits sum to about 9100 s, so a hung build still gets a `reward.json`), `environment_mode = "separate"`; `artifacts = [{ source = "/app", exclude = [".env", "node_modules", "runs-inngest", "runs-langchain"] }]`; `cpus`, `memory_mb`, `storage_mb` set after the reference gate
 - keys in a trial:
-  - Claude Code: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`)
+  - Claude Code: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`), exported on the host with `CLAUDE_FORCE_OAUTH=1` and no `ANTHROPIC_API_KEY`: Harbor's agent reads it from the host environment and prefers an API key when both are set. Measured 2026-11-13: the init event's `apiKeySource` is `none`, and the token is in no file under the job folder. `setup-token` prints the token wrapped over two lines; both lines make the 108-character token (a first line alone fails with `401 OAuth access token is invalid`, recorded as `UnknownApiError`)
   - LangChain, every arm and the verifier: one benchmark-only `LANGSMITH_API_KEY` (free Developer plan) in `/app/.env`, with `LANGSMITH_TRACING=false`. The operator exports it as `CODECLIMB_BENCH_LANGSMITH_API_KEY`, and its region's endpoint as `CODECLIMB_BENCH_LANGSMITH_ENDPOINT` (default the US one; with an EU key and no endpoint the server exits with code 3); Harbor hands the host environment to `docker compose`, the compose files map it to `LANGSMITH_API_KEY` in `main`, and the trial image's entrypoint (`write-env.sh`) or the verifier's `test.sh` writes `/app/.env`. `artifacts` exclude `.env`, so the key reaches no job file (checked 2026-11-12: no file under the job folder holds it) and no image layer. The Agent Server exits without it. The `mcp-docs` lever on LangChain is the `langsmith` MCP, not the key
   - Inngest: none
   - no provider keys: mock nights need none, and app spend stays out of the build cost
@@ -82,7 +84,7 @@
 - the repo stays public, so the harness never reaches GitHub; it can reach everything else, web search included
 - Harbor has only `public`, `allowlist` and `no-network`, no denylist. So `network_mode = "public"` plus 3 layers:
   - DNS: `extra_hosts` on the `dind` service in `environment/docker-compose.yaml` maps each blocked host to `0.0.0.0`; `main` shares its `/etc/hosts` (on `main` itself Docker rejects `extra_hosts` beside the shared network mode). Measured: `curl https://github.com` fails in `main`, `npm ci` passes. No wildcards: every host name needs its own entry. The harness runs as root and could edit `/etc/hosts`; layer 3 catches that
-  - harness: Claude Code deny rules `WebFetch(domain:<host>)` for each blocked host, in the trial's managed settings
+  - harness: Claude Code deny rules `WebFetch(domain:<host>)` for each blocked host and its `*.` subdomains, in the trial's managed settings (`tasks/shared/managed-settings.json`, which `assemble.py` copies into each task's `environment/` and the Dockerfile installs at `/etc/claude-code/managed-settings.json`). Measured 2026-11-13 in the Inngest trial environment under `bypassPermissions`: `WebFetch` of the repo page, `api.github.com` and `raw.githubusercontent.com` returns `WebFetch denied access to domain:<host>`, while `www.inngest.com/llms.txt` and `docs.langchain.com/llms.txt` load. The LangChain image installs the same file; it was built, not probed
   - detection: the verifier scans the ATIF trajectory for any blocked host, the repo name or `decodingai-magazine`; a hit sets `leak = 1` and the trial is reported apart, never averaged
 - blocked hosts: `github.com`, `*.github.com`, `githubusercontent.com`, `*.githubusercontent.com`, `github.io`, plus mirrors and indexers: `deepwiki.com`, `gitmcp.io`, `sourcegraph.com`, `gitee.com`
 - the block costs the builds nothing (measured with a DNS sniffer, cold runs of install, image build, service start and both nights on both stacks): no lookup of a GitHub host. `inngest-cli` downloads from `cli.inngest.com`, uv's Python from `releases.astral.sh`, every lockfile entry from `registry.npmjs.org`. Read from code, not triggered by mock nights: Pi fetches `fd` and `rg` from GitHub releases when its grep and find tools run without them
@@ -205,11 +207,17 @@
 
 ### Jobs, repeats, cost
 
-- one job file per (stack × arm), in `job-configs/`: `n_attempts`, `n_concurrent_trials: 1` (one subscription), `retry.max_retries: 1`, `agents[].override_timeout_sec`, `artifacts`
-- every trial runs on the subscription. `cost_usd` is Claude Code's own estimate at API prices, the only $ figure
-- a per-trial cap, `kwargs: { max_budget_usd }`, set to 2× the costliest phase-B trial `(guess: it counts the same estimate on a subscription)`, with `override_error_policy: BudgetExceededError: { has_valid_reward: true }`. Harbor's default drops capped trials from the mean, which hides the expensive failures `(guess: Claude Code's cap raises this type)`
+- one job file per (stack × arm), in `job-configs/`: `n_attempts`, `n_concurrent_trials: 1` (one subscription), `retry.max_retries: 1`, `retry.exclude_exceptions`, `agents[].override_timeout_sec`, `artifacts`
+  - `exclude_exceptions` replaces Harbor's default list (`RetryConfig` in Harbor 0.25.0), so the job file writes it whole: the default `AgentTimeoutError`, `VerifierTimeoutError`, `RewardFileNotFoundError`, `RewardFileEmptyError`, `VerifierOutputParseError`, `ApiUsageLimitError`, `AgentSafetyRefusalError`, `AgentAuthenticationError`, `ModelNotFoundError`, `UnsupportedModelParametersError`, plus `NonZeroAgentExitCodeError` and `UnknownApiError` (see telling the stops apart). Otherwise a timed-out 8-hour trial runs again
+- every trial runs on the subscription. `cost_usd` is Claude Code's own estimate at API prices (`total_cost_usd` of the stream's `result` event, `modelUsage.*.costBasis` = `list`), the only $ figure. Harbor's per-model `model_usage.*.cost_usd` is its own LiteLLM estimate and differs (measured: $0.031 against Claude Code's $0.048 for the same turn); use `agent_result.cost_usd`
+- a per-trial cap, `kwargs: { max_budget_usd }`, set to 2× the costliest phase-B trial. Measured 2026-11-13 with a $0.01 cap on the subscription: it counts the same estimate and stops the trial, but only after the turn that crosses it (the trial spent $0.04, 3 turns). Claude Code ends with result `subtype` `error_max_budget_usd`, `terminal_reason` `budget_exhausted`, exit 1; Harbor records `NonZeroAgentExitCodeError` (no `BudgetExceededError`). Its policy group, `UNCLASSIFIED`, grades the build but sets Harbor's `reward_valid` false (read from `error_policy.py`; the probe ran without a verifier). Harbor 0.25.0 has no `override_error_policy`; `analyze.py` counts a capped trial's reward, so the expensive failures stay in the mean
 - size of the job: the Inngest reference is ~8,900 lines of TypeScript + ~2,000 of tests. C + D + D2 = 30 trials; what they take from the subscription is unknown until B
 - infra errors (sandbox build, API rate limit, the subscription's usage limit) are retried and excluded; agent timeout, context exceeded and non-zero exit count: the verifier still grades whatever was built. Report retried attempts too
+- telling the stops apart: Harbor's exception type is not enough. Harbor matches `You've hit your usage limit`, while Claude Code 2.1.322 composes `You've hit your <kind> limit`, so a usage-limit stop is not reliably `ApiUsageLimitError`; it may come out as `NonZeroAgentExitCodeError` (the cap's type) or, if Harbor's `rate.?limit` or `API Error` patterns match the stream's `result` event, `ApiRateLimitError` or `UnknownApiError`. All read from both sources; a usage limit was not triggered. So `analyze.py` keys on the stream, `agent/claude-code.txt`, whatever Harbor's type:
+  - usage limit: an assistant event with `error` = `rate_limit` or `billing_error`, or the `result` event's `api_error_status` = 429. Infra: excluded, and rerun by hand after the limit resets (an automatic retry would hit the same limit, so neither `NonZeroAgentExitCodeError` nor `UnknownApiError` is retried)
+  - budget cap: `result.subtype` = `error_max_budget_usd`. Counts
+  - otherwise Harbor's exception type and policy decide
+  - the shape is measured on one API-error stop, the 401 of a bad token (2026-11-13): an assistant event with `error` = `authentication_failed` and `api_error_status` = 401, a `result` event with `is_error` true, `api_error_status` 401 and `terminal_reason` `api_error`, recorded as `UnknownApiError`
 - arm order randomized within a day; arms compared against each other run in the same time window
 - phases:
 
@@ -243,6 +251,7 @@ tasks/codeclimb-inngest/                               (codeclimb-langchain/: sa
   tests/verifier/                   copied from verifier/ by assemble.py
 tasks/shared/instruction.md         the instruction of both tasks; assemble.py copies it into each (gitignored copy)
 tasks/shared/dind.compose.yaml      the sidecar and its GitHub block, `extends`-ed by all four compose files
+tasks/shared/managed-settings.json  Claude Code's WebFetch deny rules; assemble.py copies it into each environment/ (gitignored copy)
 verifier/run.py, adapters/          the verifier, one copy; assemble.py copies it to each task's tests/verifier/ (gitignored)
 tasks/topology-check/               not a benchmark task: proves the trial topology inside Harbor, $0
 context/<stack>/skills/             vendored skill dirs, pinned
@@ -251,6 +260,7 @@ context/pocock/skills/              implement (flag dropped), tdd, code-review, 
 context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, AGENTS.md block
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
 job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml    plus topology-check.yaml
+job-configs/probes/                 the harness probes: run.sh and its prompt templates (subscription)
 jobs/                               Harbor's job output, gitignored
 assemble.py                         given inputs + SPEC.md + E2E.md → a task's environment/app/; the pile → the pocock mount
 analyze.py                          job dirs → trials.jsonl → 2 × 2 effects
@@ -259,7 +269,7 @@ docs/adr/
 GLOSSARY.md
 ```
 
-- job file, `full` arm (fields verified in the 2026-11-11 dummy runs; the effort field is `(guess)`):
+- job file, `full` arm (fields verified in the 2026-11-11 dummy runs and the 2026-11-13 probes):
 
 ```yaml
 job_name: inngest-full
@@ -271,12 +281,12 @@ agents:
     model_name: anthropic/claude-opus-5-5
     skills: [context/inngest/skills/<skill>, ...]      # one entry per skill dir
     mcp_servers: [{ name: inngest-dev, transport: streamable-http, url: http://127.0.0.1:8288/mcp }]
-    kwargs: { max_budget_usd: "<cap>" }
+    kwargs: { reasoning_effort: medium, max_budget_usd: "<cap>" }
 extra_instruction_paths: [context/inngest/docs-block.md]
 ```
 
 - other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps only `skills`; `mcp-docs` drops only `skills`. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and, on the command line, `--mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
-- checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level. Not yet run: the subscription token path
+- checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level; `kwargs.prompt_template_path` must name `instruction` (the probes wrap it in `{% if false %}`)
 - commands:
   - topology check, $0: `tasks/topology-check/run.sh`
   - assemble a task: `python assemble.py <stack>`
@@ -290,7 +300,7 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 ### Metrics
 
 - one row per trial in `trials.jsonl`: stack, arm, workflow, harness + CLI version, model id, effort, attempt, `exception_type`, `reward_valid`, `reward`, `done`, per-check results, `leak`, agent wall-clock, verifier wall-clock, tokens (in / out / cache), agent $, turns, tool calls, skill / MCP / doc-fetch counts, skill digests, spec sha256, given-inputs sha256, task hash, Harbor version, start time
-- sources (verified field names): trial `result.json` → `agent_result.cost_usd`, `n_input_tokens`, `n_cache_tokens`, `n_output_tokens`, per-model `model_usage`; phase timings `environment_setup`, `agent_setup`, `agent_execution`, `verifier`; `agent/trajectory.json` → `steps` and `final_metrics.total_steps`; `agent/claude-code.txt` → `num_turns` and `subagent_stats`
+- sources (field names measured on the subscription, 2026-11-13): trial `result.json` → `agent_result.cost_usd`, `n_input_tokens` (input + cache read + cache creation), `n_cache_tokens` (cache read), `n_output_tokens`, per-model `model_usage`; `agent_info.version` and `model_info.name`; phase timings `environment_setup`, `agent_setup`, `agent_execution`, `verifier`, each `{started_at, finished_at}`; `agent/trajectory.json` → `steps` and `final_metrics.total_steps`, with cache creation in `final_metrics.extra.total_cache_creation_input_tokens`; `agent/claude-code.txt` (the stream) → the `result` event's `num_turns`, `subtype`, `terminal_reason` and `subagent_stats`. Effort: the session file under `agent/sessions/`
 - outcome per cell: the 3 `reward` values plotted, mean, min–max; `done` as k/3; per-check pass counts show where builds break
 - arm value: the 2 × 2 effects on `reward` and $, within a stack. Exact permutation test over trials; at 3 vs 3 the smallest one-sided p is 0.05; pooled 6 vs 6 main effects go down to 0.001. Direction fixed before the run (`full` > `bare`). Claim an effect only at p ≤ 0.05, else "not detectable at n = 3"
 - false-done rate: trials whose last message claims done while `done` = 0
@@ -320,4 +330,5 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 
 ## Open points
 
-- how Harbor's `claude-code` agent takes the effort setting, and whether `max_budget_usd` means anything on a subscription: read from its source in phase A
+- whether Claude Code reconnects to `inngest-dev` once the harness starts the dev server (Arms)
+- how a subscription usage-limit stop shows in a trial: read from the sources, not triggered (see Jobs, repeats, cost). The first one in phase B confirms the `analyze.py` rule

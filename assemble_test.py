@@ -76,14 +76,15 @@ class Assemble(unittest.TestCase):
 
         for shared in assemble.SHARED:
             src = ROOT / shared
-            for rel in tree(src):
+            # Branch files only: a checkout shared with the stack branches holds ignored leftovers (.venv/).
+            for rel in assemble.branch_files(src):
                 self.assertTrue(filecmp.cmp(src / rel, out / shared / rel, shallow=False), rel)
         given = ROOT / "specs/inngest/given"
         for rel in tree(given) - {p for p in tree(given) if p.startswith("node_modules/")}:
             self.assertTrue(filecmp.cmp(given / rel, out / rel, shallow=False), rel)
 
         expected = (
-            {f"{s}/{rel}" for s in assemble.SHARED for rel in tree(ROOT / s)}
+            {f"{s}/{rel}" for s in assemble.SHARED for rel in assemble.branch_files(ROOT / s)}
             | {rel for rel in tree(given) if not rel.startswith("node_modules/")}
             | {"SPEC.md", "E2E.md", "AGENTS.md"}
         )
