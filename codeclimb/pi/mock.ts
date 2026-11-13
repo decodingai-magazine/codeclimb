@@ -11,8 +11,28 @@ export const MOCK_CHANGE =
   `echo "mock change $(date +%s)" >> MOCK.md && echo '[{"task": "mock", "check": "none", "status": "done"}]' > /tmp/tasks.json && echo "mock note" > /tmp/notes.md && echo '{"before": {"mock": 0}, "after": {"mock": 0}, "command": "mock"}' > /tmp/train-score.json`;
 export const MOCK_APPROACH = "APPROACH: mock change, no real work";
 
+/**
+ * `--mock-offline N` imitates a lost connection: the coder's calls 2 to N+1 of the night's first experiment answer
+ * as failed calls. Armed once per night, so a retried step does not count from 1 again.
+ */
+const offline = { first: 0, last: -1, seen: 0 };
+const armedNights = new Set<string>();
+
+export function armMockOffline(nightId: string, n: number): void {
+  if (armedNights.has(nightId)) return;
+  armedNights.add(nightId);
+  Object.assign(offline, { first: 2, last: n + 1, seen: 0 });
+}
+
+function offlineDue(): boolean {
+  if (offline.last < offline.first) return false;
+  offline.seen++;
+  return offline.seen >= offline.first && offline.seen <= offline.last;
+}
+
 /** One bash call, then the closing text. A resumed session ends on a tool result or a prompt, and either works. */
 export function coderReply(messages: Messages) {
+  if (offlineDue()) return fauxAssistantMessage([], { stopReason: "error", errorMessage: "fetch failed" });
   return messages.at(-1)?.role === "toolResult"
     ? fauxAssistantMessage(MOCK_APPROACH)
     : fauxAssistantMessage(fauxToolCall("bash", { command: MOCK_CHANGE }), { stopReason: "toolUse" });

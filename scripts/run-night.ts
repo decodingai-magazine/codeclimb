@@ -1,19 +1,20 @@
 // run-night --config <yaml>: start a night on the Inngest dev server and follow it.
-//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock]     (always on Docker)
+//   npm run run-night -- --config configs/datenorm-smoke.yaml [--night-id ID] [--no-wait] [--mock [--mock-offline N]]     (always on Docker)
+//     --mock-offline N: the coder's model calls 2 to N+1 of the night's first experiment fail, as a lost connection
 //   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest] [--seed ID|latest|best] [--direction TEXT]
 //     --seed (or the config's `seed`): start from an ended night's kept commit and its dev scores, not the starter
 //     --direction: the operator's direction for every round, as with continue
 //   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--night ID] [--direction TEXT] [--rounds N]
 //     more rounds on a night, from its kept commit; default: the newest night that ended
-//   npm run run-night -- stop --night ID
+//   npm run run-night -- stop --night ID     (waits for the night's stop.json and prints `stopped`; `done` if it finished first)
 //   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
 import { latestNight, reopenNight, resolveSeed, seedFrom } from "../codeclimb/continuation";
-import { newNightId, nightPaths } from "../codeclimb/paths";
+import { newNightId, nightDirs, nightPaths, runsRoot } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
 import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
@@ -30,6 +31,7 @@ const { values, positionals } = parseArgs({
     seed: { type: "string" },
     "no-wait": { type: "boolean", default: false },
     mock: { type: "boolean", default: false },
+    "mock-offline": { type: "string" },
   },
 });
 
@@ -78,8 +80,25 @@ if (positionals[0] === "resume") {
 
 if (positionals[0] === "stop") {
   if (!values.night) throw new Error("stop needs --night <id>");
+  const found = nightDirs().find((n) => n.id === values.night);
+  if (!found) throw new Error(`no night ${values.night} under ${runsRoot()}`);
   await ccInngest.send({ name: "codeclimb/night.stop", data: { night_id: values.night, reason: "manual" } });
   console.log(`[run-night] sent codeclimb/night.stop for ${values.night}`);
+  // Wait for the night to end: stop.json, or done.json for a night that finished first.
+  for (;;) {
+    const done = join(found.dir, "done.json");
+    const stop = join(found.dir, "stop.json");
+    if (existsSync(done)) {
+      console.log(`[run-night] done:\n${readFileSync(done, "utf8")}`);
+      break;
+    }
+    if (existsSync(stop)) {
+      console.log(`[run-night] stopped: ${readFileSync(stop, "utf8")}`);
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  process.exit(0);
 } else {
   const continuing = positionals[0] === "continue";
   if (positionals.length && !continuing) throw new Error(`unknown command ${positionals[0]}`);
@@ -87,6 +106,12 @@ if (positionals[0] === "stop") {
   if (continuing && values.seed) throw new Error("--seed starts a new night: a continued night goes on from its own kept commit");
   const loaded = loadConfig(resolve(values.config));
   const cfg = values.mock ? mockConfig(loaded) : loaded;
+  if (values["mock-offline"] !== undefined) {
+    if (!values.mock) throw new Error("--mock-offline only with --mock");
+    const n = Number(values["mock-offline"]);
+    if (!(Number.isInteger(n) && n >= 1)) throw new Error("--mock-offline must be an integer >= 1");
+    cfg.mock_offline = n;
+  }
   if (values.sandbox && values.sandbox !== "docker" && values.sandbox !== "inngest") throw new Error("--sandbox must be docker | inngest");
   const wanted = (values.sandbox ?? cfg.sandbox) as NightConfig["sandbox"];
   // A local night runs on Docker: Inngest sandboxes need Inngest Cloud.

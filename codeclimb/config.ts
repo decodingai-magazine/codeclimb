@@ -77,6 +77,8 @@ export type NightConfig = {
   base_dir: string;
   /** Scripted models and canned program calls, for a free end-to-end check; see `mockConfig`. */
   mock?: boolean;
+  /** `run-night --mock --mock-offline N`: the coder's model calls 2 to N+1 of the night's first experiment fail (pi/mock.ts). */
+  mock_offline?: number;
   /**
    * After each night, distill its rounds into the scenario's lessons (codeclimb/lessons.ts): `propose`
    * writes the change beside the night's runs for review, `apply` writes it into the scenario too.
