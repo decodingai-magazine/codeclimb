@@ -24,3 +24,10 @@ timeout_sec = 28800.0
 network_mode = "public"
 build_timeout_sec = 1800.0
 os = "linux"
+# Set from the peaks of a reference build's verifier run in Harbor (2026-11-13): `main` reached 6.1 CPUs and 2.45 GB
+# on Inngest, 2.2 CPUs and 0.73 GB on LangChain. The same limits on both stacks; memory leaves room for Claude Code.
+# Docker limits `main` only (the sandboxes run in the dind sidecar) and does not enforce storage_mb: `main` plus the
+# sidecar held 3.6 GB on Inngest, 5.1 GB on LangChain.
+cpus = 6
+memory_mb = 6144
+storage_mb = 10240

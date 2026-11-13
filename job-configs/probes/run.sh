@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# The harness probes (#44): short Claude Code trials on the subscription, in the Inngest trial environment, with the
+# The harness probes (#44): short Claude Code trials on the subscription, in a stack's trial environment, with the
 # task's instruction replaced by a probe template and no verifier. Each probe uses the operator's subscription.
 #
-#   job-configs/probes/run.sh <probe>...     # one-line | network | search | budget | big
+#   job-configs/probes/run.sh <probe>...     # one-line | network | search | budget | big | blocklist
+#   STACK=langchain job-configs/probes/run.sh <probe>...   # another stack's trial environment (default inngest)
 #
 # Reads CLAUDE_CODE_OAUTH_TOKEN from the repo's .env without printing it. Output: jobs/probe-<probe>-<time>/.
 set -euo pipefail
@@ -14,12 +15,13 @@ export CLAUDE_CODE_OAUTH_TOKEN CLAUDE_FORCE_OAUTH=1
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || { echo "no CLAUDE_CODE_OAUTH_TOKEN in .env" >&2; exit 1; }
 
-python3 assemble.py inngest > /dev/null
+stack="${STACK:-inngest}"
+python3 assemble.py "$stack" > /dev/null
 
 for probe in "$@"; do
   extra=()
   case "$probe" in
-    one-line|network|search) template="$here/$probe.md" ;;
+    one-line|network|search|blocklist) template="$here/$probe.md" ;;
     budget) template="$here/budget.md"; extra=(--ak max_budget_usd=0.01) ;;
     big)
       # 120 KB of filler before the one-line instruction: Harbor hands the instruction to the container in an
@@ -34,7 +36,7 @@ EOF
       ;;
     *) echo "unknown probe: $probe" >&2; exit 2 ;;
   esac
-  harbor run -y -p tasks/codeclimb-inngest -a claude-code -m anthropic/claude-opus-5-5 \
+  harbor run -y -p "tasks/codeclimb-$stack" -a claude-code -m anthropic/claude-opus-5-5 \
     --ak reasoning_effort=medium --ak prompt_template_path="$template" ${extra[@]+"${extra[@]}"} \
-    --disable-verification --job-name "probe-$probe-$(date +%H%M%S)" -o jobs
+    --disable-verification --job-name "probe-$probe-$stack-$(date +%H%M%S)" -o jobs
 done
