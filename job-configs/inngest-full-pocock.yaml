@@ -1,0 +1,54 @@
+# Inngest, arm `full`, workflow `pocock`: the `full` arm plus the pile of build
+# tickets, the pocock skills and the per-ticket prompt template. Run it with job-configs/pocock.sh inngest, which assembles
+# and sets CODECLIMB_POCOCK_DIR for the overlay.
+# The budget cap (kwargs.max_budget_usd) is set after phase B.
+job_name: inngest-full-pocock
+n_attempts: 3
+n_concurrent_trials: 1
+tasks: [{ path: tasks/codeclimb-inngest }]
+environment:
+  type: docker
+  # Copies the pile, docs/agents/ and the AGENTS.md block into each trial's /app (the file says why).
+  extra_docker_compose: [job-configs/pocock.compose.yaml]
+retry:
+  max_retries: 1
+  # Writing this list replaces Harbor's default: the default, plus the two a usage limit or the budget cap can raise
+  # (docs/codeclimb-eval-spec.md, "Jobs, repeats, cost").
+  exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - ApiUsageLimitError
+    - AgentSafetyRefusalError
+    - AgentAuthenticationError
+    - ModelNotFoundError
+    - UnsupportedModelParametersError
+    - NonZeroAgentExitCodeError
+    - UnknownApiError
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-opus-5-5
+    kwargs: { reasoning_effort: medium, prompt_template_path: context/pocock/prompt.md }
+    skills:
+      - context/inngest/skills/inngest-agents
+      - context/inngest/skills/inngest-api
+      - context/inngest/skills/inngest-api-cli
+      - context/inngest/skills/inngest-brownfield-audit
+      - context/inngest/skills/inngest-cli
+      - context/inngest/skills/inngest-cloud
+      - context/inngest/skills/inngest-durable-functions
+      - context/inngest/skills/inngest-events
+      - context/inngest/skills/inngest-flow-control
+      - context/inngest/skills/inngest-middleware
+      - context/inngest/skills/inngest-realtime
+      - context/inngest/skills/inngest-setup
+      - context/inngest/skills/inngest-steps
+      - context/inngest/skills/inngest-v3-v4-migration
+      - context/pocock/skills
+    mcp_servers:
+      - name: inngest-dev
+        transport: streamable-http
+        url: http://127.0.0.1:8288/mcp
+extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/docs-block.md]

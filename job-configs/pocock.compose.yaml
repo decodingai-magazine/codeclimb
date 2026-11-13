@@ -1,0 +1,18 @@
+# The pocock workflow's files (tasks/codeclimb-<stack>/pocock/: the pile, docs/agents/, the AGENTS.md stub with its
+# block), copied into this trial's own /app volume before the harness starts. A job overlay, not a mount into /app:
+# a bind mount is shared by every trial of a job, so a writable one would carry `Status: done` from attempt 1 into
+# attempt 2, and a read-only one would stop the harness from closing tickets. Paths resolve against the task's
+# environment/ folder (Harbor's compose project directory); CODECLIMB_POCOCK_DIR is absolute (job-configs/pocock.sh).
+services:
+  pocock-files:
+    # The task image, so the volume is filled from the image's /app the same way it is for `main`.
+    build: .
+    network_mode: none
+    entrypoint: []
+    command: ["sh", "-c", "cp -R /pocock/. /app/"]
+    volumes:
+      - app:/app
+      - ${CODECLIMB_POCOCK_DIR:?set CODECLIMB_POCOCK_DIR to the absolute path of tasks/codeclimb-<stack>/pocock}:/pocock:ro
+  main:
+    depends_on:
+      pocock-files: { condition: service_completed_successfully }

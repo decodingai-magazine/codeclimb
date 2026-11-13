@@ -1,13 +1,14 @@
 """Build a task's /app from files on this branch only.
 
-    python3 assemble.py <stack>     # inngest | langchain
+    python3 assemble.py <stack> [--pile <dir>]     # inngest | langchain; --pile: another pile of build tickets
 
 Writes tasks/codeclimb-<stack>/environment/app/ (gitignored): the shared given inputs,
 specs/<stack>/given/, SPEC.md (the build spec, wikilinks flattened), E2E.md and an
 AGENTS.md stub. Also copies the parts both tasks share into the task, so each exists
 once on the branch: tasks/shared/instruction.md -> instruction.md, verifier/blocked_hosts.py's deny rules ->
-environment/managed-settings.json, verifier/ -> tests/verifier/ plus the leak scan's given.json (all gitignored). Records the sha256 of SPEC.md, of the given inputs and of the pile
-in tasks/codeclimb-<stack>/assembled.json. Fails, naming each string and file, when
+environment/managed-settings.json, verifier/ -> tests/verifier/ plus the leak scan's given.json, and the pocock
+workflow's files -> tasks/codeclimb-<stack>/pocock/ (all gitignored). Records the sha256 of SPEC.md, of the given
+inputs, of the pile and of the pocock files in tasks/codeclimb-<stack>/assembled.json. Fails, naming each string and file, when
 the output holds a string that would tell the harness where it is.
 """
 
@@ -30,6 +31,7 @@ SHARED = ("scenarios", "configs", "docker")
 
 INSTRUCTION = ROOT / "tasks/shared/instruction.md"
 VERIFIER = ROOT / "verifier"
+POCOCK = ROOT / "context" / "pocock"
 # One line, no guidance: every arm gets the same stub, the instruction's canary line.
 AGENTS_STUB = INSTRUCTION.read_text().splitlines()[0] + "\n"
 
@@ -160,9 +162,43 @@ def assemble(stack: str, out: Path, spec_path: Path | None = None, record_path: 
     return record
 
 
-def assemble_task(stack: str) -> dict[str, str]:
+def assemble_pocock(stack: str, out: Path, pile: Path | None = None) -> dict[str, str]:
+    """The pocock workflow's files for /app, in `out`: the stack's pile at .scratch/codeclimb/issues/ with the spec
+    path rewritten to SPEC.md and nothing else changed, the setup skill's docs/agents/ and the AGENTS.md stub with
+    its `## Agent skills` block. A trial copies `out` into its /app before the harness starts."""
+    pile = pile or ROOT / "specs" / stack / "tickets"
+    spec_ref = f"specs/{stack}/spec.md"
+    stage = Path(tempfile.mkdtemp(prefix=".pocock-", dir=out.parent if out.parent.exists() else None))
+    try:
+        issues = stage / ".scratch" / "codeclimb" / "issues"
+        for rel in branch_files(pile):
+            (issues / rel).parent.mkdir(parents=True, exist_ok=True)
+            (issues / rel).write_text((pile / rel).read_text().replace(spec_ref, "SPEC.md"))
+        copy_files(POCOCK / "scaffold" / "docs", stage / "docs")
+        (stage / "AGENTS.md").write_text(AGENTS_STUB + (POCOCK / "scaffold" / "agent-skills-block.md").read_text())
+        found = [
+            f"{p.relative_to(stage).as_posix()}: {t}"
+            for p in sorted(stage.rglob("*")) if p.is_file()
+            for t in forbidden_terms(p.read_text(), authored=True)
+        ]
+        if found:
+            raise ForbiddenString("forbidden strings in the pocock files:\n  " + "\n  ".join(found))
+        record = {"pile_sha256": tree_sha256(pile), "pocock_files_sha256": tree_sha256(stage)}
+        if out.exists():
+            shutil.rmtree(out)
+        stage.rename(out)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+    return record
+
+
+def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:
     task = ROOT / "tasks" / f"codeclimb-{stack}"
     record = assemble(stack, task / "environment" / "app")
+    # The pocock workflow's files, outside the image's build context: a job overlay copies them into /app.
+    record |= assemble_pocock(stack, task / "pocock", pile)
+    (task / "assembled.json").write_text(json.dumps(record, indent=2) + "\n")
     (task / "instruction.md").write_text(INSTRUCTION.read_text().replace("{services}\n", SERVICES[stack]))
     (task / "environment" / "managed-settings.json").write_text(json.dumps(managed_settings(), indent=2) + "\n")
     if (task / "tests" / "verifier").exists():
@@ -175,10 +211,10 @@ def assemble_task(stack: str) -> dict[str, str]:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 4) or (len(sys.argv) == 4 and sys.argv[2] != "--pile"):
         raise SystemExit(__doc__)
     try:
-        result = assemble_task(sys.argv[1])
+        result = assemble_task(sys.argv[1], Path(sys.argv[3]).resolve() if len(sys.argv) == 4 else None)
     except ForbiddenString as e:
         raise SystemExit(str(e))
     print(json.dumps(result, indent=2))

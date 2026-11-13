@@ -152,9 +152,14 @@
   - why not `/to-spec` or `/implement-spec`: the spec exists, and `/implement-spec`'s parallel worktree subagents would add a third variable (concurrency)
 - zero-human patches, in the prompt template, not in the skills:
   - `/code-review` asks for a fixed point: use `/app`'s root commit
-  - tickets are local files, never GitHub or another tracker. The setup skill's output is pre-written and added per job through a mount (`--mounts` on the command line, with an absolute source path): `docs/agents/issue-tracker.md` (local markdown, `.scratch/codeclimb/issues/<NN>-<slug>.md`, spec at `.scratch/codeclimb/spec.md`), `docs/agents/domain.md` (single-context), and an `## Agent skills` block in the `AGENTS.md` stub (verified: a read-only bind mount of a host dir shows up in the harness's `/app`; the harness copies files out of it). No `triage-labels.md`
-  - the template defines the closed state: `/implement` sets `Status: done` once the ticket's acceptance criteria pass
+  - tickets are local files, never GitHub or another tracker. The setup skill's output is pre-written (`context/pocock/scaffold/`): `docs/agents/issue-tracker.md` (local markdown, `.scratch/codeclimb/issues/<NN>-<slug>.md`, the spec is `SPEC.md`, the tickets' own path after the rewrite, not the template's `.scratch/codeclimb/spec.md`), `docs/agents/domain.md` (single-context, the template unchanged), and an `## Agent skills` block appended to the `AGENTS.md` stub. No `triage-labels.md`
+  - how they reach `/app`: `assemble.py` stages the rewritten pile and the scaffold in `tasks/codeclimb-<stack>/pocock/` (gitignored, `pocock_files_sha256` in `assembled.json`), and a job compose overlay, `job-configs/pocock.compose.yaml` (`environment.extra_docker_compose`), runs a one-shot service `pocock-files` on the task image that copies them into the trial's own `app` volume; `main` waits for it to complete. Not `--mounts`: a job mount is one bind of a host dir shared by every trial of the job, so a writable one carries attempt 1's `Status: done` into attempt 2, and a read-only one stops the harness closing tickets. The overlay's host path is absolute, from `CODECLIMB_POCOCK_DIR`, which `job-configs/pocock.sh` sets. Measured 2026-11-13: with plain `docker compose` on both stacks and in Harbor (`nop`, Inngest), `/app` holds the files with the one `given inputs` commit, a ticket edit in `main` leaves the host copy unchanged, `up --wait` accepts the one-shot service, and the `/app` artifact carries `.scratch/`
+  - the template defines the closed state: a ticket is done when its acceptance criteria pass; the harness then sets its `**Status:**` line to `done` and commits the work with the ticket file
 - invocation (verified with a `disable-model-invocation: true` dummy skill): a user-only skill runs only from the prompt template's first line, never from the model. `/implement` is called once per ticket by the model, so the vendored copy drops `disable-model-invocation`
+- vendored: `context/pocock/skills/`, the eight skill dirs above from `mattpocock/skills@49dd158d1076134a641b33efb035946536778336` (1.3.1, the commit a Claude Code install recorded; byte-identical to its cache), tree sha256 `bcf4331f…afc835962b` upstream and `6ca5eeb0…bb36397f64` after the one edit (`context/pocock/SOURCE.md`)
+- name clash: Claude Code 2.1.322 ships a built-in `code-review` skill (in every arm's init list), the same name as the pocock one. The smoke trial shows which one `Skill("code-review")` loads
+- the prompt template's first line is `/implement …`, so Claude Code loads `implement` for the first ticket; the model calls it for each next ticket. Counts: `analyze.py counts` reports workflow skill calls per name (`workflow_skills`), apart from the skills lever; `analyze.py pile <app artifact>` reports tickets, tickets done and commits after the given commit
+- smoke trial: `job-configs/probes/pocock-smoke.sh <stack> [cap]`, the `full-pocock` job file on the two-ticket dummy pile `job-configs/probes/pocock-pile/` (02 blocked by 01), one attempt, no verifier, a budget cap and a 30-minute agent timeout
 - logged on top of the metrics: pile sha256, ticket count, tickets done, commits, `tdd` / `code-review` calls, compactions, $ and tokens per subagent (`code-review` runs 2 in parallel)
 - result: Δ`reward`, Δ`done`, Δ$ and Δwall-clock of `full × pocock` vs `full × one-shot`, per stack. The tickets and the per-ticket loop are not separated
 
@@ -283,7 +288,10 @@ context/<stack>/docs-block.md       the MCP + docs arm's prompt addition
 context/<stack>/skills-pointer.md   the skills arm's one-line prompt addition
 context/<stack>/SOURCE.md           where the vendored skills come from: repo, commit, tree sha256
 context/pocock/skills/              implement (flag dropped), tdd, code-review, ...
-context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, AGENTS.md block
+context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, agent-skills-block.md (for AGENTS.md)
+context/pocock/SOURCE.md            the skills' repo, commit, digests and the one edit
+job-configs/pocock.compose.yaml     the overlay that copies tasks/codeclimb-<stack>/pocock/ into each trial's /app
+job-configs/pocock.sh               runs a full-pocock job (assembles, sets CODECLIMB_POCOCK_DIR)
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
 job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml    plus topology-check.yaml
 job-configs/probes/                 the harness probes: run.sh and its prompt templates (subscription)
@@ -313,15 +321,15 @@ agents:
 extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/docs-block.md]
 ```
 
-- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps `skills` and only the skills pointer; `mcp-docs` drops `skills` and keeps only the docs block. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and, on the command line, `--mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
+- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps `skills` and only the skills pointer; `mcp-docs` drops `skills` and keeps only the docs block. `full-pocock` adds the pocock skills (`context/pocock/skills`, one skill root), `kwargs.prompt_template_path: context/pocock/prompt.md` and `environment.extra_docker_compose: [job-configs/pocock.compose.yaml]`
 - checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level; `kwargs.prompt_template_path` must name `instruction` (the probes wrap it in `{% if false %}`)
 - commands:
   - topology check, $0: `tasks/topology-check/run.sh`
-  - assemble a task: `python assemble.py <stack>`
+  - assemble a task: `python3 assemble.py <stack> [--pile <dir>]`
   - check a config, $0: `harbor run -c job-configs/<file>.yaml --print-config`
   - floor gate: `harbor run -p tasks/codeclimb-<stack> -a nop`
   - reference gate: `verifier/run.py --app <git archive of the reference commit> --stack <stack> --out <reward.json>`, 3×
-  - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order. The `full-pocock` files also need `--mounts` with absolute paths, so they run through a small script, as `tasks/topology-check/run.sh` does
+  - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order. The `full-pocock` files run through `job-configs/pocock.sh <stack>`, which assembles and sets the overlay's absolute path
   - regrade after a verifier fix: `source_jobs` in a job file
   - analysis: `python analyze.py ./jobs`
 

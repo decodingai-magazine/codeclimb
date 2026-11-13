@@ -3,6 +3,7 @@
 import filecmp
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -62,6 +63,42 @@ class TreeHash(unittest.TestCase):
         (tmp / "a-c").write_text("2")
         lines = sorted(f"{r} {assemble.sha256_bytes((tmp / r).read_bytes())}\n" for r in ["a/b", "a-c"])
         self.assertEqual(assemble.tree_sha256(tmp), assemble.sha256_bytes("".join(lines).encode()))
+
+
+class AssemblePocock(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_rewrites_only_the_spec_path(self):
+        out = self.tmp / "pocock"
+        record = assemble.assemble_pocock("inngest", out)
+        pile = ROOT / "specs/inngest/tickets"
+        issues = out / ".scratch/codeclimb/issues"
+        self.assertEqual(tree(issues), tree(pile))
+        for name in tree(pile):
+            self.assertEqual((issues / name).read_text(),
+                             (pile / name).read_text().replace("specs/inngest/spec.md", "SPEC.md"))
+        self.assertNotIn("specs/inngest/spec.md", "".join((issues / n).read_text() for n in tree(issues)))
+        self.assertEqual(record["pile_sha256"], assemble.tree_sha256(pile))
+
+    def test_scaffold_and_agents_block(self):
+        out = self.tmp / "pocock"
+        assemble.assemble_pocock("langchain", out)
+        self.assertEqual(tree(out / "docs"), {"agents/issue-tracker.md", "agents/domain.md"})
+        agents = (out / "AGENTS.md").read_text()
+        self.assertTrue(agents.startswith(assemble.AGENTS_STUB))
+        self.assertIn("## Agent skills", agents)
+
+    def test_fails_on_a_forbidden_string(self):
+        pile = self.tmp / "pile"
+        pile.mkdir()
+        (pile / "01-a.md").write_text("built for the benchmark\n")
+        subprocess.run(["git", "init", "-q"], cwd=pile, check=True)
+        with self.assertRaises(assemble.ForbiddenString) as e:
+            assemble.assemble_pocock("inngest", self.tmp / "pocock", pile)
+        self.assertIn("01-a.md: benchmark", str(e.exception))
+        self.assertFalse((self.tmp / "pocock").exists())
 
 
 class Assemble(unittest.TestCase):
