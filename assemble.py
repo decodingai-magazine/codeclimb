@@ -47,7 +47,7 @@ STUBS = frozenset({"SPEC.md", "E2E.md", "AGENTS.md"})
 
 # Forbidden in every file of /app. The reference builds' commits, by 7-char prefix:
 # update them when a reference is re-pinned (docs/codeclimb-eval-spec.md, "Reference builds").
-EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "2ab1ad3", "01-Projects", "codeclimb-eval-spec")
+EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "4a71177", "2ab1ad3", "01-Projects", "codeclimb-eval-spec")
 # Forbidden only in the files the benchmark writes (SPEC.md, E2E.md, AGENTS.md,
 # specs/<stack>/given/). The shared given inputs are vendored unchanged, and the
 # graphrag corpus discusses benchmarks and names skill authors.
