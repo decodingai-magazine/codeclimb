@@ -1,5 +1,5 @@
 # Inngest, arm `skills`: the inngest plugin's skills. Assemble first: python3 assemble.py inngest
-# The budget cap (kwargs.max_budget_usd) is set after phase B.
+# The budget cap, kwargs.max_budget_usd: 2x the costliest phase-B trial ($15.78), docs/codeclimb-eval-spec.md "Jobs, repeats, cost".
 job_name: inngest-skills
 n_attempts: 3
 n_concurrent_trials: 1
@@ -26,7 +26,7 @@ retry:
 agents:
   - name: claude-code
     model_name: anthropic/claude-opus-5-5
-    kwargs: { reasoning_effort: medium }
+    kwargs: { reasoning_effort: medium, max_budget_usd: "32" }
     skills:
       - context/inngest/skills/inngest-agents
       - context/inngest/skills/inngest-api

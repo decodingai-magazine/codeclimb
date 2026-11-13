@@ -7,7 +7,8 @@ the harness wrote it.
 
 - the session files (`<agent logs>/sessions/projects/**/*.jsonl`, subagents included):
   - blocked hosts in the input of a network tool (`WebFetch`, `WebSearch`, `Bash`, any MCP tool) and in
-    `WebSearch` results (a result that links a blocked host)
+    `WebSearch` results (a result that links a blocked host). A Bash heredoc body is file content, not a command:
+    it is cut, and the file it writes is scanned under the /app rule
   - the owner in any tool's input (a file written or edited included) and in `WebSearch` results
 - `/app`: in each file the harness wrote or changed, the owner anywhere, and blocked hosts only where the build
   fetches: a Dockerfile's `RUN` and `ADD` instructions, `package.json` dependency specs (`github:`, `git+`, URLs),
@@ -35,6 +36,24 @@ NETWORK_TOOLS = frozenset({"WebFetch", "WebSearch", "Bash"})
 SEARCH_TOOLS = frozenset({"WebSearch"})
 DEP_FIELDS = ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides")
 DOCKER_FETCH = re.compile(r"^\s*(RUN|ADD)\b", re.IGNORECASE)
+
+
+HEREDOC = re.compile(r"(?<!<)<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def without_heredocs(command: str) -> str:
+    """A shell command with its heredoc bodies cut: a body is file content, not something the shell runs."""
+    out: list[str] = []
+    ends: list[tuple[str, bool]] = []
+    for line in command.splitlines():
+        if ends:
+            end, tabs = ends[0]
+            if (line.lstrip("\t") if tabs else line) == end:
+                ends.pop(0)
+            continue
+        out.append(line)
+        ends = [(m.group(3), m.group(1) == "-") for m in HEREDOC.finditer(line)]
+    return "\n".join(out)
 
 
 def text_of(content: object) -> str:
@@ -68,7 +87,10 @@ def session_hits(agent_logs: Path) -> tuple[list[str], int]:
                 if block.get("type") == "tool_use":
                     name = str(block.get("name"))
                     tools[str(block.get("id"))] = name
-                    text = text_of(block.get("input"))
+                    inp = block.get("input")
+                    if name == "Bash" and isinstance(inp, dict) and isinstance(inp.get("command"), str):
+                        inp = {**inp, "command": without_heredocs(inp["command"])}
+                    text = text_of(inp)
                     found = names_in(text) if is_network_tool(name) else owner_in(text)
                     hits += [f"{f.name}: {name} input: {n}" for n in found]
                 elif block.get("type") == "tool_result":

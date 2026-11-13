@@ -36,8 +36,9 @@ STATUS = re.compile(r"^\*\*Status:\*\*\s*(\S+)", re.MULTILINE)
 FETCH = re.compile(r"\b(curl|wget)\b[^|;&]*?https?://(?!(?:127\.0\.0\.1|localhost|0\.0\.0\.0)[:/])")
 
 
-def lever_counts(trajectory: dict) -> dict:
-    """skill: Skill calls outside the workflow's skills; workflow_skills: those calls per skill name;
+def lever_counts(trajectory: dict, arm_skills: frozenset[str] = frozenset()) -> dict:
+    """skill: Skill calls of the arm's own skills (the trial lock's); other_skill: Claude Code's built-in ones;
+    workflow_skills: calls of the workflow's skills per skill name;
     mcp_platform / mcp_docs: MCP calls; web_fetch, web_search; bash_fetch: curl or wget of a non-local URL in a
     Bash command (a doc fetch past WebFetch)."""
     c: Counter[str] = Counter()
@@ -51,7 +52,7 @@ def lever_counts(trajectory: dict) -> dict:
                 if skill in WORKFLOW_SKILLS:
                     workflow[skill] += 1
                 else:
-                    c["skill"] += 1
+                    c["skill" if skill in arm_skills else "other_skill"] += 1
             elif name.startswith("mcp__"):
                 server, _, tool = name[len("mcp__"):].partition("__")
                 docs = DOCS_TOOLS.get(server, frozenset())
@@ -62,7 +63,7 @@ def lever_counts(trajectory: dict) -> dict:
                 c["web_search"] += 1
             elif name == "Bash" and FETCH.search(str(args.get("command", ""))):
                 c["bash_fetch"] += 1
-    counts: dict = {k: c[k] for k in ("skill", "mcp_platform", "mcp_docs", "web_fetch", "web_search", "bash_fetch")}
+    counts: dict = {k: c[k] for k in ("skill", "other_skill", "mcp_platform", "mcp_docs", "web_fetch", "web_search", "bash_fetch")}
     counts["workflow_skills"] = dict(sorted(workflow.items()))
     return counts
 
@@ -148,9 +149,11 @@ def stream_facts(path: Path) -> dict:
 
 
 def classify(row: dict) -> str:
-    """counted | infra | leak | no-reward. Infra: a usage-limit stop in the stream whatever Harbor's type, or an
-    infra exception type. A leak counts only for a harness: a reference build's own files quote the owner."""
-    if row["usage_limit"] or row["exception_type"] in INFRA_TYPES:
+    """counted | infra | leak | no-reward. Infra: a usage-limit stop in the stream whatever Harbor's type, an infra
+    exception type, or an artifact that failed to collect (the verifier graded a partial copy; Harbor calls that
+    best-effort and records no exception). A leak counts only for a harness: a reference build's own files quote
+    the owner."""
+    if row["usage_limit"] or row["exception_type"] in INFRA_TYPES or row["artifacts_failed"]:
         return "infra"
     if row["reward"] is None:
         return "no-reward"
@@ -200,6 +203,10 @@ def trial_row(trial: Path) -> dict | None:
     stream = stream_facts(trial / "agent" / "claude-code.txt")
     assembled = _json(ROOT / (result.get("task_id") or {}).get("path", f"tasks/codeclimb-{m[1]}") / "assembled.json")
     app = trial / "artifacts" / "app"
+    try:
+        manifest = json.loads((trial / "artifacts" / "manifest.json").read_text())
+    except (OSError, ValueError):
+        manifest = []
     row = {
         "job": trial.parent.name,
         "trial": trial.name,
@@ -229,7 +236,8 @@ def trial_row(trial: Path) -> dict | None:
         "result_subtype": stream["subtype"],
         "terminal_reason": stream["terminal_reason"],
         "usage_limit": stream["usage_limit"],
-        **lever_counts(traj),
+        "artifacts_failed": [a.get("source") for a in manifest if a.get("status") == "failed"],
+        **lever_counts(traj, frozenset(s["name"] for s in lock.get("skills", []))),
         "pile": pile_progress(app) if workflow == "pocock" and app.exists() else None,
         "skill_digests": {s["name"]: s["digest"] for s in lock.get("skills", [])},
         "task_digest": (lock.get("task") or {}).get("digest"),

@@ -1,6 +1,6 @@
 schema_version = "1.4"
 artifacts = [
-  { source = "/app", exclude = [".env", "node_modules", "runs-inngest", "runs-langchain"] },
+  { source = "/app", exclude = [".env", "node_modules", ".venv", "runs-inngest", "runs-langchain"] },
   # The harness's session files, for the leak scan in the separate verifier.
   { source = "/logs/agent/sessions/projects" },
 ]
@@ -17,8 +17,9 @@ timeout_sec = 10800.0
 environment_mode = "separate"
 
 [agent]
-# A placeholder until phase B measures it.
-timeout_sec = 28800.0
+# Phase B (2026-11-13): the longest agent phase took 62 min ($15), so 3 h is about 3x it; the $32 budget cap in
+# the job files stops a runaway trial at about 2 h of that pace first.
+timeout_sec = 10800.0
 
 [environment]
 network_mode = "public"

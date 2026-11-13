@@ -16,6 +16,7 @@ class LeverCounts(unittest.TestCase):
     def test_counts_each_lever(self):
         t = trajectory(
             ("Skill", {"skill": "inngest-steps"}),
+            ("Skill", {"skill": "dataviz"}),
             ("Skill", {"skill": "implement", "args": ".scratch/codeclimb/issues/01-a.md"}),
             ("Skill", {"skill": "tdd"}),
             ("Skill", {"skill": "tdd"}),
@@ -31,8 +32,8 @@ class LeverCounts(unittest.TestCase):
             ("ToolSearch", {"query": "select:mcp__inngest-dev__get_apps"}),
         )
         self.assertEqual(
-            lever_counts(t),
-            {"skill": 1, "mcp_platform": 1, "mcp_docs": 3, "web_fetch": 1, "web_search": 1, "bash_fetch": 1,
+            lever_counts(t, frozenset({"inngest-steps"})),
+            {"skill": 1, "other_skill": 1, "mcp_platform": 1, "mcp_docs": 3, "web_fetch": 1, "web_search": 1, "bash_fetch": 1,
              "workflow_skills": {"implement": 1, "tdd": 2}},
         )
 
@@ -64,11 +65,14 @@ ARM_CONFIG = {"bare": ([], []), "skills": (SKILLS, []), "mcp-docs": ([], MCP), "
 
 
 def write_trial(jobs: Path, job: str, name: str, stack: str, arm: str, reward: float | None, cost: float, *,
-                leak: int = 0, exception: str | None = None, stream: str = "", start: str = "2026-11-13T10:00:00Z") -> None:
+                leak: int = 0, exception: str | None = None, stream: str = "", start: str = "2026-11-13T10:00:00Z",
+                app_status: str = "ok") -> None:
     """A Harbor trial folder with the fields analyze.py reads."""
     skills, mcp = ARM_CONFIG[arm]
     t = jobs / job / name
     (t / "agent").mkdir(parents=True)
+    (t / "artifacts").mkdir()
+    (t / "artifacts" / "manifest.json").write_text(json.dumps([{"source": "/app", "status": app_status}]))
     rewards = None if reward is None else {"reward": reward, "done": int(reward == 1), "leak": leak, "checks.install": 1, "checks.cli-done": int(reward > 0.5)}
     (t / "result.json").write_text(json.dumps({
         "task_name": f"codeclimb/codeclimb-{stack}",
@@ -104,6 +108,8 @@ class Trials(unittest.TestCase):
                     stream='{"type":"assistant","error":"rate_limit"}\n{"type":"result","num_turns":4,"subtype":"error"}\n')
         write_trial(jobs, "inngest-full", "capped", "inngest", "full", 1.0, 9.0, exception="NonZeroAgentExitCodeError", start=late,
                     stream='{"type":"result","num_turns":40,"subtype":"error_max_budget_usd"}\n')
+        # #52: /app failed to collect (an absolute symlink in a .venv), so the verifier graded a partial copy.
+        write_trial(jobs, "inngest-bare", "partial", "inngest", "bare", 0.06, 15.8, start=late, app_status="failed")
         # A regrade of inngest-bare/t0 after a verifier fix: its rewards replace the source's.
         regrade = jobs / "regrade-bare" / "r0"
         regrade.mkdir(parents=True)
@@ -120,7 +126,7 @@ class Trials(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_one_row_per_trial(self):
-        self.assertEqual(len(self.rows), 2 * 12 + 3 + 1)
+        self.assertEqual(len(self.rows), 2 * 12 + 4 + 1)
         r = self.by_trial[("inngest-full", "t1")]
         self.assertEqual((r["stack"], r["arm"], r["workflow"], r["attempt"], r["effort"]), ("inngest", "full", "one-shot", 2, "medium"))
         self.assertEqual((r["reward"], r["checks"]["cli-done"], r["agent_s"], r["harness_version"]), (0.95, 1, 1800.0, "2.1.322"))
@@ -129,6 +135,8 @@ class Trials(unittest.TestCase):
         self.assertEqual(self.by_trial[("inngest-bare", "leaked")]["status"], "leak")
         limited = self.by_trial[("inngest-full", "limited")]
         self.assertEqual((limited["status"], limited["usage_limit"]), ("infra", True))
+        partial = self.by_trial[("inngest-bare", "partial")]
+        self.assertEqual((partial["status"], partial["artifacts_failed"]), ("infra", ["/app"]))
         capped = self.by_trial[("inngest-full", "capped")]
         self.assertEqual((capped["status"], capped["result_subtype"], capped["reward_valid"]), ("counted", "error_max_budget_usd", False))
 
@@ -165,7 +173,7 @@ class Trials(unittest.TestCase):
         self.assertIn("inngest   one-shot full      n=4", text)  # the capped trial counts, the usage-limit one does not
         self.assertIn("shared checks: 2", text)
         self.assertIn("leak: 1, $3.00", text)
-        self.assertIn("infra: 1, $1.50", text)
+        self.assertIn("infra: 2, $17.30", text)
 
 
 if __name__ == "__main__":

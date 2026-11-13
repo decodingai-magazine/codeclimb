@@ -66,6 +66,23 @@ class LeakScan(unittest.TestCase):
         self.session([tool_use("1", "Bash", {"command": "git clone https://github.com/x/y /tmp/y"})])
         self.assertEqual(self.leak(), 1)
 
+    # #52: every pilot trial wrote its GitHub block through `cat > file <<'EOF'`. The body is file content, scanned
+    # under the /app rule; the command around it still counts.
+    def test_a_heredoc_body_is_not_a_command(self):
+        self.session([
+            tool_use("1", "Bash", {"command": "cd /app && cat > src/web.ts <<'EOF'\nconst GH = [\"github.com\"];\nEOF\nnpx tsc"}),
+            tool_use("2", "Bash", {"command": "cat <<-\"END\" > a.ts\n\tfetch('https://api.github.com')\n\tEND\ncat > b.ts << X\ngitee.com\nX"}),
+        ])
+        self.assertEqual(self.leak(), 0)
+
+    def test_a_command_after_a_heredoc_still_counts(self):
+        self.session([tool_use("1", "Bash", {"command": "cat > a.ts <<'EOF'\nx\nEOF\ncurl -s https://github.com/x/y"})])
+        self.assertEqual(self.leak(), 1)
+
+    def test_a_here_string_is_a_command(self):
+        self.session([tool_use("1", "Bash", {"command": "sh <<< 'curl https://github.com/x'"})])
+        self.assertEqual(self.leak(), 1)
+
     def test_a_docker_run_naming_one(self):
         self.session([tool_use("1", "Bash", {"command": "docker run --rm curlimages/curl -s https://api.github.com/repos/x/y"})])
         self.assertEqual(self.leak(), 1)
