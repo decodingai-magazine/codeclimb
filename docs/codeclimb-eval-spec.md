@@ -123,7 +123,9 @@
 - `inngest-dev` is served by the dev server, so it runs before the harness starts (Trial environment). Measured (#48 smoke, `mcp-docs` and `full`, with the dev server started by the harness): Claude Code connects once at start, gets ECONNREFUSED, marks the server `failed` and does not reconnect after the dev server answers on 8288; a tool search for "inngest" finds nothing. Record MCP tool calls per trial, split platform vs docs tools; 0 calls = the lever was never used
 - Inngest arm smoke (#48, 2026-11-13, `job-configs/probes/arm-smoke.sh inngest <arm>...`: the arm's job file with one attempt, no verifier and a probe prompt; about $0.07–0.10 each): `bare` has 17 built-in skills, no MCP server, no extra prompt; `skills` has the 14 Inngest skills in `$CLAUDE_CONFIG_DIR/skills/` and the skills pointer in the prompt, no MCP; `mcp-docs` has `inngest-dev` registered and the docs block in the prompt, no Inngest skills; `full` has both. With the dev server pre-started, `mcp-docs` reports `inngest-dev` `connected` with 52 tools and called `get_apps` (37 s trial)
 - lever counts: `analyze.py counts <trajectory.json>` counts from a trajectory's tool calls: `Skill` calls; MCP calls, split into docs tools (`inngest-dev`'s `grep_docs`, `list_docs`, `read_doc`; every tool of `langchain-docs`) and platform tools (every other); `WebFetch`, `WebSearch`, and Bash `curl`/`wget` of a non-local URL (doc fetches). Tests: `python3 -m unittest analyze_test`
-- measured (#48 smoke): `claude --print` does not return while a `run_in_background` Bash task runs. It returned only when Claude Code killed the dev server at its background time limit, about 10 min in, so a 1-minute probe took 10.6 min
+- measured (#48 smoke, 2 trials): after the final reply, `claude --print` does not return while a `run_in_background` Bash task still runs. It returned about 10 min later, when Claude Code stopped the task at its background time limit, so a 1-minute probe took 10.6 min. So a trial that leaves `npm run worker` running gains about 10 min of idle agent wall-clock. `(guess: a background task is also stopped about 10 min after it starts while the session is still working)`
+- measured 2026-11-13 with plain `docker compose`: a second `npm run dev:inngest` beside the pre-started one does not fail. It logs "Port conflict, using new port" and serves on 8290, while the worker still talks to 8288. `E2E.md` still says to start it
+- the trajectory holds subagent calls: Harbor merges `<session>/subagents/*.jsonl` into `trajectory.json` as sidechain steps (read from `harbor/agents/installed/claude_code.py`, no smoke trial spawned one), so the counts cover them
 - the docs block: stack doc links + the MCP pointers, the same shape and length ±20% on both stacks. Not the repos' `AGENTS.md`: both hold "ask the user" and "never run `npm test`" rules, which hurt a zero-human run
 - each arm carries its own pointer: the line naming the skills ships with `skills`, the MCP tools and docs with `mcp-docs`. The build specs name neither
 - `bare` is not docs-free: the open web is reachable in every arm. Record doc fetches per trial
@@ -272,7 +274,9 @@ verifier/leak.py                    the leak scan; assemble.py writes its baseli
 verifier/run.py, adapters/          the verifier, one copy; assemble.py copies it to each task's tests/verifier/ (gitignored)
 tasks/topology-check/               not a benchmark task: proves the trial topology inside Harbor, $0
 context/<stack>/skills/             vendored skill dirs, pinned
-context/<stack>/docs-block.md
+context/<stack>/docs-block.md       the MCP + docs arm's prompt addition
+context/<stack>/skills-pointer.md   the skills arm's one-line prompt addition
+context/<stack>/SOURCE.md           where the vendored skills come from: repo, commit, tree sha256
 context/pocock/skills/              implement (flag dropped), tdd, code-review, ...
 context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, AGENTS.md block
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
@@ -280,7 +284,7 @@ job-configs/<stack>-{bare,skills,mcp-docs,full,full-pocock}.yaml    plus topolog
 job-configs/probes/                 the harness probes: run.sh and its prompt templates (subscription)
 jobs/                               Harbor's job output, gitignored
 assemble.py                         given inputs + SPEC.md + E2E.md → a task's environment/app/; the pile → the pocock mount
-analyze.py                          job dirs → trials.jsonl → 2 × 2 effects
+analyze.py, analyze_test.py         job dirs → trials.jsonl → 2 × 2 effects; so far the lever counts
 docs/codeclimb-eval-spec.md         this file
 docs/adr/
 GLOSSARY.md
@@ -293,16 +297,18 @@ job_name: inngest-full
 n_attempts: 3
 n_concurrent_trials: 1
 tasks: [{ path: tasks/codeclimb-inngest }]
+environment: { type: docker }
+retry: { max_retries: 1, exclude_exceptions: [...] }   # the whole list above
 agents:
   - name: claude-code
     model_name: anthropic/claude-opus-5-5
     skills: [context/inngest/skills/<skill>, ...]      # one entry per skill dir
     mcp_servers: [{ name: inngest-dev, transport: streamable-http, url: http://127.0.0.1:8288/mcp }]
-    kwargs: { reasoning_effort: medium, max_budget_usd: "<cap>" }
-extra_instruction_paths: [context/inngest/docs-block.md]
+    kwargs: { reasoning_effort: medium, max_budget_usd: "<cap>" }   # the cap is added after phase B
+extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/docs-block.md]
 ```
 
-- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps only `skills`; `mcp-docs` drops only `skills`. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and, on the command line, `--mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
+- other arms: `bare` drops `skills`, `mcp_servers` and `extra_instruction_paths`; `skills` keeps `skills` and only the skills pointer; `mcp-docs` drops `skills` and keeps only the docs block. `full-pocock` adds the pocock skills, `kwargs.prompt_template_path: context/pocock/prompt.md` and, on the command line, `--mounts` of `context/pocock/scaffold/` and the assembled pile (→ `/app/.scratch/codeclimb/issues/`) into `/app`
 - checked in `harbor job schema`: `mcp_servers[].transport` is `stdio`, `sse` (default) or `streamable-http`; `extra_instruction_paths` is job-level; `kwargs.prompt_template_path` must name `instruction` (the probes wrap it in `{% if false %}`)
 - commands:
   - topology check, $0: `tasks/topology-check/run.sh`
