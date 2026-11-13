@@ -1,0 +1,43 @@
+# LangChain, arm `full`: skills, MCPs and the docs block. Assemble first: python3 assemble.py langchain
+# The budget cap (kwargs.max_budget_usd) is set after phase B.
+job_name: langchain-full
+n_attempts: 3
+n_concurrent_trials: 1
+tasks: [{ path: tasks/codeclimb-langchain }]
+environment:
+  type: docker
+retry:
+  max_retries: 1
+  # Writing this list replaces Harbor's default: the default, plus the two a usage limit or the budget cap can raise
+  # (docs/codeclimb-eval-spec.md, "Jobs, repeats, cost").
+  exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - ApiUsageLimitError
+    - AgentSafetyRefusalError
+    - AgentAuthenticationError
+    - ModelNotFoundError
+    - UnsupportedModelParametersError
+    - NonZeroAgentExitCodeError
+    - UnknownApiError
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-opus-5-5
+    kwargs: { reasoning_effort: medium }
+    skills:
+      - context/langchain/skills/langchain-skills
+      - context/langchain/skills/langsmith-skills
+    mcp_servers:
+      - name: langchain-docs
+        transport: streamable-http
+        url: https://docs.langchain.com/mcp
+      # LangSmith's remote MCP, EU region (the benchmark key's), authenticated by the key rather than OAuth.
+      # Harbor resolves the header from the host and hands it to Claude Code through the exec env only.
+      - name: langsmith
+        transport: streamable-http
+        url: https://eu.api.smith.langchain.com/mcp
+        headers: { X-API-Key: "${CODECLIMB_BENCH_LANGSMITH_API_KEY}" }
+extra_instruction_paths: [context/langchain/skills-pointer.md, context/langchain/docs-block.md]

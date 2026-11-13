@@ -1,4 +1,4 @@
-{#- Probe template for the arm smoke trials: keeps the task's instruction (and so the arm's extra instructions) and
+{#- Probe template for the Inngest arm smoke trials: keeps the task's instruction (and so the arm's extra instructions) and
     replaces the work with a short check of the inngest-dev MCP against the pre-started dev server. -#}
 {{ instruction }}
 
