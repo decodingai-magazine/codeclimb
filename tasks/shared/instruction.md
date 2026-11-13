@@ -11,5 +11,6 @@ What you have:
 - `/app`: the given inputs `SPEC.md` lists, as a git repository with one commit
 - `/docs/pi/`: the docs of the Pi coding agent SDK
 - a Docker daemon of your own (`docker` works) and the open web
+{services}
 
 Nothing outside `/app` is graded. Commit your work in `/app` as you go.

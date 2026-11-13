@@ -76,6 +76,10 @@
 - sizes: the sidecar's volume peaked at 0.9 GB on Inngest and 6.5 GB on LangChain (the server image alone is 2 GB). A cold `npm run server` takes 2 minutes; each mock night 6 to 16 s
 - the LangChain server needs `/app` to be a git checkout, so the verifier runs `git init` + one commit on the copy it receives
 - a failed metering path does not fail a night: `run-night` still prints `done` and exits 0. Only the `meter.jsonl` check and `decision_reason` show it
+- the stack's external services already run when the harness starts, in every arm, in the trial only (the verifier starts its own, fresh). The instruction's "What you have" list names them (`assemble.py` fills it per stack), so the harness uses them rather than starting its own
+  - Inngest: the dev server, a service `inngest` in `environment/docker-compose.yaml`: the task image running `inngest-cli dev -u http://localhost:3000/api/inngest --no-discovery` (the command the given `dev:inngest` runs), on the sidecar's network, with a healthcheck `main` waits for. Measured 2026-11-13 with plain `docker compose`: from `main`, `http://127.0.0.1:8288` and the MCP endpoint `/mcp` answer 200
+  - LangChain: decided with its arms (#49)
+  - why: Claude Code connects to MCP servers once, at start, and does not reconnect (Arms), so `inngest-dev` works only if the dev server is up before `claude` starts. A real developer has these services running when they start a session
 - not the host socket: `cc-meter` and `cc-meter-relay` are global names, and `docker ps` checks would see other trials. Fallback: host socket + one trial at a time
 - the verifier needs the same daemon: `tests/docker-compose.yaml` holds the same topology for the separate verifier environment. Job-level mounts and `extra_docker_compose` are agent-only. `artifacts` re-upload `/app` to the same path in the verifier, dropping symlinks (fine: it runs `npm ci`). The host fallback (`verifier/run.py --app <artifact dir> --stack <s>` after the job) is not needed on local Docker; it stays for a provider without Docker-in-Docker
 
@@ -112,10 +116,14 @@
 
 - skills are vendored whole and unedited at a pinned commit: the arm measures the ecosystem as a developer gets it, not our selection
 - Harbor fields: skills via `agents[].skills` (verified: a list of skill dirs, which Harbor copies into Claude Code's `$CLAUDE_CONFIG_DIR/skills/`); MCP via `agents[].mcp_servers`; the docs block via `extra_instruction_paths`
+- Inngest: `context/inngest/skills/` is the `skills/` folder of `inngest/inngest-claude-code-plugin` at `78607dd41fa07a44829c3039bbd95814ac7f5f9c` (tree sha256 `8ca4655d…aedb10f`, in `context/inngest/SOURCE.md`): 14 skill dirs plus `references/`. The job files list the 14; `references/` cannot go in, because Harbor rejects a skill dir without `SKILL.md`, and a skill root that holds one (read from `harbor/skills.py`). So the `../references/expressions.md` links in `inngest-events`, `inngest-durable-functions` and `inngest-steps` dangle in a trial. Accepted: one page on expression syntax, also in the docs
 - plugins: marketplace entries in `.claude/settings.json` are unpinned and fetched at run time from GitHub, which is blocked. So their skills are vendored as dirs, and the job lock file records name, `digest`, `git_commit_id`
 - why MCP and docs are coupled: on Inngest one server serves both platform and docs tools
 - effects, within a stack: skills = mean of (`skills` − `bare`, `full` − `mcp-docs`); MCP + docs = mean of (`mcp-docs` − `bare`, `full` − `skills`); interaction = (`full` − `mcp-docs`) − (`skills` − `bare`)
-- `inngest-dev` answers only while the harness runs the dev server, which is down at trial start `(guess: Claude Code may not reconnect)`. Record MCP tool calls per trial, split platform vs docs tools; 0 calls = the lever was never used
+- `inngest-dev` is served by the dev server, so it runs before the harness starts (Trial environment). Measured (#48 smoke, `mcp-docs` and `full`, with the dev server started by the harness): Claude Code connects once at start, gets ECONNREFUSED, marks the server `failed` and does not reconnect after the dev server answers on 8288; a tool search for "inngest" finds nothing. Record MCP tool calls per trial, split platform vs docs tools; 0 calls = the lever was never used
+- Inngest arm smoke (#48, 2026-11-13, `job-configs/probes/arm-smoke.sh inngest <arm>...`: the arm's job file with one attempt, no verifier and a probe prompt; about $0.07–0.10 each): `bare` has 17 built-in skills, no MCP server, no extra prompt; `skills` has the 14 Inngest skills in `$CLAUDE_CONFIG_DIR/skills/` and the skills pointer in the prompt, no MCP; `mcp-docs` has `inngest-dev` registered and the docs block in the prompt, no Inngest skills; `full` has both. With the dev server pre-started, `mcp-docs` reports `inngest-dev` `connected` with 52 tools and called `get_apps` (37 s trial)
+- lever counts: `analyze.py counts <trajectory.json>` counts from a trajectory's tool calls: `Skill` calls; MCP calls, split into docs tools (`inngest-dev`'s `grep_docs`, `list_docs`, `read_doc`; every tool of `langchain-docs`) and platform tools (every other); `WebFetch`, `WebSearch`, and Bash `curl`/`wget` of a non-local URL (doc fetches). Tests: `python3 -m unittest analyze_test`
+- measured (#48 smoke): `claude --print` does not return while a `run_in_background` Bash task runs. It returned only when Claude Code killed the dev server at its background time limit, about 10 min in, so a 1-minute probe took 10.6 min
 - the docs block: stack doc links + the MCP pointers, the same shape and length ±20% on both stacks. Not the repos' `AGENTS.md`: both hold "ask the user" and "never run `npm test`" rules, which hurt a zero-human run
 - each arm carries its own pointer: the line naming the skills ships with `skills`, the MCP tools and docs with `mcp-docs`. The build specs name neither
 - `bare` is not docs-free: the open web is reachable in every arm. Record doc fetches per trial
@@ -339,5 +347,4 @@ extra_instruction_paths: [context/inngest/docs-block.md]
 
 ## Open points
 
-- whether Claude Code reconnects to `inngest-dev` once the harness starts the dev server (Arms)
 - how a subscription usage-limit stop shows in a trial: read from the sources, not triggered (see Jobs, repeats, cost). The first one in phase B confirms the `analyze.py` rule

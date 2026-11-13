@@ -33,6 +33,14 @@ VERIFIER = ROOT / "verifier"
 # One line, no guidance: every arm gets the same stub, the instruction's canary line.
 AGENTS_STUB = INSTRUCTION.read_text().splitlines()[0] + "\n"
 
+# The stack's external services, running before the harness starts (the task's docker-compose.yaml), for the
+# instruction's "What you have" list. The verifier starts its own.
+SERVICES = {
+    "inngest": "- the Inngest dev server, already running at `http://127.0.0.1:8288`, started as `npm run dev:inngest`"
+    " starts it. It keeps running for the whole session: use it, don't start another\n",
+    "langchain": "",
+}
+
 STUBS = frozenset({"SPEC.md", "E2E.md", "AGENTS.md"})
 
 # Forbidden in every file of /app. The reference builds' commits, by 7-char prefix:
@@ -155,7 +163,7 @@ def assemble(stack: str, out: Path, spec_path: Path | None = None, record_path: 
 def assemble_task(stack: str) -> dict[str, str]:
     task = ROOT / "tasks" / f"codeclimb-{stack}"
     record = assemble(stack, task / "environment" / "app")
-    shutil.copyfile(INSTRUCTION, task / "instruction.md")
+    (task / "instruction.md").write_text(INSTRUCTION.read_text().replace("{services}\n", SERVICES[stack]))
     (task / "environment" / "managed-settings.json").write_text(json.dumps(managed_settings(), indent=2) + "\n")
     if (task / "tests" / "verifier").exists():
         shutil.rmtree(task / "tests" / "verifier")

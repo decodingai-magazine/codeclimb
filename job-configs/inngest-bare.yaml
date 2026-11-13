@@ -1,0 +1,29 @@
+# Inngest, arm `bare`: nothing extra. Assemble first: python3 assemble.py inngest
+# The budget cap (kwargs.max_budget_usd) is set after phase B.
+job_name: inngest-bare
+n_attempts: 3
+n_concurrent_trials: 1
+tasks: [{ path: tasks/codeclimb-inngest }]
+environment:
+  type: docker
+retry:
+  max_retries: 1
+  # Writing this list replaces Harbor's default: the default, plus the two a usage limit or the budget cap can raise
+  # (docs/codeclimb-eval-spec.md, "Jobs, repeats, cost").
+  exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - ApiUsageLimitError
+    - AgentSafetyRefusalError
+    - AgentAuthenticationError
+    - ModelNotFoundError
+    - UnsupportedModelParametersError
+    - NonZeroAgentExitCodeError
+    - UnknownApiError
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-opus-5-5
+    kwargs: { reasoning_effort: medium }

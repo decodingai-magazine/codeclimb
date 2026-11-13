@@ -12,6 +12,20 @@ services:
       - app:/app
     depends_on:
       dind: { condition: service_healthy }
+      inngest: { condition: service_healthy }
+  # The stack's external service, running before the harness starts: the Inngest dev server, started as the given
+  # `npm run dev:inngest` starts it, on the sidecar's network so 127.0.0.1:8288 reaches it from `main`. Trial only:
+  # the verifier starts its own.
+  inngest:
+    build: .
+    network_mode: "service:dind"
+    command: ["inngest-cli", "dev", "-u", "http://localhost:3000/api/inngest", "--no-discovery"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://127.0.0.1:8288"]
+      interval: 2s
+      retries: 30
+    depends_on:
+      dind: { condition: service_healthy }
   dind:
     extends: { file: ../../shared/dind.compose.yaml, service: dind }
     volumes:
