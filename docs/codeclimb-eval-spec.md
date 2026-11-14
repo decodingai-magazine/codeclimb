@@ -171,6 +171,7 @@
 - `reward` = checks passed / N, a fraction in [0, 1]; equal weights; no `solution/solve.sh`. N is fixed when both reference builds pass, and is the same number on both stacks
 - the checks, each counted once:
   - 5 build checks, in build order, so a half-built app scores above empty given inputs: `install` (`npm ci --ignore-scripts` exits 0), `typecheck`, `unit-tests` (`npm test`), `image` (`build:image` gives `codeclimb-python`), `services-up` (the stack's services answer within 60 s)
+  - `build:image` runs before `npm test`, while the checks keep this order: both build specs promise that `docker images` lists `codeclimb-python`, so a build's tests may start a sandbox. Found in phase D2 (2026-11-14): both `pocock` builds had tests that start `codeclimb-python` sandboxes, and with `npm test` first, in the verifier's fresh daemon, they failed with "Unable to find image 'codeclimb-python:latest' locally"
   - night checks: one per row of the done signal's check tables. A row of the first table passes only if it holds in every night it applies to (nights 1, 2, 3 and 6, and the rows night 7 carries over); each added row of nights 3 to 6 and each row of night 7's own table counts once
 - `done` = 1 if every check passes: secondary, reported beside `reward`
 - the harness sees these checks (they are its done signal), so the verifier reruns them itself on a clean copy: separate verifier container, the build arrives through `artifacts` only, `npm ci --ignore-scripts`, rebuild images, start services, empty results directory. Results the harness left behind count for nothing
@@ -317,6 +318,17 @@
     - cost: Inngest skills −$0.65, MCP + docs −$1.96, interaction +$0.31; LangChain skills +$0.58, MCP + docs +$0.60, interaction +$0.30. None is called by the pre-set test
   - stack comparison on the 34 shared checks: both stacks score 1.000 in every arm; mean cost per arm Inngest 15.10 / 14.30 / 12.99 / 12.50 (`bare`, `skills`, `mcp-docs`, `full`), LangChain 12.71 / 13.15 / 13.16 / 13.89. Neither stack is cheaper in every arm
   - result: no detectable effect of skills, of MCP + docs, or of their interaction, on reward or cost, on either stack, at n = 3. Reward sits at the ceiling in every cell, so the build specs do not separate the arms; a harder task or a finer reward is needed before more repeats can show a context effect
+- phase D2 trial run, 2026-11-14 13:12 to 14:47: one `full × pocock` trial per stack instead of three, to check the workflow end to end before the build specs and tickets are tuned (the operator's call). Both side by side, `-k 1` on the job files, cap $32 not hit, no usage limit, no infra error, `leak` 0:
+
+| trial | reward (Harbor, then regrade) | $ (API price) | agent min | turns | tool calls | tickets done | commits |
+|---|---|---|---|---|---|---|---|
+| Inngest `pocock` `pW5jnmE` | 0.941, then 1 | 18.70 | 82.7 | 179 | 196 | 40 / 40 | 43 |
+| LangChain `pocock` `xkVfypS` | 0.971, then 1 | 18.89 | 82.1 | 179 | 201 | 46 / 46 | 49 |
+
+  - against phase C's `full × one-shot` means: +$6.20 and +31 min on Inngest, +$5.00 and +21.5 min on LangChain; reward equal after the regrade. The tickets and the per-ticket loop are measured together, not apart
+  - `unit-tests` failed in both Harbor grades: the builds' tests start `codeclimb-python` sandboxes, and the verifier ran `npm test` before `build:image`. Fixed in the verifier (Verifier, the build checks); both reference builds score 34 of 34 with the new order (`grade.sh`, 2026-11-14), and `harbor trial regrade` of both trials (`jobs/d2-regrade-20261114-1522`) scores 34 of 34
+  - Inngest `hard-stop` failed in the first grade (`stop.json` reason `cancelled`, not `manual`, and sandbox `cc-<night>` still present after 30 s) and passed in the regrade: a flaky check on this build. One build's flake, not yet seen on a reference build
+  - the workflow was not followed as written: neither agent called `implement` through the Skill tool (only the template's first `/implement`), and each called `code-review` once, after the last ticket, with its 2 subagents; no `tdd` call. Each did close every ticket with its own commit. `context/pocock/prompt.md` needs a firmer per-ticket instruction before the three-trial run
 - each phase from B on starts only with the operator's go-ahead
 - power: n = 3 per cell, so only large effects show. The 2 × 2 helps: each main effect pools 6 trials vs 6. Add repeats to a cell only when its result is borderline
 

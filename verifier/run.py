@@ -86,17 +86,18 @@ def npm_script(app: Path, script: str, timeout_s: int) -> tuple[bool, str]:
 
 
 def build_checks(run: Run) -> None:
-    """The five build checks, in build order, so a half-built app scores above empty given inputs."""
+    """The five build checks, in build order, so a half-built app scores above empty given inputs. The image is
+    built before `npm test` runs: the build specs promise `codeclimb-python` exists, so tests may start a sandbox."""
     app = run.app
     run.record("install", *sh(app, ["npm", "ci", "--ignore-scripts"], INSTALL_S))
     run.record("typecheck", *npm_script(app, "typecheck", TYPECHECK_S))
-    run.record("unit-tests", *npm_script(app, "test", UNIT_TESTS_S))
 
-    ok, out = npm_script(app, "build:image", IMAGE_S)
-    if ok:
-        ok, more = sh(app, ["docker", "image", "inspect", "codeclimb-python"], 60)
-        out += more
-    run.record("image", ok, out)
+    image_ok, image_out = npm_script(app, "build:image", IMAGE_S)
+    if image_ok:
+        image_ok, more = sh(app, ["docker", "image", "inspect", "codeclimb-python"], 60)
+        image_out += more
+    run.record("unit-tests", *npm_script(app, "test", UNIT_TESTS_S))
+    run.record("image", image_ok, image_out)
 
     # The services stay up for the nights; main() stops them.
     shutil.rmtree(app / run.adapter.RUNS, ignore_errors=True)
