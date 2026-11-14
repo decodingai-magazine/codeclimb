@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from analyze import collect, effects, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report
+from analyze import collect, effects, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report, stream_facts
 
 
 def trajectory(*calls):
@@ -41,6 +41,23 @@ class LeverCounts(unittest.TestCase):
         counts = lever_counts({"steps": [{"message": "hi"}]})
         self.assertEqual(counts.pop("workflow_skills"), {})
         self.assertEqual(sum(counts.values()), 0)
+
+
+class StreamFacts(unittest.TestCase):
+    # #53: a background task re-woke the session after its first result; Harbor took that result's cost.
+    def test_a_rewoken_session_sums_turns_and_keeps_the_last_cost(self):
+        events = [
+            {"type": "result", "num_turns": 135, "total_cost_usd": 16.0, "duration_api_ms": 2155485, "subtype": "success"},
+            {"type": "result", "num_turns": 23, "total_cost_usd": 16.0, "duration_api_ms": 2155485, "subtype": "success"},
+            {"type": "result", "num_turns": 3, "total_cost_usd": 16.26, "duration_api_ms": 2168624, "subtype": "success",
+             "terminal_reason": "completed"},
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "claude-code.txt"
+            p.write_text("".join(json.dumps(e) + "\n" for e in events))
+            facts = stream_facts(p)
+        self.assertEqual((facts["num_turns"], facts["cost_usd"], facts["results"]), (161, 16.26, 3))
+        self.assertEqual(facts["terminal_reason"], "completed")
 
 
 class PileProgress(unittest.TestCase):
@@ -149,6 +166,15 @@ class Trials(unittest.TestCase):
         self.assertEqual(got[("mcp-docs", "reward")]["call"], "not detectable at n = 3")
         self.assertEqual(got[("interaction", "reward")]["call"], "not detectable at n = 3")
         self.assertEqual(got[("skills", "cost_usd")]["p"], 1.0)
+
+    def test_full_against_bare_works_without_the_middle_cells(self):  # #53: phase C runs only bare and full
+        rows = [r for r in self.rows if r["stack"] == "langchain" and r["arm"] in ("bare", "full")]
+        reward, cost = full_vs_bare(rows, "reward"), full_vs_bare(rows, "cost_usd")
+        self.assertAlmostEqual(reward["value"], 0.7)
+        self.assertAlmostEqual(reward["p"], 1 / 20)
+        self.assertTrue(reward["call"].startswith("+ effect"))
+        self.assertEqual((cost["p"], cost["call"]), (1.0, "not detectable at n = 3"))
+        self.assertIn("langchain reward   full - bare +0.700", report(rows))
 
     def test_a_regrade_replaces_its_source(self):
         regrade = self.by_trial[("regrade-bare", "r0")]

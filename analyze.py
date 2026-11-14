@@ -126,10 +126,14 @@ def _json(path: Path) -> dict:
 
 
 def stream_facts(path: Path) -> dict:
-    """From Claude Code's stream (agent/claude-code.txt): the last `result` event's num_turns, subtype and
-    terminal_reason, and whether the subscription's usage limit stopped the run (an assistant event with error
-    `rate_limit` or `billing_error`, or a result with api_error_status 429)."""
-    facts: dict = {"num_turns": None, "subtype": None, "terminal_reason": None, "usage_limit": False}
+    """From Claude Code's stream (agent/claude-code.txt): the last `result` event's subtype and terminal_reason,
+    and whether the subscription's usage limit stopped the run (an assistant event with error `rate_limit` or
+    `billing_error`, or a result with api_error_status 429).
+
+    A session that a background task wakes after it ends emits one `result` per segment. `total_cost_usd` is
+    cumulative, so cost is the last one's; `num_turns` is per segment, so turns are their sum."""
+    facts: dict = {"num_turns": None, "cost_usd": None, "results": 0, "subtype": None, "terminal_reason": None,
+                   "usage_limit": False}
     if not path.exists():
         return facts
     for line in path.read_text(errors="replace").splitlines():
@@ -142,7 +146,10 @@ def stream_facts(path: Path) -> dict:
         if e.get("type") == "assistant" and e.get("error") in ("rate_limit", "billing_error"):
             facts["usage_limit"] = True
         if e.get("type") == "result":
-            facts.update(num_turns=e.get("num_turns"), subtype=e.get("subtype"), terminal_reason=e.get("terminal_reason"))
+            if e.get("num_turns") is not None:
+                facts["num_turns"] = (facts["num_turns"] or 0) + e["num_turns"]
+            facts.update(cost_usd=e.get("total_cost_usd", facts["cost_usd"]), results=facts["results"] + 1,
+                         subtype=e.get("subtype"), terminal_reason=e.get("terminal_reason"))
             if e.get("api_error_status") == 429:
                 facts["usage_limit"] = True
     return facts
@@ -230,7 +237,7 @@ def trial_row(trial: Path) -> dict | None:
         "tokens_out": ar.get("n_output_tokens"),
         "tokens_cache_read": ar.get("n_cache_tokens"),
         "tokens_cache_creation": ((traj.get("final_metrics") or {}).get("extra") or {}).get("total_cache_creation_input_tokens"),
-        "cost_usd": ar.get("cost_usd"),
+        "cost_usd": stream["cost_usd"] if stream["cost_usd"] is not None else ar.get("cost_usd"),  # Harbor reads the first result
         "turns": stream["num_turns"],
         "tool_calls": sum(len(s.get("tool_calls") or []) for s in traj.get("steps", [])),
         "result_subtype": stream["subtype"],
@@ -360,8 +367,23 @@ def effects(rows: list[dict], metric: str) -> list[dict]:
     p, exact = interaction_p(cells, direction)
     out.append({"effect": "interaction", "metric": metric, "value": interaction(cells), "p": p, "exact": exact})
     for e in out:
-        e["call"] = f"{'+' if direction == 'greater' else '-'} effect, p = {e['p']:.4f}" if e["p"] <= ALPHA else f"not detectable at n = {n}"
+        e["call"] = _call(e["p"], direction, n)
     return out
+
+
+def _call(p: float, direction: str, n: int) -> str:
+    return f"{'+' if direction == 'greater' else '-'} effect, p = {p:.4f}" if p <= ALPHA else f"not detectable at n = {n}"
+
+
+def full_vs_bare(rows: list[dict], metric: str) -> dict:
+    """`full` against `bare` within one stack's counted one-shot trials (phase C): mean(full) - mean(bare), exact
+    one-sided test in the metric's DIRECTION. At 3 vs 3 the smallest p is 1/20 = ALPHA."""
+    full, bare = ([r[metric] for r in rows if r["arm"] == a and r[metric] is not None] for a in ("full", "bare"))
+    if not full or not bare:
+        return {"metric": metric, "value": None, "p": None, "call": "missing cells: " + str([a for a, v in (("full", full), ("bare", bare)) if not v])}
+    direction = DIRECTION.get(metric, "greater")
+    p, _ = permutation_p(full, bare, direction)
+    return {"metric": metric, "value": mean(full) - mean(bare), "p": p, "call": _call(p, direction, min(len(full), len(bare)))}
 
 
 # --- report --------------------------------------------------------------------------------------------------------
@@ -429,9 +451,15 @@ def stack_comparison(rows: list[dict]) -> list[str]:
 
 
 def report(rows: list[dict]) -> str:
-    lines = ["== outcome per cell (counted trials)", *cell_table(rows), "", "== 2 x 2 effects, one-shot, within a stack"]
-    for stack in ("inngest", "langchain"):
-        rs = [r for r in rows if r["stack"] == stack and r["status"] == "counted" and r["workflow"] == "one-shot" and r["arm"] in ARMS.values()]
+    lines = ["== outcome per cell (counted trials)", *cell_table(rows), "", "== full against bare, one-shot, within a stack"]
+    per_stack = {s: [r for r in rows if r["stack"] == s and r["status"] == "counted" and r["workflow"] == "one-shot" and r["arm"] in ARMS.values()]
+                 for s in ("inngest", "langchain")}
+    for stack, rs in per_stack.items():
+        for metric in ("reward", "cost_usd"):
+            e = full_vs_bare(rs, metric)
+            lines.append(f"{stack:9} {metric:8} full - bare {'-' if e['value'] is None else f'{e['value']:+.3f}'}  {e['call']}")
+    lines += ["", "== 2 x 2 effects, one-shot, within a stack"]
+    for stack, rs in per_stack.items():
         if not rs:
             lines.append(f"{stack}: no counted arm trials")
             continue
