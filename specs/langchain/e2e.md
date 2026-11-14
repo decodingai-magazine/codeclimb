@@ -1,6 +1,6 @@
 # End-to-end test
 
-The seven nights of `SPEC.md`, section "Goal and done signal", as a procedure. This file repeats that section and adds nothing; where the two differ, `SPEC.md` wins. You are done when every night below passes every check listed for it.
+The seven nights of `SPEC.md`, section "Goal and done signal", as a procedure: that section's checks, plus the steps that run them. Time limits are in `SPEC.md`, section "Numbers". Where the two differ, `SPEC.md` wins. You are done when every night below passes every check listed for it.
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files are the evidence, not `stop_reason` alone.
 
@@ -10,7 +10,7 @@ Mock metrics mean nothing: a score of 0 is expected. The checks prove that every
 2. Build the images: `npm run build:image`, then `npm run build:image:graphrag` (night 7). `docker images` lists `codeclimb-python` and `codeclimb-graphrag`. `uv` is on the path (night 7's host commands).
 3. `.env` exists with `LANGSMITH_API_KEY`: the server does not boot without it.
 4. Run `npm run server`, until `curl -s http://127.0.0.1:8123/ok` answers. It serves the code as it was when it started, so run it again after every code change.
-5. Run one night at a time: one server runs one night at a time. Before each night, `docker ps` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: an id that was used before is refused.
+5. Run one night at a time: one server runs one night at a time. Before each night, `docker ps -a` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: an id that was used before is refused.
 
 `<runs>` below is `runs-langchain/mock`. `<name>` is the folder the night's config names in `results_path`, and `<dir>` is `<runs>/<name>`. `results.jsonl`, `experiments.git` and `lessons/` sit directly in `<dir>`; every other path below (`done.json`, `stop.json`, `pause.json`, `noise.json`, `exps/`, `reviews/`, `bundle/`, `evals/`) is under `<dir>/nights/<id>/`.
 
@@ -31,7 +31,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 - C11. `datenorm-smoke`: round 1's commit holds the starter's code, which scores above 0 on dev (accuracy 0.125), so it is kept; a `noise` row follows in round 2 and `noise.json` exists. `capitals-smoke` scores 0 and keeps nothing.
 - C12. `done.json` has `spend_usd: 0`.
 - C13. `capitals-smoke`: `evals/*/meter.jsonl` lists the program's calls, none with `error`.
-- C14. `docker ps` shows no `cc-<id>` container.
+- C14. No `cc-<id>` container exists, running or stopped (`docker ps -a`).
 
 ## Night 1: the metering proxy
 
@@ -50,7 +50,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
    - `run-night` prints `done` with `stop_reason` `plateau`
    - `done.json` has `rounds: 1`
    - there is a `test` row
-   - no `cc-<id>` container is left
+   - no `cc-<id>` container exists, running or stopped
 
 ## Night 4: a hard stop mid-round
 
@@ -60,7 +60,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 2. Once `exps/<id>-r1-e0/` exists, run `npm run run-night -- stop --night <id>`.
 3. Check:
    - the stop command prints `stopped` and exits 0
-   - within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row for `<id>`; no `cc-<id>` container is left
+   - within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row for `<id>`; no `cc-<id>` container exists, running or stopped
    - a `run-night` that was following the night prints `stopped` too
 
 ## Night 5: crash resume
@@ -76,7 +76,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
    - every `eval_id` is in `results.jsonl` once
    - round 1's `code-state.json` is unchanged (round 1's coder did not run again)
    - no `cc-<id>-r1-` sandbox is created after the kill (the night resumed where it was instead of running round 1 again)
-   - only the step running at the kill reruns, on a new sandbox of the same name
+   - only the step running at the kill reruns
 
 ## Night 6: a lost connection mid-turn
 

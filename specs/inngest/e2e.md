@@ -1,6 +1,6 @@
 # End-to-end test
 
-The seven nights of `SPEC.md`, section "Goal and done signal", as a procedure. This file repeats that section and adds nothing; where the two differ, `SPEC.md` wins. You are done when every night below passes every check listed for it.
+The seven nights of `SPEC.md`, section "Goal and done signal", as a procedure. This file repeats that section and adds only how to run it; where the two differ, `SPEC.md` wins. You are done when every night below passes every check listed for it.
 
 Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files are the evidence, not `stop_reason` alone.
 
@@ -20,7 +20,7 @@ Mock metrics mean nothing: a score of 0 is expected. The checks prove that every
 
 Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
-- C1. `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3).
+- C1. `run-night` prints `done` (the first word of its own line), with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3).
 - C2. `<dir>/nights/<id>/done.json` exists; `stop.json` and `pause.json` don't.
 - C3. `npm run validate-results -- <dir>/results.jsonl` passes.
 - C4. `results.jsonl` has a row per experiment of every round, plus a `test` row.
@@ -33,7 +33,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 - C11. `datenorm-smoke`: round 1's commit holds the starter's code, which scores above 0 on dev (accuracy 0.125), so it is kept; a `noise` row follows in round 2 and `noise.json` exists. `capitals-smoke` scores 0 and keeps nothing.
 - C12. `done.json` has `spend_usd: 0`.
 - C13. `capitals-smoke`: `evals/*/meter.jsonl` lists the program's calls, none with `error`.
-- C14. `docker ps` shows no `cc-<id>` container.
+- C14. No `cc-<id>` container exists, running or stopped (`docker ps -a`).
 
 ## Night 1: the metering proxy
 
@@ -52,7 +52,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
    - `run-night` prints `done` with `stop_reason` `plateau`
    - `done.json` has `rounds: 1`
    - there is a `test` row
-   - no `cc-<id>` container is left
+   - no `cc-<id>` container is left, running or stopped
 
 ## Night 4: a hard stop mid-round
 
@@ -62,7 +62,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 2. Once `exps/<id>-r1-e0/` exists, run `npm run run-night -- stop --night <id>`.
 3. Check:
    - the stop command prints `stopped` and exits 0
-   - within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row for `<id>`; no `cc-<id>` container is left
+   - within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row for `<id>`; no `cc-<id>` container is left, running or stopped
    - a `run-night` that was following the night prints `stopped` too
 
 ## Night 5: crash resume
@@ -89,7 +89,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 1. `npm run build:image:graphrag`
 2. `npm run run-night -- --config configs/graphrag-smoke.yaml --mock --night-id <id>`
-3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
+3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` because the stage wrote no output, each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
 4. Check C1, C2, C3, C5, C6, C7, C10, C12 and C14, and:
    - `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row. A round has an `e1` row only after an `e0` row with decision `error`; no round has an `e2`
    - every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither. `train-score.json` and `tasks.json` exist for both
