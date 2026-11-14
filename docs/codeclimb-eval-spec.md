@@ -301,6 +301,22 @@
     - cost, tested as "`full` costs more": LangChain +$1.18, p = 0.05, called at the floor. Its `full` trials used no pack skill and no MCP tool, so the levers' use cannot explain it; the larger context can (45 skills and 2 MCP servers in `init`, against 17 and none in `bare`; cache reads 32.1M against 28.7M). Inngest −$2.61, the opposite direction: not called by the pre-set test; two-sided p = 0.10, descriptive only
     - the two stacks move cost in opposite directions, so there is no consistent context effect on cost either. Wall-clock (Inngest −8.3 min, LangChain +6.9) and turns (−21, +2) follow cost, none past the floor
   - result: no detectable context effect on reward (ceiling), and no consistent one on cost. Per the stop rule, the operator decides whether phase D runs
+- phase D results, 2026-11-14 08:17 to 12:02, same harness, model and effort as phase C. The four jobs (`jobs/d-*-20261114-0817`, gitignored) ran side by side, launched one minute apart in shuffled order (LangChain `mcp-docs`, Inngest `skills`, Inngest `mcp-docs`, LangChain `skills`), 4 trials at a time as in phase C. No usage limit, no infra error, no retry, `leak` 0. Total $160.80 at API prices. Means per cell (n = 3):
+
+| cell | reward | $ (API price) | agent min | turns | tool calls | skill / MCP docs calls |
+|---|---|---|---|---|---|---|
+| Inngest `skills` | 1, 1, 1 | 14.30 (12.9, 16.5, 13.4) | 62.9 | 141 | 157 | 1 each / – |
+| Inngest `mcp-docs` | 1, 1, 1 | 12.99 (11.5, 12.6, 14.9) | 51.6 | 137 | 135 | – / 3 in one trial |
+| LangChain `skills` | 1, 1, 1 | 13.15 (12.8, 12.5, 14.0) | 64.6 | 134 | 130 | 0 / – |
+| LangChain `mcp-docs` | 1, 1, 1 | 13.16 (16.4, 11.1, 12.0) | 47.9 | 128 | 127 | – / 0 |
+
+  - levers per trial: every Inngest trial given skills (`skills` and `full`, 6 of 6) invoked one pack skill; no LangChain trial given skills (6 of 6) invoked one. Docs MCP: 1 of 3 Inngest `mcp-docs` trials (`Aywznti`, 3 calls), 0 of 3 LangChain. Platform MCP (`inngest-dev`): 1 of 6 Inngest trials that had it (`full` `YxsZ5ZD`, 3 calls). No `web_fetch` or `web_search` in any trial; `bash_fetch` 1 in 4 trials. `other_skill` (built-in skills such as `dataviz`) 1 in 4 trials
+  - multi-`result` sessions: 4 of 12 (Inngest `skills` `TxyXfPT` 2; LangChain `skills` `6k8WikX` 3, `WKT622W` 2, `cEiJ75y` 5), handled by the last-`result` cost and summed turns
+  - 2 × 2 per stack, with phase C's `bare` and `full` (`analyze.py`; main effects pool 6 trials against 6):
+    - reward: skills 0, MCP + docs 0, interaction 0 on both stacks. All 24 builds score 34 of 34
+    - cost: Inngest skills −$0.65, MCP + docs −$1.96, interaction +$0.31; LangChain skills +$0.58, MCP + docs +$0.60, interaction +$0.30. None is called by the pre-set test
+  - stack comparison on the 34 shared checks: both stacks score 1.000 in every arm; mean cost per arm Inngest 15.10 / 14.30 / 12.99 / 12.50 (`bare`, `skills`, `mcp-docs`, `full`), LangChain 12.71 / 13.15 / 13.16 / 13.89. Neither stack is cheaper in every arm
+  - result: no detectable effect of skills, of MCP + docs, or of their interaction, on reward or cost, on either stack, at n = 3. Reward sits at the ceiling in every cell, so the build specs do not separate the arms; a harder task or a finer reward is needed before more repeats can show a context effect
 - each phase from B on starts only with the operator's go-ahead
 - power: n = 3 per cell, so only large effects show. The 2 × 2 helps: each main effect pools 6 trials vs 6. Add repeats to a cell only when its result is borderline
 
