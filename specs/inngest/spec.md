@@ -13,7 +13,7 @@ You are done when the seven nights below pass, run one after the other, each und
 | 1 | `npm run run-night -- --config configs/capitals-smoke.yaml --mock` | The program calls a model through the metering proxy |
 | 2 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock` | Two rounds: round 1 is kept, a noise run follows, the review hands its hypothesis to round 2. Ends on `max_rounds` after exactly 2 rounds |
 | 3 | `npm run run-night -- --config configs/e2e/plateau.yaml --mock` | The plateau cap: nothing is kept, so the night ends on `plateau` after round 1 |
-| 4 | Night 2 with `--no-wait`, then `npm run run-night -- stop --night <id>` while round 1 runs | A hard stop mid-round |
+| 4 | Night 2, left following in its terminal; then, from a second terminal, `npm run run-night -- stop --night <id>` while round 1 runs | A hard stop mid-round |
 | 5 | Night 2 with `--no-wait`; once round 2 has started, kill the worker process with its children (the dev server keeps running), then `npm run worker` again | Crash resume |
 | 6 | `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --mock-offline 6` | A lost connection mid-turn: the coder's session carries on once model calls succeed again |
 | 7 | `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` | A multi-stage, metered night: three stages (`extraction`, `graph`, `retrieval`), a repository check, host commands through `uv`, a repair, lessons at the end |
@@ -42,7 +42,7 @@ Common checks, for nights 1, 2, 3 and 6:
 Added checks:
 
 - night 3: `done` with `stop_reason` `plateau`; `done.json` has `rounds: 1`; a `test` row exists; no `cc-<id>` container, running or stopped
-- night 4: stop once `exps/<id>-r1-e0/` exists. The stop command prints `stopped` and exits 0. Within 30 s: `stop.json` has `reason: manual`, there is no `done.json` and no `test` row, no `cc-<id>` container is left, running or stopped. A `run-night` that was following the night prints `stopped` too
+- night 4: stop once `exps/<id>-r1-e0/` exists. The stop command prints `stopped` and exits 0. Within 30 s: `stop.json` has `reason: manual`, there is no `done.json` and no `test` row, no `cc-<id>` container is left, running or stopped. The `run-night` that started the night and is still following it prints `stopped` too
 - night 5: kill once `exps/<id>-r2-e0/` exists (if the night finishes first, run it again). Start the worker again and nothing else. The night then finishes by itself: `done.json` exists, every `eval_id` is in `results.jsonl` once, round 1's `code-state.json` is unchanged (sha256 and mtime), and no `cc-<id>-r1-` sandbox is created after the kill
 - night 6: C1 to C14, and `exps/<id>-r1-e0/session/` holds an assistant message with stop reason `error`, followed by assistant messages without one
 
@@ -96,11 +96,11 @@ Isolation invariants every feature protects:
 
 - **Loop.** A night is linear: one experiment per round, from the checkpoint. A reverted experiment is dropped and the next round restarts from the same checkpoint, carrying what was learned. Round 1 has no hypothesis, so the coder picks one; later rounds test the reviewer's. The starter is never run on dev: its weighted score is 0. When nothing was kept, the test evaluation scores the starter.
 - **Weighted score.** A threshold metric's share is `min(max(value, 0) / threshold, 1)`; the weighted score is the weighted mean of the shares. It decides every keep, so gains past a threshold add nothing. The primary metric is for display only.
-- **Keep rule.** An experiment is kept only if it has a commit, its dev evaluation succeeded, its files differ from the checkpoint's, no guardrail fired (a failed gate, a stage with no output, two or more held-out names in the diff) and its weighted score beats the checkpoint's by more than the noise margin. Cost and latency are reported, never scored. Every experiment row says why in `decision_reason`.
-- **Noise margin.** A program that calls models scores differently on every run, so a small gain may be luck. At the start of the first round whose checkpoint has metrics, the checkpoint is evaluated on dev once more with no replayed calls (the A/A run, a `noise` row, `noise.json`). The margin is `clamp(base × √f, min, max)`: `base` is the configured fixed value or the measured move, `f` the share of the experiment's model calls that were not replayed.
+- **Keep rule.** An experiment is kept only if it has a commit, its dev evaluation succeeded, its files differ from the checkpoint's, no guardrail fired (a failed gate; a stage with no output in an evaluation that was still scored, which a dev evaluation never is, because there an empty stage ends it as an `error`; two or more held-out names in the diff) and its weighted score beats the checkpoint's by more than the noise margin. Cost and latency are reported, never scored. Every experiment row says why in `decision_reason`.
+- **Noise margin.** A program that calls models scores differently on every run, so a small gain may be luck. At the start of the first round whose checkpoint has metrics, the checkpoint is evaluated on dev once more with no replayed calls (the A/A run, a `noise` row, `noise.json`). The margin is the measured move (or the configured fixed value), smaller the more of the experiment's model calls were replayed, and kept between the configured `min` and `max`.
 - **Soft stops.** Checked between rounds, so a round always finishes: round cap, deadline, night budget, token cap, plateau, outage, thresholds reached. After a soft stop the checkpoint is scored on test once, for the report only.
 - **Smoke test.** Before money goes into a round, check that the models and the metered path are reachable; a round that can't be scored would waste the coder's budget. Repeated failures stop the night with `outage`.
-- **Hard stop and cleanup.** A stop request, a night that fails for good and the night's backstop all end the same way: live agent sessions are aborted, the night's sandboxes are destroyed, `stop.json` is written. A stopped or failed night always ends with a `stop.json`, even when it failed before `night.json` existed, so a following `run-night` never hangs. No test score.
+- **Hard stop and cleanup.** A stop request, a night that fails for good and the night's backstop all end the same way: live agent sessions are aborted, the night's sandboxes are destroyed, `stop.json` is written. A stopped or failed night always ends with a `stop.json`, however early it failed, so a following `run-night` never hangs. No test score.
 - **Repair.** A commit that failed before it was scored (repository-check errors or a failed evaluation) says nothing about its idea. It gets one repair attempt `e1`, started from the failed commit with the masked errors and told to fix that failure only: no research, no send-backs. The failed attempt keeps its `error` row and its note; `e1` is decided against the same checkpoint and stands for the round.
 - **Pause for credits.** A program that gets 402 on every call would score as a bad program. So a credit or quota error, from a program call or an agent turn, pauses the night instead: nothing runs, no sandbox exists, and paused time counts against no deadline. On resume only what stopped runs again. A pause nobody ends times out and stops the night.
 - **Crash recovery.** The worker can die at any moment. When it is back the night carries on by itself: finished rounds, experiments and evaluations are not run again and no row is written twice. A coder that was running finds its sandbox by name and reopens its session; if the sandbox is gone it restarts once from the parent commit.
@@ -108,8 +108,8 @@ Isolation invariants every feature protects:
 - **Seed.** A new night that starts from an ended night's kept commit and dev metrics instead of the starter: `latest`, `best` (highest weighted dev score under unchanged scoring) or a night id.
 - **Rescore.** When the scenario's scoring files changed since the kept commit was scored, old scores can't be compared: a continued or seeded night first evaluates that commit again in one extra round, then measures noise again.
 - **Coder.** A Pi coding-agent session that runs in the worker, so credentials stay on the host, with exactly four tools (`read`, `write`, `edit`, `bash`) that act inside the sandbox. Nothing from the host reaches the session: no agent files, skills, settings or environment. Its prompt carries the scenario's spec, the night so far, the metrics still short of their thresholds, the hypothesis, how the keep works, and the time and budget it has. The session is persisted per experiment so it can be reopened.
-- **Send-backs, reserve and wrap-up.** Coders stop early, with open tasks or no measurement. A coder that stops outside its reserve (the last part of its time or budget), or with an open task list or a missing train measurement, is sent back for one more turn, a bounded number of times. The wrap-up (close tasks, update the measurement and notes, change no more code) comes at most once per experiment: when the reserve starts while the coder works, or as one more turn after the send-back loop ends for a coder sent back at least once, also when the loop ended on the send-back cap before the reserve. No wrap-up with under 3 minutes left, after a cap stop, or for a coder never sent back. A repair gets neither.
-- **End of an experiment.** However the coder stops (done, timeout, idle, budget, agent error, credits), its partial work is committed: whatever it committed itself is squashed into exactly one commit whose only parent is the commit the sandbox started from. A lost connection is a stop like any other, so the send-back rules carry the session on. Only a cancelled experiment commits nothing.
+- **Send-backs, reserve and wrap-up.** Coders stop early, with open tasks or no measurement. A coder that stops outside its reserve (the last part of its time or budget), or with an open task list or a missing train measurement, is sent back for one more turn, a bounded number of times. The wrap-up (close tasks, update the measurement and notes, change no more code) comes at most once per experiment: when the reserve starts while the coder works, or as one more turn after the send-back loop ends for a coder sent back at least once, also when the loop ended on the send-back cap before the reserve. No wrap-up with under 3 minutes left, after a time or budget cap stop, or for a coder never sent back. So on a 5-minute experiment, all eight send-backs of a mock coder and its wrap-up must start within the first 2 minutes. A repair gets neither.
+- **End of an experiment.** However the coder stops (done, timeout, idle, budget, agent error, credits), its partial work is committed: whatever it committed itself is squashed into exactly one commit whose only parent is the commit the sandbox started from. A turn that ends on a failed model call (a lost connection) is a stop like any other, so the send-back rules carry the session on; agent error is only for a prompt call that threw. Only a cancelled experiment commits nothing.
 - **Web research guard.** The coder may search and fetch public web pages, on the host. The guard limits it to plain search and readable fetches, refuses the project's own repository (it holds the gold), other GitHub pages and video hosts. Off in mock mode.
 - **Evaluator.** One sandbox per evaluation, never the coder's, so the coder never touches the runner or the inputs. A program crash, a timeout, a scorer failure or, on dev, a stage that wrote no output is an outcome (`error`, not scored) with the run log's tail for the reviewer and the next coder. Test always runs every stage. A path to the proxy that is down fails the evaluation instead of scoring it: an outage never becomes a score.
 - **Standard metrics.** Latency (from the runner's timings) and cost (from the proxy's ledger) are measured the same way for every scenario, outside the code under optimization, and recorded on every scored row.
@@ -128,9 +128,10 @@ Isolation invariants every feature protects:
 ### Given inputs and tools
 
 - given, never changed by you: `scenarios/` (`datenorm`, `datenorm-hard`, `capitals`, `graphrag`), `configs/` (`capitals-smoke.yaml`, `datenorm-smoke.yaml`, `datenorm.yaml`, `graphrag-smoke.yaml`, `graphrag.yaml`, `e2e/plateau.yaml`, `e2e/budget.yaml`, `e2e/overfit.yaml`), `docker/python.Dockerfile`, `docker/graphrag.Dockerfile`, `.env.example`, Pi's docs at `/docs/pi/`, `E2E.md` (this file's done signal as a procedure; this file wins)
+- given as a start, yours to extend or replace: `package.json` and `package-lock.json` (the `inngest` package and the `dev:inngest` script only), `tsconfig.json`, `.gitignore`, `src/hello.ts` (a placeholder function)
 - host tools: Node 24, Docker, `git`, `tar`, `bash`, `python3`, `uv`
 - images: `codeclimb-python` (from `docker/python.Dockerfile`), `codeclimb-graphrag` (from `docker/graphrag.Dockerfile`, build context `scenarios/graphrag`)
-- npm scripts: `dev:inngest`, `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build`, `start`, `typecheck`, `test`
+- npm scripts: `dev:inngest` (given), `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build`, `start`, `typecheck`, `test`
 - `build:scenario:overfit` runs `scenarios/datenorm/scripts/build_overfit.py --out generated/datenorm-overfit`, the scenario `configs/e2e/overfit.yaml` names
 - install works with lifecycle scripts off (`npm ci --ignore-scripts`)
 
@@ -142,7 +143,9 @@ Isolation invariants every feature protects:
 | worker API (up as soon as `npm run worker` is; no token on loopback) | `http://127.0.0.1:7421` |
 | app (`npm run dev`) | loopback |
 
-- started together, `npm run dev:inngest` and `npm run worker` both answer within 60 s; the worker API answers (any status below 500 on `GET /api/nights`) before the dev server is up, with no `.env` file and no `runs-inngest/` folder
+- started together, `npm run dev:inngest` and `npm run worker` both answer within 60 s; the worker API answers (any status below 500 on `GET /api/nights`) before the dev server is up, with no `.env` file and no `runs-inngest/` folder. A worker started again answers within 60 s too
+- the given `dev:inngest` has the dev server look for the worker's Inngest endpoint at `http://localhost:3000/api/inngest`, with auto-discovery off; a dev server that already runs was started the same way
+- Docker may be a remote daemon: it is reached through `DOCKER_HOST` when that is set (no local socket), and it shares no files with the worker except the checkout, at the same path. `CODECLIMB_PROXY_HOST` may then be preset to the Docker bridge address
 
 ### CLI
 
@@ -158,7 +161,7 @@ Isolation invariants every feature protects:
 
 - night id: `--night-id`, else `n<YYYYMMDD>-<HHMMSS>`; 1 to 48 letters, digits or hyphens, not starting with a hyphen. A start with a used id starts nothing
 - following: prints new rows as they land; prints `done` when `done.json` appears or `stopped` when `stop.json` does, then exits 0. `--no-wait` exits 0 after the start
-- `done` and `stopped`, from a following `run-night` and from `stop`, are the first word of a line of their own Ctrl-C detaches; the night keeps running
+- `done` and `stopped`, from a following `run-night` and from `stop`, are the first word of a line of their own. Ctrl-C detaches; the night keeps running
 - `--rounds` replaces `max_rounds` on a new night and adds rounds on a continued one; `--seed` wins over the config's `seed`; `--sandbox` takes only `docker`
 - a night under `runs-inngest/mock/` is continued and distilled as a mock; `continue` takes no `--mock`
 
@@ -214,7 +217,7 @@ CodeClimb never reads a scenario's data: it runs the commands of `scenarios/<nam
 - a program reaches models through `OPENAI_BASE_URL` / `OPENAI_API_KEY` (also `CODECLIMB_LLM_BASE_URL` / `CODECLIMB_LLM_API_KEY`); the base URL ends in `/v1`
 - metrics: a report's numbers flattened with `.`; `ci95: [lo, hi]` becomes `ci95_half`; with several stages each name gets `<stage>.` in front; each stage adds `output_bytes`
 - standard metrics: from `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s`, `latency_total_s`; from the ledger: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed`
-- scoring hashes: sha256 per file of `scenario.yaml`, `evaluators/` and `gold/`, stored in `night.json` as `metric_script_sha256`
+- `night.json` records a hash of the scenario's scoring files (`metric_script_sha256`), so a later night can tell that the scoring changed
 
 ### Ids and names
 
@@ -262,7 +265,7 @@ One JSON line per experiment, noise run and test evaluation.
 | `decision` | `keep`, `revert`, `error` |
 | `score`, `decision_reason`, `unchanged` | The weighted score; why; no code change |
 | `coder_usd`, `dev_usd`, `program_usd`, `reviewer_usd`, `tokens` | Spend and tokens |
-| `wall_s`, `t_provision`, `t_code`, `t_eval`, `t_review`, `t_teardown`, `infra_errors`, `evaluator_instance` | Timings in seconds; failures; the evaluator sandbox |
+| `wall_s`, `infra_errors` | Wall time in seconds, with a breakdown per phase if you want one; infrastructure failures |
 
 | `stop_reason` | when |
 |---|---|
@@ -290,7 +293,7 @@ The first five are checked in this order at the start of a round; `thresholds` a
 - routes, OpenAI-shaped: `POST /v1/chat/completions` (text messages, no tools, no streaming), `POST /v1/embeddings`, `POST /v1/decisions` (`model`, `state`, `questions` → `answers`), `POST /v1/rerank` (`model`, `query`, `documents`, `top_n` → `results` of `index` and `relevance_score`), `POST /v1/_op` (`op`: names the operation later calls belong to; answers 200)
 - refusals carry `error.message` and `error.type`: 401 `authentication_error`, 403 `permission_error` (model not allowed), 402 `insufficient_quota` (cap spent, credits), 400 / 413 `invalid_request_error`, 502 `api_error`
 - `meter.jsonl` (an evaluation) and `meter-dev.jsonl` (a coder), one line per call: `kind` (`chat`, `embeddings`, `decisions`, `rerank`), `model`, `op`, `ok`, `input_tokens`, `output_tokens`, `cost_usd`, `ms`; `error` only on a failed or refused call
-- the metered path must work on a plain Linux Docker Engine as well as Docker Desktop, with no variable set
+- the metered path must work on a plain Linux Docker Engine as well as Docker Desktop: with no variable set, and with `CODECLIMB_PROXY_HOST` preset to the Docker bridge address
 
 ### Worker API
 
@@ -304,11 +307,12 @@ An optional `.env` (from `.env.example`), loaded by the CLI and the worker when 
 |---|---|
 | `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` | Provider keys; another OpenRouter address, for tests |
 | `CODECLIMB_PI_AUTH_PATH` | Another Pi `auth.json` |
-| `INNGEST_DEV` | `1`, the default of `worker`, `run-night` and `dev`: use the local dev server |
+| `DOCKER_HOST` | Docker's own variable: the daemon to use, when set |
+| `INNGEST_DEV` | Unset, the CLI and the worker use the local dev server on 8288; Inngest Cloud only when a deployment sets otherwise |
 | `CODECLIMB_ROOT` | The checkout config paths and `runs-inngest/` resolve against |
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT` | The worker API, default `127.0.0.1:7421` |
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer off loopback; where the app reaches the worker |
-| `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds |
+| `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds. A host that is set is used as given: an address sandboxes can reach, the Docker bridge address on Linux |
 | `CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S` | Test hooks: the pause timeout and the night backstop, in seconds |
 
 ## Runtime and tools
@@ -332,7 +336,6 @@ Stack: TypeScript on Node 24, ESM; Next.js and React for the app; Node's test ru
 
 | what | value |
 |---|---|
-| noise margin `min` / `max` | 0.002 / 0.005 |
 | A/A runs per night | at most 2 |
 | repairs per round | 1 |
 | held-out names in a diff that block a keep | ≥ 2 |
@@ -340,20 +343,13 @@ Stack: TypeScript on Node 24, ESM; Next.js and React for the app; Node's test ru
 | pause timeout; night backstop | 3 days; 4 days |
 | coder reserve | the last 20% of time or budget |
 | send-backs | at most 8; none with under 3 minutes left; one wrap-up |
-| coder idle | 10 minutes quiet; 25 minutes with a silent tool |
-| default bash timeout for the coder | 10 minutes |
 | fresh restarts after a lost sandbox | 1 |
-| host command timeout / output | 30 minutes / 64 MiB |
-| error tail handed to agents | 2,000 characters |
-| trajectory budget | 48,000 characters |
-| lessons: count; lines; lesson; heading | 30; 200; 500 characters; 80 characters |
-| proxy request body | 16 MiB |
 | coder retry window (a repeat within it is not replayed) | 5 seconds |
 | sandbox size | 2 vCPU, 2 GiB |
-| night reads as `stale` | after 60 minutes without a file write |
-| `spend_usd` rounding | 4 decimals |
 | starter commit | deterministic: the same tree gives the same SHA |
 | `npm ci --ignore-scripts`; `typecheck`; `npm test` | within 900 s; 600 s; 1,200 s. `npm test` runs with no service up (the `codeclimb-python` image is built) |
+| `build:image`; `build:image:graphrag` | within 1,200 s each |
+| `validate-results` on a night's rows file | within 300 s |
 | a mock night, started and followed to `done` | within 300 s |
 | a night reaches a round (`exps/<id>-r<N>-e0/` exists) | within 120 s of its start |
 | `run-night --no-wait`; `run-night stop` | returns within 120 s each |

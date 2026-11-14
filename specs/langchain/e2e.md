@@ -2,15 +2,15 @@
 
 The seven nights of `SPEC.md`, section "Goal and done signal", as a procedure: that section's checks, plus the steps that run them. Time limits are in `SPEC.md`, section "Numbers". Where the two differ, `SPEC.md` wins. You are done when every night below passes every check listed for it.
 
-Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran. A coder or review failure falls back quietly in some paths, so the files are the evidence, not `stop_reason` alone.
+Mock metrics mean nothing: a score of 0 is expected. The checks prove that everything ran, so the files are the evidence, not `stop_reason` alone.
 
 ## Before the first night
 
 1. Docker is running.
-2. Build the images: `npm run build:image`, then `npm run build:image:graphrag` (night 7). `docker images` lists `codeclimb-python` and `codeclimb-graphrag`. `uv` is on the path (night 7's host commands).
-3. `.env` exists with `LANGSMITH_API_KEY`: the server does not boot without it.
+2. Build the images: `npm run build:image`, then `npm run build:image:graphrag` (night 7). `docker images` lists `codeclimb-python` and `codeclimb-graphrag`.
+3. `.env` exists with `LANGSMITH_API_KEY` (the server does not boot without it), `LANGSMITH_ENDPOINT` and `LANGSMITH_TRACING=false`, and nothing else: the nights must pass with that file.
 4. Run `npm run server`, until `curl -s http://127.0.0.1:8123/ok` answers. It serves the code as it was when it started, so run it again after every code change.
-5. Run one night at a time: one server runs one night at a time. Before each night, `docker ps -a` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: an id that was used before is refused.
+5. Run one night at a time; a night may start as soon as the previous `run-night` exits. Before each night, `docker ps -a` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: an id that was used before is refused.
 
 `<runs>` below is `runs-langchain/mock`. `<name>` is the folder the night's config names in `results_path`, and `<dir>` is `<runs>/<name>`. `results.jsonl`, `experiments.git` and `lessons/` sit directly in `<dir>`; every other path below (`done.json`, `stop.json`, `pause.json`, `noise.json`, `exps/`, `reviews/`, `bundle/`, `evals/`) is under `<dir>/nights/<id>/`.
 
@@ -20,12 +20,12 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 - C1. `run-night` prints `done`, with `stop_reason` `max_rounds` or `thresholds` (`plateau` for night 3).
 - C2. `<dir>/nights/<id>/done.json` exists; `stop.json` and `pause.json` don't.
-- C3. `npm run validate-results -- <dir>/results.jsonl` passes.
+- C3. `npm run validate-results -- <dir>/results.jsonl` passes, with the path relative or absolute.
 - C4. `results.jsonl` has a row per experiment of every round, plus a `test` row.
 - C5. `git -C <dir>/experiments.git log refs/exp/<id>-r1-e0` shows the mock commit; its diff adds `MOCK.md`.
 - C6. `exps/*/code-state.json` has `stop: done`; `exps/*/session/` holds a session file.
 - C7. `reviews/r<n>.json` exists for every round, with `feedback: mock feedback`.
-- C8. `exps/*/train-score.json` and `exps/*/tasks.json` exist; the session holds eight send-backs ("You stopped with N of N minutes"), then one wrap-up ("change no more code").
+- C8. `exps/*/train-score.json` and `exps/*/tasks.json` exist; the session holds eight send-backs ("You stopped with N of N minutes"), then one wrap-up ("change no more code"), each a user message in Pi's session file.
 - C9. `bundle/history/notes/r<round>-e<n>.md` exists per experiment, with a `mock note` coder part and, where reviewed, a `mock verdict` reviewer part.
 - C10. Every experiment row has `decision_reason`.
 - C11. `datenorm-smoke`: round 1's commit holds the starter's code, which scores above 0 on dev (accuracy 0.125), so it is kept; a `noise` row follows in round 2 and `noise.json` exists. `capitals-smoke` scores 0 and keeps nothing.
@@ -87,7 +87,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 1. `npm run build:image:graphrag`
 2. `npm run run-night -- --config configs/graphrag-smoke.yaml --mock --night-id <id>`
-3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
+3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail, because the canned chat answer `mock` gives the extraction stage no rows. Then the round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
 4. Check C1, C2, C3, C5, C6, C7, C10, C12 and C14, and:
    - `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row. A round has an `e1` row only after an `e0` row with decision `error`; no round has an `e2`
    - every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither. `train-score.json` and `tasks.json` exist for both

@@ -58,12 +58,12 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 `<name>` is `datenorm-smoke`.
 
-1. `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id <id>`
-2. Once `exps/<id>-r1-e0/` exists, run `npm run run-night -- stop --night <id>`.
+1. `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --night-id <id>`, in a terminal of its own, left following the night (no `--no-wait`).
+2. Once `exps/<id>-r1-e0/` exists, run `npm run run-night -- stop --night <id>` from a second terminal.
 3. Check:
    - the stop command prints `stopped` and exits 0
    - within 30 s of it: `stop.json` has `reason: manual`; there is no `done.json` and no `test` row for `<id>`; no `cc-<id>` container is left, running or stopped
-   - a `run-night` that was following the night prints `stopped` too
+   - the `run-night` of step 1 prints `stopped` too, and exits within 60 s of the stop
 
 ## Night 5: crash resume
 
@@ -78,7 +78,8 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
    - every `eval_id` is in `results.jsonl` once
    - round 1's `code-state.json` is unchanged (round 1's coder did not run again)
    - no `cc-<id>-r1-` sandbox is created after the kill (finished work is not run again)
-   - only the work in flight at the kill runs again: a coder finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone
+
+Expected, not a check: only the work in flight at the kill runs again. A coder finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone.
 
 ## Night 6: a lost connection mid-turn
 
