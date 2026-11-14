@@ -72,13 +72,13 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 1. `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id <id>`
 2. Follow `docker events` for container creates, from before the kill until the night ends.
 3. Once `exps/<id>-r2-e0/` exists (so round 1's row is in `results.jsonl`), record the sha256 and mtime of round 1's `code-state.json`, then kill the worker: the process `npm run worker` started, with its children. The dev server keeps running. If the night finishes before `exps/<id>-r2-e0/` appears, nothing is killed: run night 5 again under a new id.
-4. Run `npm run worker` again, and nothing else: no stop, no manual resume. The step that was running is retried by itself about 2 minutes after the kill, when its lease expires.
+4. Run `npm run worker` again, and nothing else: no stop, no manual resume. The night carries on by itself; allow it a few minutes.
 5. Check, once the night finishes:
    - `done.json` exists
    - every `eval_id` is in `results.jsonl` once
    - round 1's `code-state.json` is unchanged (round 1's coder did not run again)
-   - no `cc-<id>-r1-` sandbox is created after the kill (round 1's steps are memoized, not run again)
-   - only the step running at the kill is retried: a coder step finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone
+   - no `cc-<id>-r1-` sandbox is created after the kill (finished work is not run again)
+   - only the work in flight at the kill runs again: a coder finds its sandbox by name and reopens its session, or restarts once from the parent commit when the sandbox is gone
 
 ## Night 6: a lost connection mid-turn
 
@@ -89,7 +89,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 1. `npm run build:image:graphrag`
 2. `npm run run-night -- --config configs/graphrag-smoke.yaml --mock --night-id <id>`
-3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
 4. Check C1, C2, C3, C5, C6, C7, C10, C12 and C14, and:
    - `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row. A round has an `e1` row only after an `e0` row with decision `error`; no round has an `e2`
    - every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither. `train-score.json` and `tasks.json` exist for both

@@ -9,7 +9,7 @@ Mock metrics mean nothing: a score of 0 is expected. The checks prove that every
 1. Docker is running.
 2. Build the images: `npm run build:image`, then `npm run build:image:graphrag` (night 7). `docker images` lists `codeclimb-python` and `codeclimb-graphrag`. `uv` is on the path (night 7's host commands).
 3. `.env` exists with `LANGSMITH_API_KEY`: the server does not boot without it.
-4. Run `npm run server` (a fresh `langgraphjs up`), until `curl -s http://127.0.0.1:8123/ok` answers. It builds the image from the checkout, so run it again after every code change.
+4. Run `npm run server`, until `curl -s http://127.0.0.1:8123/ok` answers. It serves the code as it was when it started, so run it again after every code change.
 5. Run one night at a time: one server runs one night at a time. Before each night, `docker ps` shows no `cc-` container. Give every night a fresh night id with `--night-id <id>`: an id that was used before is refused.
 
 `<runs>` below is `runs-langchain/mock`. `<name>` is the folder the night's config names in `results_path`, and `<dir>` is `<runs>/<name>`. `results.jsonl`, `experiments.git` and `lessons/` sit directly in `<dir>`; every other path below (`done.json`, `stop.json`, `pause.json`, `noise.json`, `exps/`, `reviews/`, `bundle/`, `evals/`) is under `<dir>/nights/<id>/`.
@@ -70,12 +70,12 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 1. `npm run run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id <id>`
 2. Follow `docker events` for container creates, from before the kill until the night ends.
 3. Once `exps/<id>-r2-e0/` exists (so round 1's row is in `results.jsonl`), record the sha256 and mtime of round 1's `code-state.json`, then `docker kill` the server container (the stack's `langgraph-api` service). Postgres and Redis keep running. If the night finishes before `exps/<id>-r2-e0/` appears, nothing is killed: run night 5 again under a new id.
-4. Run `npm run server` again, and nothing else: no stop, no manual resume. The server picks the killed run up by itself, about 2 minutes after `up` (its runs sweeper), with no watchdog.
+4. Run `npm run server` again, and nothing else: no stop, no manual resume, no watchdog. The night carries on by itself and finishes within 8 minutes of the restart.
 5. Check, once the night finishes:
    - `done.json` exists
    - every `eval_id` is in `results.jsonl` once
    - round 1's `code-state.json` is unchanged (round 1's coder did not run again)
-   - no `cc-<id>-r1-` sandbox is created after the kill (the night resumed from its last stored step instead of replaying round 1)
+   - no `cc-<id>-r1-` sandbox is created after the kill (the night resumed where it was instead of running round 1 again)
    - only the step running at the kill reruns, on a new sandbox of the same name
 
 ## Night 6: a lost connection mid-turn
@@ -87,7 +87,7 @@ Nights 1, 2, 3 and 6 must pass all of these, for their night `<id>`:
 
 1. `npm run build:image:graphrag`
 2. `npm run run-night -- --config configs/graphrag-smoke.yaml --mock --night-id <id>`
-3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The night takes under a minute. The checks hold with or without the failure and the repair.
+3. `<name>` is `graphrag-smoke`. A dev evaluation of it may fail: the canned chat answer `mock` gives the extraction stage no rows, so every dev evaluation stops at `extraction` with "the run exited clean but wrote no output", each round's `e0` gets a repair `e1`, both are recorded as `error` (`not scored`), nothing is kept, and the test evaluation scores the starter on all three stages. The checks hold with or without the failure and the repair.
 4. Check C1, C2, C3, C5, C6, C7, C10, C12 and C14, and:
    - `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row. A round has an `e1` row only after an `e0` row with decision `error`; no round has an `e2`
    - every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither. `train-score.json` and `tasks.json` exist for both

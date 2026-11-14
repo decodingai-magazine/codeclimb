@@ -228,7 +228,8 @@
 - rule: never grade a harness on a check a reference build fails. A build spec change that alters a check needs the reference to pass it; otherwise the check is dropped on both stacks
 - dropped on both stacks under this rule: night 7's check that a dev evaluation has a `metrics.json` only when every stage was scored. The stacks differ there (Inngest writes it only then, LangChain always), so the done signals check only that the test evaluation has one
 - the build specs are still being improved, so the pinned commits are re-checked by the reference gate after every spec change that touches the done signal
-- each build spec's "Known gaps" lists places where the spec asks more than its reference does. If a reference fails a check inside the trial image, patch the reference or drop the check
+- if a reference fails a check inside the trial image because the build spec asks more than the reference does, patch the reference or drop the check
+- build spec rewrite, 2026-11-14: in phases C to D2 every arm scored 34 of 34, because the build specs were written from the reference builds and already held the how (API usage, measured platform facts, build order) that skills, MCP and docs would teach. Both specs were cut to the what and the why, in the same seven sections (goal and done signal, architecture, features, interfaces the build must honour, runtime and tools, numbers, dependencies): Inngest 1100 → 372 lines, LangChain 1304 → 471. Every interface the verifier reads is kept in "Interfaces the build must honour"; every verifier literal the old specs named is still named. `e2e.md` lost only its how-words. Phases B to D2 ran on the old specs (`46fdb65`); results on the new ones are not comparable with them. The build tickets still cite the old sections and are to be regenerated
 
 ### Gates before any trial
 
