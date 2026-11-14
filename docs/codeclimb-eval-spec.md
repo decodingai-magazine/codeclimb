@@ -318,7 +318,7 @@
     - cost: Inngest skills −$0.65, MCP + docs −$1.96, interaction +$0.31; LangChain skills +$0.58, MCP + docs +$0.60, interaction +$0.30. None is called by the pre-set test
   - stack comparison on the 34 shared checks: both stacks score 1.000 in every arm; mean cost per arm Inngest 15.10 / 14.30 / 12.99 / 12.50 (`bare`, `skills`, `mcp-docs`, `full`), LangChain 12.71 / 13.15 / 13.16 / 13.89. Neither stack is cheaper in every arm
   - result: no detectable effect of skills, of MCP + docs, or of their interaction, on reward or cost, on either stack, at n = 3. Reward sits at the ceiling in every cell, so the build specs do not separate the arms; a harder task or a finer reward is needed before more repeats can show a context effect
-- phase D2 trial run, 2026-11-14 13:12 to 14:47: one `full × pocock` trial per stack instead of three, to check the workflow end to end before the build specs and tickets are tuned (the operator's call). Both side by side, `-k 1` on the job files, cap $32 not hit, no usage limit, no infra error, `leak` 0:
+- phase D2 trial run, 2026-11-14 13:12 to 14:47: one `full × pocock` trial per stack instead of three, to check the workflow end to end before the build specs and tickets are tuned (the operator's call). The operator accepts the one-trial run in place of the three-trial one: a three-trial job runs the same job files with `n_attempts` 3, so it is taken to work if this one did. Both side by side, `-k 1` on the job files, cap $32 not hit, no usage limit, no infra error, `leak` 0:
 
 | trial | reward (Harbor, then regrade) | $ (API price) | agent min | turns | tool calls | tickets done | commits |
 |---|---|---|---|---|---|---|---|
