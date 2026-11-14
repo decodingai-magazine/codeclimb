@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "inngest-dev": {
+      "type": "http",
+      "url": "http://127.0.0.1:8288/mcp"
+    },
+    "langsmith": {
+      "type": "http",
+      "url": "https://eu.api.smith.langchain.com/mcp"
+    }
+  }
+}

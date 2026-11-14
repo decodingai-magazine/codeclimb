@@ -24,6 +24,22 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 
 The benchmark spec marks every unverified fact with `(guess)`. Verify one before building on it, and replace the marker with what you measured.
 
+## The stacks: docs, skills, MCP and debugging
+
+For reading a build spec, a trial's build or a reference build checkout. These commands need a build running (a checkout of `main` or `langchain`, or a trial's `/app`): nothing on this branch serves them. This session's setup (`.claude/settings.json`, `.mcp.json`) is the union of the two branches'. It is not a trial's: a trial's context comes only from its job file (Arms).
+
+Inngest (`main`):
+- Docs: https://www.inngest.com/llms.txt; skills: the `inngest` plugin
+- MCP `inngest-dev`: the dev server's MCP at `http://127.0.0.1:8288/mcp`, live only while a build runs `npm run dev:inngest`
+- CLI for runs and traces (JSON; filter with `jq`): `npx inngest-cli@latest api --prod --env production get-function-run <run_id>`, `get-function-trace <run_id> --include-output`, `get-event-runs <event_id> --include-output --limit 5`, locally `npx inngest-cli@latest api invoke-function <app_id> <function_id> --data '{...}'`. Cloud commands use the stored OAuth login unless `INNGEST_API_KEY` or a key flag overrides it; set `--env` to the intended environment
+
+LangChain (`langchain`):
+- Docs: https://docs.langchain.com/llms.txt or the `langchain-docs` MCP. Use the TypeScript pages, not the Python ones: the APIs differ (Python's `retry_policy` is `retry` on a JS task). Skills: the `langchain-skills` and `langsmith-skills` plugins
+- MCP `langsmith`: traces of the LangSmith project `$LANGSMITH_PROJECT`, at `https://eu.api.smith.langchain.com/mcp` (needs the operator's LangSmith login)
+- Agent Server REST API, while a build runs `npm run server` (http://127.0.0.1:8123): health `curl -s http://127.0.0.1:8123/ok`; thread state `curl -s http://127.0.0.1:8123/threads/<thread_id>/state`; runs on a thread `curl -s http://127.0.0.1:8123/threads/<thread_id>/runs`; logs `npm run server:logs`. A night's own state is in its files under `runs-langchain/nights/<id>/`: read those first
+
+Both: Pi, the coder and reviewer SDK, https://github.com/earendil-works/pi
+
 ## Conversational Style
 
 - Keep answers short and concise

@@ -1,6 +1,7 @@
 {
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true,
+    "inngest@anthropic-plugin-directory": true,
     "langchain-skills@langchain-plugins": true,
     "langsmith-skills@langchain-plugins": true,
     "langchain-mcp@langchain-plugins": true,
