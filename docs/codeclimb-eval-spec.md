@@ -330,6 +330,8 @@
   - Inngest `hard-stop` failed in the first grade (`stop.json` reason `cancelled`, not `manual`, and sandbox `cc-<night>` still present after 30 s) and passed in the regrade: a flaky check on this build. One build's flake, not yet seen on a reference build
   - the workflow was not followed as written: neither agent called `implement` through the Skill tool (only the template's first `/implement`), and each called `code-review` once, after the last ticket, with its 2 subagents; no `tdd` call. Each did close every ticket with its own commit. `context/pocock/prompt.md` needs a firmer per-ticket instruction before the three-trial run
 - each phase from B on starts only with the operator's go-ahead
+- the full run, every cell from scratch: `job-configs/run-all.sh [slots]` runs the 10 job files (8 one-shot, 2 `full × pocock`), 3 attempts each, 30 trials, with at most `slots` jobs at once, one trial each (default 3). It assembles both stacks once first (`pocock.sh` would re-assemble a stack's task while that stack's other jobs run), starts the 2 pocock jobs first (each about 3 × 95 min, so starting them last leaves slots idle at the end), then the one-shot jobs in shuffled order, one minute apart. `DRY=1` prints the order and checks each job file with `--print-config`, no trial
+  - slots: 3 by the operator's choice (2026-11-14), to stay clear of the subscription's usage limits; 4 is the most measured (phases C and D). Estimate from phases C to D2: one-shot about 72 min a trial start to graded, pocock about 95 min, 38.5 slot-hours, so about 13 h at 3 slots and 10 h at 4. About $440 at API prices. Above 4 the 9 CPUs Docker Desktop gets are the limit (Inngest grading alone peaks at 6.1): CPU contention slows the timed night checks (`hard-stop`'s 30 s, `crash-resume`, `lost-connection`) into false failures (guess)
 - power: n = 3 per cell, so only large effects show. The 2 × 2 helps: each main effect pools 6 trials vs 6. Add repeats to a cell only when its result is borderline
 
 ### Layout and commands
@@ -364,6 +366,7 @@ context/pocock/scaffold/            docs/agents/issue-tracker.md, domain.md, age
 context/pocock/SOURCE.md            the skills' repo, commit, digests and the one edit
 job-configs/pocock.compose.yaml     the overlay that copies tasks/codeclimb-<stack>/pocock/ into each trial's /app
 job-configs/pocock.sh               runs a full-pocock job (assembles, sets CODECLIMB_POCOCK_DIR)
+job-configs/run-all.sh              every cell from scratch, at most <slots> jobs at once, pocock first
 job-configs/reference.compose.yaml  the overlay that puts a reference build into a nop trial's /app
 job-configs/reference.sh            grades a stack's reference build inside Harbor (exports it, runs the nop job)
 context/pocock/prompt.md            "/implement per ticket, frontier first" + {{ instruction }}
