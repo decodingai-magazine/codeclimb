@@ -57,19 +57,21 @@ class NightSpec:
     prep: list[str] | None = None
 
 
-# The spec's table. Sizes only; R1 and R4 as given.
+# The spec's table. Sizes only; R1 and R4 as given. No night lowers `budget_usd.night` (0.5 in both configs): below
+# `budget_usd.experiment` (0.2 datenorm, 0.25 capitals), a build that reserves a whole experiment for the next round
+# stops on `budget` before the night shows what it tests.
 NIGHTS: dict[str, NightSpec] = {
     "R1": NightSpec("configs/e2e/overfit.yaml", None, 80 * 60, probe=True, prep=["npm", "run", "build:scenario:overfit"]),
-    "R2": NightSpec(DATENORM, {"timeouts.experiment_min": "4", "timeouts.eval_min": "2", "budget_usd.night": "0.2"},
+    "R2": NightSpec(DATENORM, {"timeouts.experiment_min": "4", "timeouts.eval_min": "2"},
                     30 * 60, probe=True),
-    "R3": NightSpec(CAPITALS, {"timeouts.experiment_min": "4", "budget_usd.night": "0.2"}, 30 * 60, probe=True),
+    "R3": NightSpec(CAPITALS, {"timeouts.experiment_min": "4"}, 30 * 60, probe=True),
     "R4": NightSpec("configs/e2e/budget.yaml", None, 40 * 60),
-    "R5": NightSpec(DATENORM, {"deadline": "3m", "max_rounds": "5", "plateau_rounds": "0", "timeouts.experiment_min": "2",
-                               "budget_usd.night": "0.25"}, 20 * 60),
+    "R5": NightSpec(DATENORM, {"deadline": "3m", "max_rounds": "5", "plateau_rounds": "0", "timeouts.experiment_min": "2"},
+                   20 * 60),
     # max_tokens is set at run time: one round's tokens, measured on R2.
-    "R6": NightSpec(DATENORM, {"max_rounds": "5", "plateau_rounds": "0", "timeouts.experiment_min": "4",
-                               "budget_usd.night": "0.25"}, 40 * 60),
-    "R7": NightSpec(DATENORM, {"budget_usd.night": "0.1"}, 10 * 60),
+    "R6": NightSpec(DATENORM, {"max_rounds": "5", "plateau_rounds": "0", "timeouts.experiment_min": "4"},
+                   40 * 60),
+    "R7": NightSpec(DATENORM, {}, 10 * 60),
 }
 # R7: the stop comes this many seconds into the coder; the test then watches this long.
 R7_INTO_CODER_S = 60
@@ -446,6 +448,12 @@ def tokens_of_one_round(ctx: Ctx) -> tuple[int, str]:
     return TOKENS_FALLBACK, f"max_tokens {TOKENS_FALLBACK}: fallback, R2 did not measure a round"
 
 
+def services_answer(ctx: Ctx) -> tuple[bool, str]:
+    """The services answer within their start limit, or are started again from scratch."""
+    up, detail = ctx.adapter.wait_until_up(ctx.services, ctx.adapter.SERVICES_UP_S)
+    return (up, detail) if up else ctx.ensure_services()
+
+
 def run_real(ctx: Ctx, key: str, real: Real) -> None:
     spec = NIGHTS[key]
     app = ctx.app
@@ -465,7 +473,18 @@ def run_real(ctx: Ctx, key: str, real: Real) -> None:
     events = ctx.events(f"real-{key}-{ctx.tag}")
     night = None
     try:
-        night, code, out = ctx.start_night(config, key.lower(), mock=False)
+        # The services can blink after a durability test restarted them (a LangChain trial build, 2026-11-15: R2
+        # to R6 found no Agent Server for about 10 s after `server-rerun-mid-night`). A night that could not start
+        # spent nothing, so it starts again once, under a new id, after the services answer.
+        for attempt in (1, 2):
+            up, detail = services_answer(ctx)
+            if not up:
+                real.error = f"services not up before {key}: {detail}"
+                return
+            night, code, out = ctx.start_night(config, key.lower(), mock=False)
+            if code == 0 or attempt == 2 or night.night_dir.exists():
+                break
+            real.note += f"{night.night_id} did not start (exit {code}): started again. "
         real.night = night
         if code != 0:
             real.error = f"run-night --no-wait exited {code}\n{out[-1500:]}"

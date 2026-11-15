@@ -268,12 +268,14 @@ The stack-only tests come 3 and 3, so both stacks report the same count.
 | night | config | cap |
 |---|---|---|
 | R1 climb | `e2e/overfit.yaml` as given, after `build:scenario:overfit` | 4 rounds, $0.50 |
-| R2 loop | `datenorm-smoke`, `experiment_min: 4`, `eval_min: 2` | 2 rounds, $0.20 |
-| R3 metered | `capitals-smoke`, `experiment_min: 4`, `budget_usd.night: 0.2` | 1 round |
+| R2 loop | `datenorm-smoke`, `experiment_min: 4`, `eval_min: 2` | 2 rounds, $0.50 |
+| R3 metered | `capitals-smoke`, `experiment_min: 4` | 1 round, $0.50 |
 | R4 budget | `e2e/budget.yaml` as given | $0.05 |
-| R5 deadline | `datenorm-smoke`, `deadline: 3m`, `max_rounds: 5`, `plateau_rounds: 0`, `experiment_min: 2` | $0.25 (a real round costs $0.03 to $0.08: at $0.10 `budget` fired first) |
-| R6 tokens | `datenorm-smoke`, `max_tokens` about one round's, `max_rounds: 5`, `plateau_rounds: 0` | $0.25 (a real round costs $0.03 to $0.08: at $0.10 `budget` fired first) |
-| R7 stop | `datenorm-smoke --no-wait`, stopped 60 s into the coder | $0.10 |
+| R5 deadline | `datenorm-smoke`, `deadline: 3m`, `max_rounds: 5`, `plateau_rounds: 0`, `experiment_min: 2` | $0.50 |
+| R6 tokens | `datenorm-smoke`, `max_tokens` about one round's, `max_rounds: 5`, `plateau_rounds: 0` | $0.50 |
+| R7 stop | `datenorm-smoke --no-wait`, stopped 60 s into the coder | $0.50 |
+
+No night lowers `budget_usd.night` below the config's $0.50: both build specs make the budget stop reserve room for one more round, and a build may reserve the whole `budget_usd.experiment` ($0.20 datenorm, $0.25 capitals). At lower caps such a build stopped R2 after round 1, R3 and R7 before round 1, and R5 and R6 on `budget` (the e1 bare trials, 2026-11-15). Spend stays bounded by `max_rounds` and the deadline
 
 32. `overfit-thresholds` (R1): `stop_reason` `thresholds` within 4 rounds
 33. `overfit-test-equals-dev` (R1): the test row's accuracy equals the kept row's dev accuracy
@@ -301,7 +303,7 @@ The stack-only tests come 3 and 3, so both stacks report the same count.
   - `checkpoint-lineage` checks the experiment refs only: the starter ref is a root commit
   - durability: all 10 per stack pass. Inngest 3a 77 s, 3b about 19 min; LangChain 3a 56 s, 3b about 12 min. On LangChain `graceful-restart` passes without its restart path: the night ends inside `docker stop`'s 10 s grace. `crash-mid-eval` forbids a new create of round 1's coder sandbox only, since a rerun evaluation may reuse its name. The Inngest reference names evaluation sandboxes `cc-<night>-r1-eval`, not `cc-<eval id>` as its id table says; the tests accept both
   - real: Inngest 15 of 18, LangChain 17 of 18, about 21 min and $0.31 to $0.38 per stack (at least $0.85 in all, R7's unmeasured). `deadline` failed on both and `tokens` on Inngest at the old $0.10 cap, which ended R5 and R6 on `budget` first; at $0.25 both pass on both stacks (R5: 3 rounds, $0.10 to $0.15, 3 to 5 min; R6: 1 round, $0.04 to $0.07, 2 to 3 min). `budget` failed on Inngest on its spend half ($0.055 against $0.05, which neither build spec bounds); that half is replaced by the between-rounds check. R1 reached `thresholds` in round 1 on both, so `overfit-lineage`'s chain is exercised by unit tests only
-  - R5 and R6 caps raised from $0.10 to $0.25 (operator, 2026-11-15)
+  - R5 and R6 caps raised from $0.10 to $0.25, then every real night to the configs' $0.50 (operator, 2026-11-15)
   - dropped by the operator (2026-11-15): 3's `noise.json` margin half; 35's spend within `budget_usd.night`, now a between-rounds check that 36 shares
 
 ### Reference builds
