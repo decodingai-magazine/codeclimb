@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
+import { efficiencyMetrics, mockConfig, type NightConfig, resolveDeadline } from "./config";
 import { distilledThrough, pendingRounds } from "./lessons";
 import { nightPaths } from "./paths";
 import { nightSpend } from "./report/data";
@@ -91,6 +91,16 @@ export function latestNight(cfg: NightConfig): string {
   const id = endedNights(cfg)[0];
   if (!id) throw new Error(`no finished night under ${join(nightPaths(cfg, "").root, "nights")} to continue`);
   return id;
+}
+
+/**
+ * Whether `continue` goes on from a mock night, since it takes no `--mock`: night `id` is under `runs-inngest/mock/`
+ * and not under the config's own results; with no id, no night of the config ended and a mock one did.
+ */
+export function continuesMock(cfg: NightConfig, id?: string): boolean {
+  const mock = mockConfig(cfg);
+  if (id) return !existsSync(nightPaths(cfg, id).nightJson) && existsSync(nightPaths(mock, id).nightJson);
+  return endedNights(cfg).length === 0 && endedNights(mock).length > 0;
 }
 
 /** Throws unless a night of `cfg` can continue from `id`. */

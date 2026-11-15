@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
-import { latestNight, reopenNight, resolveSeed, seedFrom } from "../codeclimb/continuation";
+import { continuesMock, latestNight, reopenNight, resolveSeed, seedFrom } from "../codeclimb/continuation";
 import { newNightId, nightDirs, nightPaths, runsRoot } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
@@ -105,7 +105,8 @@ if (positionals[0] === "stop") {
   if (!values.config) throw new Error("usage: run-night [continue] --config <yaml>");
   if (continuing && values.seed) throw new Error("--seed starts a new night: a continued night goes on from its own kept commit");
   const loaded = loadConfig(resolve(values.config));
-  const cfg = values.mock ? mockConfig(loaded) : loaded;
+  // A night under runs-inngest/mock/ is continued as a mock: continue takes no --mock.
+  const cfg = values.mock || (continuing && continuesMock(loaded, values.night)) ? mockConfig(loaded) : loaded;
   if (values["mock-offline"] !== undefined) {
     if (!values.mock) throw new Error("--mock-offline only with --mock");
     const n = Number(values["mock-offline"]);

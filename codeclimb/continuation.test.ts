@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { coderPrompt, readTrajectory } from "./coder";
-import { type NightConfig, parseConfig } from "./config";
-import { checkSource, keptOf, lastReview, lastRound, latestNight, priorLog, reopenNight, resolveSeed, scoringHashes, seedFrom } from "./continuation";
+import { mockConfig, type NightConfig, parseConfig } from "./config";
+import { checkSource, continuesMock, keptOf, lastReview, lastRound, latestNight, priorLog, reopenNight, resolveSeed, scoringHashes, seedFrom } from "./continuation";
 import { ExperimentRepo } from "./git";
 import { proposalDir } from "./lessons";
 import { continueNight, freshNight, initNight, renameKept, rescoreRow } from "./orchestrator";
@@ -51,6 +51,21 @@ function night(cfg: NightConfig, id: string, startedAt: number, opts: { ended?: 
   writeFileSync(p.nightJson, JSON.stringify({ night_id: id, startedAt, config: cfg, metric_script_sha256: scoringHashes(cfg) }));
   if (opts.ended !== false) writeFileSync(p.doneJson, "{}");
 }
+
+test("a night under runs-inngest/mock/ is continued as a mock: continue takes no --mock", () => {
+  const base = config();
+  const dir = dirname(base.results_path);
+  const cfg = { ...base, base_dir: dir, results_path: join(dir, "runs-inngest", "capitals", "r.jsonl") };
+  const mock = mockConfig(cfg);
+  assert.equal(continuesMock(cfg), false);
+  night(mock, "m1", 1);
+  assert.equal(continuesMock(cfg, "m1"), true);
+  assert.equal(continuesMock(cfg), true); // no real night ended: the newest is a mock
+  assert.equal(continuesMock(cfg, "r1"), false);
+  night(cfg, "r1", 2);
+  assert.equal(continuesMock(cfg, "r1"), false);
+  assert.equal(continuesMock(cfg), false);
+});
 
 test("the default night is the newest that ended; a running night or another scenario can't be continued", () => {
   const cfg = config();
