@@ -140,6 +140,27 @@ class NightChecks(unittest.TestCase):
         write(app / N.GRAPHRAG_LESSONS, "changed")
         self.assertFalse(N.g_lessons(nt)[0])
 
+    def test_stall_diagnostics_lists_files_code_state_and_the_runtime(self):
+        nt = self.night(nid="t5")
+        write(nt.night_dir / "exps/t5-r2-e0/code-state.json", {"stop": None, "phase": "coding"})
+        write(nt.night_dir / "night.json", {})
+
+        class Fake:
+            def runtime_diagnostics(self, services):
+                return "--- thread x runs [('running', 1, 2)]"
+
+        services = N.Services(self.root)
+        d = N.stall_diagnostics(nt, Fake(), services)
+        self.assertIn("exps/t5-r2-e0/code-state.json", d)
+        self.assertIn('t5-r2-e0: {"stop": null, "phase": "coding"}', d)
+        self.assertIn("thread x runs", d)
+
+        class Broken:
+            def runtime_diagnostics(self, services):
+                raise RuntimeError("down")
+
+        self.assertIn("runtime_diagnostics failed", N.stall_diagnostics(nt, Broken(), services))
+
     def test_results_name(self):
         write(self.root / "configs/x.yaml", "scenario: s\nresults_path: e2e-plateau/results.jsonl  # mock\n")
         self.assertEqual(N.results_name(self.root, "configs/x.yaml"), "e2e-plateau")

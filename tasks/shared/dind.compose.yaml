@@ -1,15 +1,17 @@
 # The Docker sidecar of every benchmark task (docs/adr/0001), shared by the trial and the verifier
 # environments through `extends`, so the GitHub block is one list.
+x-dind: &dind
+  image: docker:27-dind
+  privileged: true
+  environment:
+    DOCKER_TLS_CERTDIR: ""
+  healthcheck:
+    test: ["CMD", "docker", "info"]
+    interval: 2s
+    retries: 30
 services:
   dind:
-    image: docker:27-dind
-    privileged: true
-    environment:
-      DOCKER_TLS_CERTDIR: ""
-    healthcheck:
-      test: ["CMD", "docker", "info"]
-      interval: 2s
-      retries: 30
+    <<: *dind
     # The GitHub block. `main` shares this service's /etc/hosts; on `main` itself Docker rejects extra_hosts beside
     # the shared network mode. No wildcards: every host name needs its own entry. The list is DNS_NAMES in
     # verifier/blocked_hosts.py (verifier/leak_test.py checks this copy against it).
@@ -17,6 +19,24 @@ services:
       - "github.com:0.0.0.0"
       - "www.github.com:0.0.0.0"
       - "api.github.com:0.0.0.0"
+      - "codeload.github.com:0.0.0.0"
+      - "gist.github.com:0.0.0.0"
+      - "githubusercontent.com:0.0.0.0"
+      - "objects.githubusercontent.com:0.0.0.0"
+      - "raw.githubusercontent.com:0.0.0.0"
+      - "release-assets.githubusercontent.com:0.0.0.0"
+      - "github.io:0.0.0.0"
+      - "deepwiki.com:0.0.0.0"
+      - "gitmcp.io:0.0.0.0"
+      - "sourcegraph.com:0.0.0.0"
+      - "gitee.com:0.0.0.0"
+  # The verifier's sidecar: the same block but `api.github.com`, where Pi refreshes the Copilot token the real.*
+  # family uses (VERIFIER_OPEN in verifier/blocked_hosts.py). The harness is gone when the verifier runs.
+  dind-verifier:
+    <<: *dind
+    extra_hosts:
+      - "github.com:0.0.0.0"
+      - "www.github.com:0.0.0.0"
       - "codeload.github.com:0.0.0.0"
       - "gist.github.com:0.0.0.0"
       - "githubusercontent.com:0.0.0.0"

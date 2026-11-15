@@ -1,16 +1,21 @@
-# The verifier's own copy of the trial topology (environment/docker-compose.yaml): the same sidecar, the same block.
+# The verifier's own copy of the trial topology (environment/docker-compose.yaml): the same sidecar, the block
+# but api.github.com (dind-verifier in tasks/shared/dind.compose.yaml).
 services:
   main:
     network_mode: "service:dind"
     environment:
       DOCKER_HOST: tcp://127.0.0.1:2375
+      # The real.* family: the github-copilot entry of the operator's Pi auth.json, and the families to run.
+      CODECLIMB_BENCH_PI_AUTH: ${CODECLIMB_BENCH_PI_AUTH:-}
+      CODECLIMB_VERIFIER_FAMILIES: ${CODECLIMB_VERIFIER_FAMILIES:-}
+      CODECLIMB_VERIFIER_ONLY: ${CODECLIMB_VERIFIER_ONLY:-}
       CODECLIMB_PROXY_HOST: 172.17.0.1
     volumes:
       - app:/app
     depends_on:
       dind: { condition: service_healthy }
   dind:
-    extends: { file: ../../shared/dind.compose.yaml, service: dind }
+    extends: { file: ../../shared/dind.compose.yaml, service: dind-verifier }
     volumes:
       - app:/app
 volumes:

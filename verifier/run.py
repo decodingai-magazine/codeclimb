@@ -20,8 +20,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adapters import ADAPTERS, Adapter, Services, guarded, run_group  # noqa: E402
+from families import Ctx, run_families, selected  # noqa: E402
 from leak import scan  # noqa: E402
 from nights import (  # noqa: E402
+    DATENORM,
     FIRST_TABLE,
     FIRST_TABLE_NIGHTS,
     NIGHT7_CARRIES,
@@ -32,6 +34,7 @@ from nights import (  # noqa: E402
     lost_connection,
     plateau_stop,
     run_night,
+    night_of,
     run_night7,
 )
 
@@ -59,6 +62,12 @@ class Run:
     reported: dict[str, int] = field(default_factory=dict)
     services: Services | None = None
     services_up: bool = False
+    # The nights the 34 ran, for the families that read them.
+    first: dict[int, Night] = field(default_factory=dict)
+    night7: Night | None = None
+    # hidden.* and real.*: beside the reward, never in it.
+    family: dict[str, int] = field(default_factory=dict)
+    family_checks: list[dict] = field(default_factory=list)
     tag: str = field(default_factory=lambda: f"v{int(time.time()) % 10**8}")
 
     def record(self, name: str, passed: bool, detail: str = "") -> bool:
@@ -158,6 +167,7 @@ def nights(run: Run) -> None:
     run.record("lost-connection", *(guarded(lost_connection, first[6]) if 6 in first else no_night))
     for row, check in NIGHT7_TABLE:
         run.record(row, *(guarded(check, night7) if night7 else (False, night7_detail)))
+    run.first, run.night7 = first, night7
 
 
 STAGES: list[Callable[[Run], None]] = [build_checks, nights]
@@ -168,17 +178,69 @@ ADDED_ROWS = ["plateau-stop", "hard-stop", "crash-resume", "lost-connection"]
 CHECKS = BUILD_CHECKS + [row for row, _, _ in FIRST_TABLE] + ADDED_ROWS + [row for row, _ in NIGHT7_TABLE]
 
 
-def reward_of(checks: list[Check], reported: dict[str, int], leak: dict[str, object]) -> dict[str, float | int]:
+def reward_of(checks: list[Check], reported: dict[str, int], leak: dict[str, object],
+              family: dict[str, int] | None = None) -> dict[str, float | int]:
     passed = sum(c.passed for c in checks)
     out: dict[str, float | int] = {
-        "reward": passed / len(checks),
+        "reward": passed / len(checks) if checks else 0.0,
         "done": int(passed == len(checks)),
         "leak": int(leak["leak"]),
         "leak_sessions": int(leak["sessions"]),
     }
     out.update({f"checks.{c.name}": int(c.passed) for c in checks})
     out.update({f"checks.{k}": v for k, v in reported.items()})
+    out.update(family or {})
     return out
+
+
+def write_outputs(run: Run, out: Path, stack: str, leak: dict[str, object], started: float) -> dict[str, float | int]:
+    """reward.json and checks.json, written after the 34 and again after each family."""
+    reward = reward_of(run.checks, run.reported, leak, run.family)
+    if [c.name for c in run.checks] != CHECKS:
+        # Not all 34 ran (`basic` off, development only): never a reward.
+        reward.update(done=0, partial=1)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(reward, indent=1) + "\n")
+    (out.parent / "checks.json").write_text(
+        json.dumps(
+            {
+                "stack": stack,
+                "wall_clock_s": round(time.monotonic() - started, 1),
+                "checks": [c.__dict__ for c in run.checks],
+                "families": run.family_checks,
+                "leak": leak,
+            },
+            indent=1,
+        )
+        + "\n"
+    )
+    return reward
+
+
+def families(run: Run, write: Callable[[], object]) -> None:
+    """The hidden and real families, after the 34, on the services the 34 left running."""
+    if run.services is None or not run.services_up:
+        return
+    tag, runs = run.tag, run.adapter.RUNS
+    basic: dict[int, Night | None] = {n: run.first.get(n) for n in (1, 2, 3, 6)}
+    basic[7] = run.night7
+    n4 = night_of(run.app, runs, 4, DATENORM, f"{tag}-n4")
+    basic[4] = n4 if n4.night_dir.exists() else None
+    n5 = [night_of(run.app, runs, 5, DATENORM, f"{tag}-n5{a}") for a in "abc"]
+    basic[5] = next((nt for nt in reversed(n5) if nt.night_dir.exists()), None)
+    ctx = Ctx(app=run.app, stack=run.adapter.__class__.__name__.lower(), adapter=run.adapter, services=run.services,
+              tag=tag, basic=basic)
+
+    def record(key: str, passed: bool | None, detail: str, seconds: float) -> None:
+        if passed is not None:
+            run.family[key] = int(passed)
+        run.family_checks.append({"name": key, "passed": passed, "seconds": round(seconds, 1), "detail": detail[-2000:]})
+        print(f"[verifier] {key}: {'skip' if passed is None else 'pass' if passed else 'FAIL'} ({seconds:.0f}s)", flush=True)
+
+    try:
+        run_families(ctx, record, write)
+    finally:
+        run.services = ctx.services
 
 
 def main() -> None:
@@ -199,8 +261,12 @@ def main() -> None:
         # reward.json is always written; a scan that crashed is not a clean trial.
         leak = {"leak": 1, "sessions": 0, "crashed": traceback.format_exc()}
         run.reported["leak-scan-crashed"] = 0
+    fams, _ = selected()
+    # `basic` off (development only): the build checks run, the nights do not, so the reward is partial.
+    stages = STAGES if "basic" in fams else [build_checks]
+    write = lambda: write_outputs(run, args.out, args.stack, leak, started)  # noqa: E731
     try:
-        for stage in STAGES:
+        for stage in stages:
             try:
                 stage(run)
             except Exception:
@@ -212,27 +278,19 @@ def main() -> None:
                 for name in CHECKS:
                     if name not in done and (stage is not build_checks or name in BUILD_CHECKS):
                         run.record(name, False, f"not reached: {stage.__name__} crashed\n{crash}")
+        if [c.name for c in run.checks] != CHECKS:
+            print(f"[verifier] warning: checks differ from CHECKS: {[c.name for c in run.checks]}", flush=True)
+        # The reward is final here: the families after it only add keys.
+        write()
+        try:
+            families(run, write)
+        except Exception:
+            run.reported["families-crashed"] = 0
+            print(f"[verifier] families crashed\n{traceback.format_exc()}", flush=True)
     finally:
         if run.services is not None:
             run.adapter.stop_services(run.services)
-    if [c.name for c in run.checks] != CHECKS:
-        print(f"[verifier] warning: checks differ from CHECKS: {[c.name for c in run.checks]}", flush=True)
-    reward = reward_of(run.checks, run.reported, leak)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(reward, indent=1) + "\n")
-    (args.out.parent / "checks.json").write_text(
-        json.dumps(
-            {
-                "stack": args.stack,
-                "wall_clock_s": round(time.monotonic() - started, 1),
-                "checks": [c.__dict__ for c in run.checks],
-                "leak": leak,
-            },
-            indent=1,
-        )
-        + "\n"
-    )
-    print(json.dumps(reward, indent=1))
+    print(json.dumps(write(), indent=1))
 
 
 if __name__ == "__main__":

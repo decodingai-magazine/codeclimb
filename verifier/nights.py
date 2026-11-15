@@ -413,12 +413,34 @@ def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag
         r1_after = [n for n in created_after if n.startswith(f"cc-{night_id}-r1-")]
         unchanged = before is not None and before == after
         ok = finished and bool(ids) and not twice and unchanged and not r1_after
-        return ok, (
+        detail = (
             f"{'; '.join(tries)}{'; ' if tries else ''}{night_id}: killed {killed}; done.json within {RESUME_S}s {finished}; "
             f"eval_ids {len(ids)}, twice {twice}; round 1 code-state.json unchanged {unchanged}; "
             f"sandboxes created after the kill {created_after}, of round 1 {r1_after}"
         )
+        if not ok:
+            detail += "\n" + stall_diagnostics(nt, adapter, services)
+        return ok, detail
     return False, "; ".join(tries)
+
+
+def stall_diagnostics(nt: Night, adapter: Adapter, services: Services) -> str:
+    """Why a night did not end: its files, each experiment's code-state.json, the containers still up, the runtime's
+    own view. A failed check's detail is the only trace left once the verifier's volume is gone."""
+    d = nt.night_dir
+    # The night's own files, without the per-evaluation outputs and the experiments' git store.
+    files = sorted(str(p.relative_to(d)) for p in d.rglob("*")
+                   if p.is_file() and not {"experiments.git", "answer", "outputs"} & set(p.parts)) if d.exists() else []
+    states = []
+    for s in sorted((d / "exps").glob("*/code-state.json")) if d.exists() else []:
+        states.append(f"{s.parent.name}: {s.read_text(errors='replace')[:400]}")
+    _, ps = run_group(["docker", "ps", "--format", "{{.Names}} {{.Status}}"], services.app, 60)
+    try:
+        runtime = adapter.runtime_diagnostics(services)
+    except Exception as e:
+        runtime = f"runtime_diagnostics failed: {e!r}"
+    return (f"files {files[:60]}\ncode-state {states}\nresults rows {len(nt.rows())}\ncontainers {ps.split(chr(10))[:20]}\n"
+            f"{runtime}")[-6000:]
 
 
 def lost_connection(night: Night) -> tuple[bool, str]:

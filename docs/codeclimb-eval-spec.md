@@ -16,7 +16,8 @@
 - like for like: both stacks are local only (Inngest dev server and one worker; `langgraphjs up`), with Docker sandboxes, the same scenarios, the same night configs, the same seven mock nights and the same checks
 - a cross-stack claim is made only on checks both stacks share, and only once both reference builds pass the verifier
 - cut from the earlier design: experiments per hour, `t_provision` and `t_teardown`, setup hours, backend LOC as a comparison of hand-run nights
-- no trial and no check needs a provider key: every graded night runs with `--mock`. A real-model night needs a model credential for the coder and the reviewer whatever the scenario, and `capitals` also for the model its program calls. So the benchmark never uses a provider key: the paid night 8 is out of both piles and both done signals, and no real-model night is run on any build. `graphrag-smoke` (night 7) stays graded, since it needs no key under `--mock`
+- the reward needs no provider key: every counted night runs with `--mock`. The paid night 8 is out of both piles and both done signals. `graphrag-smoke` (night 7) stays counted, since it needs no key under `--mock`
+- real-model nights run only in the verifier, as the `real.*` family ("Hidden and real checks"), never in the reward. Their one credential is the operator's Pi `github-copilot` login, handed to the verifier alone; the harness never sees it
 
 ## Benchmark
 
@@ -87,6 +88,7 @@
 
 - the repo stays public, so the harness never reaches GitHub; it can reach everything else, web search included
 - Harbor has only `public`, `allowlist` and `no-network`, no denylist. So `network_mode = "public"` plus 3 layers:
+  - the verifier environment blocks the same hosts but one: `api.github.com`, where Pi refreshes a Copilot token (`https://api.github.com/copilot_internal/v2/token`, read in `@earendil-works/pi-ai`'s `dist/auth/oauth/github-copilot.js`). The access token lives about 30 minutes and the `real.*` family runs longer. The harness is gone by then, so nothing it does reaches GitHub
   - DNS: `extra_hosts` on the `dind` service in `environment/docker-compose.yaml` maps each blocked host to `0.0.0.0`; `main` shares its `/etc/hosts` (on `main` itself Docker rejects `extra_hosts` beside the shared network mode). Measured: `curl https://github.com` fails in `main`, `npm ci` passes. No wildcards: every host name needs its own entry. The harness runs as root and could edit `/etc/hosts`; layer 3 catches that
   - harness: Claude Code deny rules `WebFetch(domain:<host>)` for each blocked host and its `*.` subdomains, in the trial's managed settings (`assemble.py` writes them into each task's `environment/managed-settings.json` from `verifier/blocked_hosts.py`; the Dockerfile installs them at `/etc/claude-code/managed-settings.json`). Measured 2026-11-13 in the Inngest trial environment under `bypassPermissions`: `WebFetch` of the repo page, `api.github.com` and `raw.githubusercontent.com` returns `WebFetch denied access to domain:<host>`, while `www.inngest.com/llms.txt` and `docs.langchain.com/llms.txt` load. The LangChain image installs the same file; it was built, not probed
   - detection: the verifier's leak scan (`verifier/leak.py`, run before any stage touches `/app`) looks for a blocked host (any subdomain) or the repo owner (`decoding ai magazine`, with or without `-`, `_` or spaces; `codeclimb` alone is in the contracts) in what the harness did, not in what it read: the given inputs name `github.com` (16 files) and the owner (30 graphrag corpus files) themselves
@@ -204,19 +206,103 @@
 | `leak` | 1 if the harness touched a blocked host or the repo owner: trial reported apart |
 | `leak_sessions` | session files the leak scan read: 0 means it saw no trajectory |
 
-- later, not in the reward: hidden contract checks the mock nights don't reach. Add them as a separate key only if `done` saturates (most trials pass):
-  - `pins`: resolved versions equal the build spec's table; every contract npm script exists
-  - `validator-fixtures`: `validate-results` accepts 3 good files, rejects 5 bad ones
-  - `config-rejects`: reviewer = coder, unparsable deadline, threshold ≤ 0, invalid night id → non-zero exit
-  - `held-out-night`: a mock night on a config the harness never saw passes the common check table
-  - `stop-deadline`, `stop-thresholds`: one mock night each, `stop_reason` forced by config
-  - `test-once`: exactly one `test` row in every night
-  - `checkpoint-lineage`: each round's commit parent is the last kept commit (`experiments.git`)
-  - `scoring-hashes`: `night.json.metric_script_sha256` equals the verifier's map; `scenarios/` and `configs/` byte-identical to the given inputs
-  - `sandbox-isolation`: during a mock night no coder container holds `gold/`, `evaluators/` or a provider key
-  - `pi-isolation`: canaries in `~/.claude/CLAUDE.md` and the `/app/AGENTS.md` stub are absent from all `exps/*/session/` files
-  - `worker-api`, `continue`, `seed`: one probe each, per their build spec sections
-  - now in the reward through the seven nights, so off this list: plateau, hard stop, crash resume
+- `hidden.<test>` and `real.<test>`: the two families of "Hidden and real checks", 1 or 0 each, beside the reward and never in it. A test that did not run has no key
+
+### Hidden and real checks
+
+- why: bare trials on both stacks score 34 of 34, so the reward, which is the harness's own done signal, does not separate arms. These families test what the build spec states but `E2E.md` never runs, as outcomes only: no build spec names a function, a step, a thread or a retry count, and none is added. The harness never sees them
+- `hidden.*`: mock nights and probes, $0, no credential. `real.*`: small real-model nights on the operator's Copilot login. Both stand beside the reward: `reward` and N = 34 are unchanged
+- order inside a verifier run, after the 34: hidden tier 1, tier 2, tier 3a, real, tier 3b. `reward.json` is written after the 34 and again after each family, so a hang or the verifier timeout never costs the reward. The services are checked before each family and started again if they are down
+- configs: each test that needs one writes a copy of a given config with the named fields changed, at grade time, under the clean copy's `configs/verifier/`. The harness never sees them
+- selection: `CODECLIMB_VERIFIER_FAMILIES` (`basic`, `hidden`, `real`, comma-separated; default all). `real` is skipped, with no keys, when no Copilot credential is set. `CODECLIMB_VERIFIER_ONLY` (test names, comma-separated) runs only those tests. Without `basic` the nights of the 34 don't run: `reward.json` then has `partial` = 1 and `done` = 0, for development only, never a reward
+- a test passes on a trial only once both reference builds pass it; until then it is reported and not used. The reference results decide which tests are kept
+- code: `verifier/families.py` (runner and helpers), `verifier/hidden_tests.py`, `verifier/durability_tests.py`, `verifier/real_tests.py`; the adapters add the hooks durability needs
+
+Hidden tier 1: the files the seven nights wrote, and quick commands (about 20 s):
+
+1. `row-identity`: every row's ids follow the build spec's id table; `stack` and `backend` hold the stack and `docker`
+2. `checkpoint-lineage`: every `refs/exp/<night>-r<N>-e<n>` commit has exactly one parent (the starter is a root commit); night 2's `r2-e0` parent is the kept `r1-e0` commit
+3. `weighted-score`: each scored experiment's `score` equals the weighted mean of `min(max(value, 0) / threshold, 1)` over the config's thresholds
+4. `starter-deterministic`: nights 2, 4, 5 and 6 start from the same starter SHA
+5. `rejected-diff`: every round that kept nothing has `bundle/history/r<N>.diff`
+6. `done-json-contract`: `done.json` holds its fields; `kept.commit` equals its `refs/exp/<kept.exp_id>`; `test_metrics` equals the test row's `metrics`; one `test` row; with nothing kept the test row's commit is the starter
+7. `sandbox-size`: a short mock night of its own; every `cc-` container has 2 vCPU and 2 GiB (`docker inspect`)
+8. `validator-fixtures`: `validate-results` rejects a row with a bad `decision`, a bad `kind`, non-object `metrics`, a non-JSON line; accepts the build's own file
+9. `stop-after-done`: `stop` on a finished night exits 0, writes no `stop.json`, leaves `done.json` unchanged
+10. `config-rejects`: `reviewer_model` equal to `model` with equal thinking, `deadline: soon`, a `results_path` with `..`: each exits non-zero and creates no night folder
+
+Hidden tier 2: short mock nights (about 3 min):
+
+11. `missing-gate`: a gate on a metric that does not exist: `r1-e0` reverts, no noise row, the test row's commit is the starter
+12. `stop-thresholds`: `datenorm-smoke` with a threshold the starter's code meets: `stop_reason` `thresholds` after one experiment, one test row
+13. `rounds-override-order`: `e2e/plateau.yaml --rounds 1`: `stop_reason` `max_rounds`
+14. `plateau-never`: `e2e/budget.yaml` under `--mock`: all 6 rounds run, `stop_reason` `max_rounds`
+15. `mock-offline-count`: `--mock-offline 3`: exactly 3 assistant messages with stop reason `error` in `r1-e0`'s session, none in `r2-e0`'s
+16. `proxy-refuses-model`: `capitals-smoke` with `allowed_models` not holding the program's model: every meter line has `ok: false` and `error`, nothing is kept, the night ends `done`
+17. `used-night-id`: a start with a finished night's id, and with a running one's: no new row, `done.json` unchanged, one create of `cc-<id>-r1-e0`
+18. `continue`: `run-night continue --config <yaml> --night <id> --rounds 1` on a finished mock night: `r3-e0` and a second test row; every `eval_id` once
+19. `seed`: `--seed <night 2 id> --rounds 1`: `r1-e0.parent_id` is `<id>-r0-seed`, its commit's parent is night 2's kept commit
+
+Hidden tier 3a: durability, quick (about 1.5 min):
+
+20. `stop-during-eval`: stop once round 1's evaluation sandbox exists: night 4's conditions, then 30 s with no new row and no new `cc-<id>` container
+21. `eval-sandbox-lost`: `docker rm -f` round 1's evaluation sandbox once: the night ends `done`, `r1-e0` has one row, no `stop.json`
+22. `server-rerun-mid-night` (LangChain): `npm run server` again mid-night: the night ends `done`, every `eval_id` once
+
+Hidden tier 3b: durability with a crash (about 3 min each, 20 per stack):
+
+23. `crash-mid-eval`: kill the runtime during round 1's evaluation: night 5's conditions, counted from that kill, except that round 1's evaluation may rerun on a sandbox of the same name; only a new create of round 1's coder sandbox `cc-<id>-r1-e0` fails
+24. `crash-during-test-eval`: kill during the test evaluation: one test row; no coder or review of rounds 1 and 2 runs again
+25. `graceful-restart`: night 5 with SIGTERM (Inngest: the worker group; LangChain: `docker stop` of the server container): night 5's conditions and no `stop.json`
+26. `crash-at-init`: kill as soon as `run-night --no-wait` returns: `done.json`, every `eval_id` once, one create of `cc-<id>-r1-e0`
+27. `session-reopen-after-kill` (Inngest): kill mid-session: no second create of `cc-<id>-r1-e0`; the session before the kill is a prefix of the final one
+28. `lost-sandbox-fresh-restart` (Inngest): kill, `docker rm -f cc-<id>-r1-e0`, restart: exactly one new create of it, one `r1-e0` row with the starter as its commit's only parent
+29. `double-kill` (Inngest): night 5, then a second kill once the resumed session grows: night 5's conditions
+30. `server-stop-keeps-state` (LangChain): after a finished night, `server:stop` then `server`: every thread is still listed (`POST /threads/search`), the used id starts nothing, a fresh mock night ends `done`
+31. `crash-with-watchdog` (LangChain): night 5 with `npm run api` running: night 5's conditions and no `stop.json`
+
+The stack-only tests come 3 and 3, so both stacks report the same count.
+
+`real.*`: seven small real nights, each a copy of a given config with only its size changed, `overfit` as given (measured about $0.31 to $0.38 and 21 min per run):
+
+| night | config | cap |
+|---|---|---|
+| R1 climb | `e2e/overfit.yaml` as given, after `build:scenario:overfit` | 4 rounds, $0.50 |
+| R2 loop | `datenorm-smoke`, `experiment_min: 4`, `eval_min: 2` | 2 rounds, $0.20 |
+| R3 metered | `capitals-smoke`, `experiment_min: 4`, `budget_usd.night: 0.2` | 1 round |
+| R4 budget | `e2e/budget.yaml` as given | $0.05 |
+| R5 deadline | `datenorm-smoke`, `deadline: 3m`, `max_rounds: 5`, `plateau_rounds: 0`, `experiment_min: 2` | $0.25 (a real round costs $0.03 to $0.08: at $0.10 `budget` fired first) |
+| R6 tokens | `datenorm-smoke`, `max_tokens` about one round's, `max_rounds: 5`, `plateau_rounds: 0` | $0.25 (a real round costs $0.03 to $0.08: at $0.10 `budget` fired first) |
+| R7 stop | `datenorm-smoke --no-wait`, stopped 60 s into the coder | $0.10 |
+
+32. `overfit-thresholds` (R1): `stop_reason` `thresholds` within 4 rounds
+33. `overfit-test-equals-dev` (R1): the test row's accuracy equals the kept row's dev accuracy
+34. `overfit-lineage` (R1): the kept commits form one chain from the starter, each kept score above the last
+35. `budget` (R4): `stop_reason` `budget`, stopped between rounds: the last round has its row and its review, no later round started, no `stop.json`, one test row. Spend over the cap is not graded: both build specs check the stop between rounds only
+36. `deadline` (R5): `stop_reason` `deadline`, stopped between rounds as in 35
+37. `tokens` (R6): `stop_reason` `tokens`
+38. `stop-halts-spend` (R7): within 60 s of the stop no new meter line, no session growth, no `cc-<id>` container; `stop.json` `manual`, no test row
+39. `hypothesis-handoff` (R2): `reviews/r1.json` has a non-empty `hypothesis`; it is `r2-e0`'s row `hypothesis`, its commit message's text and in its coder's first prompt
+40. `history-in-bundle` (R2): `bundle/history/notes/r1-e0.md` holds a coder part and the reviewer's verdict, and `history/r1.diff` exists if round 1 kept nothing, both before `cc-<id>-r2-e0` is created
+41. `feedback-reaches-coder` (R2): round 1's `feedback` is in round 2's coder prompt
+42. `reviewer-model` (R2): each review's `model` is the config's `reviewer_model`
+43. `keep-consistency` (R2, R3): every keep or revert matches the weighted score against the checkpoint's plus the noise margin
+44. `coder-sandbox-clean` (R1 to R3): during a coder's work, its sandbox holds no file with the hash of a `gold/` or `evaluators/` file and no environment variable naming a provider key or token but the proxy's; names only are recorded
+45. `eval-sandbox-separate` (R1 to R3): each evaluation runs in a container other than the coder's, with none of the coder's `/tmp/notes.md`, `/tmp/tasks.json`
+46. `no-held-out-to-coder` (R2, R3): no dev or test item's input or answer is in a coder session, the bundle or a note
+47. `reviewer-no-dev-item` (R2, R3): no dev item's input or answer is in a review's `feedback` or `hypothesis`
+48. `meter-costs` (R3): evaluation meter lines have `cost_usd` above 0 and tokens, none with `error`; scored rows have `model_calls` above 0
+49. `spend-adds-up` (R3): `done.json`'s `spend_usd` equals the rows' `coder_usd + dev_usd + program_usd + reviewer_usd` within a cent
+
+- the credential: `CODECLIMB_BENCH_PI_AUTH`, the `github-copilot` entry of the operator's `~/.pi/agent/auth.json` as JSON, passed to the verifier service only. `test.sh` writes it to `/root/.pi/agent/auth.json` (mode 600) before the services start; both build specs read Pi's `auth.json` there (`CODECLIMB_PI_AUTH_PATH` unset). No check detail holds its value
+- real results vary run to run: a `real.*` test is reported per trial and read as a pass rate over trials
+- measured 2026-11-15 through `grade.sh`, one run per family per stack, on `main@4a71177` and `langchain@2ab1ad3`:
+  - hidden tiers 1 and 2: Inngest 17 of 19, LangChain 18 of 19, about 4 min per stack. `weighted-score` failed on both on its `noise.json` margin half (both write the raw A/A move, 0, and neither build spec says it is the bounded margin); that half is dropped and every `score` matches. `continue` fails on Inngest: without `--mock` it loads a mock night as real and stops on the model check ("no github-copilot credentials"), against its spec's "a night under `runs-inngest/mock/` is continued … as a mock"
+  - `checkpoint-lineage` checks the experiment refs only: the starter ref is a root commit
+  - durability: all 10 per stack pass. Inngest 3a 77 s, 3b about 19 min; LangChain 3a 56 s, 3b about 12 min. On LangChain `graceful-restart` passes without its restart path: the night ends inside `docker stop`'s 10 s grace. `crash-mid-eval` forbids a new create of round 1's coder sandbox only, since a rerun evaluation may reuse its name. The Inngest reference names evaluation sandboxes `cc-<night>-r1-eval`, not `cc-<eval id>` as its id table says; the tests accept both
+  - real: Inngest 15 of 18, LangChain 17 of 18, about 21 min and $0.31 to $0.38 per stack (at least $0.85 in all, R7's unmeasured). `deadline` failed on both and `tokens` on Inngest at the old $0.10 cap, which ended R5 and R6 on `budget` first; at $0.25 both pass on both stacks (R5: 3 rounds, $0.10 to $0.15, 3 to 5 min; R6: 1 round, $0.04 to $0.07, 2 to 3 min). `budget` failed on Inngest on its spend half ($0.055 against $0.05, which neither build spec bounds); that half is replaced by the between-rounds check. R1 reached `thresholds` in round 1 on both, so `overfit-lineage`'s chain is exercised by unit tests only
+  - R5 and R6 caps raised from $0.10 to $0.25 (operator, 2026-11-15)
+  - dropped by the operator (2026-11-15): 3's `noise.json` margin half; 35's spend within `budget_usd.night`, now a between-rounds check that 36 shares
 
 ### Reference builds
 

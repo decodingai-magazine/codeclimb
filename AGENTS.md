@@ -70,7 +70,7 @@ Both: Pi, the coder and reviewer SDK, https://github.com/earendil-works/pi
   - a task: `harbor run -p tasks/codeclimb-<stack> -a nop`
   - the verifier: `verifier/run.py --app <git archive of the reference commit> --stack <stack> --out <reward.json>`
 - If you create or modify a test file, run it and iterate on test or implementation until it passes.
-- Spend only when the user says so: any trial with a real harness uses the operator's subscription and needs the user's go-ahead for that run. No trial and no check uses a provider key.
+- Spend only when the user says so: any trial with a real harness uses the operator's subscription and needs the user's go-ahead for that run. No harness and no counted check uses a provider key; only the verifier's `real.*` family uses the operator's Copilot login, and a run of it needs the user's go-ahead too.
 - When a regression test fixes a GitHub issue, add a comment with the issue number next to the test.
 - For ad-hoc scripts, `write` them to a temp file (e.g. `/tmp`), run, edit if needed, remove when done. Don't embed multi-line scripts in `bash` commands.
 - Never commit unless the user asks.

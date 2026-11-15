@@ -126,12 +126,30 @@ class Adapter:
         """Night 5: start the runtime again, and nothing else; (answering, detail)."""
         raise NotImplementedError
 
+    def stop_runtime(self, services: Services) -> list[str]:
+        """Durability (`graceful-restart`): stop the runtime with SIGTERM, a kill only after a grace period. Returns
+        what it stopped; `restart_runtime` starts it again."""
+        raise NotImplementedError
+
+    def start_watchdog(self, services: Services) -> tuple[Process, bool, str]:
+        """Durability (`crash-with-watchdog`): start the worker API with its watchdog; (process, answering, detail).
+        The caller stops it with `kill_group`."""
+        raise NotImplementedError
+
+    def thread_ids(self) -> set[str]:
+        """Durability (`server-stop-keeps-state`): every thread id the runtime lists."""
+        raise NotImplementedError
+
     def stop_services(self, services: Services) -> None:
         for p in reversed(services.processes):
             kill_group(p)
 
     def service_logs(self, services: Services) -> str:
         return "\n".join(f"--- {p.name}\n{tail(p.log)}" for p in services.processes)
+
+    def runtime_diagnostics(self, services: Services) -> str:
+        """What the runtime shows when a night stalls, for a failed check's detail: its logs' ends."""
+        return "\n".join(f"--- {p.name}\n{tail(p.log, 1500)}" for p in services.processes)
 
 
 from adapters.inngest import Inngest  # noqa: E402

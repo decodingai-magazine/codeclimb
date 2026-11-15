@@ -177,8 +177,10 @@ class OneList(unittest.TestCase):
     # The DNS block in the sidecar compose file must be the list in blocked_hosts.py.
     def test_dns_block_matches(self):
         compose = (ROOT / "tasks/shared/dind.compose.yaml").read_text()
-        hosts = tuple(re.findall(r'^\s*- "([^:"]+):0\.0\.0\.0"', compose, re.MULTILINE))
-        self.assertEqual(hosts, blocked_hosts.DNS_NAMES)
+        trial, verifier = compose.split("\n  dind-verifier:\n")
+        hosts = lambda text: tuple(re.findall(r'^\s*- "([^:"]+):0\.0\.0\.0"', text, re.MULTILINE))  # noqa: E731
+        self.assertEqual(hosts(trial), blocked_hosts.DNS_NAMES)
+        self.assertEqual(hosts(verifier), tuple(n for n in blocked_hosts.DNS_NAMES if n not in blocked_hosts.VERIFIER_OPEN))
 
     def test_deny_rules_cover_every_domain(self):
         rules = set(blocked_hosts.managed_settings()["permissions"]["deny"])

@@ -1,11 +1,18 @@
 """LangChain: the Agent Server stack (`langgraphjs up`), which `npm run server` starts and waits for."""
 
+import json
+import re
 import time
+import urllib.request
 from pathlib import Path
 
-from adapters import Adapter, Services, answers, kill_group, run_group, spawn, wait_for
+from adapters import Adapter, Process, Services, answers, kill_group, run_group, spawn, wait_for
 
 SERVER = "http://127.0.0.1:8123/ok"
+# The Agent Server's thread search, a platform endpoint.
+THREADS = "http://127.0.0.1:8123/threads/search"
+# The worker API with its watchdog (`npm run api`); a route answering any status below 500 means it is up.
+WORKER_API = "http://127.0.0.1:7421/api/health"
 # The server's compose service, the one night 5 kills.
 SERVICE = "langgraph-api"
 
@@ -32,8 +39,54 @@ class LangChain(Adapter):
     def crash_runtime(self, services: Services) -> list[str]:
         # The server container only: Postgres and Redis keep running. The verifier has its own daemon, so the
         # service label finds this stack's server alone.
+        return [cid for cid in self.server_containers(services) if run_group(["docker", "kill", cid], services.app, 60)[0] == 0]
+
+    def server_containers(self, services: Services) -> list[str]:
         _, ids = run_group(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={SERVICE}"], services.app, 60)
-        return [cid for cid in ids.split() if run_group(["docker", "kill", cid], services.app, 60)[0] == 0]
+        return ids.split()
+
+    def stop_runtime(self, services: Services) -> list[str]:
+        # `docker stop`: SIGTERM, then a kill after Docker's grace period.
+        return [cid for cid in self.server_containers(services) if run_group(["docker", "stop", cid], services.app, 120)[0] == 0]
+
+    def start_watchdog(self, services: Services) -> tuple[Process, bool, str]:
+        p = spawn(services.app, "api", ["npm", "run", "api"], self.LOGS)
+        up, detail = wait_for([WORKER_API], self.SERVICES_UP_S)
+        return p, up, detail
+
+    def thread_ids(self) -> set[str]:
+        ids: set[str] = set()
+        offset, limit = 0, 1000
+        while True:
+            body = json.dumps({"limit": limit, "offset": offset}).encode()
+            req = urllib.request.Request(THREADS, data=body, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as r:
+                page = json.loads(r.read())
+            ids |= {t["thread_id"] for t in page}
+            if len(page) < limit:
+                return ids
+            offset += limit
+
+    def runtime_diagnostics(self, services: Services) -> str:
+        """The server container's log end, and the latest threads with their runs' statuses."""
+        out = []
+        for cid in self.server_containers(services):
+            _, log = run_group(["docker", "logs", "--tail", "60", cid], services.app, 60)
+            out.append(f"--- docker logs {cid}\n{re.sub(r'\x1b\[[0-9;]*m', '', log)[-3000:]}")
+        try:
+            body = json.dumps({"limit": 5, "sort_by": "updated_at", "sort_order": "desc"}).encode()
+            req = urllib.request.Request(THREADS, data=body, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as r:
+                threads = json.loads(r.read())
+            for th in threads:
+                tid = th.get("thread_id")
+                with urllib.request.urlopen(f"http://127.0.0.1:8123/threads/{tid}/runs?limit=5", timeout=30) as r:
+                    runs = [(x.get("status"), x.get("created_at"), x.get("updated_at")) for x in json.loads(r.read())]
+                out.append(f"--- thread {tid} status {th.get('status')} updated {th.get('updated_at')} "
+                           f"metadata {json.dumps(th.get('metadata'))[:200]}; runs {runs}")
+        except Exception as e:
+            out.append(f"--- threads: {e!r}")
+        return "\n".join(out)
 
     def restart_runtime(self, services: Services) -> tuple[bool, str]:
         services.processes.append(spawn(services.app, "server-restart", ["npm", "run", "server"], self.LOGS))

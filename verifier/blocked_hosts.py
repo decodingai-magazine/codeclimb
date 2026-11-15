@@ -16,6 +16,8 @@ DNS_SUBDOMAINS = {
 DNS_NAMES = tuple(
     name for d in DOMAINS for name in (d, *(f"{sub}.{d}" for sub in DNS_SUBDOMAINS.get(d, ())))
 )
+# Open in the verifier's sidecar only: Pi refreshes a Copilot token there, for the real.* family.
+VERIFIER_OPEN = ("api.github.com",)
 # Claude Code's managed settings: WebFetch deny rules for each domain and its subdomains.
 DENY_RULES = tuple(rule for d in DOMAINS for rule in (f"WebFetch(domain:{d})", f"WebFetch(domain:*.{d})"))
 

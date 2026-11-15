@@ -8,6 +8,8 @@ from adapters import Adapter, Services, kill_group, spawn, wait_for
 DEV_SERVER = "http://127.0.0.1:8288/"
 # The worker API's default address (CODECLIMB_API_HOST / CODECLIMB_API_PORT).
 WORKER_API = "http://127.0.0.1:7421/api/nights"
+# Seconds a SIGTERMed worker may take to exit before it is killed.
+GRACE_S = 30
 
 
 class Inngest(Adapter):
@@ -28,6 +30,13 @@ class Inngest(Adapter):
         alive = worker.proc.poll() is None
         kill_group(worker, signal.SIGKILL, wait_s=0)
         return [f"{worker.name} (pid {worker.proc.pid})"] if alive else []
+
+    def stop_runtime(self, services: Services) -> list[str]:
+        # SIGTERM to the worker's process group; SIGKILL only if it is still there after the grace period.
+        worker = next(p for p in reversed(services.processes) if p.name.startswith("worker"))
+        alive = worker.proc.poll() is None
+        kill_group(worker, signal.SIGTERM, wait_s=GRACE_S)
+        return [f"{worker.name} (pid {worker.proc.pid}, SIGTERM)"] if alive else []
 
     def restart_runtime(self, services: Services) -> tuple[bool, str]:
         services.processes.append(spawn(services.app, "worker-restart", ["npm", "run", "worker"], self.LOGS))

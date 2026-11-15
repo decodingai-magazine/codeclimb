@@ -1,6 +1,10 @@
 #!/bin/bash
 # Grade the build that arrived in /app through `artifacts`. verifier/ is copied in by assemble.py.
 mkdir -p /logs/verifier
+# The real.* family: Pi reads the Copilot login from its default auth.json. Never echoed.
+if [ -n "${CODECLIMB_BENCH_PI_AUTH:-}" ]; then
+  mkdir -p /root/.pi/agent && (umask 077 && printf '%s' "$CODECLIMB_BENCH_PI_AUTH" > /root/.pi/agent/auth.json)
+fi
 cd /app
 # The Agent Server needs the key in /app/.env, and a git checkout: artifacts carry neither.
 printf 'LANGSMITH_API_KEY=%s\nLANGSMITH_ENDPOINT=%s\nLANGSMITH_TRACING=false\n' "$LANGSMITH_API_KEY" "$LANGSMITH_ENDPOINT" > .env
