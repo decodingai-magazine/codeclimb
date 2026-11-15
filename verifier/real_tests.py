@@ -790,6 +790,10 @@ def check_meter_costs(nt: Night) -> tuple[bool, str]:
     errors = [x for x in lines if x.get("error")]
     scored = [r for r in nt.rows() if r.get("decision") in ("keep", "revert") and r.get("unchanged") is not True]
     no_calls = [r.get("eval_id") for r in scored if not num((r.get("metrics") or {}).get("model_calls")) > 0]
+    # A program may answer without a model (a capitals lookup table): then no evaluation reached the meter and there
+    # is nothing to grade (both e1 bare trials, 2026-11-15). Any meter line or model call makes the test count.
+    if not lines and scored and len(no_calls) == len(scored):
+        raise Skip(f"no evaluation called a model: 0 meter lines, model_calls 0 on all {len(scored)} scored rows")
     ok = bool(fresh) and not bad and not errors and bool(scored) and not no_calls
     return ok, (f"{len(lines)} evaluation meter lines ({len(lines) - len(fresh)} replayed): {len(bad)} without cost or tokens, "
                 f"{len(errors)} with error; {len(scored)} scored rows, without model_calls > 0: {no_calls}")

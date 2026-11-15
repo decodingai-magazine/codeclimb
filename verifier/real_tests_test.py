@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import real_tests as R
+from families import Skip
 from nights import Night
 
 
@@ -215,6 +216,14 @@ class RealChecks(unittest.TestCase):
         nt = self.night(items=[self.exp("t1", 1, decision="revert", metrics={"model_calls": 0})])
         rows(nt.night_dir / "evals/e/meter.jsonl", [{"cost_usd": 0.1, "input_tokens": 1}])
         self.assertFalse(R.check_meter_costs(nt)[0])
+
+    def test_meter_costs_skips_a_night_whose_program_called_no_model(self):
+        nt = self.night(items=[self.exp("t1", 1, decision="keep", metrics={"model_calls": 0}),
+                               {"kind": "test", "decision": "keep", "eval_id": "t", "metrics": {"model_calls": 0}}])
+        with self.assertRaises(Skip):
+            R.check_meter_costs(nt)
+        # With no scored row there is nothing to say a program ran: the test fails.
+        self.assertFalse(R.check_meter_costs(self.night(nid="t2"))[0])
 
     def test_spend_counts_the_reviewer_once_per_round(self):
         nt = self.night(items=[self.exp("t1", 1, coder_usd=0.05, dev_usd=0.01, program_usd=0.01, reviewer_usd=0.02),
