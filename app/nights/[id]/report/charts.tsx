@@ -168,9 +168,12 @@ export function ConvergenceChart({ nightId, v, primary, selected, onSelect }: {
           <g className="axis">
             <line x1={m.l} x2={m.l + pw} y1={yBase} y2={yBase} />
             {Array.from({ length: v.rounds }, (_, i) => (
-              <text key={i} x={cx(i + 1)} y={yBase + 18} textAnchor="middle">r{i + 1}</text>
+              <text key={i} x={cx(i + 1)} y={yBase + 18} textAnchor="middle">{i + 1}</text>
             ))}
-            {hasFinal && <text x={cx(v.rounds + 1)} y={yBase + 18} textAnchor="middle">final</text>}
+            {/* In a narrow slot a centered "final" runs into the last round's number, so it starts under its mark instead. */}
+            {hasFinal && (step < 30
+              ? <text x={cx(v.rounds + 1) - 7} y={yBase + 18} textAnchor="start">final</text>
+              : <text x={cx(v.rounds + 1)} y={yBase + 18} textAnchor="middle">final</text>)}
             <text x={m.l + pw / 2} y={H - 4} textAnchor="middle">round</text>
           </g>
           {thrVisible && (
