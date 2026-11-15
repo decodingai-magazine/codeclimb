@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 stack="$1"; shift
 case "$stack" in
-  inngest) pin=4a71177 ;;
+  inngest) pin=1f5cda4 ;;
   langchain) pin=2ab1ad3 ;;
   *) echo "stack: inngest | langchain" >&2; exit 2 ;;
 esac
