@@ -5,8 +5,9 @@
     python3 analyze.py counts <trajectory.json>...      # skill, MCP and doc-fetch calls per trajectory
     python3 analyze.py pile <app artifact dir>...       # pocock: tickets, tickets done, commits
 
-The report: outcome per cell, the 2 x 2 effects within a stack (exact permutation tests), the stack comparison on
-shared checks, and the trials kept out of every mean (leaks, infra errors). A trajectory is Harbor's
+The report: outcome per cell, the hidden and real tests per cell (beside the reward, never in it), the 2 x 2 effects
+within a stack (exact permutation tests), the stack comparison on shared checks, and the trials kept out of every mean
+(leaks, infra errors). A trajectory is Harbor's
 agent/trajectory.json: steps whose tool_calls name a function_name.
 """
 
@@ -155,6 +156,12 @@ def stream_facts(path: Path) -> dict:
     return facts
 
 
+def families(rewards: dict) -> dict[str, int]:
+    """The `hidden.*` and `real.*` keys of reward.json: the verifier's tests beside the reward. A test that did not
+    run has no key."""
+    return {k: v for k, v in rewards.items() if k.startswith(("hidden.", "real."))}
+
+
 def classify(row: dict) -> str:
     """counted | infra | leak | no-reward. Infra: a usage-limit stop in the stream whatever Harbor's type, an infra
     exception type, or an artifact that failed to collect (the verifier graded a partial copy; Harbor calls that
@@ -187,6 +194,7 @@ def trial_row(trial: Path) -> dict | None:
             job=trial.parent.name, trial=trial.name, regrade_of=f"{row['job']}/{row['trial']}",
             reward=rewards.get("reward"), done=rewards.get("done"), leak=rewards.get("leak"),
             checks={k[len("checks."):]: v for k, v in rewards.items() if k.startswith("checks.")},
+            families=families(rewards),
             reward_valid=bool(rewards) and (row["exception_type"] is None or row["exception_type"] in REWARD_VALID_TYPES),
             verifier_s=_seconds(result.get("verifier")), started_at=result.get("started_at"),
             job_retries=(_json(trial.parent / "result.json").get("stats") or {}).get("n_retries"),
@@ -230,6 +238,7 @@ def trial_row(trial: Path) -> dict | None:
         "reward": rewards.get("reward"),
         "done": rewards.get("done"),
         "checks": {k[len("checks."):]: v for k, v in rewards.items() if k.startswith("checks.")},
+        "families": families(rewards),
         "leak": rewards.get("leak"),
         "agent_s": _seconds(result.get("agent_execution")),
         "verifier_s": _seconds(result.get("verifier")),
@@ -418,6 +427,34 @@ def cell_table(rows: list[dict]) -> list[str]:
     return out
 
 
+def family_table(rows: list[dict]) -> list[str]:
+    """Per cell of counted trials: the share of the hidden and real tests each trial passed, of those that ran for it,
+    and each test some trial failed with its pass count. Trials graded before the families have no keys."""
+    out = []
+    cells: dict[tuple, list[dict]] = defaultdict(list)
+    for r in rows:
+        if r["status"] == "counted" and r.get("families"):
+            cells[(r["stack"], r["workflow"], r["arm"])].append(r)
+    for (stack, workflow, arm), rs in sorted(cells.items()):
+        share = lambda r, fam: (lambda v: sum(v) / len(v) if v else None)([x for k, x in r["families"].items() if k.startswith(fam)])  # noqa: E731
+        parts = []
+        for fam in ("hidden.", "real."):
+            vals = [s for r in rs if (s := share(r, fam)) is not None]
+            ran = [len([k for k in r["families"] if k.startswith(fam)]) for r in rs]
+            parts.append(f"{fam[:-1]} {_fmt(mean(vals)) if vals else '-'} ({min(ran)}-{max(ran)} tests)" if max(ran) else f"{fam[:-1]} not run")
+        both = [sum(r["families"].values()) / len(r["families"]) for r in rs]
+        out.append(f"{stack:9} {workflow:8} {arm:9} n={len(rs)} passed {[round(x, 3) for x in both]} mean {_fmt(mean(both))}; " + "; ".join(parts))
+        tests = sorted({k for r in rs for k in r["families"]})
+        failing = {k: (sum(r["families"].get(k, 0) for r in rs), sum(k in r["families"] for r in rs)) for k in tests}
+        failing = {k: (p, n) for k, (p, n) in failing.items() if p < n}
+        if failing:
+            out.append("    failed at least once: " + ", ".join(f"{k} {p}/{n}" for k, (p, n) in failing.items()))
+    missing = sum(r["status"] == "counted" and not r.get("families") for r in rows)
+    if missing:
+        out.append(f"counted trials without hidden or real keys (graded before them; regrade to add): {missing}")
+    return out or ["no counted trial has hidden or real keys"]
+
+
 def stack_comparison(rows: list[dict]) -> list[str]:
     """Both stacks side by side, per (workflow, arm), on the checks both stacks' counted trials share."""
     counted = [r for r in rows if r["status"] == "counted"]
@@ -451,7 +488,9 @@ def stack_comparison(rows: list[dict]) -> list[str]:
 
 
 def report(rows: list[dict]) -> str:
-    lines = ["== outcome per cell (counted trials)", *cell_table(rows), "", "== full against bare, one-shot, within a stack"]
+    lines = ["== outcome per cell (counted trials)", *cell_table(rows), "",
+             "== hidden and real tests per cell (beside the reward, not in it)", *family_table(rows), "",
+             "== full against bare, one-shot, within a stack"]
     per_stack = {s: [r for r in rows if r["stack"] == s and r["status"] == "counted" and r["workflow"] == "one-shot" and r["arm"] in ARMS.values()]
                  for s in ("inngest", "langchain")}
     for stack, rs in per_stack.items():

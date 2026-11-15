@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from analyze import collect, effects, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report, stream_facts
+from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report, stream_facts
 
 
 def trajectory(*calls):
@@ -133,7 +133,8 @@ class Trials(unittest.TestCase):
         regrade.joinpath("result.json").write_text(json.dumps({
             "task_name": "codeclimb/codeclimb-inngest", "finished_at": "2026-11-13T12:00:00Z", "started_at": "2026-11-13T11:30:00Z",
             "config": {"source_trial": {"action": "regrade", "path": str(jobs / "inngest-bare" / "t0")}},
-            "verifier_result": {"rewards": {"reward": 0.25, "done": 0, "leak": 0, "checks.install": 1, "checks.cli-done": 0}},
+            "verifier_result": {"rewards": {"reward": 0.25, "done": 0, "leak": 0, "checks.install": 1, "checks.cli-done": 0,
+                                             "hidden.continue": 0, "real.budget": 1}},
         }))  # fmt: skip
         cls.rows = collect([jobs])
         cls.by_trial = {(r["job"], r["trial"]): r for r in cls.rows}
@@ -181,6 +182,9 @@ class Trials(unittest.TestCase):
         self.assertEqual((regrade["status"], regrade["arm"], regrade["reward"], regrade["cost_usd"]), ("counted", "bare", 0.25, 2.0))
         self.assertEqual(regrade["regrade_of"], "inngest-bare/t0")
         self.assertEqual(self.by_trial[("inngest-bare", "t0")]["status"], "regraded")
+        # The hidden and real keys come with the regrade, beside the reward.
+        self.assertEqual(regrade["families"], {"hidden.continue": 0, "real.budget": 1})
+        self.assertEqual(self.by_trial[("inngest-bare", "t1")]["families"], {})
 
     def test_permutation_p_is_exact(self):
         self.assertAlmostEqual(permutation_p([3, 4, 5], [0, 1, 2])[0], 1 / 20)
@@ -200,6 +204,28 @@ class Trials(unittest.TestCase):
         self.assertIn("shared checks: 2", text)
         self.assertIn("leak: 1, $3.00", text)
         self.assertIn("infra: 2, $17.30", text)
+
+
+class Families(unittest.TestCase):
+    def row(self, arm: str, fams: dict, status: str = "counted") -> dict:
+        return {"status": status, "stack": "inngest", "workflow": "one-shot", "arm": arm, "families": fams}
+
+    def test_share_per_family_and_failing_tests_per_cell(self):
+        rows = [
+            self.row("bare", {"hidden.a": 1, "hidden.b": 0, "real.x": 1, "real.y": 1}),
+            self.row("bare", {"hidden.a": 1, "hidden.b": 1, "real.x": 0}),  # real.y did not run: no key
+            self.row("bare", {"hidden.a": 0}, status="leak"),
+            self.row("full", {}),
+        ]
+        text = "\n".join(family_table(rows))
+        self.assertIn("inngest   one-shot bare      n=2 passed [0.75, 0.667] mean 0.708; hidden 0.750 (2-2 tests); real 0.500 (1-2 tests)", text)
+        self.assertIn("failed at least once: hidden.b 1/2, real.x 1/2", text)
+        self.assertIn("without hidden or real keys (graded before them; regrade to add): 1", text)
+        self.assertNotIn("full", text.split("without")[0])
+
+    def test_no_keys_anywhere(self):
+        self.assertEqual(family_table([self.row("bare", {})]),
+                         ["counted trials without hidden or real keys (graded before them; regrade to add): 1"])
 
 
 if __name__ == "__main__":
