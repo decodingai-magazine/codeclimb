@@ -3,7 +3,7 @@ checks"). Each test module lists its tests in `TESTS`; this module runs them in 
 they share.
 
 A test is `Test(name, tier, fn, stacks)`: `fn(ctx)` returns (passed, detail). It reports as `<family>.<name>`, where
-the family is `hidden` for the tiers `hidden-1`, `hidden-2`, `hidden-3a`, `hidden-3b` and `real` for `real`.
+the family is `hidden` for the tiers `hidden-1` to `hidden-4` and `real` for `real`.
 `stacks` limits a test to some stacks; a test that does not run has no key. Raise `Skip` to drop a test's key.
 """
 
@@ -19,7 +19,8 @@ from pathlib import Path
 from adapters import Adapter, Services, run_group, spawn
 from nights import RUN_NIGHT, Night, results_name, wait_until
 
-TIERS = ("hidden-1", "hidden-2", "hidden-3a", "real", "hidden-3b")
+# hidden-4 restarts the services with test hooks in `.env`: last, so a leaked hook can reach nothing after it.
+TIERS = ("hidden-1", "hidden-2", "hidden-3a", "real", "hidden-3b", "hidden-4")
 # The real-model nights: the models they use must be in the Copilot login.
 REAL_MODELS = ("claude-haiku-5.5", "claude-haiku-4.5")
 # Seconds a mock night of a family may take; a real night's own limit is its test's.
@@ -183,7 +184,7 @@ def all_tests() -> list[Test]:
     import importlib
 
     tests: list[Test] = []
-    for name in ("hidden_tests", "durability_tests", "real_tests"):
+    for name in ("hidden_tests", "durability_tests", "platform_tests", "real_tests"):
         try:
             tests += importlib.import_module(name).TESTS
         except Exception:

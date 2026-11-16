@@ -116,7 +116,7 @@ Isolation invariants, which every feature protects:
 
 **Pause for credits.** A program that gets 402 on every call would score as a bad program, so running out of credits pauses the night instead. A credit error from a program call, the coder or the reviewer becomes a credit stop; the coder commits its partial work, the evaluation reports no score, and only the night waits, with no sandbox running. A resume reruns only what stopped: the coder in the same session from its commit, the evaluation from scratch, the review again. Paused time counts against nothing. A pause nobody ends times out and stops the night. Ending a pause is safe to repeat.
 
-**Continue, seed, rescore.** Continue adds rounds to an ended night under the same id: rounds number on from the last recorded round, from the kept commit, with the last review, the history, the notes and the rejected diffs, an optional operator direction, a fresh deadline and a budget that does not compound. A mock night continues as a mock. Seed starts a new night from an ended night's kept commit (`latest`, `best` by weighted dev score, or an id); only the code, its dev metrics and its noise carry over. Rescore: when the scenario's scoring files changed since the kept commit was scored, one extra round first scores it again and measures the noise again, because old scores can't be compared.
+**Continue, seed, rescore.** Continue adds rounds to an ended night (one with a `done.json` or a `stop.json`) under the same id: rounds number on from the last recorded round, from the kept commit (the round-0 commit when it kept nothing), with the last review, the history, the notes and the rejected diffs, an optional operator direction, a fresh deadline and a budget that does not compound. A mock night continues as a mock. Seed starts a new night from an ended night's kept commit (`latest`, `best` by weighted dev score, or an id); only the code, its dev metrics and its noise carry over. Rescore: when the scenario's scoring files changed since the kept commit was scored, one extra round first scores it again and measures the noise again, because old scores can't be compared.
 
 **Crash recovery.** After the Agent Server is killed and started again, the night carries on by itself: only the step that was running reruns, and a rerun never redoes finished work or writes a row twice. The watchdog, in the worker API's process, resumes a night the server left behind, a limited number of times, then stops it.
 
@@ -197,7 +197,7 @@ Contract only. Source layout and everything not listed here is yours.
 
 - skipped: the model checks, the smoke test, web research; lessons are never applied
 - `--mock-offline N`: the coder's model calls 2 to N+1 of the night's first experiment fail: an assistant message with stop reason `error` and the text `fetch failed`
-- `mock_credit`: a test hook with no CLI flag that fails one call of the coder, the reviewer or a program with a 402, to exercise the credit pause
+- `CODECLIMB_MOCK_CREDIT=<who>:<n>`: a test hook with no CLI flag; on a mock night, call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fails once with a 402, to exercise the credit pause
 
 ### Night config
 
@@ -371,6 +371,7 @@ One JSON line per experiment, noise run and test evaluation, validated against a
 | `CODECLIMB_API_HOST`, `CODECLIMB_API_PORT`, `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The worker API's address and bearer; where the app reaches it |
 | `CODECLIMB_PI_AUTH_PATH` | Another `auth.json` than Pi's default |
 | `CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S` | Test hooks that shorten the pause timeout and the variation backstop |
+| `CODECLIMB_MOCK_CREDIT` | Test hook: a mock night's scripted credit error ([[#Mock mode]]) |
 
 - `.env` is loaded by the CLI and the API and reaches the Agent Server; values already in the shell win. The build needs no value in it beyond the three LangSmith ones of the done signal
 

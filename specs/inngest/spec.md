@@ -100,11 +100,11 @@ Isolation invariants every feature protects:
 - **Noise margin.** A program that calls models scores differently on every run, so a small gain may be luck. At the start of the first round whose checkpoint has metrics, the checkpoint is evaluated on dev once more with no replayed calls (the A/A run, a `noise` row, `noise.json`). The margin is the measured move (or the configured fixed value), smaller the more of the experiment's model calls were replayed, and kept between the configured `min` and `max`.
 - **Soft stops.** Checked between rounds, so a round always finishes: round cap, deadline, night budget, token cap, plateau, outage, thresholds reached. After a soft stop the checkpoint is scored on test once, for the report only.
 - **Smoke test.** Before money goes into a round, check that the models and the metered path are reachable; a round that can't be scored would waste the coder's budget. Repeated failures stop the night with `outage`.
-- **Hard stop and cleanup.** A stop request, a night that fails for good and the night's backstop all end the same way: live agent sessions are aborted, the night's sandboxes are destroyed, `stop.json` is written. A stopped or failed night always ends with a `stop.json`, however early it failed, so a following `run-night` never hangs. No test score.
+- **Hard stop and cleanup.** A stop request, a cancel of the night's run from outside (through the runtime's own API or dashboard), a night that fails for good and the night's backstop all end the same way: live agent sessions are aborted, the night's sandboxes are destroyed, `stop.json` is written. A stopped or failed night always ends with a `stop.json`, however early it failed, so a following `run-night` never hangs. No test score.
 - **Repair.** A commit that failed before it was scored (repository-check errors or a failed evaluation) says nothing about its idea. It gets one repair attempt `e1`, started from the failed commit with the masked errors and told to fix that failure only: no research, no send-backs. The failed attempt keeps its `error` row and its note; `e1` is decided against the same checkpoint and stands for the round.
 - **Pause for credits.** A program that gets 402 on every call would score as a bad program. So a credit or quota error, from a program call or an agent turn, pauses the night instead: nothing runs, no sandbox exists, and paused time counts against no deadline. On resume only what stopped runs again. A pause nobody ends times out and stops the night.
 - **Crash recovery.** The worker can die at any moment. When it is back the night carries on by itself: finished rounds, experiments and evaluations are not run again and no row is written twice. A coder that was running finds its sandbox by name and reopens its session; if the sandbox is gone it restarts once from the parent commit.
-- **Continue.** More rounds on an ended night under the same id, from its kept commit, with its last feedback and hypothesis, optionally with an operator's direction. Its state is rebuilt from the night's files; each continued run ends with its own test evaluation.
+- **Continue.** More rounds on an ended night (one with a `done.json` or a `stop.json`) under the same id, from its kept commit (its round-0 commit when it kept nothing), with its last feedback and hypothesis, optionally with an operator's direction. Its state is rebuilt from the night's files; each continued run ends with its own test evaluation.
 - **Seed.** A new night that starts from an ended night's kept commit and dev metrics instead of the starter: `latest`, `best` (highest weighted dev score under unchanged scoring) or a night id.
 - **Rescore.** When the scenario's scoring files changed since the kept commit was scored, old scores can't be compared: a continued or seeded night first evaluates that commit again in one extra round, then measures noise again.
 - **Coder.** A Pi coding-agent session that runs in the worker, so credentials stay on the host, with exactly four tools (`read`, `write`, `edit`, `bash`) that act inside the sandbox. Nothing from the host reaches the session: no agent files, skills, settings or environment. Its prompt carries the scenario's spec, the night so far, the metrics still short of their thresholds, the hypothesis, how the keep works, and the time and budget it has. The session is persisted per experiment so it can be reopened.
@@ -287,6 +287,7 @@ The first five are checked in this order at the start of a round; `thresholds` a
 - mock lessons model: JSON with an empty `ops` list
 - program calls: chat answers `mock`, embeddings `[1, 0, 0, 0]` per input, decisions `{}`, rerank every score 0
 - `--mock-offline N`: the coder's model calls 2 to N+1 of the night's first experiment fail, each as an assistant message with stop reason `error` and the text `fetch failed`
+- `CODECLIMB_MOCK_CREDIT=<who>:<n>`: a test hook with no CLI flag; on a mock night, call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fails once with a credit error, to exercise the credit pause
 
 ### Metering proxy
 
@@ -314,6 +315,7 @@ An optional `.env` (from `.env.example`), loaded by the CLI and the worker when 
 | `CODECLIMB_WORKER_TOKEN`, `CODECLIMB_WORKER_URL` | The API's bearer off loopback; where the app reaches the worker |
 | `CODECLIMB_PROXY_HOST`, `CODECLIMB_PROXY_PORT` | Where the proxy binds. A host that is set is used as given: an address sandboxes can reach, the Docker bridge address on Linux |
 | `CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S` | Test hooks: the pause timeout and the night backstop, in seconds |
+| `CODECLIMB_MOCK_CREDIT` | Test hook: a mock night's scripted credit error ([[#Mock mode]]) |
 
 ## Runtime and tools
 

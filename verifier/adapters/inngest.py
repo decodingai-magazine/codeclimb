@@ -1,6 +1,9 @@
 """Inngest: the local dev server plus one worker, each a process the verifier starts."""
 
+import json
 import signal
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from adapters import Adapter, Services, kill_group, spawn, wait_for
@@ -37,6 +40,22 @@ class Inngest(Adapter):
         alive = worker.proc.poll() is None
         kill_group(worker, signal.SIGTERM, wait_s=GRACE_S)
         return [f"{worker.name} (pid {worker.proc.pid}, SIGTERM)"] if alive else []
+
+    def cancel_runs(self, services: Services) -> list[str]:
+        """`outside-cancel`: every running or queued run the dev server lists (REST v2), cancelled through REST v1's
+        `DELETE /v1/runs/<id>`, the platform's own cancel. Returns `<function>/<run id>` of each accepted cancel."""
+        with urllib.request.urlopen(f"{DEV_SERVER}api/v2/runs?limit=100", timeout=30) as r:
+            runs = [x for x in json.loads(r.read()).get("data") or [] if x.get("status") in ("RUNNING", "QUEUED")]
+        cancelled = []
+        for run in runs:
+            req = urllib.request.Request(f"{DEV_SERVER}v1/runs/{run['id']}", method="DELETE")
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    if r.status < 300:
+                        cancelled.append(f"{(run.get('function') or {}).get('id')}/{run['id']}")
+            except urllib.error.HTTPError:
+                pass  # ended or cancelled meanwhile
+        return cancelled
 
     def restart_runtime(self, services: Services) -> tuple[bool, str]:
         services.processes.append(spawn(services.app, "worker-restart", ["npm", "run", "worker"], self.LOGS))

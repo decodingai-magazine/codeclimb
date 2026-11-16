@@ -140,6 +140,11 @@ class Adapter:
         """Durability (`server-stop-keeps-state`): every thread id the runtime lists."""
         raise NotImplementedError
 
+    def cancel_runs(self, services: Services) -> list[str]:
+        """Platform (`outside-cancel`): cancel every active run through the platform's own API, knowing nothing of
+        the build's function or graph names. Returns what it cancelled."""
+        raise NotImplementedError
+
     def stop_services(self, services: Services) -> None:
         for p in reversed(services.processes):
             kill_group(p)

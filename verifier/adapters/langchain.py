@@ -3,14 +3,16 @@
 import json
 import re
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 from adapters import Adapter, Process, Services, answers, kill_group, run_group, spawn, wait_for
 
-SERVER = "http://127.0.0.1:8123/ok"
+BASE = "http://127.0.0.1:8123"
+SERVER = f"{BASE}/ok"
 # The Agent Server's thread search, a platform endpoint.
-THREADS = "http://127.0.0.1:8123/threads/search"
+THREADS = f"{BASE}/threads/search"
 # The worker API with its watchdog (`npm run api`); a route answering any status below 500 means it is up.
 WORKER_API = "http://127.0.0.1:7421/api/health"
 # The server's compose service, the one night 5 kills.
@@ -66,6 +68,28 @@ class LangChain(Adapter):
             if len(page) < limit:
                 return ids
             offset += limit
+
+    def cancel_runs(self, services: Services) -> list[str]:
+        """`outside-cancel`: cancel every pending or running run on every busy thread, through the Agent Server's
+        REST API with its default action. Returns `<thread>/<run>` of each cancel the server accepted."""
+        cancelled = []
+        body = json.dumps({"status": "busy", "limit": 100}).encode()
+        req = urllib.request.Request(THREADS, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            threads = [t["thread_id"] for t in json.loads(r.read())]
+        for tid in threads:
+            for status in ("running", "pending"):
+                with urllib.request.urlopen(f"{BASE}/threads/{tid}/runs?status={status}&limit=50", timeout=30) as r:
+                    runs = [x["run_id"] for x in json.loads(r.read())]
+                for rid in runs:
+                    req = urllib.request.Request(f"{BASE}/threads/{tid}/runs/{rid}/cancel", data=b"", method="POST")
+                    try:
+                        with urllib.request.urlopen(req, timeout=30) as r:
+                            if r.status < 300:
+                                cancelled.append(f"{tid}/{rid}")
+                    except urllib.error.HTTPError:
+                        pass
+        return cancelled
 
     def runtime_diagnostics(self, services: Services) -> str:
         """The server container's log end, and the latest threads with their runs' statuses."""
