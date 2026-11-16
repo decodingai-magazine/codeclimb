@@ -7,6 +7,7 @@ import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNi
 import { endedNights, resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
 import { checkNightModels } from "../pi/check.ts";
+import type { MockCredit } from "../pi/models.ts";
 import { defaultNightId, isValidNightId } from "../ids.ts";
 import { findNightDir, type NightPaths, nightPaths, readJson, writeStopIfMissing } from "../night/files.ts";
 import { type NightInput, type NightJson, serverRoot } from "../night/types.ts";
@@ -129,6 +130,9 @@ async function start(argv: string[]): Promise<void> {
 		if (!Number.isInteger(n) || n < 1) die("--mock-offline must be an integer ≥ 1");
 		input.mock_offline = n;
 	}
+	// The credit-pause test hook (spec: Mock mode), from the shell or `.env`: `<who>:<n>`.
+	const credit = /^(coder|reviewer|program):(\d+)$/.exec(process.env.CODECLIMB_MOCK_CREDIT?.trim() ?? "");
+	if (values.mock && credit) input.mock_credit = { who: credit[1] as MockCredit["who"], call: Number(credit[2]) };
 	const paths = nightPaths(root, config.results_path, nightId);
 	if (existsSync(paths.nightDir) && (await nightThreads(nightId)).length === 0) die(`night id ${nightId} was used before (${paths.nightDir}): pick another`);
 	await checkOrDie(config, values.mock);
