@@ -41,8 +41,15 @@ import { passesThresholds } from "../../codeclimb/stats";
 import { ccInngest, nightFinished, nightResume, nightStart, nightStop } from "./client";
 
 
+/** Seconds from a test hook in the environment (`.env` is loaded before this module), else the default. */
+const hookSeconds = (name: string, fallback: `${number}d`): `${number}s` | `${number}d` => {
+  const s = Number(process.env[name]);
+  return Number.isFinite(s) && s > 0 ? `${Math.round(s)}s` : fallback;
+};
 /** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
-const PAUSE_TIMEOUT = "3d";
+const PAUSE_TIMEOUT = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", "3d");
+/** The night's backstop. */
+const BACKSTOP = hookSeconds("CODECLIMB_BACKSTOP_S", "4d");
 /** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
 const SMOKE_WAIT = "5m";
 const SMOKE_RETRIES = 6;
@@ -114,7 +121,7 @@ export const runNight = ccInngest.createFunction(
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
     // Backstop past any sane deadline + one round + the test eval + a pause (PAUSE_TIMEOUT); the deadline
     // itself is a soft stop. A timeout cancels this run; `onRunCancelled` turns that into a night stop.
-    timeouts: { finish: "4d" },
+    timeouts: { finish: BACKSTOP },
     // Out of retries: stop the night through the one cleanup path (`cancelOn` + `night-stop-cleanup`).
     onFailure: async ({ event, step }) => {
       const nightId = String(event.data.event.data.night_id);

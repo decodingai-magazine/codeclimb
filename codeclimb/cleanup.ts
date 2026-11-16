@@ -1,6 +1,6 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { nightDirs, sandboxPrefix } from "./paths";
+import { nightDirs, runsRoot, sandboxPrefix } from "./paths";
 import { reachableBackends } from "./sandbox";
 import type { SandboxBackend } from "./sandbox/types";
 
@@ -27,9 +27,10 @@ export function sweepRun(runId: string): Promise<number> {
  * The first stop wins: a user stop cancels `run-night`, which sends a follow-up `cancelled` stop.
  */
 export function markStopped(nightId: string, reason: string): void {
-  for (const { dir } of nightDirs().filter((n) => n.id === nightId)) {
+  // A night that failed in init has no night.json, and still ends with a stop.json: its following run-night waits for one.
+  for (const { dir } of nightDirs(runsRoot(), true).filter((n) => n.id === nightId)) {
     const stopJson = join(dir, "stop.json");
-    if (existsSync(join(dir, "night.json")) && !existsSync(join(dir, "done.json")) && !existsSync(stopJson)) {
+    if (!existsSync(join(dir, "done.json")) && !existsSync(stopJson)) {
       writeFileSync(stopJson, JSON.stringify({ at: new Date().toISOString(), reason }));
     }
   }
