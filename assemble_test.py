@@ -2,6 +2,7 @@
 
 import filecmp
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -355,6 +356,21 @@ class AssembleMaintenanceTask(unittest.TestCase):
                     self.assertNotIn(name, prompt)
         self.assertEqual(assemble.MAINTENANCE["c7"].targets, ("hard-deadline-mid-step",))
         self.assertEqual(assemble.MAINTENANCE["c6"].targets, ("config-rejects",))
+
+    def test_r14_and_r3_are_registered_symptoms_that_name_no_target(self):
+        # #59. R3's target shares its name with the CLI command its symptom must give: only a quoted `run-night ...`
+        # command may hold it.
+        for task_id in ("r14", "r3"):
+            task = assemble.MAINTENANCE[task_id]
+            self.assertEqual(task.kind, "repair")
+            self.assertEqual(set(task.commits), {"inngest", "langchain"})
+            for stack in task.commits:
+                prose = re.sub(r"`run-night [^`]*`", "", assemble.maintenance_prompt(stack, task))
+                for name in task.targets:
+                    self.assertNotIn(name, prose, f"{task_id} on {stack}")
+        self.assertEqual(assemble.MAINTENANCE["r3"].targets, ("continue",))
+        self.assertEqual(assemble.MAINTENANCE["r14"].targets,
+                         ("crash-resume", "crash-mid-eval", "crash-during-test-eval", "crash-at-init", "row-identity"))
 
 
 if __name__ == "__main__":

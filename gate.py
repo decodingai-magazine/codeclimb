@@ -26,6 +26,12 @@ IMPORT = re.compile(r"""(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 SOURCE = (".ts", ".tsx", ".mts")
 
 
+def grade_of(reward: dict, target: str) -> int | None:
+    """A target's grade in one run: a counted check (`checks.<name>`, e.g. `crash-resume`) or a hidden test
+    (`hidden.<name>`); None when it did not run."""
+    return reward.get(f"checks.{target}", reward.get(f"hidden.{target}"))
+
+
 @dataclass
 class Run:
     reward: dict
@@ -39,7 +45,7 @@ def _check_runs(stack: str, side: str, runs: list[Run], targets: tuple[str, ...]
             reasons.append(f"{stack}: {side} run {i}: services not up")
             continue
         reasons += [f"{stack}: {side} run {i}: {c} failed" for c in GREEN if r.reward.get(f"checks.{c}") != 1]
-        reasons += [f"{stack}: {side} run {i}: {t} did not run" for t in targets if f"hidden.{t}" not in r.reward]
+        reasons += [f"{stack}: {side} run {i}: {t} did not run" for t in targets if grade_of(r.reward, t) is None]
     return reasons
 
 
@@ -56,8 +62,8 @@ def gate(targets: tuple[str, ...], runs: dict[str, dict[str, list[Run]]], fix: d
         reasons += _check_runs(stack, "base", base, targets) + _check_runs(stack, "task", task, targets)
         failing = []
         for t in targets:
-            passed = sum(r.reward.get(f"hidden.{t}") == 1 for r in base)
-            failed = sum(r.reward.get(f"hidden.{t}") == 0 for r in task)
+            passed = sum(grade_of(r.reward, t) == 1 for r in base)
+            failed = sum(grade_of(r.reward, t) == 0 for r in task)
             if passed != RUNS:
                 reasons.append(f"{stack}: base passes {t} {passed} of {RUNS}")
             if failed == RUNS:
@@ -80,11 +86,11 @@ def resolved(grade: dict, bases: list[dict], targets: list[str]) -> tuple[bool |
     passes and every other check or test that passed in every base grade still passes. None with no base grade."""
     if not bases:
         return None, []
-    keys = {f"hidden.{t}" for t in targets}
+    keys = {f"{f}.{t}" for t in targets for f in ("checks", "hidden")}
     held = sorted(k for k in set.intersection(*(set(b) for b in bases)) - keys
                   if k.startswith(("checks.", "hidden.", "real.")) and all(b[k] == 1 for b in bases))
     regressions = [k for k in held if grade.get(k) != 1]
-    return all(grade.get(k) == 1 for k in keys) and not regressions, regressions
+    return all(grade_of(grade, t) == 1 for t in targets) and not regressions, regressions
 
 
 def _resolve(spec: str, importer: str, files: dict[str, str]) -> str | None:

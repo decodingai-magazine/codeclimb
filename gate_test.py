@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gate import Run, gate, import_hops, runs_from_jobs
+from gate import Run, gate, import_hops, resolved, runs_from_jobs
 
 TARGETS = ("backstop-mid-step", "pause-timeout")
 
@@ -75,9 +75,28 @@ class Gate(unittest.TestCase):
         v = gate(TARGETS, {"inngest": stack(base=base), "langchain": stack()}, FIX, HOPS)
         self.assertIn("inngest: base run 2: typecheck failed", v["reasons"])
 
+    def test_a_target_may_be_a_counted_check(self):
+        # crash-resume is one of the 34 (`checks.crash-resume`), not a hidden test (#59).
+        def r(v: int) -> Run:
+            return Run(reward={"checks.services-up": 1, "checks.typecheck": 1, "checks.unit-tests": 1,
+                               "checks.crash-resume": v, "hidden.crash-at-init": v}, seconds={"crash-at-init": 10.0})
+        sides = {"base": [r(1)] * 3, "task": [r(0)] * 3}
+        v = gate(("crash-resume", "crash-at-init"), {"inngest": sides, "langchain": sides}, FIX, HOPS)
+        self.assertTrue(v["pass"], v["reasons"])
+        self.assertEqual(v["stacks"]["inngest"]["failing"], ["crash-at-init", "crash-resume"])
+
     def test_three_runs_each(self):
         v = gate(TARGETS, {"inngest": stack(base=[run(PASS)] * 2), "langchain": stack()}, FIX, HOPS)
         self.assertIn("inngest: 2 base runs, not 3", v["reasons"])
+
+
+class Resolved(unittest.TestCase):
+    def test_a_counted_check_as_target(self):
+        # A target may be one of the 34 (crash-resume): it is graded, not held as a regression (#59).
+        base = {"checks.crash-resume": 1, "checks.done-json": 1, "hidden.crash-at-init": 1}
+        unfixed = {**base, "checks.crash-resume": 0}
+        self.assertEqual(resolved(base, [base], ["crash-resume", "crash-at-init"]), (True, []))
+        self.assertEqual(resolved(unfixed, [base], ["crash-resume", "crash-at-init"]), (False, []))
 
 
 class ImportHops(unittest.TestCase):
