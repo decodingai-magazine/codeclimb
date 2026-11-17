@@ -49,6 +49,10 @@ class Scan(unittest.TestCase):
         ]:
             self.assertIn(term, assemble.forbidden_terms(text, authored=True), text)
 
+    def test_every_maintenance_commit_and_patch_is_scanned_for(self):
+        shas = {sha[:7] for task in maintenance.MAINTENANCE.values() for sha in (*task.commits.values(), *task.bases.values())}
+        self.assertEqual(shas - set(assemble.EVERYWHERE), set())
+
     def test_shared_inputs_skip_authored_only_terms(self):
         # The given scenarios mention benchmarks and skill packs in their own corpus.
         self.assertEqual(assemble.forbidden_terms("a benchmark by mattpocock", authored=False), [])
