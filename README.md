@@ -116,9 +116,9 @@ The screenshots are from a 26-round night with a larger budget; the shipped `gra
 
 ## Learn more
 
-| # | Article | Video | Code |
-|---|---|---|---|
-| 1 | [How to Build a Durable and Secure Long-Running Agent](https://www.decodingai.com/p/build-durable-secure-long-running-agents) | — | [inngest/codeclimb/](inngest/codeclimb/) |
+| # | Article | Video |
+|---|---|---|
+| 1 | [How to Build a Durable and Secure Long-Running Agent](https://www.decodingai.com/p/build-durable-secure-long-running-agents) | — |
 
 ## Sponsors
 
