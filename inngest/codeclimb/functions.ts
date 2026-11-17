@@ -9,7 +9,7 @@ import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type EvalFailure, type ExperimentInput, runCoder } from "../../codeclimb/coder";
-import { efficiencyMetrics, evalMinutes, rootConfig, type NightConfig } from "../../codeclimb/config";
+import { efficiencyMetrics, evalMinutes, resolveDeadline, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import { lessonsOn, proposeLessons, stoppedNight, writeProposal } from "../../codeclimb/lessons";
@@ -38,7 +38,7 @@ import {
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import type { HypothesisLogEntry, ReviewOutput } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
-import { ccInngest, nightFinished, nightResume, nightStart, nightStop } from "./client";
+import { ccInngest, nightFinished, nightHardDeadline, nightResume, nightStart, nightStop } from "./client";
 
 
 /** Seconds from a test hook in the environment (`.env` is loaded before this module), else the default. */
@@ -147,6 +147,12 @@ export const runNight = ccInngest.createFunction(
     };
     const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : await fresh();
     const { direction } = state;
+    // The hard deadline stops the night beside it (`night-hard-deadline`), as a stop does: even mid-step.
+    const hard = cfg.hard_deadline;
+    if (hard) {
+      const at = await step.run("hard-deadline-at", () => resolveDeadline(hard, Date.now()));
+      await step.sendEvent("hard-deadline", { name: nightHardDeadline.name, data: { night_id: nightId, at } });
+    }
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 
     // One evaluator run (and sandbox, `cc-<night>-<id>`) per call.
@@ -434,6 +440,16 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
+/** The hard deadline: then the one cleanup path. stop.json first, so the follow-up `cancelled` stop can't win. */
+export const onHardDeadline = ccInngest.createFunction(
+  { id: "night-hard-deadline", triggers: [nightHardDeadline], cancelOn: [nightStop, nightStart].map((e) => ({ event: e, if: "async.data.night_id == event.data.night_id" })) },
+  async ({ event, step }) => {
+    await step.sleepUntil("wait", new Date(event.data.at));
+    await step.run("mark-stopped", () => markStopped(event.data.night_id, "hard_deadline"));
+    await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: event.data.night_id, reason: "hard_deadline" } });
+  },
+);
+
 /**
  * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
  * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
@@ -475,4 +491,4 @@ export const distillLessons = ccInngest.createFunction(
   },
 );
 
-export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled, distillLessons];
+export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onHardDeadline, onRunCancelled, distillLessons];

@@ -36,6 +36,8 @@ export type NightConfig = {
   plateau_rounds: number;
   /** ISO timestamp, or a duration from night start like "90m" / "8h". */
   deadline: string;
+  /** A hard stop, even mid-step: an ISO timestamp, or a duration from night start. */
+  hard_deadline?: string;
   timeouts: { experiment_min: number; eval_min: number };
   /** The coder's model. */
   model: string;
@@ -195,6 +197,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   checkSandboxLimits(cfg);
   resolveDeadline(cfg.deadline, Date.now()); // throws if malformed
+  if (raw.hard_deadline != null) cfg.hard_deadline = raw.hard_deadline instanceof Date ? raw.hard_deadline.toISOString() : String(raw.hard_deadline);
+  if (cfg.hard_deadline) resolveDeadline(cfg.hard_deadline, Date.now());
   return cfg;
 }
 

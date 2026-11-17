@@ -85,6 +85,8 @@ test("config validation", () => {
   assert.deepEqual(cfg.budget_usd, { experiment: 1, night: 5 });
   assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, eval: 0.2 }"), ROOT), /budget_usd\.eval is gone/);
   assert.throws(() => parseConfig(BASE_YAML.replace("night: 5 }", "night: 5, dev: 0.1 }"), ROOT), /budget_usd\.dev is gone/);
+  assert.equal(parseConfig(`${BASE_YAML}hard_deadline: 30s\n`, ROOT).hard_deadline, "30s");
+  assert.throws(() => parseConfig(`${BASE_YAML}hard_deadline: soon\n`, ROOT), /deadline/);
   // Inngest sandboxes run an hour at most: a long coder or eval must fit, with room to spare.
   const long = { ...cfg, timeouts: { experiment_min: 90, eval_min: 3 } };
   assert.doesNotThrow(() => checkSandboxLimits({ ...long, sandbox: "docker" }));
