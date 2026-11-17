@@ -60,13 +60,14 @@ npm run run-night -- --config configs/datenorm-smoke.yaml --mock
 
 About 10 seconds after it starts, the last command prints `done` and the night's `done.json` with `"stop_reason": "max_rounds"` and `"spend_usd": 0`: two rounds of sandboxes, commits, evaluations and reviews on scripted models. Results land in `runs-langchain/mock/datenorm-smoke/`.
 
-**Set up with your coding agent:**
+### Set up with your coding agent
 
 ```txt
 Clone the langchain branch of https://github.com/decodingai-magazine/codeclimb, follow guides/
-from 01_setup.md onward (00_troubleshooting.md on any error), and set it up until npm test passes
-and npm run run-night -- --config configs/datenorm-smoke.yaml --mock prints done.
-Ask me for any API key it needs, starting with LANGSMITH_API_KEY.
+from 01_setup.md onward, including 01_setup.md#langsmith and 02_running.md#agent-server
+(00_troubleshooting.md on any error), and set it up until npm test passes and
+npm run run-night -- --config configs/datenorm-smoke.yaml --mock prints done.
+Ask me for LANGSMITH_API_KEY and any other API key it needs.
 ```
 
 ## Guides
@@ -114,6 +115,16 @@ Then look at your data. Against gold, the dev graph has 72 missed entities and 5
 ![The dev split graph against gold: matched, wrong type, extra and missed entities](assets/example-graphrag-dev-diff.png)
 
 The screenshots are from a 26-round night on the [Inngest](https://inngest.link/dai-gh) twin (`main`) with a larger budget; this branch runs the same loop, scenario and configs, and its `graphrag.yaml` runs 24 rounds (plateau after 9) with a $60 cap, paid on an Anthropic key and OpenRouter. To check the loop for free first, run the [Quickstart](#quickstart) mock night.
+
+### Run it with your coding agent
+
+```txt
+In the langchain branch of https://github.com/decodingai-magazine/codeclimb (set up per
+guides/01_setup.md if it isn't yet), follow guides/02_running.md#agent-server and #graphrag to run
+the GraphRAG night with npm run run-night -- --config configs/graphrag.yaml, until
+runs-langchain/graphrag/nights/<id>/done.json is written. Use 00_troubleshooting.md on any error
+and ask me for ANTHROPIC_API_KEY, OPENROUTER_API_KEY and the go-ahead for its $60 budget.
+```
 
 ## Learn more
 
