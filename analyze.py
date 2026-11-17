@@ -354,16 +354,24 @@ def _lookups(calls: list[dict], stack: str) -> dict:
     return {"sdk_reads": c["sdk_reads"], "pi_doc_reads": c["pi_doc_reads"]}
 
 
+def _in_build(rel: Path) -> bool:
+    """Whether a path of /app is part of the final build: not the shared given inputs, the benchmark's stubs,
+    generated folders (the code metrics' GENERATED, the runs folders) or npm's lockfile. Both sides of the rework
+    ratio use it."""
+    dirs = rel.parts[:-1]
+    return not ((dirs and dirs[0] in SHARED) or rel.as_posix() in STUBS or rel.name == "package-lock.json"
+                or any(d in GENERATED or d.startswith("runs-") for d in dirs))
+
+
 def _build_lines(app: Path) -> int:
-    """Text lines of the final build: every file of /app but the shared given inputs, the benchmark's stubs,
-    generated folders (the code metrics' GENERATED, the runs folders), npm's lockfile and binary files."""
+    """Text lines of the final build (`_in_build`), binary files left out."""
     total = 0
     for here, dirs, names in os.walk(app):
         top = Path(here) == app
         dirs[:] = [d for d in dirs if d not in GENERATED and not d.startswith("runs-") and not (top and d in SHARED)]
         for name in names:
             p = Path(here) / name
-            if p.is_symlink() or name == "package-lock.json" or (top and name in STUBS):
+            if p.is_symlink() or not _in_build(p.relative_to(app)):
                 continue
             data = p.read_bytes()
             total += 0 if b"\0" in data else len(data.decode(errors="replace").splitlines())
@@ -373,8 +381,8 @@ def _build_lines(app: Path) -> int:
 def _rework(calls: list[dict], app: Path) -> dict:
     """Lines written into /app during the session against the lines in the final build (`_build_lines`). A Bash
     call's `bashEditDiff` lists some of the files it changed and counts the rest in `moreFiles`: those writes are
-    unseen, so the ratio is a floor. npm's `package-lock.json` is generated, not written: it is out of both sides."""
-    written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/") and Path(p).name != "package-lock.json"]
+    unseen, so the ratio is a floor. Writes outside the final build (npm's lockfile, a runs folder) are out of both sides."""
+    written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/") and _in_build(Path(p[len("/app/"):]))]
     final = _build_lines(app) if app.is_dir() else 0
     lines = sum(n for _, n in written)
     return {"lines_written": lines, "final_lines": final if app.is_dir() else None,

@@ -337,6 +337,23 @@ class ProcessMetrics(unittest.TestCase):
         self.assertEqual(self.row["checks"], {"install": 1, "cli-done": 1})
 
 
+class ReworkScope(unittest.TestCase):
+    def test_writes_outside_the_final_build_count_on_neither_side(self):
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Path(d)
+            write_trial(jobs, "e1-inngest-bare", "t0", "inngest", "bare", 1.0, 2.0, start="2026-11-15T10:00:00Z")
+            trial = jobs / "e1-inngest-bare" / "t0"
+            s = SessionFile()
+            for at, rel, n in ((0, "src/a.ts", 4), (5, "runs-inngest/x.json", 40), (10, "AGENTS.md", 9), (15, "node_modules/p/i.js", 7)):
+                s.call(at, 1, "Write", {"file_path": f"/app/{rel}"},
+                       result={"type": "create", "filePath": f"/app/{rel}", "content": "x\n" * n, "structuredPatch": []})
+                (trial / "artifacts" / "app" / rel).parent.mkdir(parents=True, exist_ok=True)
+                (trial / "artifacts" / "app" / rel).write_text("x\n" * n)
+            s.write(trial)
+            r = collect([jobs])[0]
+        self.assertEqual((r["lines_written"], r["final_lines"], r["rework_ratio"]), (4, 4, 1.0))
+
+
 class OldSpecs(unittest.TestCase):
     """Phase B to D2 trials ran on the old build specs: labelled, and never pooled with current-spec trials."""
 
