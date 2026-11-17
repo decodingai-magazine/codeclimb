@@ -488,6 +488,12 @@ job-configs/probes/                 the harness probes: run.sh and its prompt te
 jobs/                               Harbor's job output, gitignored
 assemble.py                         given inputs + SPEC.md + E2E.md → a task's environment/app/; the pile → the pocock mount
 analyze.py, analyze_test.py         job dirs → trials.jsonl → per-cell outcome, 2 × 2 effects, stack comparison
+code_metrics.py, code_metrics_test.py  one build → its code and practice metrics file (Metrics), in the analysis container
+analysis/Dockerfile                 the analysis container: Node 24.22.3, cloc 2.04, and package.json + lockfile's pinned tools
+analysis/eslint.measure.mjs         type escapes and complexity per function (syntax only)
+analysis/eslint.ruleset.mjs         the benchmark's lint ruleset (type-checked)
+analysis/measure.py                 runs the tools inside the container
+analysis/fixture/                   a small build with known counts, for code_metrics_test.py
 docs/codeclimb-eval-spec.md         this file
 docs/adr/
 GLOSSARY.md
@@ -522,6 +528,7 @@ extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/doc
   - every phase: `harbor run -c job-configs/<file>.yaml`, arm files in shuffled order. The `full-pocock` files run through `job-configs/pocock.sh <stack>`, which assembles and sets the overlay's absolute path
   - regrade after a verifier fix, no new trial: `harbor job regrade <job dir> -p tasks/codeclimb-<stack>` (or `source_jobs` in a job file)
   - analysis: `python analyze.py ./jobs`
+  - code and practice metrics of one build, $0 (Docker; the image builds on first use): `python3 code_metrics.py --app <trial>/artifacts/app --stack <stack> --out <trial>/code-metrics.json --reference <the stack's reference metrics file>`; `analyze.py` carries the file in the trial's row when it is there. A reference's own metrics: the same command on a `git archive` of the pin, without `--reference`
 
 ### Metrics
 
@@ -552,19 +559,20 @@ Developer-experience metrics (decided 2026-11-17). Report only: columns in `tria
   - SDK type errors: TS2339, TS2305, TS2554 naming a stack-SDK symbol, a cheap proxy for calls to APIs that do not exist
   - lookups: reads of `node_modules/<stack SDK>` and of `/docs/pi`, beside the skill, MCP and doc-fetch counts above (no trial so far fetched the web; 2 of 12 trials with an MCP server called it)
 - code, on the build's `/app` without the given inputs and the Next.js app:
-  - size (ratio): lines of code without comments, comment lines, files, modules (`cloc`)
-  - glue and domain: a glue file imports the stack SDK. Glue and domain lines (ratio), distinct SDK symbols used, files importing the SDK
+  - what is measured: the TypeScript and JavaScript files, without the given inputs (the shared dirs, `specs/<stack>/given/`'s paths, the stubs), the Next.js app (a folder holding `next.config.*` wholly; at the root, the config, `next-env.d.ts` and `app/`, `pages/`, also under `src/`) and generated files. A glue route inside the Next.js app (Inngest's `api/inngest`) is left out with it. Test files (under `test/`, `tests/`, `__tests__/`, or `*.test.*`, `*.spec.*`) count in size, not in glue, domain or coverage
+  - size (ratio): lines of code without comments, comment lines, files, modules (`cloc`, identical files counted each time). A module is a folder holding measured non-test files
+  - glue and domain: a glue file imports the stack SDK (Inngest: `inngest`, `@inngest/*`; LangChain: `@langchain/*`, `langsmith`; tracing counts on both). Glue and domain lines (ratio), distinct SDK symbols used, files importing the SDK
   - type escapes per 1000 lines (ratio): `any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, non-null `!`
   - duplication (`jscpd`), dead code and unused exports (`knip`), complexity per function
-  - unit-testable share: `npm test` line coverage with no service up, split glue and domain
+  - unit-testable share: `npm test` line coverage with no service up, split glue and domain. No service includes no Docker: tests that need a sandbox skip themselves, so `langchain@400bd40` passes 115 here against 131 with Docker (its four Docker suites: coder crash resume, evaluator, meter relay, Docker sandbox), measured 2026-11-17
   - dependencies beyond the build spec's dependency table (not `given/package.json`)
 - practices:
   - flags: CI config, pre-commit hooks, a linter and a formatter configured, and whether each passes; a README or AGENTS.md
-  - one benchmark-owned ruleset run from outside the build: typescript-eslint, type-checked, with `no-floating-promises`; violations per 1000 lines (ratio)
+  - one benchmark-owned ruleset run from outside the build: typescript-eslint, type-checked, with `no-floating-promises`; violations per 1000 lines (ratio). `recommendedTypeChecked` with inline config off, over a project of exactly the measured files that extends the build's own `tsconfig.json`. `no-floating-promises` allows `node:test`'s `test`, `describe` and hooks (`allowForKnownSafeCalls`, typescript-eslint's documented exception): the runner awaits them, and every test call would count otherwise
   - the given `tsconfig.json` weakened: its sha256 against `tests/verifier/given.json`
   - own-test flakiness: `npm test` 3 times, the pass counts
 - runtime, already in `checks.json`: seconds per night, resume latency after a kill (night 5), cold start (`services-up`), image size
-- tools: `cloc`, `jscpd`, `knip`, typescript-eslint and the coverage tool run at pinned versions in the benchmark's own analysis container, never in a build's `package.json` (approved 2026-11-17). Mutation testing is not used: slow on code that starts sandboxes, and it grades the tests the harness chose to write
+- tools: `cloc`, `jscpd`, `knip`, typescript-eslint and the coverage tool run at pinned versions in the benchmark's own analysis container, never in a build's `package.json` (approved 2026-11-17). Pinned: cloc 2.04, jscpd 5.4.2, knip 6.44.1, eslint 10.14.0, typescript-eslint 8.72.1 on typescript 6.0.3, c8 12.0.0 (coverage), Node 24.22.3 (`analysis/`). A tool that fails gives null and its error, never 0. Type escapes and complexity per function come from ESLint rules too (`no-explicit-any`, `no-non-null-assertion`, `ban-ts-comment`, a selector for `as unknown as`, `complexity`), not from text search. Mutation testing is not used: slow on code that starts sandboxes, and it grades the tests the harness chose to write
 
 ### Maintenance tasks
 

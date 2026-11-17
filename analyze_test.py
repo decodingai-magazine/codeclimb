@@ -3,6 +3,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report, stream_facts
@@ -206,6 +207,191 @@ class Trials(unittest.TestCase):
         self.assertIn("infra: 2, $17.30", text)
 
 
+class SessionFile:
+    """A Claude Code session file (agent/sessions/projects/-app/<id>.jsonl): per tool call, an assistant line with the
+    tool_use (100 output tokens, so each call is an equal share of the trial's $) and a user line with its result."""
+
+    T0 = datetime(2026, 11, 15, 10, 0, 0, tzinfo=timezone.utc)
+
+    def __init__(self):
+        self.lines: list[dict] = []
+
+    def at(self, s: float) -> str:
+        return (self.T0 + timedelta(seconds=s)).isoformat().replace("+00:00", "Z")
+
+    def call(self, at: float, took: float, name: str, inp: dict, out: str = "", result: dict | None = None) -> "SessionFile":
+        i = len(self.lines)
+        self.lines.append({"type": "assistant", "timestamp": self.at(at), "message": {
+            "id": f"msg_{i}", "usage": {"input_tokens": 0, "output_tokens": 100},
+            "content": [{"type": "tool_use", "id": f"toolu_{i}", "name": name, "input": inp}]}})
+        self.lines.append({"type": "user", "timestamp": self.at(at + took), "toolUseResult": result or {"stdout": out},
+                           "message": {"content": [{"type": "tool_result", "tool_use_id": f"toolu_{i}", "content": out}]}})
+        return self
+
+    def bash(self, at: float, took: float, command: str, out: str = "", diff: dict | None = None) -> "SessionFile":
+        return self.call(at, took, "Bash", {"command": command}, out, {"stdout": out, **({"bashEditDiff": diff} if diff else {})})
+
+    def write(self, trial: Path) -> None:
+        d = trial / "agent" / "sessions" / "projects" / "-app"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "s1.jsonl").write_text("".join(json.dumps(e) + "\n" for e in self.lines))
+
+
+TSC = "src/a.ts(1,1): error TS2339: Property 'sendd' does not exist on type 'Inngest<{ id: string }>'.\nsrc/a.ts(2,1): error TS2304: Cannot find name 'x'."
+
+
+class ProcessMetrics(unittest.TestCase):
+    """One Inngest trial on the current specs with a session file of known edits, Bash writes, errors, milestones
+    and SDK reads; $10 in all over 13 tool calls of equal tokens."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        jobs = Path(cls.tmp.name)
+        write_trial(jobs, "e1-inngest-bare", "t0", "inngest", "bare", 1.0, 10.0, start="2026-11-15T10:00:00Z")
+        trial = jobs / "e1-inngest-bare" / "t0"
+        s = SessionFile()
+        s.call(0, 1, "Read", {"file_path": "/app/node_modules/inngest/components/Inngest.d.ts"})
+        s.bash(10, 1, "cat /docs/pi/README.md | head")
+        s.call(20, 1, "Write", {"file_path": "/app/src/a.ts"}, result={"type": "create", "filePath": "/app/src/a.ts", "content": "x\n" * 10, "structuredPatch": []})
+        s.bash(30, 5, "npx tsc --noEmit 2>&1 | head", TSC)
+        s.bash(40, 5, "npx tsc --noEmit 2>&1 | head", TSC)  # the same errors, no file change between: thrash
+        s.call(50, 1, "Edit", {"file_path": "/app/src/a.ts"}, result={"filePath": "/app/src/a.ts", "structuredPatch": [
+            {"oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 2, "lines": ["-x", "+y", "+z"]}]})
+        s.bash(60, 5, "npx tsc --noEmit 2>&1 | head", TSC)  # after an edit: not thrash
+        # A heredoc body is file content: its error line, echoed back by the command, is not a failure.
+        s.bash(70, 1, "cat > /app/test/a.test.ts <<'EOF'\n// error TS9999: fake\nEOF\nnpm test 2>&1 | tail -3",
+               "// error TS9999: fake\n# pass 4\n# fail 2",
+               diff={"files": [{"filePath": "/app/test/a.test.ts", "created": True, "hunks": [
+                   {"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 3, "lines": ["+a", "+b", "+c"]}]},
+                   # npm's lockfile is generated, not written: out of both sides of the rework ratio
+                   {"filePath": "/app/package-lock.json", "hunks": [{"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 1, "lines": ["+{"]}]}],
+                   "moreFiles": 1})
+        s.call(75, 0, "Bash", {"command": "npm run worker", "run_in_background": True})  # a start, not a feedback wait
+        s.bash(80, 1, "curl -s localhost:7421/api/nights", '{"nights":[]}')  # the worker API answers: services up
+        s.bash(90, 20, "npm run run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1 2>&1 | tail -2",
+               "started night n1\ndone stop_reason=max_rounds rounds=1 night=n1")
+        s.bash(120, 2, "npm run run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id n5; sleep 1; pkill -f src/worker.ts",
+               "started night n5")
+        s.bash(130, 1, "ls runs-inngest/mock/datenorm-smoke/nights/n5", "done.json\nexps")
+        s.write(trial)
+        app = trial / "artifacts" / "app"
+        (app / "src").mkdir(parents=True)
+        (app / "test").mkdir()
+        (app / "src" / "a.ts").write_text("y\nz\n" + "x\n" * 9)
+        (app / "test" / "a.test.ts").write_text("a\nb\nc\n")
+        (app / "package-lock.json").write_text("{\n" * 100)
+        cls.row = collect([jobs])[0]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_time_inside_and_outside_tool_calls_and_feedback_latency(self):
+        r = self.row
+        self.assertEqual((r["tool_s"], r["outside_tool_s"]), (44.0, 87.0))
+        self.assertEqual(r["feedback_s"], 11.0)  # median of the two run-night calls, 20 s and 2 s
+
+    def test_dollars_and_minutes_to_each_milestone(self):
+        r = self.row
+        # services up at 81 s, after 10 of the 13 calls' messages; night 1 done at 110 s (11); night 5 passes at 131 s (13).
+        self.assertEqual((r["services_up_min"], r["services_up_usd"]), (1.35, 7.69))
+        self.assertEqual((r["night1_done_min"], r["night1_done_usd"]), (1.83, 8.46))
+        self.assertEqual((r["night5_pass_min"], r["night5_pass_usd"]), (2.18, 10.0))
+
+    def test_rework_counts_writes_through_bash(self):
+        # Write 10 lines, Edit +2, a heredoc through Bash +3: 15 lines written; the final files hold 11 + 3.
+        self.assertEqual((self.row["lines_written"], self.row["final_lines"], self.row["rework_ratio"]), (15, 14, 1.071))
+        # bashEditDiff names only some files a command changed; the rest are counted, so the ratio reads as a floor.
+        self.assertEqual(self.row["unseen_bash_writes"], 1)
+
+    def test_thrash_is_an_error_recurring_with_no_file_change_between(self):
+        self.assertEqual(self.row["thrash"], 1)
+
+    def test_failures_parsed_from_output_with_heredoc_bodies_cut(self):
+        r = self.row
+        self.assertEqual((r["ts_errors"], r["ts_failed_runs"]), (6, 3))  # TS9999, echoed from a heredoc body, is not one
+        self.assertEqual((r["test_failures"], r["test_failed_runs"]), (2, 1))
+        self.assertEqual(r["sdk_type_errors"], 3)  # TS2339 on `Inngest<...>`, once per run; TS2304 names no SDK symbol
+
+    def test_reads_of_the_stack_sdk_and_the_pi_docs(self):
+        self.assertEqual((self.row["sdk_reads"], self.row["pi_doc_reads"]), (1, 1))
+
+    def test_never_in_the_reward(self):
+        self.assertEqual(self.row["reward"], 1.0)
+        self.assertEqual(self.row["checks"], {"install": 1, "cli-done": 1})
+
+
+class OldSpecs(unittest.TestCase):
+    """Phase B to D2 trials ran on the old build specs: labelled, and never pooled with current-spec trials."""
+
+    def test_labelled_and_kept_apart_in_the_report(self):
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Path(d)
+            write_trial(jobs, "c-inngest-bare", "old", "inngest", "bare", 1.0, 4.0, start="2026-11-13T21:51:00Z")
+            write_trial(jobs, "e1-inngest-bare", "new", "inngest", "bare", 1.0, 8.0, start="2026-11-14T17:50:00Z")
+            for name, took in (("old", 30), ("new", 10)):
+                SessionFile().bash(0, took, "npm run run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1",
+                                   "done stop_reason=max_rounds").write(jobs / f"{'c' if name == 'old' else 'e1'}-inngest-bare" / name)
+            rows = collect([jobs])
+            text = report(rows)
+        self.assertEqual({r["trial"]: r["specs"] for r in rows}, {"old": "old specs", "new": "current"})
+        self.assertIn("inngest   current   n=1 in tools 10 s outside 0 s feedback 10.0 s", text)
+        self.assertIn("inngest   old specs n=1 in tools 30 s outside 0 s feedback 30.0 s", text)
+        self.assertIn("c-inngest-bare/old inngest bare one-shot old specs", text)
+        self.assertIn("build trials: 2 (old specs 1)", text)
+
+
+class Detectors(unittest.TestCase):
+    """The milestone and lookup detectors on shapes seen in the recorded trials, so they hold alike on both stacks."""
+
+    def row(self, stack: str, session: SessionFile) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Path(d)
+            write_trial(jobs, f"e1-{stack}-bare", "t0", stack, "bare", 1.0, 8.0, start="2026-11-15T10:00:00Z")
+            session.write(jobs / f"e1-{stack}-bare" / "t0")
+            return collect([jobs])[0]
+
+    def test_services_up_only_once_the_build_starts_its_services(self):
+        # A hand-rolled spike's Agent Server answers /ok before the build's `npm run server` exists.
+        s = SessionFile().bash(0, 1, "docker compose -f /tmp/toy.yaml up -d; curl -s :8123/ok", '{"ok":true}')
+        s.bash(60, 30, "npm run server 2>&1 | tail -1", "server: http://127.0.0.1:8123/ok answers")
+        self.assertEqual(self.row("langchain", s)["services_up_min"], 1.5)
+
+    def test_night_5_with_a_variable_night_id_and_a_kill_in_a_script(self):
+        s = SessionFile()
+        s.bash(0, 1, "cat > /tmp/rw.sh <<'EOF'\npkill -f src/worker.ts\n(npm run worker > /tmp/w.log 2>&1 &)\nEOF\nchmod +x /tmp/rw.sh")
+        s.bash(10, 1, "id=k5; npm run -s run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id $id", "started k5")
+        s.bash(20, 1, "/tmp/rw.sh")
+        s.bash(30, 9, "cat /tmp/claude-0/-app/tasks/b1.output", "bundle\ndone.json\nruns-inngest/mock/datenorm-smoke/nights/k5/exps")
+        self.assertEqual(self.row("inngest", s)["night5_pass_min"], 0.65)
+
+    def test_sdk_reads_without_a_trailing_slash_and_feedback_only_from_runs(self):
+        s = SessionFile()
+        s.bash(0, 1, "grep -rn createFunction node_modules/inngest | head")
+        s.bash(5, 1, "ls node_modules/inngest-cli")  # another package, not the SDK
+        s.bash(10, 50, "cat src/cli/run-night.ts")  # names run-night, runs nothing
+        s.bash(70, 4, "npm run -s run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1", "done")
+        r = self.row("inngest", s)
+        self.assertEqual((r["sdk_reads"], r["feedback_s"]), (1, 4.0))
+
+    def test_a_persisted_output_is_read_whole(self):
+        # Claude Code shows the model a 2 KB preview of a long output; toolUseResult keeps all of it.
+        s = SessionFile().call(0, 3, "Bash", {"command": "npx tsc --noEmit"}, "<persisted-output>\nPreview (first 2KB):\n...",
+                               {"stdout": "x\n" * 3000 + TSC, "stderr": ""})
+        self.assertEqual(self.row("inngest", s)["ts_errors"], 2)
+
+
+class SpecReporter(unittest.TestCase):
+    def test_test_failures_from_the_node_spec_reporter(self):  # the trials' `npm test` prints `ℹ fail N`, not TAP
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Path(d)
+            write_trial(jobs, "e1-langchain-bare", "t0", "langchain", "bare", 1.0, 8.0, start="2026-11-15T10:00:00Z")
+            SessionFile().bash(0, 3, "npm test 2>&1 | tail -4", "ℹ tests 5\nℹ pass 4\nℹ fail 1").write(jobs / "e1-langchain-bare" / "t0")
+            r = collect([jobs])[0]
+        self.assertEqual((r["test_failures"], r["test_failed_runs"]), (1, 1))
+
+
 class Families(unittest.TestCase):
     def row(self, arm: str, fams: dict, status: str = "counted") -> dict:
         return {"status": status, "stack": "inngest", "workflow": "one-shot", "arm": arm, "families": fams}
@@ -282,6 +468,19 @@ class MaintenanceTrials(unittest.TestCase):
         self.assertNotIn("n=4", build)
         self.assertIn("inngest   c1 bare      n=3 resolved 1/3", maintenance)
         self.assertIn("fixed resolved $2.50", maintenance)
+
+
+class CodeMetrics(unittest.TestCase):
+    def test_the_trial_row_carries_the_code_metrics_file_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Path(tmp)
+            write_trial(jobs, "inngest-bare", "measured", "inngest", "bare", 1.0, 2.0)
+            write_trial(jobs, "inngest-bare", "unmeasured", "inngest", "bare", 1.0, 2.0)
+            metrics = {"size": {"code_lines": 49}, "ratios": {"size.code_lines": 0.5}}
+            (jobs / "inngest-bare" / "measured" / "code-metrics.json").write_text(json.dumps(metrics))
+            rows = {r["trial"]: r for r in collect([jobs])}
+        self.assertEqual(rows["measured"]["code_metrics"], metrics)
+        self.assertIsNone(rows["unmeasured"]["code_metrics"])
 
 
 if __name__ == "__main__":
