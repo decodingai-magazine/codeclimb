@@ -288,8 +288,8 @@ def milestones(calls: list[dict], stack: str) -> dict[str, float | None]:
 TS_ERROR = re.compile(r"\berror (TS\d+)\b")
 TEST_FAIL = re.compile(r"^(?:#|ℹ)\s*fail\s+(\d+)", re.MULTILINE)  # TAP, or the node spec reporter
 ERROR_LINE = re.compile(r"\berror\b|^(?:#|ℹ)\s*fail\s+[1-9]|\bFAIL\b", re.IGNORECASE)
-# The stack SDK: its package folders, and the names a type error carries when it is about an SDK symbol.
-SDK_PATHS = {"inngest": re.compile(r"node_modules/(?:inngest|@inngest)(?![\w-])"), "langchain": re.compile(r"node_modules/@langchain(?![\w-])")}
+# The stack SDK (code_metrics.SDK's packages, tracing included): its package folders, and the names a type error carries when it is about an SDK symbol.
+SDK_PATHS = {"inngest": re.compile(r"node_modules/(?:inngest|@inngest)(?![\w-])"), "langchain": re.compile(r"node_modules/(?:@langchain|langsmith)(?![\w-])")}
 SDK_SYMBOL = {
     "inngest": re.compile(r"""['"](?:inngest|@inngest/[\w-]+)['"]|\bInngest\w*|\bGetStepTools\b|\bGetEvents\b"""),
     "langchain": re.compile(r"""['"]@langchain/[\w-]+(?:/[\w-]+)?['"]|\bLangGraph\w*|\b(?:Compiled)?StateGraph\b|\bPregel\w*|\bBaseCheckpointSaver\b|\bAnnotation\w*\b"""),

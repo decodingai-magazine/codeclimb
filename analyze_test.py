@@ -375,6 +375,11 @@ class Detectors(unittest.TestCase):
         r = self.row("inngest", s)
         self.assertEqual((r["sdk_reads"], r["feedback_s"]), (1, 4.0))
 
+    def test_langsmith_is_the_langchain_sdk_as_in_the_code_metrics(self):
+        s = SessionFile().bash(0, 1, "ls node_modules/langsmith/dist").bash(5, 1, "ls node_modules/@langchain/langgraph")
+        s.bash(10, 1, "ls node_modules/langsmith-extra")  # another package
+        self.assertEqual(self.row("langchain", s)["sdk_reads"], 2)
+
     def test_a_persisted_output_is_read_whole(self):
         # Claude Code shows the model a 2 KB preview of a long output; toolUseResult keeps all of it.
         s = SessionFile().call(0, 3, "Bash", {"command": "npx tsc --noEmit"}, "<persisted-output>\nPreview (first 2KB):\n...",
