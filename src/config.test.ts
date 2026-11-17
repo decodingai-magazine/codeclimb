@@ -61,6 +61,12 @@ test("the same model with another effort is a different reviewer", () => {
 	assert.doesNotThrow(() => load({ reviewer_model: base.model, reviewer_thinking: "low" }));
 });
 
+test("a hard deadline is optional and parsed like the deadline", () => {
+	assert.equal(load({}).hard_deadline, undefined);
+	assert.equal(load({ hard_deadline: "30s" }).hard_deadline, "30s");
+	assert.throws(() => load({ hard_deadline: "soon" }), /deadline/);
+});
+
 test("an unparsable deadline is refused", () => {
 	assert.throws(() => load({ deadline: "soon" }), /deadline/);
 	assert.throws(() => load({ deadline: "90 minutes" }), /deadline/);

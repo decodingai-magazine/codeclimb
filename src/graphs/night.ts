@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { entrypoint, getConfig, isGraphInterrupt } from "@langchain/langgraph";
 import { runStopGraph, startLessons, startTimer } from "../control.ts";
+import { deadlineAt } from "../config.ts";
 import { lessonsOn } from "../lessons.ts";
 import { nightPaths, writeStopIfMissing } from "../night/files.ts";
 import { initNight } from "../night/init.ts";
@@ -42,6 +43,9 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		}, { backstopMin: HOST_COMMAND_BACKSTOP_MIN })();
 		// The variation backstop: a timer due in 4 days that stops the variation unless it ended or a newer one began.
 		await step("variation-timer", () => startTimer(id, { variation: input.variation ?? 0 }, VARIATION_TIMEOUT_S))();
+		// The config's hard deadline: the same timer, so it stops the variation mid-step, as the backstop does.
+		const hard = config.hard_deadline;
+		if (hard) await step("hard-deadline-timer", () => startTimer(id, { variation: input.variation ?? 0 }, Math.max(1, Math.round((deadlineAt(hard, Date.now()) - Date.now()) / 1000)), "hard_deadline"))();
 		const start = init.start;
 		const pauses = new Pauses(id, paths, init.deadlineMs, start.pauses);
 		let round = start.lastRound;
