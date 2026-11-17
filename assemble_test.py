@@ -343,7 +343,7 @@ class AssembleMaintenanceTask(unittest.TestCase):
                    for s, t in prompts.items()}
         self.assertEqual(neutral["inngest"], neutral["langchain"])
 
-    def test_a_failed_assemble_leaves_no_task_folder(self):
+    def test_a_failed_assemble_leaves_no_task_folder(self):  # #58
         (self.repo / "README.md").write_text("see codeclimb-eval-spec\n")
         git(self.repo, "commit", "-qam", "name the benchmark spec")
         task = maintenance.Maintenance(kind="change", request="r", targets=(), commits={"inngest": "HEAD"})

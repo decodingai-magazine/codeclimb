@@ -264,10 +264,10 @@ class ProcessMetrics(unittest.TestCase):
                "// error TS9999: fake\n# pass 4\n# fail 2",
                diff={"files": [{"filePath": "/app/test/a.test.ts", "created": True, "hunks": [
                    {"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 3, "lines": ["+a", "+b", "+c"]}]},
-                   # npm's lockfile is generated, not written: out of both sides of the rework ratio
+                   # npm's lockfile is generated, not written: out of both sides of the rework ratio (#56)
                    {"filePath": "/app/package-lock.json", "hunks": [{"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 1, "lines": ["+{"]}]}],
                    "moreFiles": 1})
-        s.call(75, 0, "Bash", {"command": "npm run worker", "run_in_background": True})  # a start, not a feedback wait
+        s.call(75, 0, "Bash", {"command": "npm run worker", "run_in_background": True})  # a start, not a feedback wait (#56)
         s.bash(80, 1, "curl -s localhost:7421/api/nights", '{"nights":[]}')  # the worker API answers: services up
         s.bash(90, 20, "npm run run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1 2>&1 | tail -2",
                "started night n1\ndone stop_reason=max_rounds rounds=1 night=n1")
@@ -358,7 +358,8 @@ class OldSpecs(unittest.TestCase):
 
 
 class Detectors(unittest.TestCase):
-    """The milestone and lookup detectors on shapes seen in the recorded trials, so they hold alike on both stacks."""
+    """The milestone and lookup detectors on shapes seen in the recorded trials, so they hold alike on both stacks
+    (#56)."""
 
     def row(self, stack: str, session: SessionFile) -> dict:
         with tempfile.TemporaryDirectory() as d:
@@ -367,13 +368,13 @@ class Detectors(unittest.TestCase):
             session.write(jobs / f"e1-{stack}-bare" / "t0")
             return collect([jobs])[0]
 
-    def test_services_up_only_once_the_build_starts_its_services(self):
+    def test_services_up_only_once_the_build_starts_its_services(self):  # #56
         # A hand-rolled spike's Agent Server answers /ok before the build's `npm run server` exists.
         s = SessionFile().bash(0, 1, "docker compose -f /tmp/toy.yaml up -d; curl -s :8123/ok", '{"ok":true}')
         s.bash(60, 30, "npm run server 2>&1 | tail -1", "server: http://127.0.0.1:8123/ok answers")
         self.assertEqual(self.row("langchain", s)["services_up_min"], 1.5)
 
-    def test_night_5_with_a_variable_night_id_and_a_kill_in_a_script(self):
+    def test_night_5_with_a_variable_night_id_and_a_kill_in_a_script(self):  # #56
         s = SessionFile()
         s.bash(0, 1, "cat > /tmp/rw.sh <<'EOF'\npkill -f src/worker.ts\n(npm run worker > /tmp/w.log 2>&1 &)\nEOF\nchmod +x /tmp/rw.sh")
         s.bash(10, 1, "id=k5; npm run -s run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id $id", "started k5")
@@ -381,7 +382,7 @@ class Detectors(unittest.TestCase):
         s.bash(30, 9, "cat /tmp/claude-0/-app/tasks/b1.output", "bundle\ndone.json\nruns-inngest/mock/datenorm-smoke/nights/k5/exps")
         self.assertEqual(self.row("inngest", s)["night5_pass_min"], 0.65)
 
-    def test_sdk_reads_without_a_trailing_slash_and_feedback_only_from_runs(self):
+    def test_sdk_reads_without_a_trailing_slash_and_feedback_only_from_runs(self):  # #56
         s = SessionFile()
         s.bash(0, 1, "grep -rn createFunction node_modules/inngest | head")
         s.bash(5, 1, "ls node_modules/inngest-cli")  # another package, not the SDK
@@ -395,7 +396,7 @@ class Detectors(unittest.TestCase):
         s.bash(10, 1, "ls node_modules/langsmith-extra")  # another package
         self.assertEqual(self.row("langchain", s)["sdk_reads"], 2)
 
-    def test_a_persisted_output_is_read_whole(self):
+    def test_a_persisted_output_is_read_whole(self):  # #56
         # Claude Code shows the model a 2 KB preview of a long output; toolUseResult keeps all of it.
         s = SessionFile().call(0, 3, "Bash", {"command": "npx tsc --noEmit"}, "<persisted-output>\nPreview (first 2KB):\n...",
                                {"stdout": "x\n" * 3000 + TSC, "stderr": ""})
@@ -464,7 +465,7 @@ class MaintenanceTrials(unittest.TestCase):
         base = {"checks.typecheck": 1, "checks.cli-done": 1, "hidden.pause-timeout": 1, "hidden.pause-resume": 1, "hidden.seed": 1}
         trial("reference-inngest-bcabd72-100000", "b1", base, maintenance=False, nop=True)
         trial("reference-inngest-bcabd72-100000", "b2", {**base, "hidden.seed": 0}, maintenance=False, nop=True)
-        # A gate run: the targets only, so it says nothing of cli-done.
+        # A gate run: the targets only, so it says nothing of cli-done (#58).
         trial("reference-inngest-bcabd72-110000", "g1", {"hidden.pause-timeout": 1, "partial": 1}, maintenance=False, nop=True)
         trial("c1-inngest", "fixed", {**base, "hidden.seed": 0}, maintenance=True, cost=2.5)  # seed is flaky on the base
         trial("c1-inngest", "unfixed", {**base, "hidden.pause-resume": 0}, maintenance=True)

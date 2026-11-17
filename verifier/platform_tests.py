@@ -257,7 +257,7 @@ def stop_mid_eval(ctx: Ctx, short: str, config: str, after_s: int, reason: str |
 @guarded_test
 def hard_deadline_mid_step(ctx: Ctx) -> tuple[bool, str]:
     """59: a slow-stage config with `hard_deadline: 30s`: the hard deadline reaches the running evaluation, as test
-    53's backstop does: `stop.json` with reason `hard_deadline` no earlier than 30 s, after round 1's evaluation
+    53's backstop does: `stop.json` with reason `hard_deadline` no earlier than 25 s, after round 1's evaluation
     sandbox was created; within 90 s of the start no `cc-<id>` container; no `done.json`, no test row."""
     config = ctx.config(DATENORM_SMOKE, "hard-deadline", scenario=slow_stage(ctx), hard_deadline=f"{HARD_DEADLINE_S}s")
     return stop_mid_eval(ctx, "hdl", config, HARD_DEADLINE_S, reason="hard_deadline")
