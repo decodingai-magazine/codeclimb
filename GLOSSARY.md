@@ -1,6 +1,6 @@
 # CodeClimb benchmark
 
-Measures how well a coding agent builds CodeClimb from a build spec, on Inngest and on LangChain, and what each kind of starting context adds. CodeClimb's own words (night, round, experiment, evaluation) keep the meaning the build specs give them; where one collides with a word below, the entry says so.
+Measures how well a coding agent builds CodeClimb from a build spec, on Inngest and on LangChain, and what each kind of starting context adds. CodeClimb's own words (night, round, experiment, evaluation, a night's results and notes, never "decision log") keep the meaning the build specs give them; where one collides with a word below, the entry says so.
 
 ## Language
 
@@ -31,7 +31,7 @@ The application a harness produces in one trial.
 _Avoid_: implementation, solution
 
 **Reference build**:
-A build made outside the benchmark and known to work, used only to prove the verifier before any trial is graded.
+A build made outside the benchmark and known to work, used to prove the verifier before any trial is graded, and as the base of a maintenance task.
 _Avoid_: oracle, golden solution
 
 ### What runs
@@ -53,8 +53,24 @@ The tool that runs trials.
 _Avoid_: harness, runner
 
 **Trial**:
-One harness building CodeClimb once, from a clean start, with no human input.
+One harness doing one task once, with no human input.
 _Avoid_: run, attempt, experiment (a CodeClimb word for a different thing)
+
+**Build task**:
+A task in which the harness builds CodeClimb from a build spec, from a clean start.
+_Avoid_: build ticket
+
+**Maintenance task**:
+A task that starts from a reference build and asks the harness for one change or one repair.
+_Avoid_: change task or repair task as separate words, bug-fix task
+
+**Change**:
+A maintenance task that asks for new or different behaviour, stated as a request.
+_Avoid_: feature task
+
+**Repair**:
+A maintenance task whose base holds a planted fault, stated only as its symptom.
+_Avoid_: bug-fix, fault task
 
 **Arm**:
 The extra context a harness starts a trial with.
@@ -75,8 +91,16 @@ What grades a build after a trial, on a clean copy and out of the harness's reac
 _Avoid_: tests, grader, evaluator (a CodeClimb word for a different thing)
 
 **Reward**:
-The fraction of the verifier's checks a build passes.
+The fraction of the verifier's checks a build passes, in a build task.
 _Avoid_: score, accuracy
+
+**Resolved**:
+Whether a maintenance task's target tests now pass and no other test regressed.
+_Avoid_: reward, fixed
+
+**Metric**:
+A number reported beside the reward or resolved, never part of either: cost, time, code size, lint violations.
+_Avoid_: check, score
 
 **Stack comparison**:
 The reading of trial results across the two stacks, on the checks both stacks share.

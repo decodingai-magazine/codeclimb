@@ -13,6 +13,7 @@
 
 - the stack comparison is a reading of the trial results across the two stacks, not a separate set of night runs
 - compared per stack: `reward`, `done`, which checks fail, agent $ and wall-clock to build, build tickets done (`pocock` workflow)
+- a second question, decided 2026-11-17: which stack is easier for a harness to build on, change and debug. It is answered by the process, code and practice metrics of build trials (Metrics) and by maintenance tasks ([Maintenance tasks](#maintenance-tasks)); the arm 2 × 2 stays the primary claim
 - like for like: both stacks are local only (Inngest dev server and one worker; `langgraphjs up`), with Docker sandboxes, the same scenarios, the same night configs, the same seven mock nights and the same checks
 - a cross-stack claim is made only on checks both stacks share, and only once both reference builds pass the verifier
 - cut from the earlier design: experiments per hour, `t_provision` and `t_teardown`, setup hours, backend LOC as a comparison of hand-run nights
@@ -538,7 +539,86 @@ extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/doc
 - did the harness run `E2E.md` itself (trajectory): yes / no
 - glue-code LOC: `cloc` of the build minus the given inputs
 - code quality: binary judge checklist (durable primitive per experiment: `step.invoke` / `task`; no secrets in sandboxes; no hardcoded thresholds), a different model family as judge, its own reward key, off until it agrees with Paul on 5 builds
-- cut: the API-key cross-check of `cost_usd` (no API key is used), "errors from non-existent framework APIs" (no cheap, reliable count), observability scoring (nothing checks it)
+- cut: the API-key cross-check of `cost_usd` (no API key is used), "errors from non-existent framework APIs" as a count of hallucinations (replaced by the SDK type errors below), observability scoring (nothing checks it)
+
+Developer-experience metrics (decided 2026-11-17). Report only: columns in `trials.jsonl` and the `analyze.py` report, never checks, never in `reward` or `resolved`. Each is shown for the trial and, where marked (ratio), as a ratio to the same stack's reference build. Phase B to D2 trials ran on the old build specs: their metrics are computed, labelled `old specs`, and never pooled with trials on the current specs
+
+- process, from the session files (`agent/sessions/projects/-app/*.jsonl`; `trajectory.json` observations hold only `content`):
+  - time split: time inside tool calls, time outside them (includes idle waits on background tasks, so it is not model time), and feedback latency (median seconds of a service start or a `run-night` call)
+  - milestones, the same on both stacks: $ and minutes to the first `services-up`, the first night 1 `done`, the first night 5 pass. They replace cost per build ticket (only `pocock` has tickets) and time to the first green test (unit tests are the harness's choice)
+  - rework ratio: lines written in the session (`toolUseResult.structuredPatch` and `bashEditDiff`, so writes through Bash count) ÷ lines in the final build
+  - thrash: the same error line recurring across commands without a file change between
+  - failures during the build: `error TS\d+` and `# fail N` parsed from command output with heredoc bodies cut first (as `verifier/leak.py` does); exit codes are masked by `| head`, so they are not used
+  - SDK type errors: TS2339, TS2305, TS2554 naming a stack-SDK symbol, a cheap proxy for calls to APIs that do not exist
+  - lookups: reads of `node_modules/<stack SDK>` and of `/docs/pi`, beside the skill, MCP and doc-fetch counts above (no trial so far fetched the web; 2 of 12 trials with an MCP server called it)
+- code, on the build's `/app` without the given inputs and the Next.js app:
+  - size (ratio): lines of code without comments, comment lines, files, modules (`cloc`)
+  - glue and domain: a glue file imports the stack SDK. Glue and domain lines (ratio), distinct SDK symbols used, files importing the SDK
+  - type escapes per 1000 lines (ratio): `any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, non-null `!`
+  - duplication (`jscpd`), dead code and unused exports (`knip`), complexity per function
+  - unit-testable share: `npm test` line coverage with no service up, split glue and domain
+  - dependencies beyond the build spec's dependency table (not `given/package.json`)
+- practices:
+  - flags: CI config, pre-commit hooks, a linter and a formatter configured, and whether each passes; a README or AGENTS.md
+  - one benchmark-owned ruleset run from outside the build: typescript-eslint, type-checked, with `no-floating-promises`; violations per 1000 lines (ratio)
+  - the given `tsconfig.json` weakened: its sha256 against `tests/verifier/given.json`
+  - own-test flakiness: `npm test` 3 times, the pass counts
+- runtime, already in `checks.json`: seconds per night, resume latency after a kill (night 5), cold start (`services-up`), image size
+- tools: `cloc`, `jscpd`, `knip`, typescript-eslint and the coverage tool run at pinned versions in the benchmark's own analysis container, never in a build's `package.json` (approved 2026-11-17). Mutation testing is not used: slow on code that starts sandboxes, and it grades the tests the harness chose to write
+
+### Maintenance tasks
+
+- what: a task that starts from a reference build and asks the harness for one change (a request) or one repair (a planted fault, stated only as its symptom). It measures how easy each stack is to change and to debug; a build task measures how easy it is to build
+- base: the current pins, `main@bcabd72` and `langchain@400bd40`. Each maintenance task is one commit on top of its stack's pin, on the reference branch, named on this branch only by SHA (ADR 0002). Re-pinning a reference rebuilds its maintenance tasks
+- the confound: a maintenance task measures the stack as the reference build shapes it (Inngest's reference has a few large files, LangChain's many small ones). Each kind has a control with nothing stack-specific in it; each stack's result is read as platform task minus control
+- `/app`: the `git archive` of the task's commit, without the reference's `AGENTS.md`, `.mcp.json`, `.claude/` and `notes/`; plus `SPEC.md`, the `AGENTS.md` stub and a fresh `git init` with one commit, so neither `git log` nor `git diff` shows the change. A repair's commit also removes the tests and comments that describe the fixed behaviour. The leak scan's baseline (`given.json`) is written from this `/app`, so the reference's files are not counted as the harness's
+- prompt: one stack-neutral template naming only the request or the symptom, in CLI output, night files and `docker ps -a`, never a test name; `assemble.py` fills the runs folder and service commands, as for `E2E.md`
+- trial: the `bare` arm, the one-shot workflow. The tooling arm (`bare` against `mcp-docs`) on live repairs is later
+- target tests: shared by both stacks and passed reliably by both references. Never the stack-only tests (22, 27 to 31). `stop-then-crash` (58) only after both references pass it 5 of 5
+- `resolved`: the target tests pass and every other test passes as it did on the base. Beside it, as metrics: $, turns and minutes (from the first `services-up`: the `/app` has no `node_modules` or images), diff lines and files against the reference's own fix, whether a regression test was added
+- gate, $0 under `--mock` through `job-configs/reference.sh <stack> <sha>` with `CODECLIMB_VERIFIER_ONLY`:
+  - the base passes the target tests 3 of 3
+  - a repair's commit fails them 3 of 3, on both stacks; a change is gated by the reference's own patched version passing them 3 of 3
+  - `typecheck` and `unit-tests` stay green
+  - equal distance across the stacks: the same set of failing tests, fix size within 2×. Also recorded: import hops from the CLI entry to the changed line, seconds to reproduce
+  - a pair that fails the gate is dropped, not tuned
+- comparison: per task pair, both stacks. `resolved` is expected at the ceiling, so $ and time are the outcome. A one-sided p ≤ 0.05 needs at least 5 pairs in one direction
+- tiers: T1 found by reading, T2 needs one mock night, T3 needs a kill or a cancel mid-night, T4 intermittent
+
+Repairs, hardest first:
+
+| id | fault → symptom | target tests | tier |
+|---|---|---|---|
+| R8 | the sandbox is created outside the durable step → a kill during its creation orphans it | `crash-at-init` (26), `kill-after-row` (55), over 3 verifier runs | T4 |
+| R10 | R14, with only the failed night's folder and the service logs given | as R14 | T3 |
+| R14 | replay after a crash is broken (step ids not deterministic) → the resumed night reruns finished work or stalls | `crash-resume`, `crash-mid-eval` (23), `crash-during-test-eval` (24), `crash-at-init` (26), `row-identity` (1) | T3 |
+| R11 | the runtime blinks for 20 s mid-round (Inngest: the dev server; LangChain: the Agent Server's Postgres and Redis) → the night crashes or never resumes | a new shared hidden test, a 20 s pause of the runtime's containers, which both references pass 5 of 5 first | T3 |
+| R15 | the results row and the note are written only at the end of the night → a kill mid-night loses them | `crash-mid-eval` (23), `graceful-restart` (25), `row-per-experiment`, `notes` | T3 |
+| R2 | the backstop is checked between rounds only → the evaluation sandbox outlives it | `backstop-mid-step` (53), `stop-during-eval` (20) | T3 |
+| R5 | cleanup skipped on an outside cancel → `cc-<id>` left | `outside-cancel` (51), `no-leftover-sandbox` | T3 |
+| R12 | the connection from the coder's sandbox to the metering proxy drops and is not retried → the coder's calls fail while the evaluation's work | `meter`, night 1's checks, `spend-zero` | T2 |
+| R3 (control) | `continue` loads a mock night as real | `continue` (18) | T1 |
+
+Changes, hardest first:
+
+| id | request | target tests | tier |
+|---|---|---|---|
+| C7 | a `hard_deadline` config key that aborts the running experiment | `backstop-mid-step` (53) driven by the new key; both references patched first | T3 |
+| C2 | `continue` again, on a base with it cut | `continue` (18), `continue-after-stop` (50); `seed` (19) unchanged | T3 |
+| C3 | the pause for credits again, on a base with it cut | `pause-timeout` (56), `pause-resume` (57) | T3 |
+| C4 | the cancel from outside as a hard stop again, on a base with it cut | `outside-cancel` (51) | T3 |
+| C8 | two nights at once, both ending `done` | the first table's rows on both nights. If both references already pass, C8 is replaced by C9 (the stack SDK up one minor version), which needs the operator's dependency approval | T2 |
+| C6 (control) | one more config refused at load | `config-rejects` (10) plus the new case | T1 |
+| C1 (smoke, never counted) | the test hooks, on `0c395fd` and `9567643` | `backstop-mid-step` (53), `pause-timeout` (56), `pause-resume` (57) | T2 |
+
+- a change on a base with the feature cut: the cut also removes the feature's tests, CLI help and README lines
+- a change must be additive: one that alters behaviour an existing test grades breaks the reference rule
+- C1 proves the machinery only: its two commits differ in size (Inngest 7 files, LangChain 2), so it compares nothing
+- R2 and R3 come from real bugs, each seen on one stack (53 on the LangChain e1 build, `0c395fd` on Inngest), and R5 is close to one (51 failed on the LangChain e1 build, measured 2026-11-16); the other stack's copy is authored and must pass the gate
+- first authored and gated: R14 and its control R3, C7 and its control C6. The others follow once a pilot reads clean
+- pilot: one trial per stack of C1, R14, R3, C7 and C6, on the subscription, after the operator's go-ahead. Cost (guess) $1 to $4 a trial
+- later: a trace task (read-only: a resumed night's folder and logs, questions the verifier answers from the same files); the tooling arm on R2, R5, R14
+
 
 ### Building `/app`
 
@@ -561,4 +641,5 @@ extra_instruction_paths: [context/inngest/skills-pointer.md, context/inngest/doc
 
 ## Open points
 
+- maintenance tasks: the pilot's cost per trial (guess $1 to $4); whether both references already run two nights at once (C8); whether a 20 s runtime pause can be made the same on both stacks (R11)
 - how a subscription usage-limit stop shows in a trial: read from the sources, not triggered (see Jobs, repeats, cost). The first one in phase B confirms the `analyze.py` rule
