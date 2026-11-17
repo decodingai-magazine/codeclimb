@@ -38,6 +38,8 @@ class Night:
     output: str
     # Night 7: sha256 of the scenario's lessons.md before the night.
     lessons_before: str | None = None
+    # Wall time of run_night, report only (checks.json's `runtime`).
+    seconds: float | None = None
 
     @property
     def night_dir(self) -> Path:
@@ -75,8 +77,11 @@ def night_of(app: Path, runs: str, n: int, config: str, night_id: str, code: int
 
 def run_night(app: Path, runs: str, n: int, config: str, night_id: str, extra: list[str]) -> Night:
     """Run a night to its end, following it."""
+    started = time.monotonic()
     code, out = run_group([*RUN_NIGHT, "--config", config, "--mock", "--night-id", night_id, *extra], app, NIGHT_S)
-    return night_of(app, runs, n, config, night_id, code, out)
+    night = night_of(app, runs, n, config, night_id, code, out)
+    night.seconds = round(time.monotonic() - started, 1)
+    return night
 
 
 def wait_until(cond: Callable[[], bool], timeout_s: float, poll_s: float = 0.2) -> bool:
@@ -362,11 +367,46 @@ def hard_stop(app: Path, runs: str, logs: Path, night_id: str) -> tuple[bool, st
     )
 
 
-def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag: str) -> tuple[bool, str]:
+def tree_stamp(d: Path) -> dict[str, tuple[int, int]]:
+    """Size and mtime of every file under a folder, by relative path."""
+    return {str(f.relative_to(d)): (st.st_size, st.st_mtime_ns) for f in d.rglob("*") if f.is_file() and (st := f.stat())}
+
+
+class ResumeWatch:
+    """Night 5's resume latency, report only (checks.json's `runtime`): seconds from the restart of the runtime to
+    the first file under `nights/<id>/` that is new or changed (size or mtime) against the folder as the kill left
+    it. Created after the kill, just before the restart; `poll` is called while the night is awaited. A measurement
+    that fails records nothing and never fails the check."""
+
+    def __init__(self, night_dir: Path, clock: Callable[[], float] = time.monotonic,
+                 stamp: Callable[[Path], dict] = tree_stamp) -> None:
+        self.dir, self.clock, self.stamp = night_dir, clock, stamp
+        self.latency_s: float | None = None
+        try:
+            self.before: dict | None = stamp(night_dir)
+        except Exception:
+            self.before = None
+        self.started = clock()
+
+    def poll(self) -> None:
+        if self.latency_s is not None or self.before is None:
+            return
+        try:
+            after = self.stamp(self.dir)
+            if any(self.before.get(path) != st for path, st in after.items()):
+                self.latency_s = round(self.clock() - self.started, 1)
+        except Exception:
+            pass
+
+
+def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag: str,
+                 measured: dict | None = None) -> tuple[bool, str]:
     """Night 5: kill the runtime once round 2 has started, start it again, and nothing else. The night ends with
     every evaluation recorded once, round 1's coder not run again and no round 1 sandbox created after the kill.
-    A night that ends before the kill lands is run again under a new id; one that stalls fails."""
+    A night that ends before the kill lands is run again under a new id; one that stalls fails. `measured` gets the
+    graded try's `night_s` (its start to `done.json`) and `resume_latency_s` (ResumeWatch), report only."""
     tries = []
+    measured = {} if measured is None else measured
     for attempt in "abc":
         night_id = f"{tag}-n5{attempt}"
         nt = night_of(app, runs, 5, DATENORM, night_id)
@@ -377,6 +417,7 @@ def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag
             adapter.LOGS,
         )
         try:
+            started = time.monotonic()
             code, out = run_group([*RUN_NIGHT, "--config", DATENORM, "--mock", "--no-wait", "--night-id", night_id], app, 120)
             if code != 0:
                 return False, f"{night_id}: run-night --no-wait exited {code}\n{out[-1000:]}"
@@ -391,6 +432,7 @@ def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag
             killed_at = time.time_ns()
             killed = adapter.crash_runtime(services)
             ended_first = nt.done() is not None
+            watch = ResumeWatch(nt.night_dir)
             up, up_detail = adapter.restart_runtime(services)
             if not up:
                 return False, f"{night_id}: the runtime did not come back: {up_detail}\n{adapter.service_logs(services)}"
@@ -399,7 +441,8 @@ def crash_resume(app: Path, runs: str, adapter: Adapter, services: Services, tag
             if ended_first:
                 tries.append(f"{night_id}: ended before the kill landed")
                 continue
-            finished = wait_until(lambda: nt.done() is not None, RESUME_S, poll_s=1)
+            finished = wait_until(lambda: watch.poll() or nt.done() is not None, RESUME_S, poll_s=0.5)
+            measured.update(night_s=round(time.monotonic() - started, 1) if finished else None, resume_latency_s=watch.latency_s)
             after = (sha256_file(state), state.stat().st_mtime_ns) if state.exists() else None
         finally:
             kill_group(events, wait_s=2)

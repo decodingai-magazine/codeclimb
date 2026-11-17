@@ -166,5 +166,45 @@ class NightChecks(unittest.TestCase):
         self.assertEqual(N.results_name(self.root, "configs/x.yaml"), "e2e-plateau")
 
 
+class ResumeLatency(unittest.TestCase):
+    """Night 5's resume latency: from the restart to the first new or changed file under nights/<id>/."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root)
+        write(self.root / "exps/n5-r2-e0/session/s.jsonl", '{"type":"session"}\n')
+        self.now = [100.0]
+        self.watch = N.ResumeWatch(self.root, clock=lambda: self.now[0])
+
+    def test_none_while_nothing_under_the_night_changes(self):
+        self.now[0] = 130.0
+        self.watch.poll()
+        self.assertIsNone(self.watch.latency_s)
+
+    def test_a_new_file_is_the_first_progress(self):
+        self.now[0] = 112.34
+        write(self.root / "exps/n5-r2-e0/code-state.json", {"stop": None})
+        self.watch.poll()
+        self.now[0] = 150.0
+        self.watch.poll()  # the first sign counts, later ones do not move it
+        self.assertEqual(self.watch.latency_s, 12.3)
+
+    def test_a_grown_file_is_progress(self):
+        self.now[0] = 105.0
+        with (self.root / "exps/n5-r2-e0/session/s.jsonl").open("a") as f:
+            f.write('{"type":"message"}\n')
+        self.watch.poll()
+        self.assertEqual(self.watch.latency_s, 5.0)
+
+    def test_a_failing_measurement_records_nothing_and_never_raises(self):
+        def broken(_: Path) -> dict:
+            raise OSError("vanished mid-walk")
+
+        watch = N.ResumeWatch(self.root, clock=lambda: self.now[0], stamp=broken)
+        write(self.root / "stop.json", {})
+        watch.poll()
+        self.assertIsNone(watch.latency_s)
+
+
 if __name__ == "__main__":
     unittest.main()

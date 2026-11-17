@@ -69,6 +69,9 @@ class Run:
     family: dict[str, int] = field(default_factory=dict)
     family_checks: list[dict] = field(default_factory=list)
     tag: str = field(default_factory=lambda: f"v{int(time.time()) % 10**8}")
+    # Report only, in checks.json, never in reward.json (docs/codeclimb-eval-spec.md, Metrics: runtime): seconds per
+    # graded night by number, cold start (services-up's duration) and night 5's resume latency (nights.ResumeWatch).
+    runtime: dict = field(default_factory=lambda: {"night_s": {}, "cold_start_s": None, "resume_latency_s": None})
 
     def record(self, name: str, passed: bool, detail: str = "") -> bool:
         self.checks.append(Check(name, passed, detail[-2000:]))
@@ -110,8 +113,10 @@ def build_checks(run: Run) -> None:
 
     # The services stay up for the nights; main() stops them.
     shutil.rmtree(app / run.adapter.RUNS, ignore_errors=True)
+    started = time.monotonic()
     run.services = run.adapter.start_services(app)
     up, detail = run.adapter.wait_until_up(run.services, run.adapter.SERVICES_UP_S)
+    run.runtime["cold_start_s"] = round(time.monotonic() - started, 1) if up else None
     run.services_up = run.record("services-up", up, detail if up else detail + "\n" + run.adapter.service_logs(run.services))
 
 
@@ -133,15 +138,23 @@ def nights(run: Run) -> None:
                 config, extra = configs[n]
                 first[n] = run_night(app, runs, n, config, f"{tag}-n{n}", extra)
                 note = f"exited {first[n].exit_code}"
+                seconds = first[n].seconds
             elif n == 4:
                 added["hard-stop"] = guarded(hard_stop, app, runs, run.adapter.LOGS, f"{tag}-n4")
                 note = "pass" if added["hard-stop"][0] else "FAIL"
+                seconds = round(time.monotonic() - started, 1)
             elif n == 5:
-                added["crash-resume"] = guarded(crash_resume, app, runs, run.adapter, run.services, tag)
+                measured: dict = {}
+                added["crash-resume"] = guarded(crash_resume, app, runs, run.adapter, run.services, tag, measured)
                 note = "pass" if added["crash-resume"][0] else "FAIL"
+                seconds = measured.get("night_s")
+                run.runtime["resume_latency_s"] = measured.get("resume_latency_s")
             else:
                 night7, night7_detail = run_night7(app, runs, f"{tag}-n7")
                 note = f"exited {night7.exit_code}" if night7 else "no night: graphrag image not built"
+                seconds = night7.seconds if night7 else None
+            if seconds is not None:
+                run.runtime["night_s"][str(n)] = seconds
             print(f"[verifier] night {n}: {note} ({time.monotonic() - started:.0f}s)", flush=True)
 
     for row, applies_to, check in FIRST_TABLE:
@@ -208,6 +221,7 @@ def write_outputs(run: Run, out: Path, stack: str, leak: dict[str, object], star
                 "wall_clock_s": round(time.monotonic() - started, 1),
                 "checks": [c.__dict__ for c in run.checks],
                 "families": run.family_checks,
+                "runtime": run.runtime,
                 "leak": leak,
             },
             indent=1,
