@@ -5,6 +5,7 @@
 // Children get their own `cancelOn` for the night-stop event: cancelling the
 // parent alone may not cancel invoked children, and cancel never interrupts a
 // running step.
+import { randomUUID } from "node:crypto";
 import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
@@ -53,6 +54,8 @@ const BACKSTOP = hookSeconds("CODECLIMB_BACKSTOP_S", "4d");
 /** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
 const SMOKE_WAIT = "5m";
 const SMOKE_RETRIES = 6;
+/** Tags this worker's child runs in the dev server's run list. */
+const WORKER = randomUUID().slice(0, 8);
 
 type ExperimentEvent = ExperimentInput;
 type EvalSpec = Omit<EvalRequest, "nightId" | "runId" | "order"> & {
@@ -96,7 +99,7 @@ export const runEvaluator = ccInngest.createFunction(
       outcome = { ok: true, evalId: spec.evalId, result };
       // Native mirror of the metrics on the experiment's run (not used for decisions).
       if (scoreRunId && result.ok) {
-        // Sorted: a memoized result's keys may come back in another order, and step ids must replay the same.
+        // Sorted: a memoized result's keys may come back in another order.
         const { headline } = cfg.scenario;
         const names = headline.length ? [cfg.primary_metric, ...headline] : Object.keys(result.metrics);
         for (const name of [...new Set(names)].sort()) {
@@ -152,7 +155,7 @@ export const runNight = ccInngest.createFunction(
     // One evaluator run (and sandbox, `cc-<night>-<id>`) per call.
     const invokeEvaluator = (id: string, request: EvalSpec): Promise<EvalOutcome> =>
       step
-        .invoke(id, {
+        .invoke(`${id}-${WORKER}`, {
           function: runEvaluator,
           data: { config: cfg, nightId, evaluatorId: `${nightId}-${id}`, request },
           timeout: `${evalMinutes(cfg) * 3 + 15}m`,
@@ -284,7 +287,7 @@ export const runNight = ccInngest.createFunction(
             nightId, expId, parentExpId, round, model: cfg.model,
             history, direction, standing, standingCi, ...input, config: cfg, ...(resume ? { resume: true } : {}),
           };
-          return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}`, { function: runExperiment, data, timeout: expTimeout }).then(
+          return step.invoke(`r${round}-e${n}${resume ? `-resume${resume}` : ""}-${WORKER}`, { function: runExperiment, data, timeout: expTimeout }).then(
             (out) => ({ ok: true as const, code: out.code, runId: out.runId }),
             (e: unknown) => ({ ok: false as const, error: String((e as Error)?.message ?? e) }),
           );
