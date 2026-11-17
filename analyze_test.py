@@ -444,6 +444,8 @@ class MaintenanceTrials(unittest.TestCase):
         base = {"checks.typecheck": 1, "checks.cli-done": 1, "hidden.pause-timeout": 1, "hidden.pause-resume": 1, "hidden.seed": 1}
         trial("reference-inngest-bcabd72-100000", "b1", base, maintenance=False, nop=True)
         trial("reference-inngest-bcabd72-100000", "b2", {**base, "hidden.seed": 0}, maintenance=False, nop=True)
+        # A gate run: the targets only, so it says nothing of cli-done.
+        trial("reference-inngest-bcabd72-110000", "g1", {"hidden.pause-timeout": 1, "partial": 1}, maintenance=False, nop=True)
         trial("c1-inngest", "fixed", {**base, "hidden.seed": 0}, maintenance=True, cost=2.5)  # seed is flaky on the base
         trial("c1-inngest", "unfixed", {**base, "hidden.pause-resume": 0}, maintenance=True)
         trial("c1-inngest", "regressed", {**base, "checks.cli-done": 0}, maintenance=True)

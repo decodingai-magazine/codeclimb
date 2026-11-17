@@ -424,7 +424,7 @@ def trial_row(trial: Path) -> dict | None:
             job=trial.parent.name, trial=trial.name, regrade_of=f"{row['job']}/{row['trial']}",
             reward=rewards.get("reward"), done=rewards.get("done"), leak=rewards.get("leak"),
             checks={k[len("checks."):]: v for k, v in rewards.items() if k.startswith("checks.")},
-            families=families(rewards),
+            families=families(rewards), partial=bool(rewards.get("partial")),
             reward_valid=bool(rewards) and (row["exception_type"] is None or row["exception_type"] in REWARD_VALID_TYPES),
             verifier_s=_seconds(result.get("verifier")), started_at=result.get("started_at"),
             job_retries=(_json(trial.parent / "result.json").get("stats") or {}).get("n_retries"),
@@ -503,6 +503,8 @@ def trial_row(trial: Path) -> dict | None:
         "targets": assembled.get("targets") if m[2] else None,
         "resolved": None,
         "regressions": None,
+        # Not all 34 ran (`basic` off): such a grade is no base for `resolved`.
+        "partial": bool(rewards.get("partial")),
     }
     row["specs"] = "old specs" if row["started_at"] and _ts(row["started_at"]) < _ts(CURRENT_SPECS_SINCE) else "current"
     row.update(process_metrics(trial / "agent" / "sessions" / "projects" / "-app", m[1], app, row["cost_usd"]))
@@ -537,12 +539,13 @@ def grade_of(row: dict) -> dict:
 
 
 def resolve_maintenance(rows: list[dict]) -> None:
-    """`resolved` of each maintenance trial, against the grades of its base: the reference runs of the base commit
-    (`job-configs/reference.sh`, jobs named reference-<stack>-<sha>-*) in the same folders."""
+    """`resolved` of each maintenance trial, against the grades of its base: the full reference runs of the base
+    commit (`job-configs/reference.sh`, jobs named reference-<stack>-<sha>-*) in the same folders. The gate's runs,
+    the target tests only, are partial and never a base."""
     for r in rows:
         if not r.get("task") or r["reward"] is None:
             continue
-        bases = [grade_of(b) for b in rows if b["arm"] == "reference" and b["status"] == "counted" and b["stack"] == r["stack"]
+        bases = [grade_of(b) for b in rows if b["arm"] == "reference" and b["status"] == "counted" and not b.get("partial") and b["stack"] == r["stack"]
                  and r["base"] and re.match(rf"reference-{r['stack']}-{r['base'][:7]}-", b["job"])]
         r["resolved"], r["regressions"] = resolved(grade_of(r), bases, r["targets"] or [])
 

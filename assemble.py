@@ -310,6 +310,16 @@ def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None
     d = tasks_dir / name
     if d.exists():
         shutil.rmtree(d)
+    try:
+        _write_maintenance_task(d, name, task_id, stack, task, build, repo)
+    except BaseException:
+        shutil.rmtree(d, ignore_errors=True)
+        raise
+    return d
+
+
+def _write_maintenance_task(d: Path, name: str, task_id: str, stack: str, task: Maintenance, build: Path,
+                            repo: Path) -> None:
     for part in ("environment", "tests"):
         copy_files(build / part, d / part)
     dockerfile = d / "environment" / "Dockerfile"
@@ -334,7 +344,6 @@ def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None
     (d / "tests" / "verifier" / "given.json").write_text(json.dumps(given, indent=1, sort_keys=True) + "\n")
     record = {"kind": task.kind, "task": task_id, "base": task.bases[stack], "targets": list(task.targets), **record}
     (d / "assembled.json").write_text(json.dumps(record, indent=2) + "\n")
-    return d
 
 
 def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:

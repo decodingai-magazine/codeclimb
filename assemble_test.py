@@ -315,6 +315,14 @@ class AssembleMaintenanceTask(unittest.TestCase):
                    for s, t in prompts.items()}
         self.assertEqual(neutral["inngest"], neutral["langchain"])
 
+    def test_a_failed_assemble_leaves_no_task_folder(self):
+        (self.repo / "README.md").write_text("see codeclimb-eval-spec\n")
+        git(self.repo, "commit", "-qam", "name the benchmark spec")
+        task = assemble.Maintenance(kind="change", request="r", targets=(), commits={"inngest": "HEAD"})
+        with self.assertRaises(assemble.ForbiddenString):
+            assemble.assemble_maintenance_task("t8", "inngest", task=task, repo=self.repo, tasks_dir=self.tmp / "tasks")
+        self.assertFalse((self.tmp / "tasks/codeclimb-inngest-t8").exists())
+
     def test_c1_prompt_names_no_target(self):
         c1 = assemble.MAINTENANCE["c1"]
         for name in c1.targets:
