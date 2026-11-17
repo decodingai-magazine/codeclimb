@@ -1,7 +1,7 @@
 """Build a task's /app from files on this branch only.
 
     python3 assemble.py <stack> [--pile <dir>]     # inngest | langchain; --pile: another pile of build tickets
-    python3 assemble.py maintenance <task> <stack> # a maintenance task: tasks/codeclimb-<stack>-<task>/
+    python3 assemble.py maintenance <task> <stack> [--pocock]  # a maintenance task: tasks/codeclimb-<stack>-<task>/
 
 Writes tasks/codeclimb-<stack>/environment/app/ (gitignored): the shared given inputs,
 specs/<stack>/given/, SPEC.md (the build spec, wikilinks flattened), E2E.md and an
@@ -67,6 +67,13 @@ AUTHORED_ONLY = (
 
 # A maintenance task's /app leaves out the reference's own guidance (docs/codeclimb-eval-spec.md, "Maintenance tasks").
 GUIDANCE = ("AGENTS.md", ".mcp.json", ".claude", "notes")
+# Per workflow, as for build tasks: one-shot also drops all of docs/ and the glossary; pocock keeps the glossary and the
+# docs its skills write (docs/adr/, docs/agents/), never a spec copy.
+WORKFLOW_DROPS = {
+    "one-shot": GUIDANCE + ("docs", "GLOSSARY.md", "CONTEXT.md"),
+    "pocock": GUIDANCE,
+}
+POCOCK_DOCS = ("docs/adr/", "docs/agents/")
 # The one fresh commit of a maintenance /app: the image's identity and a fixed date, so a rebuild is identical.
 COMMIT_ENV = {
     "GIT_AUTHOR_NAME": "codeclimb", "GIT_AUTHOR_EMAIL": "codeclimb@localhost",
@@ -272,8 +279,9 @@ def assemble_pocock(stack: str, out: Path, pile: Path | None = None) -> dict[str
     return record
 
 
-def assemble_maintenance_app(stack: str, commit: str, out: Path, repo: Path = ROOT) -> dict[str, str]:
-    """A maintenance task's /app in `out`: the `git archive` of `commit` without the reference's guidance files,
+def assemble_maintenance_app(stack: str, commit: str, out: Path, repo: Path = ROOT, workflow: str = "one-shot") -> dict[str, str]:
+    """A maintenance task's /app in `out`: the `git archive` of `commit` without the reference's guidance files
+    (WORKFLOW_DROPS; pocock also drops every file under docs/ outside docs/adr/ and docs/agents/),
     plus SPEC.md and the AGENTS.md stub, as a fresh repository with one commit (neither `git log` nor `git diff`
     shows the change)."""
     if stack not in STACKS:
@@ -283,12 +291,16 @@ def assemble_maintenance_app(stack: str, commit: str, out: Path, repo: Path = RO
     try:
         archive = subprocess.run(["git", "-C", str(repo), "archive", commit], check=True, capture_output=True).stdout
         subprocess.run(["tar", "-x", "-C", str(stage)], input=archive, check=True)
-        for rel in GUIDANCE:
+        for rel in WORKFLOW_DROPS[workflow]:
             p = stage / rel
             if p.is_dir():
                 shutil.rmtree(p)
             elif p.exists():
                 p.unlink()
+        if workflow == "pocock" and (stage / "docs").is_dir():
+            for p in sorted((stage / "docs").rglob("*")):
+                if p.is_file() and not p.relative_to(stage).as_posix().startswith(POCOCK_DOCS):
+                    p.unlink()
         (stage / "SPEC.md").write_text(flatten_wikilinks((ROOT / "specs" / stack / "spec.md").read_text()))
         (stage / "AGENTS.md").write_text(AGENTS_STUB)
         found = [
@@ -305,7 +317,7 @@ def assemble_maintenance_app(stack: str, commit: str, out: Path, repo: Path = RO
         subprocess.run(["git", "-C", str(stage), "add", "-A"], check=True, env=env)
         subprocess.run(["git", "-C", str(stage), "commit", "-q", "--no-gpg-sign", "-m", "initial commit"],
                        check=True, env=env)
-        record = {"stack": stack, "commit": commit, "spec_sha256": sha256_bytes((stage / "SPEC.md").read_bytes())}
+        record = {"stack": stack, "commit": commit, "workflow": workflow, "spec_sha256": sha256_bytes((stage / "SPEC.md").read_bytes())}
         if out.exists():
             shutil.rmtree(out)
         stage.rename(out)
@@ -325,7 +337,7 @@ def maintenance_prompt(stack: str, task: Maintenance) -> str:
 
 
 def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None = None, repo: Path = ROOT,
-                              tasks_dir: Path = ROOT / "tasks") -> Path:
+                              tasks_dir: Path = ROOT / "tasks", workflow: str = "one-shot") -> Path:
     """tasks/codeclimb-<stack>-<task id>/ (gitignored): the stack's build task with the maintenance /app baked in,
     its prompt, and the leak baseline taken from that /app. Returns the folder."""
     task = task or MAINTENANCE[task_id]
@@ -335,7 +347,7 @@ def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None
     if d.exists():
         shutil.rmtree(d)
     try:
-        _write_maintenance_task(d, name, task_id, stack, task, build, repo)
+        _write_maintenance_task(d, name, task_id, stack, task, build, repo, workflow)
     except BaseException:
         shutil.rmtree(d, ignore_errors=True)
         raise
@@ -343,7 +355,7 @@ def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None
 
 
 def _write_maintenance_task(d: Path, name: str, task_id: str, stack: str, task: Maintenance, build: Path,
-                            repo: Path) -> None:
+                            repo: Path, workflow: str) -> None:
     for part in ("environment", "tests"):
         copy_files(build / part, d / part)
     dockerfile = d / "environment" / "Dockerfile"
@@ -356,7 +368,7 @@ def _write_maintenance_task(d: Path, name: str, task_id: str, stack: str, task: 
     toml = re.sub(r'(?m)^description = .*$', f'description = "Maintenance task {task_id} ({task.kind}) on the {stack} reference build."', toml)
     (d / "task.toml").write_text(toml)
     app = d / "environment" / "app"
-    record = assemble_maintenance_app(stack, task.commits[stack], app, repo=repo)
+    record = assemble_maintenance_app(stack, task.commits[stack], app, repo=repo, workflow=workflow)
     prompt = maintenance_prompt(stack, task)
     found = forbidden_terms(prompt, authored=True)
     if found:
@@ -388,9 +400,10 @@ def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["maintenance"] and len(sys.argv) == 4:
+    if sys.argv[1:2] == ["maintenance"] and len(sys.argv) in (4, 5) and sys.argv[4:] in ([], ["--pocock"]):
         try:
-            print(assemble_maintenance_task(sys.argv[2], sys.argv[3]).relative_to(ROOT))
+            workflow = "pocock" if sys.argv[4:] else "one-shot"
+            print(assemble_maintenance_task(sys.argv[2], sys.argv[3], workflow=workflow).relative_to(ROOT))
         except ForbiddenString as e:
             raise SystemExit(str(e))
         raise SystemExit(0)

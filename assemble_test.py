@@ -216,6 +216,12 @@ def fixture_reference(root: Path) -> tuple[Path, str, str]:
         ".mcp.json": "{}\n",
         ".claude/settings.json": "{}\n",
         "notes/ideas.md": "ideas\n",
+        "GLOSSARY.md": "words\n",
+        "CONTEXT.md": "words\n",
+        "docs/adr/0001-a.md": "a decision\n",
+        "docs/agents/domain.md": "domain docs\n",
+        "docs/codeclimb-spec-x.md": "a copy of the build spec\n",
+        "docs/contract.md": "a contract\n",
         "README.md": "codeclimb\n",
         "package.json": json.dumps({"scripts": {"run-night": "tsx src/cli/run-night.ts"}}) + "\n",
         "src/cli/run-night.ts": "import { loop } from '../night/loop.ts';\nloop();\n",
@@ -250,6 +256,14 @@ class AssembleMaintenanceApp(unittest.TestCase):
         self.assertEqual(git(self.out, "status", "--porcelain"), "")
         self.assertEqual(git(self.out, "diff", "HEAD"), "")
         self.assertEqual((self.out / "src/night/hook.ts").read_text(), "export function hook() { return undefined; }\n")
+
+    def test_pocock_keeps_the_glossary_adrs_and_agent_docs_but_no_spec_copy(self):
+        out = self.tmp / "pocock-app"
+        assemble.assemble_maintenance_app("inngest", self.commit, out, repo=self.repo, workflow="pocock")
+        files = {f for f in tree(out) if not f.startswith(".git/")}
+        self.assertEqual(files, {"README.md", "package.json", "src/cli/run-night.ts", "src/night/loop.ts",
+                                 "src/night/hook.ts", "SPEC.md", "AGENTS.md", "GLOSSARY.md", "CONTEXT.md",
+                                 "docs/adr/0001-a.md", "docs/agents/domain.md"})
 
     def test_guidance_files_out_spec_and_stub_in(self):
         files = {f for f in tree(self.out) if not f.startswith(".git/")}
