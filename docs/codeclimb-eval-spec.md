@@ -635,7 +635,7 @@ Changes, hardest first:
 | C4 | the cancel from outside as a hard stop again, on a base with it cut | `outside-cancel` (51) | T3 |
 | C8 | two nights at once, both ending `done` | the first table's rows on both nights. If both references already pass, C8 is replaced by C9 (the stack SDK up one minor version), which needs the operator's dependency approval | T2 |
 | C6 (control) | one more config refused at load | `config-rejects` (10) plus the new case | T1 |
-| C1 (smoke, never counted) | the test hooks, on `0c395fd` and `9567643` | `backstop-mid-step` (53), `pause-timeout` (56), `pause-resume` (57) | T2 |
+| C1 (smoke, never counted) | the test hooks, on `0c395fd` and `9567643` | `backstop-mid-step` (53), `pause-timeout` (56), `pause-resume` (57), `fail-at-init` (52: the Inngest task commit fails it too, `maintenance-c1-inngest-nop-202252`) | T2 |
 
 - a change on a base with the feature cut: the cut also removes the feature's tests, CLI help and README lines
 - a change must be additive: one that alters behaviour an existing test grades breaks the reference rule

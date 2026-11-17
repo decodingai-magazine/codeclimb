@@ -46,7 +46,7 @@ MAINTENANCE = {
             " A night stopped by the backstop writes `stop.json` and leaves no sandbox, even while it is still"
             " starting."
         ),
-        targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
+        targets=("backstop-mid-step", "pause-timeout", "pause-resume", "fail-at-init"),
         commits={"inngest": "0c395fd", "langchain": "9567643"},
     ),
     # Changes on the maintenance base: the bases are the references' own patches (the gate's proof).
