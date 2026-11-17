@@ -30,7 +30,7 @@ Guardrails live in code, not in the prompt. A TypeScript orchestrator enforces t
 - **Evaluator** — a separate sandbox scores the commit on dev, and a reviewer agent writes the feedback for the next round; the coder never grades itself.
 - **Guardrails** — a TypeScript orchestrator, not the agent, keeps a commit only when it beats the checkpoint by more than the measured noise, and ends the night on thresholds, rounds, deadline, budget or plateau.
 - **Metering proxy** — holds the real credentials, allows only the config's models, and gives each session a one-off token with a dollar cap, revoked when the run ends.
-- **Durability and a human in the loop** — Inngest saves every step, so a crashed night replays from the last one; an out-of-credits night pauses for free for up to 3 days until you resume it.
+- **Durability and a human in the loop** — [Inngest](https://inngest.link/dai-gh) saves every step, so a crashed night replays from the last one; an out-of-credits night pauses for free for up to 3 days until you resume it.
 
 Layer by layer, the same loop becomes one you can leave unattended: the proxy, cost checks around every step, Inngest checkpoints, a credit pause that waits for a human, and a Next.js dashboard to watch, stop and resume nights.
 
