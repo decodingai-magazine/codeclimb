@@ -34,7 +34,7 @@ from measure import GENERATED, is_test  # noqa: E402
 
 from assemble import BUILD_PINS, SHARED, STUBS
 from code_metrics import RATIOS
-from gate import JOB, resolved
+from gate import resolved
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
 # inngest-dev's three, measured in the #48 smoke trial (52 tools in all). A server listed with None is docs only.
@@ -450,16 +450,16 @@ def runtime(checks: Path) -> dict:
     return {"night_s": rt.get("night_s") or None, "cold_start_s": rt.get("cold_start_s"), "resume_latency_s": rt.get("resume_latency_s")}
 
 
-def reference_commit(job: str) -> str | None:
-    """The commit a reference job graded, from its name (`job-configs/reference.sh`: reference-<stack>-<sha>-<time>)."""
-    return m[2] if (m := JOB.fullmatch(job)) else None
+# A reference job's name (`job-configs/reference.sh`: reference-<stack>-<sha>-<time>; older jobs lack the time).
+REFERENCE_JOB = re.compile(r"reference-(?:inngest|langchain)-([0-9a-f]{7})(?:-\d+)?")
 
 
 def cell_arm(row: dict) -> str:
-    """The arm a report cell shows: a reference run of a commit other than its stack's build pin (a maintenance base,
-    a task commit, a patch) is its own cell, never the build tasks' reference."""
-    commit = row.get("reference_commit")
-    return f"reference {commit}" if row["arm"] == "reference" and commit and commit != BUILD_PINS[row["stack"]] else row["arm"]
+    """The arm a report cell shows: only a reference run of its stack's build pin is the build tasks' reference; a
+    run of another commit (a maintenance base, a task commit, a patch) or of none named is its own cell."""
+    if row["arm"] != "reference" or row.get("reference_commit") == BUILD_PINS[row["stack"]]:
+        return row["arm"]
+    return f"reference {row.get('reference_commit') or 'unknown'}"
 
 
 def families(rewards: dict) -> dict[str, int]:
@@ -553,7 +553,7 @@ def trial_row(trial: Path) -> dict | None:
         # Runtime, from the verifier's checks.json (spec, Metrics: runtime).
         **runtime(trial / "verifier" / "checks.json"),
         # A reference run's graded commit: only the build pin is the build tasks' reference (cell_arm).
-        "reference_commit": reference_commit(trial.parent.name) if arm == "reference" else None,
+        "reference_commit": m2[1] if arm == "reference" and (m2 := REFERENCE_JOB.fullmatch(trial.parent.name)) else None,
         "tokens_in": ar.get("n_input_tokens"),
         "tokens_out": ar.get("n_output_tokens"),
         "tokens_cache_read": ar.get("n_cache_tokens"),

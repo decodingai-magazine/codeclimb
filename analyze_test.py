@@ -591,7 +591,8 @@ class ReferencePins(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             jobs = Path(tmp)
             for job, name in (("reference-inngest-5a81c07-100000", "p1"), ("reference-inngest-5a81c07-100000", "p2"),
-                              ("reference-inngest-bcabd72-100000", "m1"), ("reference-inngest-f76da25-100000", "f1")):
+                              ("reference-inngest-bcabd72-100000", "m1"), ("reference-inngest-f76da25-100000", "f1"),
+                              ("reference-inngest-4a71177", "o1"), ("reference-inngest", "u1")):  # older names, no time
                 write_trial(jobs, job, name, "inngest", "bare", 1.0 if name.startswith("p") else 0.5, 0.0,
                             start="2026-11-17T10:00:00Z")
                 r = json.loads((jobs / job / name / "result.json").read_text())
@@ -602,11 +603,13 @@ class ReferencePins(unittest.TestCase):
             rows = collect([jobs])
             text = report(rows)
         by = {r["trial"]: r for r in rows}
-        self.assertEqual([by[t]["reference_commit"] for t in ("p1", "m1", "f1")], ["5a81c07", "bcabd72", "f76da25"])
+        self.assertEqual([by[t]["reference_commit"] for t in ("p1", "m1", "f1", "o1", "u1")], ["5a81c07", "bcabd72", "f76da25", "4a71177", None])
         cells = text.split("== outcome per cell")[1].split("\n\n")[0]
         self.assertIn("inngest   one-shot reference n=2 reward [1.0, 1.0]", cells)
         self.assertIn("inngest   one-shot reference bcabd72 n=1", cells)
         self.assertIn("inngest   one-shot reference f76da25 n=1", cells)
+        self.assertIn("inngest   one-shot reference 4a71177 n=1", cells)
+        self.assertIn("inngest   one-shot reference unknown n=1", cells)  # only a named build pin is the reference
         code = text.split("== code and practice metrics")[1].split("\n\n")[0]
         self.assertIn("inngest   current   reference n=2 (measured 2/2) code lines 100", code)
         self.assertNotIn("bcabd72", code)
