@@ -7,7 +7,9 @@
 
 The report: outcome per cell, the hidden and real tests per cell (beside the reward, never in it), the 2 x 2 effects
 within a stack (exact permutation tests), the stack comparison on shared checks, the process metrics of the build trials
-from their session files (per stack, old specs apart), and the trials kept out of every mean
+from their session files (per stack, old specs apart), their runtime metrics from the verifier's checks.json and their
+code metrics (beside the build-pin reference runs: a reference run of another commit is its own cell), and the trials
+kept out of every mean
 (leaks, infra errors). A trajectory is Harbor's
 agent/trajectory.json: steps whose tool_calls name a function_name.
 """
@@ -30,9 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "analysis"))
 from leak import without_heredocs  # noqa: E402
 from measure import GENERATED, is_test  # noqa: E402
 
-from assemble import SHARED, STUBS
+from assemble import BUILD_PINS, SHARED, STUBS
 from code_metrics import RATIOS
-from gate import resolved
+from gate import JOB, resolved
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
 # inngest-dev's three, measured in the #48 smoke trial (52 tools in all). A server listed with None is docs only.
@@ -440,16 +442,24 @@ def _change(app: Path) -> dict | None:
             "test_added": any(is_test(p) and a > 0 for p, (a, _) in added.items())}
 
 
-IMAGE_SIZE = re.compile(r'"Size":\s*(\d+)')
+def runtime(checks: Path) -> dict:
+    """The runtime metrics of the verifier's checks.json (its `runtime` key, report only): seconds per graded night
+    by night number, cold start (`services-up`'s duration) and resume latency (night 5), in seconds. Null when the
+    verifier did not record them (an older grade, or the night never ran)."""
+    rt = _json(checks).get("runtime") or {}
+    return {"night_s": rt.get("night_s") or None, "cold_start_s": rt.get("cold_start_s"), "resume_latency_s": rt.get("resume_latency_s")}
 
 
-def image_mb(checks: Path) -> float | None:
-    """The sandbox image's size in MB, from the verifier's checks.json: the `image` check keeps the tail of
-    `docker image inspect`, whose "Size" is in bytes. The other runtime metrics the spec names (seconds per night,
-    resume latency, cold start) are not in checks.json."""
-    image = next((c for c in _json(checks).get("checks") or [] if c.get("name") == "image"), None)
-    sizes = IMAGE_SIZE.findall((image or {}).get("detail") or "")
-    return round(int(sizes[-1]) / 1e6, 1) if image and image.get("passed") and sizes else None
+def reference_commit(job: str) -> str | None:
+    """The commit a reference job graded, from its name (`job-configs/reference.sh`: reference-<stack>-<sha>-<time>)."""
+    return m[2] if (m := JOB.fullmatch(job)) else None
+
+
+def cell_arm(row: dict) -> str:
+    """The arm a report cell shows: a reference run of a commit other than its stack's build pin (a maintenance base,
+    a task commit, a patch) is its own cell, never the build tasks' reference."""
+    commit = row.get("reference_commit")
+    return f"reference {commit}" if row["arm"] == "reference" and commit and commit != BUILD_PINS[row["stack"]] else row["arm"]
 
 
 def families(rewards: dict) -> dict[str, int]:
@@ -494,7 +504,7 @@ def trial_row(trial: Path) -> dict | None:
             families=families(rewards), partial=bool(rewards.get("partial")),
             reward_valid=bool(rewards) and (row["exception_type"] is None or row["exception_type"] in REWARD_VALID_TYPES),
             verifier_s=_seconds(result.get("verifier")), started_at=result.get("started_at"),
-            image_mb=image_mb(trial / "verifier" / "checks.json"),
+            **runtime(trial / "verifier" / "checks.json"),
             job_retries=(_json(trial.parent / "result.json").get("stats") or {}).get("n_retries"),
         )
         row["status"] = classify(row)
@@ -541,7 +551,9 @@ def trial_row(trial: Path) -> dict | None:
         "agent_s": _seconds(result.get("agent_execution")),
         "verifier_s": _seconds(result.get("verifier")),
         # Runtime, from the verifier's checks.json (spec, Metrics: runtime).
-        "image_mb": image_mb(trial / "verifier" / "checks.json"),
+        **runtime(trial / "verifier" / "checks.json"),
+        # A reference run's graded commit: only the build pin is the build tasks' reference (cell_arm).
+        "reference_commit": reference_commit(trial.parent.name) if arm == "reference" else None,
         "tokens_in": ar.get("n_input_tokens"),
         "tokens_out": ar.get("n_output_tokens"),
         "tokens_cache_read": ar.get("n_cache_tokens"),
@@ -766,7 +778,7 @@ def cell_table(rows: list[dict]) -> list[str]:
     cells: dict[tuple, list[dict]] = defaultdict(list)
     for r in rows:
         if r["status"] == "counted":
-            cells[(r["stack"], r["workflow"], r["arm"])].append(r)
+            cells[(r["stack"], r["workflow"], cell_arm(r))].append(r)
     for (stack, workflow, arm), rs in sorted(cells.items()):
         rewards = [r["reward"] for r in rs]
         checks = sorted({c for r in rs for c in r["checks"] if "." not in c})
@@ -793,7 +805,7 @@ def family_table(rows: list[dict]) -> list[str]:
     cells: dict[tuple, list[dict]] = defaultdict(list)
     for r in rows:
         if r["status"] == "counted" and r.get("families"):
-            cells[(r["stack"], r["workflow"], r["arm"])].append(r)
+            cells[(r["stack"], r["workflow"], cell_arm(r))].append(r)
     for (stack, workflow, arm), rs in sorted(cells.items()):
         share = lambda r, fam: (lambda v: sum(v) / len(v) if v else None)([x for k, x in r["families"].items() if k.startswith(fam)])  # noqa: E731
         parts = []
@@ -822,11 +834,11 @@ def stack_comparison(rows: list[dict]) -> list[str]:
     if not shared:
         return ["no shared checks: one stack has no counted trial"]
     out = [f"shared checks: {len(shared)}"]
-    keys = sorted({(r["workflow"], r["arm"]) for r in counted})
+    keys = sorted({(r["workflow"], cell_arm(r)) for r in counted})
     for workflow, arm in keys:
         cols = []
         for stack in ("inngest", "langchain"):
-            rs = [r for r in counted if (r["stack"], r["workflow"], r["arm"]) == (stack, workflow, arm)]
+            rs = [r for r in counted if (r["stack"], r["workflow"], cell_arm(r)) == (stack, workflow, arm)]
             if not rs:
                 cols.append(f"{stack}: -")
                 continue
@@ -854,7 +866,6 @@ PROCESS = [  # (column, label, unit, digits)
     ("rework_ratio", "rework", "", 2), ("unseen_bash_writes", "unseen Bash writes", "", 1), ("thrash", "thrash", "", 1), ("ts_errors", "TS errors", "", 1),
     ("ts_failed_runs", "in runs", "", 1), ("test_failures", "test fails", "", 1), ("test_failed_runs", "in runs", "", 1),
     ("sdk_type_errors", "SDK type errors", "", 1), ("sdk_reads", "SDK reads", "", 1), ("pi_doc_reads", "Pi doc reads", "", 1),
-    ("image_mb", "image", "MB", 1),
 ]
 
 
@@ -882,6 +893,26 @@ def process_table(rows: list[dict]) -> list[str]:
     for r in sorted(build, key=lambda r: (r.get("specs") != "current", r["stack"], r["job"], r["trial"])):
         out.append(f"    {r['job']}/{r['trial']} {r['stack']} {r['arm']} {r['workflow']} {r.get('specs')}: {_process_cols([r])}")
     return out
+
+
+def _mean_s(values: list, n: int) -> str:
+    vals = [v for v in values if v is not None]
+    return ("-" if not vals else f"{mean(vals):.1f} s") + (f" ({len(vals)}/{n})" if n > 1 and len(vals) < n else "")
+
+
+def runtime_table(rows: list[dict]) -> list[str]:
+    """The runtime metrics (the verifier's checks.json) of the counted build trials and the build-pin reference runs:
+    per stack, old specs apart, the mean cold start, resume latency and seconds of each night 1 to 7."""
+    keep = [r for r in rows if r["status"] == "counted" and (cell_arm(r) == "reference" or (r["harness"] != "nop" and r["workflow"] != "probe"))]
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in keep:
+        groups[(r["stack"], r.get("specs"), r["arm"] == "reference")].append(r)
+    out = []
+    for (stack, specs, ref), rs in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1] != "current", kv[0][2])):
+        nights = " ".join(f"night {n} {_mean_s([(r.get('night_s') or {}).get(str(n)) for r in rs], len(rs))}" for n in range(1, 8))
+        out.append(f"{stack:9} {specs:9} {'reference ' if ref else ''}n={len(rs)} cold start {_mean_s([r.get('cold_start_s') for r in rs], len(rs))}"
+                   f" resume latency {_mean_s([r.get('resume_latency_s') for r in rs], len(rs))} {nights}")
+    return out or ["no build trial has runtime metrics"]
 
 
 CODE = [  # (path in code-metrics.json, label, digits); a list's length where the value is a list
@@ -915,10 +946,10 @@ def _mean_of(values: list, n: int, nd: int, unit: str = "") -> str:
 
 
 def code_table(rows: list[dict]) -> list[str]:
-    """The code and practice metrics (code_metrics.py) of counted build trials and reference runs: per stack, old
+    """The code and practice metrics (code_metrics.py) of counted build trials and build-pin reference runs: per stack, old
     specs apart, each metric's mean, the mean ratio to the stack's reference build (present when the step ran with
     `--reference`), and per flag how many trials have it."""
-    keep = [r for r in rows if r["status"] == "counted" and (r["arm"] == "reference" or (r["harness"] != "nop" and r["workflow"] != "probe"))]
+    keep = [r for r in rows if r["status"] == "counted" and (cell_arm(r) == "reference" or (r["harness"] != "nop" and r["workflow"] != "probe"))]
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for r in keep:
         groups[(r["stack"], r.get("specs"), r["arm"] == "reference")].append(r)
@@ -965,6 +996,7 @@ def report(rows: list[dict]) -> str:
                 lines.append(f"{stack:9} {e['metric']:8} {e['effect']:11} {_fmt(e['value'])}  {e['call']}" + ("" if e.get("exact", True) else " (sampled)"))
     lines += ["", "== stack comparison", *stack_comparison(rows), "",
               "== process metrics per stack, from the session files (beside the reward, not in it)", *process_table(rows),
+              "", "== runtime metrics per stack, from the verifier's checks.json (beside the reward, not in it)", *runtime_table(rows),
               "", "== code and practice metrics per stack, from code_metrics.py (beside the reward, not in it)", *code_table(rows),
               "", "== kept out of every mean"]
     for status in ("leak", "infra"):

@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, stream_facts
+from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, runtime_table, stream_facts
 
 
 def trajectory(*calls):
@@ -284,7 +284,8 @@ class ProcessMetrics(unittest.TestCase):
         (trial / "verifier").mkdir()
         (trial / "verifier" / "checks.json").write_text(json.dumps({"checks": [
             {"name": "install", "passed": True, "detail": "added 1 package"},
-            {"name": "image", "passed": True, "detail": '"Architecture": "arm64",\n        "Size": 289804356,\n'}]}))
+            {"name": "image", "passed": True, "detail": '"Architecture": "arm64",\n        "Size": 289804356,\n'}],
+            "runtime": {"night_s": {"1": 12.0, "2": 20.5, "5": 140.0}, "cold_start_s": 4.2, "resume_latency_s": 8.5}}))
         # The final build also holds a file the session never wrote; given inputs and installed packages are no part.
         (app / "src" / "b.ts").write_text("b\n" * 6)
         for rel in ("node_modules/x/index.js", "scenarios/capitals/data.jsonl", "runs-inngest/mock/r.jsonl", "SPEC.md"):
@@ -327,10 +328,14 @@ class ProcessMetrics(unittest.TestCase):
     def test_reads_of_the_stack_sdk_and_the_pi_docs(self):
         self.assertEqual((self.row["sdk_reads"], self.row["pi_doc_reads"]), (1, 1))
 
-    def test_image_size_from_the_verifier_checks(self):
-        # checks.json keeps the image check's `docker image inspect` tail; its "Size" is the image size.
-        self.assertEqual(self.row["image_mb"], 289.8)
-        self.assertIn("image 289.8 MB", "\n".join(process_table([self.row])))
+    def test_runtime_from_the_verifier_checks(self):
+        # checks.json's `runtime`: seconds per graded night, cold start (services-up), resume latency (night 5).
+        r = self.row
+        self.assertEqual((r["night_s"], r["cold_start_s"], r["resume_latency_s"]), ({"1": 12.0, "2": 20.5, "5": 140.0}, 4.2, 8.5))
+        self.assertNotIn("image_mb", r)  # the shared task image: the same size on every trial, so no metric
+        text = "\n".join(runtime_table([r]))
+        self.assertIn("inngest   current   n=1 cold start 4.2 s resume latency 8.5 s night 1 12.0 s night 2 20.5 s"
+                      " night 3 - night 4 - night 5 140.0 s night 6 - night 7 -", text)
 
     def test_never_in_the_reward(self):
         self.assertEqual(self.row["reward"], 1.0)
@@ -577,6 +582,34 @@ class CodeMetrics(unittest.TestCase):
         self.assertIn("lint_passes -", code)
         self.assertIn("given tsconfig 2/2", code)
         self.assertIn("langchain current   n=1 (measured 0/1)", code)
+
+
+class ReferencePins(unittest.TestCase):
+    """Reference runs of several commits: only the build pin (assemble.BUILD_PINS) is the build tasks' reference."""
+
+    def test_only_the_build_pin_is_the_reference_cell(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Path(tmp)
+            for job, name in (("reference-inngest-5a81c07-100000", "p1"), ("reference-inngest-5a81c07-100000", "p2"),
+                              ("reference-inngest-bcabd72-100000", "m1"), ("reference-inngest-f76da25-100000", "f1")):
+                write_trial(jobs, job, name, "inngest", "bare", 1.0 if name.startswith("p") else 0.5, 0.0,
+                            start="2026-11-17T10:00:00Z")
+                r = json.loads((jobs / job / name / "result.json").read_text())
+                r["config"]["agent"]["name"] = "nop"
+                r["config"]["environment"]["extra_docker_compose"] = ["/x/reference.compose.yaml"]
+                (jobs / job / name / "result.json").write_text(json.dumps(r))
+                (jobs / job / name / "code-metrics.json").write_text(json.dumps({"size": {"code_lines": 100 if name.startswith("p") else 1}}))
+            rows = collect([jobs])
+            text = report(rows)
+        by = {r["trial"]: r for r in rows}
+        self.assertEqual([by[t]["reference_commit"] for t in ("p1", "m1", "f1")], ["5a81c07", "bcabd72", "f76da25"])
+        cells = text.split("== outcome per cell")[1].split("\n\n")[0]
+        self.assertIn("inngest   one-shot reference n=2 reward [1.0, 1.0]", cells)
+        self.assertIn("inngest   one-shot reference bcabd72 n=1", cells)
+        self.assertIn("inngest   one-shot reference f76da25 n=1", cells)
+        code = text.split("== code and practice metrics")[1].split("\n\n")[0]
+        self.assertIn("inngest   current   reference n=2 (measured 2/2) code lines 100", code)
+        self.assertNotIn("bcabd72", code)
 
 
 if __name__ == "__main__":
