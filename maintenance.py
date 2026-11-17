@@ -74,13 +74,15 @@ MAINTENANCE = {
     "r14": Maintenance(
         kind="repair",
         request=(
-            "A mock night was started with `run-night --mock`. Once its round 2 had begun, the service that runs the"
-            " night's steps was killed (`SIGKILL`) and started again, with nothing else touched. The night then did"
-            " round 1's finished work a second time: `docker ps -a` shows round 1's coder sandbox"
-            " `cc-<night id>-r1-e0` created again after the restart, and round 1's"
-            " `exps/<night id>-r1-e0/code-state.json` changed after it."
+            "A mock night was started with `run-night --mock`. After its last round, once the night's final test"
+            " evaluation had begun (its sandbox `cc-<night id>-test-r<N>` was up in `docker ps`), the service that"
+            " runs the night's steps was killed (`SIGKILL`) and started again, with nothing else touched. The night"
+            " ended `done` with one test row, but it had done finished work of rounds 1 and 2 a second time: files"
+            " those rounds had completed before the kill, such as `nights/<night id>/exps/<night id>-r1-e0/code-state.json`"
+            " or `nights/<night id>/reviews/r1.json`, were written again after the restart."
         ),
-        targets=("crash-resume", "crash-mid-eval", "crash-during-test-eval", "crash-at-init", "row-identity"),
+        # Narrowed to test 24 (docs/codeclimb-eval-spec.md, "Maintenance tasks", R14).
+        targets=("crash-during-test-eval",),
         commits={"inngest": "f76da25", "langchain": "c3a1ec3"},
     ),
     # The control: nothing stack-specific in it.

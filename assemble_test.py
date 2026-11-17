@@ -382,8 +382,9 @@ class AssembleMaintenanceTask(unittest.TestCase):
                 for name in task.targets:
                     self.assertNotIn(name, prose, f"{task_id} on {stack}")
         self.assertEqual(maintenance.MAINTENANCE["r3"].targets, ("continue",))
-        self.assertEqual(maintenance.MAINTENANCE["r14"].targets,
-                         ("crash-resume", "crash-mid-eval", "crash-during-test-eval", "crash-at-init", "row-identity"))
+        # Narrowed to test 24: at one run per stack, f76da25 and c3a1ec3 both fail it, and the LangChain pin passed
+        # crash-resume only 2 of 3 (docs/codeclimb-eval-spec.md, "Maintenance tasks").
+        self.assertEqual(maintenance.MAINTENANCE["r14"].targets, ("crash-during-test-eval",))
 
 
 if __name__ == "__main__":
