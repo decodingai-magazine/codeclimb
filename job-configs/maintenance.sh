@@ -12,6 +12,7 @@ task="$1"; stack="$2"; shift 2
 python3 assemble.py maintenance "$task" "$stack" > /dev/null
 
 name="maintenance-$task-$stack-nop-$(date +%H%M%S)"
+mkdir -p jobs
 cat > "jobs/$name.yaml" <<EOF
 job_name: $name
 n_attempts: 1
