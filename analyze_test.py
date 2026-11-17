@@ -228,5 +228,18 @@ class Families(unittest.TestCase):
                          ["counted trials without hidden or real keys (graded before them; regrade to add): 1"])
 
 
+class CodeMetrics(unittest.TestCase):
+    def test_the_trial_row_carries_the_code_metrics_file_when_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Path(tmp)
+            write_trial(jobs, "inngest-bare", "measured", "inngest", "bare", 1.0, 2.0)
+            write_trial(jobs, "inngest-bare", "unmeasured", "inngest", "bare", 1.0, 2.0)
+            metrics = {"size": {"code_lines": 49}, "ratios": {"size.code_lines": 0.5}}
+            (jobs / "inngest-bare" / "measured" / "code-metrics.json").write_text(json.dumps(metrics))
+            rows = {r["trial"]: r for r in collect([jobs])}
+        self.assertEqual(rows["measured"]["code_metrics"], metrics)
+        self.assertIsNone(rows["unmeasured"]["code_metrics"])
+
+
 if __name__ == "__main__":
     unittest.main()

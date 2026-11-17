@@ -1,0 +1,13 @@
+{
+  "name": "codeclimb-analysis",
+  "private": true,
+  "description": "The code and practice analysis step's tools, pinned. Installed only in the analysis image, never into a build.",
+  "dependencies": {
+    "c8": "12.0.0",
+    "eslint": "10.14.0",
+    "jscpd": "5.4.2",
+    "knip": "6.44.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

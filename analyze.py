@@ -255,6 +255,8 @@ def trial_row(trial: Path) -> dict | None:
         "artifacts_failed": [a.get("source") for a in manifest if a.get("status") == "failed"],
         **lever_counts(traj, frozenset(s["name"] for s in lock.get("skills", []))),
         "pile": pile_progress(app) if workflow == "pocock" and app.exists() else None,
+        # The code and practice analysis step's output (code_metrics.py), when it has been run on this trial.
+        "code_metrics": _json(trial / "code-metrics.json") or None,
         "skill_digests": {s["name"]: s["digest"] for s in lock.get("skills", [])},
         "task_digest": (lock.get("task") or {}).get("digest"),
         # From the task's assembled.json as it is now: task_digest shows whether the task changed since the trial.
