@@ -83,7 +83,6 @@ Ask me for any API key it needs.
 |---|---|
 | AI engineers building measurable AI software (RAG, GraphRAG, extraction) | A loop that improves code against your dataset and metrics while you sleep, scored on dev every round and on test once, so you can spot overfitting |
 | Engineers building or running long-running coding agents | Working patterns for spend caps the agent can't override, credentials it never reads, checkpoints and a credit pause with human resume |
-| [Inngest](https://inngest.link/dai-gh) users | A real `connect()` worker with parent and child functions, step retries, cancellation and Inngest Sandboxes |
 
 ## See it in action
 
