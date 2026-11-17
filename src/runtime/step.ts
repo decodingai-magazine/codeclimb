@@ -1,5 +1,6 @@
 // The step wrapper: a step is a LangGraph task() with CodeClimb's retry, backstop timer and one abort signal
 // (spec: Durable runtime on LangGraph). Step bodies stay framework-free: they get a StepContext.
+import { randomUUID } from "node:crypto";
 import { getConfig, task } from "@langchain/langgraph";
 import { register } from "./registry.ts";
 
@@ -55,12 +56,15 @@ function rebuild(f: StepFailure): Error {
 }
 export const HOST_COMMAND_BACKSTOP_MIN = 35;
 
-/** Define and call a step named `name` once. Saved results are matched by name and call order. */
+/** Tags this server's steps in traces. */
+const SERVER = randomUUID().slice(0, 8);
+
+/** Define and call a step named `name` once. */
 export function step<A extends unknown[], R>(name: string, body: (ctx: StepContext, ...args: A) => Promise<R>, opts: StepOptions = {}): (...args: A) => Promise<R> {
 	let runAborted = false;
 	const t = task(
 		{
-			name,
+			name: `${name}@${SERVER}`,
 			retry: {
 				maxAttempts: STEP_ATTEMPTS,
 				retryOn: (e: unknown) => !(e instanceof NonRetriableError) && !(e instanceof StepTimeoutError) && !runAborted,
