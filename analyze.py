@@ -432,6 +432,18 @@ def _change(app: Path) -> dict | None:
             "test_added": any(is_test(p) and a > 0 for p, (a, _) in added.items())}
 
 
+IMAGE_SIZE = re.compile(r'"Size":\s*(\d+)')
+
+
+def image_mb(checks: Path) -> float | None:
+    """The sandbox image's size in MB, from the verifier's checks.json: the `image` check keeps the tail of
+    `docker image inspect`, whose "Size" is in bytes. The other runtime metrics the spec names (seconds per night,
+    resume latency, cold start) are not in checks.json."""
+    image = next((c for c in _json(checks).get("checks") or [] if c.get("name") == "image"), None)
+    sizes = IMAGE_SIZE.findall((image or {}).get("detail") or "")
+    return round(int(sizes[-1]) / 1e6, 1) if image and image.get("passed") and sizes else None
+
+
 def families(rewards: dict) -> dict[str, int]:
     """The `hidden.*` and `real.*` keys of reward.json: the verifier's tests beside the reward. A test that did not
     run has no key."""
@@ -474,6 +486,7 @@ def trial_row(trial: Path) -> dict | None:
             families=families(rewards), partial=bool(rewards.get("partial")),
             reward_valid=bool(rewards) and (row["exception_type"] is None or row["exception_type"] in REWARD_VALID_TYPES),
             verifier_s=_seconds(result.get("verifier")), started_at=result.get("started_at"),
+            image_mb=image_mb(trial / "verifier" / "checks.json"),
             job_retries=(_json(trial.parent / "result.json").get("stats") or {}).get("n_retries"),
         )
         row["status"] = classify(row)
@@ -519,6 +532,8 @@ def trial_row(trial: Path) -> dict | None:
         "leak": rewards.get("leak"),
         "agent_s": _seconds(result.get("agent_execution")),
         "verifier_s": _seconds(result.get("verifier")),
+        # Runtime, from the verifier's checks.json (spec, Metrics: runtime).
+        "image_mb": image_mb(trial / "verifier" / "checks.json"),
         "tokens_in": ar.get("n_input_tokens"),
         "tokens_out": ar.get("n_output_tokens"),
         "tokens_cache_read": ar.get("n_cache_tokens"),
@@ -831,6 +846,7 @@ PROCESS = [  # (column, label, unit, digits)
     ("rework_ratio", "rework", "", 2), ("unseen_bash_writes", "unseen Bash writes", "", 1), ("thrash", "thrash", "", 1), ("ts_errors", "TS errors", "", 1),
     ("ts_failed_runs", "in runs", "", 1), ("test_failures", "test fails", "", 1), ("test_failed_runs", "in runs", "", 1),
     ("sdk_type_errors", "SDK type errors", "", 1), ("sdk_reads", "SDK reads", "", 1), ("pi_doc_reads", "Pi doc reads", "", 1),
+    ("image_mb", "image", "MB", 1),
 ]
 
 

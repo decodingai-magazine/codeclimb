@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, report, stream_facts
+from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, stream_facts
 
 
 def trajectory(*calls):
@@ -281,6 +281,10 @@ class ProcessMetrics(unittest.TestCase):
         (app / "src" / "a.ts").write_text("y\nz\n" + "x\n" * 9)
         (app / "test" / "a.test.ts").write_text("a\nb\nc\n")
         (app / "package-lock.json").write_text("{\n" * 100)
+        (trial / "verifier").mkdir()
+        (trial / "verifier" / "checks.json").write_text(json.dumps({"checks": [
+            {"name": "install", "passed": True, "detail": "added 1 package"},
+            {"name": "image", "passed": True, "detail": '"Architecture": "arm64",\n        "Size": 289804356,\n'}]}))
         # The final build also holds a file the session never wrote; given inputs and installed packages are no part.
         (app / "src" / "b.ts").write_text("b\n" * 6)
         for rel in ("node_modules/x/index.js", "scenarios/capitals/data.jsonl", "runs-inngest/mock/r.jsonl", "SPEC.md"):
@@ -322,6 +326,11 @@ class ProcessMetrics(unittest.TestCase):
 
     def test_reads_of_the_stack_sdk_and_the_pi_docs(self):
         self.assertEqual((self.row["sdk_reads"], self.row["pi_doc_reads"]), (1, 1))
+
+    def test_image_size_from_the_verifier_checks(self):
+        # checks.json keeps the image check's `docker image inspect` tail; its "Size" is the image size.
+        self.assertEqual(self.row["image_mb"], 289.8)
+        self.assertIn("image 289.8 MB", "\n".join(process_table([self.row])))
 
     def test_never_in_the_reward(self):
         self.assertEqual(self.row["reward"], 1.0)
