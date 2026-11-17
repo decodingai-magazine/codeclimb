@@ -31,6 +31,7 @@ from leak import without_heredocs  # noqa: E402
 from measure import GENERATED, is_test  # noqa: E402
 
 from assemble import SHARED, STUBS
+from code_metrics import RATIOS
 from gate import resolved
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
@@ -859,6 +860,65 @@ def process_table(rows: list[dict]) -> list[str]:
     return out
 
 
+CODE = [  # (path in code-metrics.json, label, digits); a list's length where the value is a list
+    ("size.code_lines", "code lines", 0), ("size.comment_lines", "comment lines", 0), ("size.files", "files", 0),
+    ("size.modules", "modules", 0), ("glue.glue_lines", "glue lines", 0), ("glue.domain_lines", "domain lines", 0),
+    ("glue.glue_files", "glue files", 0), ("glue.n_sdk_symbols", "SDK symbols", 0),
+    ("type_escapes.per_kloc", "type escapes/kloc", 1), ("ruleset.per_kloc", "ruleset/kloc", 1),
+    ("duplication.percentage", "duplicated %", 1), ("dead_code.n_unused_files", "unused files", 1),
+    ("dead_code.n_unused_exports", "unused exports", 1), ("complexity.mean", "complexity mean", 2),
+    ("complexity.max", "max", 0), ("coverage.line_pct", "line coverage", 1), ("coverage.glue_line_pct", "glue", 1),
+    ("coverage.domain_line_pct", "domain", 1), ("dependencies.beyond_table", "deps beyond the table", 1),
+    ("flakiness.passed_runs", "own tests green runs of 3", 1),
+]
+FLAGS = [("practices.ci", "ci"), ("practices.ci_passes", "ci_passes"), ("practices.pre_commit", "pre_commit"),
+         ("practices.pre_commit_passes", "pre_commit_passes"), ("practices.linter", "linter"),
+         ("practices.lint_passes", "lint_passes"), ("practices.formatter", "formatter"),
+         ("practices.format_passes", "format_passes"), ("practices.readme", "readme"),
+         ("practices.agents_md", "agents_md"), ("tsconfig.sha256_matches_given", "given tsconfig")]
+
+
+def _at(metrics: dict, path: str):
+    group, _, key = path.partition(".")
+    v = (metrics.get(group) or {}).get(key)
+    return len(v) if isinstance(v, list) else v
+
+
+def _mean_of(values: list, n: int, nd: int, unit: str = "") -> str:
+    """The mean of the values that are not null, with how many had one when some did not: a null is never a 0."""
+    vals = [v for v in values if v is not None]
+    return ("-" if not vals else f"{mean(vals):.{nd}f}{unit}") + (f" ({len(vals)}/{n})" if len(vals) < n else "")
+
+
+def code_table(rows: list[dict]) -> list[str]:
+    """The code and practice metrics (code_metrics.py) of counted build trials and reference runs: per stack, old
+    specs apart, each metric's mean, the mean ratio to the stack's reference build (present when the step ran with
+    `--reference`), and per flag how many trials have it."""
+    keep = [r for r in rows if r["status"] == "counted" and (r["arm"] == "reference" or (r["harness"] != "nop" and r["workflow"] != "probe"))]
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in keep:
+        groups[(r["stack"], r.get("specs"), r["arm"] == "reference")].append(r)
+    out = []
+    for (stack, specs, ref), rs in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1] != "current", kv[0][2])):
+        ms = [r["code_metrics"] for r in rs if r.get("code_metrics")]
+        head = f"{stack:9} {specs:9} {'reference ' if ref else ''}n={len(rs)} (measured {len(ms)}/{len(rs)})"
+        if not ms:
+            out.append(head)
+            continue
+        out.append(head + " " + " ".join(f"{label} {_mean_of([_at(m, path) for m in ms], len(ms), nd)}" for path, label, nd in CODE))
+        if any(m.get("ratios") for m in ms):
+            out.append("    ratios to the reference: " + " ".join(
+                f"{g}.{k} {_mean_of([(m.get('ratios') or {}).get(f'{g}.{k}') for m in ms], len(ms), 2, 'x')}" for g, k in RATIOS))
+        else:
+            out.append("    ratios to the reference: none (code_metrics.py ran without --reference)")
+        flags = []
+        for path, label in FLAGS:
+            vals = [v for m in ms if (v := _at(m, path)) is not None]
+            flags.append(f"{label} {sum(bool(v) for v in vals)}/{len(vals)}" if vals else f"{label} -")
+        out.append("    practices: " + " ".join(flags))
+    return out or ["no build trial has code metrics"]
+
+
 def report(rows: list[dict]) -> str:
     maintenance = [r for r in rows if r.get("task")]
     rows = [r for r in rows if not r.get("task")]
@@ -881,6 +941,7 @@ def report(rows: list[dict]) -> str:
                 lines.append(f"{stack:9} {e['metric']:8} {e['effect']:11} {_fmt(e['value'])}  {e['call']}" + ("" if e.get("exact", True) else " (sampled)"))
     lines += ["", "== stack comparison", *stack_comparison(rows), "",
               "== process metrics per stack, from the session files (beside the reward, not in it)", *process_table(rows),
+              "", "== code and practice metrics per stack, from code_metrics.py (beside the reward, not in it)", *code_table(rows),
               "", "== kept out of every mean"]
     for status in ("leak", "infra"):
         kept = [r for r in rows if r["status"] == status]

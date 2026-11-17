@@ -525,6 +525,32 @@ class CodeMetrics(unittest.TestCase):
         self.assertEqual(rows["measured"]["code_metrics"], metrics)
         self.assertIsNone(rows["unmeasured"]["code_metrics"])
 
+    def test_the_report_prints_per_stack_means_ratios_and_practice_flags(self):
+        def metrics(code: int, coverage: float | None, ratio: float, ci: bool) -> dict:
+            return {"size": {"code_lines": code, "comment_lines": 10, "files": 4, "modules": 2},
+                    "glue": {"glue_files": ["src/glue.ts"], "glue_lines": code // 2, "domain_lines": code // 2, "n_sdk_symbols": 3},
+                    "type_escapes": {"per_kloc": 2.0}, "ruleset": {"per_kloc": None, "error": "eslint exited 2"},
+                    "coverage": {"line_pct": coverage}, "practices": {"ci": ci, "lint_passes": None},
+                    "tsconfig": {"sha256_matches_given": True}, "ratios": {"size.code_lines": ratio, "ruleset.per_kloc": None}}
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Path(tmp)
+            for name, m in (("a", metrics(100, 50.0, 0.5, True)), ("b", metrics(300, None, 1.5, False))):
+                write_trial(jobs, "e1-inngest-bare", name, "inngest", "bare", 1.0, 2.0, start="2026-11-15T10:00:00Z")
+                (jobs / "e1-inngest-bare" / name / "code-metrics.json").write_text(json.dumps(m))
+            write_trial(jobs, "e1-langchain-bare", "c", "langchain", "bare", 1.0, 2.0, start="2026-11-15T10:00:00Z")
+            text = report(collect([jobs]))
+        code = text.split("== code and practice metrics")[1].split("\n\n")[0]
+        # A null stays out of the mean (coverage, the ruleset), never a zero.
+        self.assertIn("inngest   current   n=2 (measured 2/2) code lines 200 comment lines 10 files 4 modules 2"
+                      " glue lines 100 domain lines 100 glue files 1 SDK symbols 3 type escapes/kloc 2.0"
+                      " ruleset/kloc - (0/2)", code)
+        self.assertIn("line coverage 50.0 (1/2)", code)
+        self.assertIn("ratios to the reference: size.code_lines 1.00x", code)
+        self.assertIn("ci 1/2", code)
+        self.assertIn("lint_passes -", code)
+        self.assertIn("given tsconfig 2/2", code)
+        self.assertIn("langchain current   n=1 (measured 0/1)", code)
+
 
 if __name__ == "__main__":
     unittest.main()
