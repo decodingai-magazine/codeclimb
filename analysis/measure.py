@@ -293,7 +293,8 @@ def tsconfig(ctx: dict) -> dict:
 
 
 def practices(ctx: dict, pkg: dict, work: Path) -> dict:
-    """Flags, and whether the build's own lint and format-check scripts pass. CI and hooks are not run: null."""
+    """Flags, and whether the build's own lint and format-check scripts pass. CI and pre-commit hooks are not run in
+    the container (no CI runner, no commit to hook): their passes are null, with the reason in `not_run`."""
     files = set(files_of(APP)) | {p.relative_to(APP).as_posix() for p in APP.glob(".git/hooks/*") if not p.name.endswith(".sample")}
     scripts = pkg.get("scripts") or {}
     deps = {**(pkg.get("dependencies") or {}), **(pkg.get("devDependencies") or {})}
@@ -305,9 +306,12 @@ def practices(ctx: dict, pkg: dict, work: Path) -> dict:
     agents = APP / "AGENTS.md"
     return {
         "ci": any(f.startswith((".github/workflows/", ".circleci/", ".buildkite/")) or f in (".gitlab-ci.yml", "azure-pipelines.yml") for f in files),
+        "ci_passes": None,
         "pre_commit": any(f.startswith((".husky/", ".git/hooks/")) for f in files)
                       or bool({".pre-commit-config.yaml", "lefthook.yml", ".lefthook.yml"} & files)
                       or any(k in pkg for k in ("simple-git-hooks", "lint-staged")),
+        "pre_commit_passes": None,
+        "not_run": "CI and pre-commit hooks are not run inside the analysis container: their passes are null",
         "linter": any(f.split("/")[-1].startswith(("eslint.config.", ".eslintrc", "biome.json", ".oxlintrc", "oxlint")) for f in files)
                   or any(d in deps for d in ("eslint", "@biomejs/biome", "oxlint")) or "lint" in scripts,
         "formatter": any(f.split("/")[-1].startswith((".prettierrc", "prettier.config.", "biome.json", "dprint.json")) for f in files)

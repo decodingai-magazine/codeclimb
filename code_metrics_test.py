@@ -119,10 +119,12 @@ class FixtureBuild(unittest.TestCase):
 
     def test_practice_flags(self):
         # .husky/pre-commit and .prettierrc, no CI or linter, no lint or format script to run; AGENTS.md is the stub.
+        # CI and the hooks are not run: their passes are null with the reason, never False.
         self.assertEqual(
             self.m["practices"],
-            {"ci": False, "pre_commit": True, "linter": False, "formatter": True, "lint_passes": None,
-             "format_passes": None, "readme": True, "agents_md": False},
+            {"ci": False, "ci_passes": None, "pre_commit": True, "pre_commit_passes": None,
+             "not_run": "CI and pre-commit hooks are not run inside the analysis container: their passes are null",
+             "linter": False, "formatter": True, "lint_passes": None, "format_passes": None, "readme": True, "agents_md": False},
         )
 
     def test_complexity_per_function(self):
