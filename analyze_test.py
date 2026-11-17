@@ -242,7 +242,7 @@ TSC = "src/a.ts(1,1): error TS2339: Property 'sendd' does not exist on type 'Inn
 
 class ProcessMetrics(unittest.TestCase):
     """One Inngest trial on the current specs with a session file of known edits, Bash writes, errors, milestones
-    and SDK reads; $10 in all over 12 tool calls of equal tokens."""
+    and SDK reads; $10 in all over 13 tool calls of equal tokens."""
 
     @classmethod
     def setUpClass(cls):
@@ -263,7 +263,11 @@ class ProcessMetrics(unittest.TestCase):
         s.bash(70, 1, "cat > /app/test/a.test.ts <<'EOF'\n// error TS9999: fake\nEOF\nnpm test 2>&1 | tail -3",
                "// error TS9999: fake\n# pass 4\n# fail 2",
                diff={"files": [{"filePath": "/app/test/a.test.ts", "created": True, "hunks": [
-                   {"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 3, "lines": ["+a", "+b", "+c"]}]}], "moreFiles": 1})
+                   {"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 3, "lines": ["+a", "+b", "+c"]}]},
+                   # npm's lockfile is generated, not written: out of both sides of the rework ratio
+                   {"filePath": "/app/package-lock.json", "hunks": [{"oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": 1, "lines": ["+{"]}]}],
+                   "moreFiles": 1})
+        s.call(75, 0, "Bash", {"command": "npm run worker", "run_in_background": True})  # a start, not a feedback wait
         s.bash(80, 1, "curl -s localhost:7421/api/nights", '{"nights":[]}')  # the worker API answers: services up
         s.bash(90, 20, "npm run run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1 2>&1 | tail -2",
                "started night n1\ndone stop_reason=max_rounds rounds=1 night=n1")
@@ -276,6 +280,7 @@ class ProcessMetrics(unittest.TestCase):
         (app / "test").mkdir()
         (app / "src" / "a.ts").write_text("y\nz\n" + "x\n" * 9)
         (app / "test" / "a.test.ts").write_text("a\nb\nc\n")
+        (app / "package-lock.json").write_text("{\n" * 100)
         cls.row = collect([jobs])[0]
 
     @classmethod
@@ -289,9 +294,9 @@ class ProcessMetrics(unittest.TestCase):
 
     def test_dollars_and_minutes_to_each_milestone(self):
         r = self.row
-        # services up at 81 s, after 9 of the 12 calls' messages; night 1 done at 110 s (10); night 5 passes at 131 s (12).
-        self.assertEqual((r["services_up_min"], r["services_up_usd"]), (1.35, 7.5))
-        self.assertEqual((r["night1_done_min"], r["night1_done_usd"]), (1.83, 8.33))
+        # services up at 81 s, after 10 of the 13 calls' messages; night 1 done at 110 s (11); night 5 passes at 131 s (13).
+        self.assertEqual((r["services_up_min"], r["services_up_usd"]), (1.35, 7.69))
+        self.assertEqual((r["night1_done_min"], r["night1_done_usd"]), (1.83, 8.46))
         self.assertEqual((r["night5_pass_min"], r["night5_pass_usd"]), (2.18, 10.0))
 
     def test_rework_counts_writes_through_bash(self):
@@ -335,6 +340,46 @@ class OldSpecs(unittest.TestCase):
         self.assertIn("inngest   old specs n=1 in tools 30 s outside 0 s feedback 30.0 s", text)
         self.assertIn("c-inngest-bare/old inngest bare one-shot old specs", text)
         self.assertIn("build trials: 2 (old specs 1)", text)
+
+
+class Detectors(unittest.TestCase):
+    """The milestone and lookup detectors on shapes seen in the recorded trials, so they hold alike on both stacks."""
+
+    def row(self, stack: str, session: SessionFile) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            jobs = Path(d)
+            write_trial(jobs, f"e1-{stack}-bare", "t0", stack, "bare", 1.0, 8.0, start="2026-11-15T10:00:00Z")
+            session.write(jobs / f"e1-{stack}-bare" / "t0")
+            return collect([jobs])[0]
+
+    def test_services_up_only_once_the_build_starts_its_services(self):
+        # A hand-rolled spike's Agent Server answers /ok before the build's `npm run server` exists.
+        s = SessionFile().bash(0, 1, "docker compose -f /tmp/toy.yaml up -d; curl -s :8123/ok", '{"ok":true}')
+        s.bash(60, 30, "npm run server 2>&1 | tail -1", "server: http://127.0.0.1:8123/ok answers")
+        self.assertEqual(self.row("langchain", s)["services_up_min"], 1.5)
+
+    def test_night_5_with_a_variable_night_id_and_a_kill_in_a_script(self):
+        s = SessionFile()
+        s.bash(0, 1, "cat > /tmp/rw.sh <<'EOF'\npkill -f src/worker.ts\n(npm run worker > /tmp/w.log 2>&1 &)\nEOF\nchmod +x /tmp/rw.sh")
+        s.bash(10, 1, "id=k5; npm run -s run-night -- --config configs/datenorm-smoke.yaml --mock --no-wait --night-id $id", "started k5")
+        s.bash(20, 1, "/tmp/rw.sh")
+        s.bash(30, 9, "cat /tmp/claude-0/-app/tasks/b1.output", "bundle\ndone.json\nruns-inngest/mock/datenorm-smoke/nights/k5/exps")
+        self.assertEqual(self.row("inngest", s)["night5_pass_min"], 0.65)
+
+    def test_sdk_reads_without_a_trailing_slash_and_feedback_only_from_runs(self):
+        s = SessionFile()
+        s.bash(0, 1, "grep -rn createFunction node_modules/inngest | head")
+        s.bash(5, 1, "ls node_modules/inngest-cli")  # another package, not the SDK
+        s.bash(10, 50, "cat src/cli/run-night.ts")  # names run-night, runs nothing
+        s.bash(70, 4, "npm run -s run-night -- --config configs/capitals-smoke.yaml --mock --night-id n1", "done")
+        r = self.row("inngest", s)
+        self.assertEqual((r["sdk_reads"], r["feedback_s"]), (1, 4.0))
+
+    def test_a_persisted_output_is_read_whole(self):
+        # Claude Code shows the model a 2 KB preview of a long output; toolUseResult keeps all of it.
+        s = SessionFile().call(0, 3, "Bash", {"command": "npx tsc --noEmit"}, "<persisted-output>\nPreview (first 2KB):\n...",
+                               {"stdout": "x\n" * 3000 + TSC, "stderr": ""})
+        self.assertEqual(self.row("inngest", s)["ts_errors"], 2)
 
 
 class SpecReporter(unittest.TestCase):

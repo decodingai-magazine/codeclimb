@@ -199,9 +199,12 @@ def _session_calls(sessions: Path) -> tuple[list[dict], list[dict]]:
             elif e.get("type") == "user":
                 for c in content:
                     if c.get("type") == "tool_result" and (call := pending.pop(c.get("tool_use_id"), None)):
+                        result = e.get("toolUseResult") if isinstance(e.get("toolUseResult"), dict) else {}
+                        # A long output reaches the model as a 2 KB preview; toolUseResult keeps all of it.
                         out = c.get("content")
                         out = out if isinstance(out, str) else "\n".join(x.get("text", "") for x in out or [] if isinstance(x, dict))
-                        result = e.get("toolUseResult") if isinstance(e.get("toolUseResult"), dict) else {}
+                        if isinstance(result.get("stdout"), str):
+                            out = result["stdout"] + (f"\n{result['stderr']}" if result.get("stderr") else "")
                         calls.append({**call, "end": _ts(at), "out": out, "result": result})
     return sorted(calls, key=lambda c: c["start"]), sorted(messages.values(), key=lambda m: m["at"])
 
@@ -215,17 +218,30 @@ def _union_s(spans: list[tuple[float, float]]) -> float:
     return total
 
 
-FEEDBACK = re.compile(r"\brun-night\b|\bnpm run (?:-s )?(?:worker|server|dev:inngest)\b")
+RUN_NIGHT = re.compile(r"\bnpm run (?:-s )?run-night\b")
+SERVICE_START = re.compile(r"\bnpm run (?:-s )?(?:worker|server|dev:inngest)\b")
 # Token prices relative to an input token (Anthropic's list prices: a cache read 0.1x, a cache write 1.25x for 5 min and
 # 2x for 1 h, an output token 5x). The $ to a milestone is the trial's $ times the priced share of tokens spent by then.
 PRICE = {"input_tokens": 1.0, "cache_read_input_tokens": 0.1, "output_tokens": 5.0}
 # Services up, as the verifier's adapters probe them: the Inngest worker API (`/api/nights`, the dev server already runs
-# in a trial) and the Agent Server's `/ok`. A night that printed a row, `done` or `stopped` had its services up too.
+# in a trial) and the Agent Server's `/ok`, once the build has started its own services (`npm run worker` or `server`:
+# a hand-rolled spike's server answers `/ok` too). A night that printed a row, `done` or `stopped` had them up as well.
 SERVICES_UP = {"inngest": re.compile(r'\{\s*"nights"\s*:'), "langchain": re.compile(r'"ok"\s*:\s*true|/ok answers')}
 NIGHT_OUTPUT = re.compile(r"^(?:row|done|stopped)\b", re.MULTILINE)
 DONE_LINE = re.compile(r"^done\b", re.MULTILINE)
-NIGHT_ID = re.compile(r"--night-id[= ]([\w.-]+)")
+NIGHT_ID = re.compile(r"""--night-id[= ]["']?(\$\{?\w+\}?|[\w.-]+)""")
 KILL = re.compile(r"\b(?:pkill|kill|killall)\b|\bdocker(?: compose\b[^;&|]*)? (?:kill|stop|restart)\b")
+SCRIPT = re.compile(r">\s*(\S+)\s*<<")  # `cat > <file> <<EOF`: the file a heredoc writes
+
+
+def _night_id(cmd: str) -> str | None:
+    """The `--night-id` of a command, a shell variable resolved from an assignment in the same command."""
+    if not (m := NIGHT_ID.search(cmd)):
+        return None
+    if not m[1].startswith("$"):
+        return m[1]
+    v = re.search(rf"\b{re.escape(m[1].strip('${}'))}=[\"']?([\w.-]+)", cmd)
+    return v[1] if v else None
 
 
 def _priced(usage: dict) -> float:
@@ -238,21 +254,28 @@ def _priced(usage: dict) -> float:
 def milestones(calls: list[dict], stack: str) -> dict[str, float | None]:
     """Time of the first `services-up`, the first night 1 `done` (a `run-night` of `capitals-smoke` that printed
     `done` on a line of its own) and the first night 5 pass: a `--no-wait` start of `datenorm-smoke`, a kill of the
-    runtime in that call or a later one, then output listing that night's `done.json`."""
+    runtime in that call or a later one (directly, or by running a script whose heredoc kills), then output listing
+    that night's `done.json`."""
     out: dict[str, float | None] = {"services_up": None, "night1_done": None, "night5_pass": None}
     night5: dict[str, bool] = {}  # night id -> killed since its start
+    killers: set[str] = set()  # scripts written by a heredoc that kills
+    started = False
     for c in calls:
         if c["name"] != "Bash":
             continue
-        cmd = without_heredocs(str(c["input"].get("command", "")))
-        night = "run-night" in cmd
-        if out["services_up"] is None and (SERVICES_UP[stack].search(c["out"]) or (night and NIGHT_OUTPUT.search(c["out"]))):
+        full = str(c["input"].get("command", ""))
+        cmd = without_heredocs(full)
+        if KILL.search(full) and not KILL.search(cmd):
+            killers |= set(SCRIPT.findall(full))
+        started = started or bool(SERVICE_START.search(cmd))
+        night = bool(RUN_NIGHT.search(cmd))
+        if out["services_up"] is None and ((started and SERVICES_UP[stack].search(c["out"])) or (night and NIGHT_OUTPUT.search(c["out"]))):
             out["services_up"] = c["end"]
         if out["night1_done"] is None and night and "capitals-smoke" in cmd and DONE_LINE.search(c["out"]):
             out["night1_done"] = c["end"]
-        if night and "datenorm-smoke" in cmd and "--no-wait" in cmd and (m := NIGHT_ID.search(cmd)):
-            night5[m[1]] = False
-        if KILL.search(cmd):
+        if night and "datenorm-smoke" in cmd and "--no-wait" in cmd and (n := _night_id(cmd)):
+            night5[n] = False
+        if KILL.search(cmd) or any(k in cmd for k in killers):
             night5 = dict.fromkeys(night5, True)
         if out["night5_pass"] is None and "done.json" in c["out"]:
             if any(killed and re.search(rf"\b{re.escape(n)}\b", cmd + "\n" + c["out"]) for n, killed in night5.items()):
@@ -264,7 +287,7 @@ TS_ERROR = re.compile(r"\berror (TS\d+)\b")
 TEST_FAIL = re.compile(r"^(?:#|ℹ)\s*fail\s+(\d+)", re.MULTILINE)  # TAP, or the node spec reporter
 ERROR_LINE = re.compile(r"\berror\b|^(?:#|ℹ)\s*fail\s+[1-9]|\bFAIL\b", re.IGNORECASE)
 # The stack SDK: its package folders, and the names a type error carries when it is about an SDK symbol.
-SDK_PATHS = {"inngest": re.compile(r"node_modules/(?:inngest|@inngest)/"), "langchain": re.compile(r"node_modules/@langchain/")}
+SDK_PATHS = {"inngest": re.compile(r"node_modules/(?:inngest|@inngest)(?![\w-])"), "langchain": re.compile(r"node_modules/@langchain(?![\w-])")}
 SDK_SYMBOL = {
     "inngest": re.compile(r"""['"](?:inngest|@inngest/[\w-]+)['"]|\bInngest\w*|\bGetStepTools\b|\bGetEvents\b"""),
     "langchain": re.compile(r"""['"]@langchain/[\w-]+(?:/[\w-]+)?['"]|\bLangGraph\w*|\b(?:Compiled)?StateGraph\b|\bPregel\w*|\bBaseCheckpointSaver\b|\bAnnotation\w*\b"""),
@@ -327,8 +350,8 @@ def _lookups(calls: list[dict], stack: str) -> dict:
 def _rework(calls: list[dict], app: Path) -> dict:
     """Lines written into /app during the session against the lines of those files in the final build. A Bash call's
     `bashEditDiff` lists some of the files it changed and counts the rest in `moreFiles`: those writes are unseen, so
-    the ratio is a floor."""
-    written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/")]
+    the ratio is a floor. npm's `package-lock.json` is generated, not written: it is out of both sides."""
+    written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/") and Path(p).name != "package-lock.json"]
     final = sum(len((app / p[len("/app/"):]).read_text(errors="replace").splitlines())
                 for p in {p for p, _ in written} if (app / p[len("/app/"):]).is_file())
     lines = sum(n for _, n in written)
@@ -346,7 +369,7 @@ def process_metrics(sessions: Path, stack: str, app: Path, cost_usd: float | Non
     span = max(stamps) - min(stamps) if stamps else None
     tool_s = _union_s([(c["start"], c["end"]) for c in main]) if main else None
     feedback = [c["end"] - c["start"] for c in main if c["name"] == "Bash" and not c["input"].get("run_in_background")
-                and FEEDBACK.search(without_heredocs(str(c["input"].get("command", ""))))]
+                and (lambda cmd: RUN_NIGHT.search(cmd) or SERVICE_START.search(cmd))(without_heredocs(str(c["input"].get("command", ""))))]
     row: dict = {
         "tool_s": None if tool_s is None else round(tool_s, 1),
         "outside_tool_s": None if span is None else round(span - tool_s, 1),
