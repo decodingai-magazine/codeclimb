@@ -114,12 +114,22 @@ Then look at your data. Against gold, the dev graph has 72 missed entities and 5
 
 The screenshots are from a 26-round night with a larger budget; the shipped `graphrag.yaml` runs 24 rounds with a $60 cap, paid on an Anthropic key and OpenRouter. To check the loop for free first, run the [Quickstart](#quickstart) mock night.
 
-**Run it with your coding agent:**
+**Run it with your coding agent, local** (Inngest dev server and Docker on your machine):
+
+```txt
+In https://github.com/decodingai-magazine/codeclimb (set up per guides/01_setup.md if it isn't yet),
+follow guides/02_running.md#dev-server-and-worker and #graphrag to run the GraphRAG night with
+npm run run-night -- --config configs/graphrag.yaml, until the night writes its done.json.
+Use 00_troubleshooting.md on any error and ask me for any API key or budget it needs.
+```
+
+**Run it with your coding agent, Inngest Cloud** (runs, traces and scores in the Inngest dashboard):
 
 ```txt
 In https://github.com/decodingai-magazine/codeclimb (set up per guides/01_setup.md if it isn't yet),
 follow guides/02_running.md#graphrag and #inngest-cloud to run the GraphRAG night with
-npm run run-night:cloud -- --config configs/graphrag.yaml, until the night writes its done.json.
+npm run worker:cloud, then npm run run-night:cloud -- --config configs/graphrag.yaml,
+until the night writes its done.json.
 Use 00_troubleshooting.md on any error and ask me for any API key or budget it needs.
 ```
 
