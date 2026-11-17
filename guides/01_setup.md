@@ -10,7 +10,7 @@ After this guide `npm test` passes, the `codeclimb-python` image exists, and Pi 
 | Docker | Docker Desktop or Engine, running | Coder and evaluator sandboxes, the `cc-meter` network | [docker.com](https://docs.docker.com/get-docker/) |
 | Python 3 | 3.x on the host | Dataset builders (`npm run build:dataset*`) | [python.org](https://www.python.org) |
 | uv | any | graphrag's host-side evaluators run through `uv` | [install](https://docs.astral.sh/uv/) |
-| cloudflared or ngrok | any | Only for Inngest Sandboxes with `allowed_models`: a public URL for the metering proxy | `brew install cloudflared`, or [ngrok](https://ngrok.com) |
+| cloudflared or ngrok | any | Only for [Inngest](https://inngest.link/dai-gh) Sandboxes with `allowed_models`: a public URL for the metering proxy | `brew install cloudflared`, or [ngrok](https://ngrok.com) |
 
 ## Install
 

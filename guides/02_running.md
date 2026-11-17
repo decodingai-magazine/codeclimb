@@ -1,6 +1,6 @@
 # Running CodeClimb
 
-After this guide you can start, follow, stop, pause, resume, continue, seed and export a night, locally or on Inngest Cloud, and watch it in the dashboard. Every scenario needs [01_setup.md](01_setup.md) done first.
+After this guide you can start, follow, stop, pause, resume, continue, seed and export a night, locally or on [Inngest](https://inngest.link/dai-gh) Cloud, and watch it in the dashboard. Every scenario needs [01_setup.md](01_setup.md) done first.
 
 Scenarios follow the order a night runs in: services up, a night started, watched, ended, then reused.
 

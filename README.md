@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-blue" alt="node: >=20">
 </p>
 
-A coding agent left alone overnight burns credits with no stop, holds your API keys in its sandbox, and loses every paid round when it crashes at 5 AM. CodeClimb runs Pi coding agents in sandboxes, round after round, and keeps a change only when it beats the best checkpoint on a dev split the agent never sees. Spend caps, deadlines and stops fire in code, keys stay in a metering proxy on the host, and Inngest checkpoints every step, so a crash costs one round.
+A coding agent left alone overnight burns credits with no stop, holds your API keys in its sandbox, and loses every paid round when it crashes at 5 AM. CodeClimb runs Pi coding agents in sandboxes, round after round, and keeps a change only when it beats the best checkpoint on a dev split the agent never sees. Spend caps, deadlines and stops fire in code, keys stay in a metering proxy on the host, and [Inngest](https://inngest.link/dai-gh) checkpoints every step, so a crash costs one round.
 
 **Before:** a 23,000-line agent diff you can't review and a $10 run that died mid-turn. **After:** a 26-round graphrag night, 11.8 hours, $74.63, every kept commit scored on dev and the winner once on test.
 
@@ -25,19 +25,19 @@ A coding agent left alone overnight burns credits with no stop, holds your API k
 
 ![CodeClimb architecture: experiment, evaluate on dev, repeat until done, then evaluate on test](assets/architecture.png)
 
-- **Experiment** — a Pi coding agent in a Docker or Inngest sandbox; writes one commit per round from the spec, the train split and the history.
+- **Experiment** — a Pi coding agent in a Docker or [Inngest](https://inngest.link/dai-gh) sandbox; writes one commit per round from the spec, the train split and the history.
 - **Evaluation** — a separate sandbox runs the commit on dev; host-side scorers turn outputs into metrics the coder never sees.
 - **Keep rule and stops** — TypeScript in the worker; keeps a commit only above the measured noise, stops on thresholds, rounds, deadline, budget or plateau.
 - **Metering proxy** — in the worker; holds the provider keys, hands each sandbox a capped, expiring token for the allowed models only.
-- **Inngest + dashboard** — Inngest checkpoints and retries every step; the Next.js app watches, stops and exports nights.
+- **[Inngest](https://inngest.link/dai-gh) + dashboard** — Inngest checkpoints and retries every step; the Next.js app watches, stops and exports nights.
 
-The same loop made durable and secure: a proxy that holds the credentials, cost checks around every step, Inngest checkpoints, and a pause for credits that waits for a human.
+The same loop made durable and secure: a proxy that holds the credentials, cost checks around every step, [Inngest](https://inngest.link/dai-gh) checkpoints, and a pause for credits that waits for a human.
 
 ![How to build durable and secure long-running agents: the CodeClimb loop with its proxy, Inngest checkpoints and credit pauses](assets/architecture-durable-secure.png)
 
 ## 📬 Learn to Build Long-Running Agents
 
-> Join 45k+ engineers subscribed to [the Decoding AI Magazine](https://www.decodingai.com/) to learn to build durable, secure long-running agents.
+> Join 45k+ engineers reading [the Decoding AI Magazine](https://www.decodingai.com/) and watching [the Decoding AI YouTube channel](https://www.youtube.com/@itsdecodingai) to learn to build durable, secure long-running agents.
 
 <a href="https://www.decodingai.com/" target="_blank">
   <img src="assets/decodingai-banner.jpg" alt="Decoding AI Magazine" width="100%"/>
@@ -71,8 +71,8 @@ Ask me for any API key it needs.
 
 | Guide | Read it when |
 |---|---|
-| [01_setup.md](guides/01_setup.md) | You install CodeClimb, add model credentials or Inngest Cloud keys, or want the cost of each run path |
-| [02_running.md](guides/02_running.md) | You start, stop, resume, continue, seed or export a night, run graphrag, use Inngest Cloud or open the dashboard |
+| [01_setup.md](guides/01_setup.md) | You install CodeClimb, add model credentials or [Inngest](https://inngest.link/dai-gh) Cloud keys, or want the cost of each run path |
+| [02_running.md](guides/02_running.md) | You start, stop, resume, continue, seed or export a night, run graphrag, use [Inngest](https://inngest.link/dai-gh) Cloud or open the dashboard |
 | [03_how_it_works.md](guides/03_how_it_works.md) | You need the loop's steps, the keep rule, the stops, the metering proxy, the files a night writes, the worker API or the code layout |
 | [00_troubleshooting.md](guides/00_troubleshooting.md) | A command fails, a night pauses, or a score looks wrong |
 
@@ -82,7 +82,7 @@ Ask me for any API key it needs.
 |---|---|
 | AI engineers with a measurable problem (RAG, extraction, retrieval) | A loop that improves code against your dataset and metrics while you sleep, with test scored once at the end |
 | Engineers running long or overnight coding agents | Working patterns for spend caps, a key-holding proxy, checkpoints and a credit pause with human resume |
-| Inngest users | A real `connect()` worker with parent and child functions, step retries, cancellation and Inngest Sandboxes |
+| [Inngest](https://inngest.link/dai-gh) users | A real `connect()` worker with parent and child functions, step retries, cancellation and Inngest Sandboxes |
 
 ## See it in action
 
@@ -136,11 +136,11 @@ Open a [GitHub issue](https://github.com/decodingai-magazine/codeclimb/issues) f
 
 ## Security
 
-Coder agents run shell commands in Docker or Inngest sandboxes with open egress, and Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox: the program reaches models only through the metering proxy with a capped, revocable token. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback; in cloud mode, runs, step outputs and traces go to Inngest Cloud. Details: [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
+Coder agents run shell commands in Docker or [Inngest](https://inngest.link/dai-gh) sandboxes with open egress, and Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox: the program reaches models only through the metering proxy with a capped, revocable token. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback; in cloud mode, runs, step outputs and traces go to Inngest Cloud. Details: [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
 
 ## 📬 Learn to Build Long-Running Agents
 
-> Join 45k+ engineers subscribed to [the Decoding AI Magazine](https://www.decodingai.com/) to learn to build durable, secure long-running agents.
+> Join 45k+ engineers reading [the Decoding AI Magazine](https://www.decodingai.com/) and watching [the Decoding AI YouTube channel](https://www.youtube.com/@itsdecodingai) to learn to build durable, secure long-running agents.
 
 <a href="https://www.decodingai.com/" target="_blank">
   <img src="assets/decodingai-banner.jpg" alt="Decoding AI Magazine" width="100%"/>
