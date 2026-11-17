@@ -281,6 +281,11 @@ class ProcessMetrics(unittest.TestCase):
         (app / "src" / "a.ts").write_text("y\nz\n" + "x\n" * 9)
         (app / "test" / "a.test.ts").write_text("a\nb\nc\n")
         (app / "package-lock.json").write_text("{\n" * 100)
+        # The final build also holds a file the session never wrote; given inputs and installed packages are no part.
+        (app / "src" / "b.ts").write_text("b\n" * 6)
+        for rel in ("node_modules/x/index.js", "scenarios/capitals/data.jsonl", "runs-inngest/mock/r.jsonl", "SPEC.md"):
+            (app / rel).parent.mkdir(parents=True, exist_ok=True)
+            (app / rel).write_text("n\n" * 50)
         cls.row = collect([jobs])[0]
 
     @classmethod
@@ -300,8 +305,9 @@ class ProcessMetrics(unittest.TestCase):
         self.assertEqual((r["night5_pass_min"], r["night5_pass_usd"]), (2.18, 10.0))
 
     def test_rework_counts_writes_through_bash(self):
-        # Write 10 lines, Edit +2, a heredoc through Bash +3: 15 lines written; the final files hold 11 + 3.
-        self.assertEqual((self.row["lines_written"], self.row["final_lines"], self.row["rework_ratio"]), (15, 14, 1.071))
+        # Write 10 lines, Edit +2, a heredoc through Bash +3: 15 lines written; the final build holds 11 + 3 + 6 (src/b.ts,
+        # never written), without node_modules/, the runs folder, the given inputs and the lockfile.
+        self.assertEqual((self.row["lines_written"], self.row["final_lines"], self.row["rework_ratio"]), (15, 20, 0.75))
         # bashEditDiff names only some files a command changed; the rest are counted, so the ratio reads as a floor.
         self.assertEqual(self.row["unseen_bash_writes"], 1)
 

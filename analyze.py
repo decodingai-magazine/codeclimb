@@ -15,6 +15,7 @@ agent/trajectory.json: steps whose tool_calls name a function_name.
 import itertools
 import json
 import math
+import os
 import random
 import re
 import subprocess
@@ -25,8 +26,11 @@ from pathlib import Path
 from statistics import mean, median
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "verifier"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "analysis"))
 from leak import without_heredocs  # noqa: E402
+from measure import GENERATED  # noqa: E402
 
+from assemble import SHARED, STUBS
 from gate import resolved
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
@@ -349,13 +353,28 @@ def _lookups(calls: list[dict], stack: str) -> dict:
     return {"sdk_reads": c["sdk_reads"], "pi_doc_reads": c["pi_doc_reads"]}
 
 
+def _build_lines(app: Path) -> int:
+    """Text lines of the final build: every file of /app but the shared given inputs, the benchmark's stubs,
+    generated folders (the code metrics' GENERATED, the runs folders), npm's lockfile and binary files."""
+    total = 0
+    for here, dirs, names in os.walk(app):
+        top = Path(here) == app
+        dirs[:] = [d for d in dirs if d not in GENERATED and not d.startswith("runs-") and not (top and d in SHARED)]
+        for name in names:
+            p = Path(here) / name
+            if p.is_symlink() or name == "package-lock.json" or (top and name in STUBS):
+                continue
+            data = p.read_bytes()
+            total += 0 if b"\0" in data else len(data.decode(errors="replace").splitlines())
+    return total
+
+
 def _rework(calls: list[dict], app: Path) -> dict:
-    """Lines written into /app during the session against the lines of those files in the final build. A Bash call's
-    `bashEditDiff` lists some of the files it changed and counts the rest in `moreFiles`: those writes are unseen, so
-    the ratio is a floor. npm's `package-lock.json` is generated, not written: it is out of both sides."""
+    """Lines written into /app during the session against the lines in the final build (`_build_lines`). A Bash
+    call's `bashEditDiff` lists some of the files it changed and counts the rest in `moreFiles`: those writes are
+    unseen, so the ratio is a floor. npm's `package-lock.json` is generated, not written: it is out of both sides."""
     written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/") and Path(p).name != "package-lock.json"]
-    final = sum(len((app / p[len("/app/"):]).read_text(errors="replace").splitlines())
-                for p in {p for p, _ in written} if (app / p[len("/app/"):]).is_file())
+    final = _build_lines(app) if app.is_dir() else 0
     lines = sum(n for _, n in written)
     return {"lines_written": lines, "final_lines": final if app.is_dir() else None,
             "rework_ratio": round(lines / final, 3) if app.is_dir() and final else None,
