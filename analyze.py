@@ -6,7 +6,8 @@
     python3 analyze.py pile <app artifact dir>...       # pocock: tickets, tickets done, commits
 
 The report: outcome per cell, the hidden and real tests per cell (beside the reward, never in it), the 2 x 2 effects
-within a stack (exact permutation tests), the stack comparison on shared checks, and the trials kept out of every mean
+within a stack (exact permutation tests), the stack comparison on shared checks, the process metrics of the build trials
+from their session files (per stack, old specs apart), and the trials kept out of every mean
 (leaks, infra errors). A trajectory is Harbor's
 agent/trajectory.json: steps whose tool_calls name a function_name.
 """
@@ -21,7 +22,10 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "verifier"))
+from leak import without_heredocs  # noqa: E402
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
 # inngest-dev's three, measured in the #48 smoke trial (52 tools in all). A server listed with None is docs only.
@@ -112,6 +116,11 @@ INFRA_TYPES = frozenset(
 )  # fmt: skip
 
 
+# Trials started before this ran on the old build specs (phases B to D2; the rewritten specs' first trials, e1, started
+# 2026-11-14T17:49). A regrade keeps its source's label.
+CURRENT_SPECS_SINCE = "2026-11-14T17:45:00Z"
+
+
 def _seconds(phase: dict | None) -> float | None:
     if not phase or not phase.get("started_at") or not phase.get("finished_at"):
         return None
@@ -154,6 +163,224 @@ def stream_facts(path: Path) -> dict:
             if e.get("api_error_status") == 429:
                 facts["usage_limit"] = True
     return facts
+
+
+# --- process metrics, from the session files (spec, Metrics: developer-experience metrics, process) --------------------
+
+
+def _ts(s: str) -> float:
+    return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+
+
+def _session_calls(sessions: Path) -> tuple[list[dict], list[dict]]:
+    """(calls, messages) of every session file under `sessions` (subagents' included). A call: tool name, input, start
+    and end times, output text, toolUseResult, whether it ran in a subagent. A message: the time and final usage of one
+    assistant message (Claude Code writes a message once per content block; the last line holds its usage)."""
+    calls: list[dict] = []
+    messages: dict[str, dict] = {}
+    for f in sorted(sessions.rglob("*.jsonl")) if sessions.is_dir() else []:
+        pending: dict[str, dict] = {}
+        side = "subagents" in f.parts
+        for line in f.read_text(errors="replace").splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            msg, at = e.get("message") or {}, e.get("timestamp")
+            if not isinstance(msg, dict) or not at:
+                continue
+            content = msg.get("content") if isinstance(msg.get("content"), list) else []
+            if e.get("type") == "assistant":
+                if msg.get("id") and msg.get("usage"):
+                    messages[f"{f}:{msg['id']}"] = {"at": _ts(at), "usage": msg["usage"]}
+                for c in content:
+                    if c.get("type") == "tool_use":
+                        pending[c.get("id")] = {"name": c.get("name", ""), "input": c.get("input") or {}, "start": _ts(at), "side": side}
+            elif e.get("type") == "user":
+                for c in content:
+                    if c.get("type") == "tool_result" and (call := pending.pop(c.get("tool_use_id"), None)):
+                        result = e.get("toolUseResult") if isinstance(e.get("toolUseResult"), dict) else {}
+                        # A long output reaches the model as a 2 KB preview; toolUseResult keeps all of it.
+                        out = c.get("content")
+                        out = out if isinstance(out, str) else "\n".join(x.get("text", "") for x in out or [] if isinstance(x, dict))
+                        if isinstance(result.get("stdout"), str):
+                            out = result["stdout"] + (f"\n{result['stderr']}" if result.get("stderr") else "")
+                        calls.append({**call, "end": _ts(at), "out": out, "result": result})
+    return sorted(calls, key=lambda c: c["start"]), sorted(messages.values(), key=lambda m: m["at"])
+
+
+def _union_s(spans: list[tuple[float, float]]) -> float:
+    total, edge = 0.0, float("-inf")
+    for a, b in sorted(spans):
+        if b > edge:
+            total += b - max(a, edge)
+            edge = b
+    return total
+
+
+RUN_NIGHT = re.compile(r"\bnpm run (?:-s )?run-night\b")
+SERVICE_START = re.compile(r"\bnpm run (?:-s )?(?:worker|server|dev:inngest)\b")
+# Token prices relative to an input token (Anthropic's list prices: a cache read 0.1x, a cache write 1.25x for 5 min and
+# 2x for 1 h, an output token 5x). The $ to a milestone is the trial's $ times the priced share of tokens spent by then.
+PRICE = {"input_tokens": 1.0, "cache_read_input_tokens": 0.1, "output_tokens": 5.0}
+# Services up, as the verifier's adapters probe them: the Inngest worker API (`/api/nights`, the dev server already runs
+# in a trial) and the Agent Server's `/ok`, once the build has started its own services (`npm run worker` or `server`:
+# a hand-rolled spike's server answers `/ok` too). A night that printed a row, `done` or `stopped` had them up as well.
+SERVICES_UP = {"inngest": re.compile(r'\{\s*"nights"\s*:'), "langchain": re.compile(r'"ok"\s*:\s*true|/ok answers')}
+NIGHT_OUTPUT = re.compile(r"^(?:row|done|stopped)\b", re.MULTILINE)
+DONE_LINE = re.compile(r"^done\b", re.MULTILINE)
+NIGHT_ID = re.compile(r"""--night-id[= ]["']?(\$\{?\w+\}?|[\w.-]+)""")
+KILL = re.compile(r"\b(?:pkill|kill|killall)\b|\bdocker(?: compose\b[^;&|]*)? (?:kill|stop|restart)\b")
+SCRIPT = re.compile(r">\s*(\S+)\s*<<")  # `cat > <file> <<EOF`: the file a heredoc writes
+
+
+def _night_id(cmd: str) -> str | None:
+    """The `--night-id` of a command, a shell variable resolved from an assignment in the same command."""
+    if not (m := NIGHT_ID.search(cmd)):
+        return None
+    if not m[1].startswith("$"):
+        return m[1]
+    v = re.search(rf"\b{re.escape(m[1].strip('${}'))}=[\"']?([\w.-]+)", cmd)
+    return v[1] if v else None
+
+
+def _priced(usage: dict) -> float:
+    cache = usage.get("cache_creation") or {}
+    write = (1.25 * cache.get("ephemeral_5m_input_tokens", 0) + 2.0 * cache.get("ephemeral_1h_input_tokens", 0)) if cache \
+        else 1.25 * (usage.get("cache_creation_input_tokens") or 0)
+    return write + sum(w * (usage.get(k) or 0) for k, w in PRICE.items())
+
+
+def milestones(calls: list[dict], stack: str) -> dict[str, float | None]:
+    """Time of the first `services-up`, the first night 1 `done` (a `run-night` of `capitals-smoke` that printed
+    `done` on a line of its own) and the first night 5 pass: a `--no-wait` start of `datenorm-smoke`, a kill of the
+    runtime in that call or a later one (directly, or by running a script whose heredoc kills), then output listing
+    that night's `done.json`."""
+    out: dict[str, float | None] = {"services_up": None, "night1_done": None, "night5_pass": None}
+    night5: dict[str, bool] = {}  # night id -> killed since its start
+    killers: set[str] = set()  # scripts written by a heredoc that kills
+    started = False
+    for c in calls:
+        if c["name"] != "Bash":
+            continue
+        full = str(c["input"].get("command", ""))
+        cmd = without_heredocs(full)
+        if KILL.search(full) and not KILL.search(cmd):
+            killers |= set(SCRIPT.findall(full))
+        started = started or bool(SERVICE_START.search(cmd))
+        night = bool(RUN_NIGHT.search(cmd))
+        if out["services_up"] is None and ((started and SERVICES_UP[stack].search(c["out"])) or (night and NIGHT_OUTPUT.search(c["out"]))):
+            out["services_up"] = c["end"]
+        if out["night1_done"] is None and night and "capitals-smoke" in cmd and DONE_LINE.search(c["out"]):
+            out["night1_done"] = c["end"]
+        if night and "datenorm-smoke" in cmd and "--no-wait" in cmd and (n := _night_id(cmd)):
+            night5[n] = False
+        if KILL.search(cmd) or any(k in cmd for k in killers):
+            night5 = dict.fromkeys(night5, True)
+        if out["night5_pass"] is None and "done.json" in c["out"]:
+            if any(killed and re.search(rf"\b{re.escape(n)}\b", cmd + "\n" + c["out"]) for n, killed in night5.items()):
+                out["night5_pass"] = c["end"]
+    return out
+
+
+TS_ERROR = re.compile(r"\berror (TS\d+)\b")
+TEST_FAIL = re.compile(r"^(?:#|ℹ)\s*fail\s+(\d+)", re.MULTILINE)  # TAP, or the node spec reporter
+ERROR_LINE = re.compile(r"\berror\b|^(?:#|ℹ)\s*fail\s+[1-9]|\bFAIL\b", re.IGNORECASE)
+# The stack SDK: its package folders, and the names a type error carries when it is about an SDK symbol.
+SDK_PATHS = {"inngest": re.compile(r"node_modules/(?:inngest|@inngest)(?![\w-])"), "langchain": re.compile(r"node_modules/@langchain(?![\w-])")}
+SDK_SYMBOL = {
+    "inngest": re.compile(r"""['"](?:inngest|@inngest/[\w-]+)['"]|\bInngest\w*|\bGetStepTools\b|\bGetEvents\b"""),
+    "langchain": re.compile(r"""['"]@langchain/[\w-]+(?:/[\w-]+)?['"]|\bLangGraph\w*|\b(?:Compiled)?StateGraph\b|\bPregel\w*|\bBaseCheckpointSaver\b|\bAnnotation\w*\b"""),
+}
+SDK_TYPE_ERRORS = frozenset({"TS2339", "TS2305", "TS2554"})
+LOOKUP_TOOLS = frozenset({"Read", "Grep", "Glob", "Bash"})
+
+
+def _written(call: dict) -> list[tuple[str, int]]:
+    """(path, lines added) per file a call wrote: Edit and Write (`structuredPatch`, or a new file's content) and
+    writes through Bash (`bashEditDiff`)."""
+    r = call["result"]
+    plus = lambda hunks: sum(1 for h in hunks for x in h.get("lines") or [] if x.startswith("+"))  # noqa: E731
+    out = []
+    if r.get("filePath") and ("structuredPatch" in r):
+        out.append((r["filePath"], plus(r["structuredPatch"]) if r["structuredPatch"] else len(str(r.get("content") or "").splitlines())))
+    for f in (r.get("bashEditDiff") or {}).get("files") or []:
+        out.append((f.get("filePath", ""), plus(f.get("hunks") or [])))
+    return out
+
+
+def _failures(calls: list[dict], stack: str) -> dict:
+    """Typecheck and test failures, SDK type errors and thrash, from Bash output. Output lines that repeat a heredoc
+    body of the command are cut first: the body is file content, echoed back, not a failure."""
+    f = Counter()
+    seen: set[str] = set()  # error lines since the last file change
+    for c in calls:
+        if _written(c):
+            seen.clear()
+        if c["name"] != "Bash":
+            continue
+        cmd = str(c["input"].get("command", ""))
+        body = set(cmd.splitlines()) - set(without_heredocs(cmd).splitlines())
+        out = "\n".join(x for x in c["out"].splitlines() if x not in body)
+        ts = [(m[1], line) for line in out.splitlines() if (m := TS_ERROR.search(line))]
+        f["ts_errors"] += len(ts)
+        f["ts_failed_runs"] += bool(ts)
+        f["sdk_type_errors"] += sum(code in SDK_TYPE_ERRORS and bool(SDK_SYMBOL[stack].search(line)) for code, line in ts)
+        fails = sum(int(n) for n in TEST_FAIL.findall(out))
+        f["test_failures"] += fails
+        f["test_failed_runs"] += fails > 0
+        errors = {x.strip() for x in out.splitlines() if ERROR_LINE.search(x)}
+        f["thrash"] += bool(errors & seen)
+        seen |= errors
+    return {k: f[k] for k in ("thrash", "ts_errors", "ts_failed_runs", "test_failures", "test_failed_runs", "sdk_type_errors")}
+
+
+def _lookups(calls: list[dict], stack: str) -> dict:
+    """Calls that read the stack SDK's own package or the Pi docs (`/docs/pi`): Read, Grep, Glob, or a Bash command."""
+    c = Counter()
+    for call in calls:
+        if call["name"] in LOOKUP_TOOLS:
+            i = call["input"]
+            text = without_heredocs(str(i.get("command", ""))) + " " + " ".join(str(i.get(k, "")) for k in ("file_path", "path", "pattern"))
+            c["sdk_reads"] += bool(SDK_PATHS[stack].search(text))
+            c["pi_doc_reads"] += "/docs/pi" in text
+    return {"sdk_reads": c["sdk_reads"], "pi_doc_reads": c["pi_doc_reads"]}
+
+
+def _rework(calls: list[dict], app: Path) -> dict:
+    """Lines written into /app during the session against the lines of those files in the final build. A Bash call's
+    `bashEditDiff` lists some of the files it changed and counts the rest in `moreFiles`: those writes are unseen, so
+    the ratio is a floor. npm's `package-lock.json` is generated, not written: it is out of both sides."""
+    written = [(p, n) for c in calls for p, n in _written(c) if p.startswith("/app/") and Path(p).name != "package-lock.json"]
+    final = sum(len((app / p[len("/app/"):]).read_text(errors="replace").splitlines())
+                for p in {p for p, _ in written} if (app / p[len("/app/"):]).is_file())
+    lines = sum(n for _, n in written)
+    return {"lines_written": lines, "final_lines": final if app.is_dir() else None,
+            "rework_ratio": round(lines / final, 3) if app.is_dir() and final else None,
+            "unseen_bash_writes": sum((c["result"].get("bashEditDiff") or {}).get("moreFiles") or 0 for c in calls)}
+
+
+def process_metrics(sessions: Path, stack: str, app: Path, cost_usd: float | None) -> dict:
+    """The process metrics of one trial from its session files. Time split from the main session only (a subagent
+    runs inside the main session's Agent call)."""
+    calls, messages = _session_calls(sessions)
+    main = [c for c in calls if not c["side"]]
+    stamps = [c["start"] for c in main] + [c["end"] for c in main]
+    span = max(stamps) - min(stamps) if stamps else None
+    tool_s = _union_s([(c["start"], c["end"]) for c in main]) if main else None
+    feedback = [c["end"] - c["start"] for c in main if c["name"] == "Bash" and not c["input"].get("run_in_background")
+                and (lambda cmd: RUN_NIGHT.search(cmd) or SERVICE_START.search(cmd))(without_heredocs(str(c["input"].get("command", ""))))]
+    row: dict = {
+        "tool_s": None if tool_s is None else round(tool_s, 1),
+        "outside_tool_s": None if span is None else round(span - tool_s, 1),
+        "feedback_s": round(median(feedback), 1) if feedback else None,
+    }
+    priced = sum(_priced(m["usage"]) for m in messages)
+    for name, at in milestones(calls, stack).items():
+        spent = sum(_priced(m["usage"]) for m in messages if m["at"] <= at) if at is not None else 0
+        row[f"{name}_min"] = None if at is None else round((at - min(stamps)) / 60, 2)
+        row[f"{name}_usd"] = None if at is None or cost_usd is None or not priced else round(cost_usd * spent / priced, 2)
+    return {**row, **_rework(calls, app), **_failures(calls, stack), **_lookups(calls, stack)}
 
 
 def families(rewards: dict) -> dict[str, int]:
@@ -268,6 +495,8 @@ def trial_row(trial: Path) -> dict | None:
         # Harbor deletes a retried attempt's folder; only the job's count of retries is left.
         "job_retries": ((_json(trial.parent / "result.json").get("stats") or {}).get("n_retries")),
     }
+    row["specs"] = "old specs" if row["started_at"] and _ts(row["started_at"]) < _ts(CURRENT_SPECS_SINCE) else "current"
+    row.update(process_metrics(trial / "agent" / "sessions" / "projects" / "-app", m[1], app, row["cost_usd"]))
     row["status"] = classify(row)
     return row
 
@@ -489,6 +718,43 @@ def stack_comparison(rows: list[dict]) -> list[str]:
     return out
 
 
+PROCESS = [  # (column, label, unit, digits)
+    ("tool_s", "in tools", "s", 0), ("outside_tool_s", "outside", "s", 0), ("feedback_s", "feedback", "s", 1),
+    ("services_up_min", "services-up", "min", 1), ("services_up_usd", "", "$", 2),
+    ("night1_done_min", "night 1 done", "min", 1), ("night1_done_usd", "", "$", 2),
+    ("night5_pass_min", "night 5 pass", "min", 1), ("night5_pass_usd", "", "$", 2),
+    ("rework_ratio", "rework", "", 2), ("unseen_bash_writes", "unseen Bash writes", "", 1), ("thrash", "thrash", "", 1), ("ts_errors", "TS errors", "", 1),
+    ("ts_failed_runs", "in runs", "", 1), ("test_failures", "test fails", "", 1), ("test_failed_runs", "in runs", "", 1),
+    ("sdk_type_errors", "SDK type errors", "", 1), ("sdk_reads", "SDK reads", "", 1), ("pi_doc_reads", "Pi doc reads", "", 1),
+]
+
+
+def _process_cols(rs: list[dict]) -> str:
+    """Each process metric's mean over the trials that have it; a milestone with how many trials reached it."""
+    parts = []
+    for col, label, unit, nd in PROCESS:
+        vals = [r[col] for r in rs if r.get(col) is not None]
+        v = "-" if not vals else f"${mean(vals):.{nd}f}" if unit == "$" else f"{mean(vals):.{nd}f}{' ' + unit if unit else ''}"
+        reached = f" ({len(vals)}/{len(rs)})" if col.endswith("_min") and len(rs) > 1 else ""
+        parts.append(f"{label} {v}{reached}" if label else v)
+    return " ".join(parts)
+
+
+def process_table(rows: list[dict]) -> list[str]:
+    """Process metrics of the counted build trials (a harness, not a probe): per stack, current and old specs never
+    pooled, then per trial."""
+    build = [r for r in rows if r["status"] == "counted" and r["harness"] != "nop" and r["workflow"] != "probe"]
+    out = [f"build trials: {len(build)} (old specs {sum(r.get('specs') == 'old specs' for r in build)})"]
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in build:
+        groups[(r["stack"], r.get("specs"))].append(r)
+    for (stack, specs), rs in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1] != "current")):
+        out.append(f"{stack:9} {specs:9} n={len(rs)} {_process_cols(rs)}")
+    for r in sorted(build, key=lambda r: (r.get("specs") != "current", r["stack"], r["job"], r["trial"])):
+        out.append(f"    {r['job']}/{r['trial']} {r['stack']} {r['arm']} {r['workflow']} {r.get('specs')}: {_process_cols([r])}")
+    return out
+
+
 def report(rows: list[dict]) -> str:
     lines = ["== outcome per cell (counted trials)", *cell_table(rows), "",
              "== hidden and real tests per cell (beside the reward, not in it)", *family_table(rows), "",
@@ -507,7 +773,9 @@ def report(rows: list[dict]) -> str:
         for metric in ("reward", "cost_usd"):
             for e in effects(rs, metric):
                 lines.append(f"{stack:9} {e['metric']:8} {e['effect']:11} {_fmt(e['value'])}  {e['call']}" + ("" if e.get("exact", True) else " (sampled)"))
-    lines += ["", "== stack comparison", *stack_comparison(rows), "", "== kept out of every mean"]
+    lines += ["", "== stack comparison", *stack_comparison(rows), "",
+              "== process metrics per stack, from the session files (beside the reward, not in it)", *process_table(rows),
+              "", "== kept out of every mean"]
     for status in ("leak", "infra"):
         kept = [r for r in rows if r["status"] == status]
         lines.append(f"{status}: {len(kept)}" + (f", ${sum(r['cost_usd'] or 0 for r in kept):.2f}" if kept else ""))
