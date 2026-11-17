@@ -59,7 +59,9 @@ npm run run-night -- --config configs/datenorm-smoke.yaml --mock   # terminal 3
 
 In about 30 seconds the last command prints `done` and the night's `done.json` with `"stop_reason": "max_rounds"` and `"spend_usd": 0`: two rounds of sandboxes, commits, evaluations and reviews on scripted models. Results land in `runs-inngest/mock/datenorm-smoke/`.
 
-**Set up with your coding agent, local** (Inngest dev server and Docker on your machine, no keys):
+### Set up with your coding agent
+
+**Local** (Inngest dev server and Docker on your machine, no keys):
 
 ```txt
 Clone https://github.com/decodingai-magazine/codeclimb, follow guides/ from 01_setup.md onward
@@ -68,7 +70,7 @@ npm run run-night -- --config configs/datenorm-smoke.yaml --mock prints done.
 Ask me for any API key it needs.
 ```
 
-**Set up with your coding agent, Inngest Cloud** (needs your Inngest event and signing keys):
+**Inngest Cloud** (needs your Inngest event and signing keys):
 
 ```txt
 Clone https://github.com/decodingai-magazine/codeclimb, follow guides/ from 01_setup.md onward,
@@ -124,7 +126,9 @@ Then look at your data. Against gold, the dev graph has 72 missed entities and 5
 
 The screenshots are from a 26-round night with a larger budget; the shipped `graphrag.yaml` runs 24 rounds with a $60 cap, paid on an Anthropic key and OpenRouter. To check the loop for free first, run the [Quickstart](#quickstart) mock night.
 
-**Run it with your coding agent, local** (Inngest dev server and Docker on your machine):
+### Run it with your coding agent
+
+**Local** (Inngest dev server and Docker on your machine):
 
 ```txt
 In https://github.com/decodingai-magazine/codeclimb (set up per guides/01_setup.md if it isn't yet),
@@ -133,7 +137,7 @@ npm run run-night -- --config configs/graphrag.yaml, until the night writes its 
 Use 00_troubleshooting.md on any error and ask me for any API key or budget it needs.
 ```
 
-**Run it with your coding agent, Inngest Cloud** (runs, traces and scores in the Inngest dashboard):
+**Inngest Cloud** (runs, traces and scores in the Inngest dashboard):
 
 ```txt
 In https://github.com/decodingai-magazine/codeclimb (set up per guides/01_setup.md if it isn't yet),
