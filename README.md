@@ -1,17 +1,19 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/inngest-dark.svg">
-    <img src="assets/sponsors/inngest-light.svg" alt="Inngest logo" width="200">
-  </picture>
   <h1>CodeClimb</h1>
   <h3>Let a coding agent climb your eval scores overnight, with caps it can't override</h3>
   <p><a href="#quickstart">Quickstart</a> · <a href="#guides">Guides</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#questions-and-troubleshooting">Questions</a></p>
+  <h3>Sponsored by&nbsp;
+    <a href="https://inngest.link/dai-gh"><picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/inngest-dark.svg">
+      <img src="assets/sponsors/inngest-light.svg" alt="Inngest" height="16">
+    </picture></a>
+  </h3>
 </div>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/decodingai-magazine/codeclimb" alt="License"></a>
   <img src="https://img.shields.io/badge/mock_night-%240-green" alt="mock night: $0">
-  <img src="https://img.shields.io/badge/durability-Inngest-black" alt="durability: Inngest">
+  <a href="https://inngest.link/dai-gh"><img src="https://img.shields.io/badge/durability-Inngest-black" alt="durability: Inngest"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A520-blue" alt="node: >=20">
 </p>
 
@@ -29,19 +31,17 @@ A coding agent left alone overnight burns credits with no stop, holds your API k
 - **Metering proxy** — in the worker; holds the provider keys, hands each sandbox a capped, expiring token for the allowed models only.
 - **Inngest + dashboard** — Inngest checkpoints and retries every step; the Next.js app watches, stops and exports nights.
 
-## Learn to build durable long-running agents
+The same loop made durable and secure: a proxy that holds the credentials, cost checks around every step, Inngest checkpoints, and a pause for credits that waits for a human.
 
-> Decoding AI teaches how to build AI agents you can trust to run unattended: evals, guardrails, durability and cost control.
+![How to build durable and secure long-running agents: the CodeClimb loop with its proxy, Inngest checkpoints and credit pauses](assets/architecture-durable-secure.png)
 
-<p align="center">
-  <a href="https://www.decodingai.com/">
-    <img src="https://img.shields.io/static/v1?label&logo=substack&message=Read%20on%20Substack&style=for-the-badge&color=black" alt="Decoding AI on Substack" height="40">
-  </a>
-  &nbsp;
-  <a href="https://www.youtube.com/@itsdecodingai">
-    <img src="https://img.shields.io/static/v1?label&logo=youtube&message=Watch%20on%20YouTube&style=for-the-badge&color=black" alt="Decoding AI on YouTube" height="40">
-  </a>
-</p>
+## 📬 Learn to Build Long-Running Agents
+
+> Join 45k+ engineers subscribed to [the Decoding AI Magazine](https://www.decodingai.com/) to learn to build durable, secure long-running agents.
+
+<a href="https://www.decodingai.com/" target="_blank">
+  <img src="assets/decodingai-banner.jpg" alt="Decoding AI Magazine" width="100%"/>
+</a>
 
 ## Quickstart
 
@@ -86,44 +86,49 @@ Ask me for any API key it needs.
 
 ## See it in action
 
-**Check the whole loop for free.** A mock night runs real Inngest functions, sandboxes, Pi sessions, commits and evals on scripted models.
-
-```bash
-npm run run-night -- --config configs/datenorm-smoke.yaml --mock
-```
-
-```txt
-  r1 experiment dev   r1-e0   accuracy=0.1250 keep   $0.0000 · mock change, no real work
-  r2 noise      dev   r1-e0   accuracy=0.1250 keep   $0.0000 · the kept commit, scored again without replayed model calls
-  r2 experiment dev   r2-e0   accuracy=0.1250 revert $0.0000 · mock hypothesis
-  r2 test       test  r1-e0   accuracy=0.1250 keep   $0.0000
-done
-```
-
-**Build GraphRAG from a spec.** CodeClimb wrote a GraphRAG system over 22 Decoding AI articles, scored on extraction, graph merging and retrieval. The screenshot is a 26-round night with a larger budget; the shipped config runs 24 rounds with a $60 cap, paid on an Anthropic key and OpenRouter.
+**Build GraphRAG from a spec.** We gave CodeClimb a GraphRAG spec, 22 Decoding AI articles split 6 train / 8 dev / 8 test, and a gold knowledge graph, then let it climb overnight. The coder never sees dev or test: only the metrics and the reviewer's feedback reach it.
 
 ```bash
 npm run run-night:cloud -- --config configs/graphrag.yaml
 ```
 
-![The winning graphrag night: kept mention F1 0.764, test graph recall 0.994, test retrieval 0.909, 26 rounds, $74.63, 11.8 h](assets/example-graphrag.png)
+The knowledge graph it extracts on the test split:
+
+![The knowledge graph extracted on the test split](assets/example-graphrag-graph.png)
+
+Node extraction F1 climbed to 0.764 on dev (threshold 0.8) and scored 0.738 on test. Some reverted rounds score higher because the weighted score over all metrics is still lower:
+
+![Node extraction F1 per round: kept 0.764 on dev, 0.738 on test](assets/example-graphrag-node-f1.png)
+
+Edge extraction, the harder problem, reached 0.455 on dev but only 0.368 on test, so relationships generalize worst:
+
+![Edge extraction F1 per round: 0.455 on dev, 0.368 on test](assets/example-graphrag-edge-f1.png)
+
+Graph merge recall (0.994), retrieval recall (0.909) and MRR (0.922) all scored over 0.9 on test. The whole night: 26 rounds, 11.8 hours, $74.63, almost all of it the Opus 5.5 coder. With checkpoints, a crash costs at most one $2.87 round:
+
+![The night's dashboard summary: kept mention F1 0.764, test graph recall 0.994, test retrieval 0.909, 26 rounds, $74.63, 11.8 h](assets/example-graphrag-dashboard.png)
+
+Then look at your data: the dev graph against gold shows 72 missed entities and 52 extra ones, so the extractor loses more on recall than on precision, and some "extra" ones are valid, so the gold needs another pass:
+
+![The dev split graph against gold: matched, wrong type, extra and missed entities](assets/example-graphrag-dev-diff.png)
+
+The screenshots are from a 26-round night with a larger budget; the shipped `graphrag.yaml` runs 24 rounds with a $60 cap, paid on an Anthropic key and OpenRouter. To check the loop for free first, run the [Quickstart](#quickstart) mock night.
 
 ## Sponsors
 
-<p align="center">
-  <a href="https://inngest.link/dai-nl"><img src="assets/sponsors/inngest-banner.png" alt="Inngest x Decoding AI" width="100%"></a>
-</p>
+<p align="center"><i>Thanks again to <a href="https://inngest.link/dai-gh"><b>Inngest</b></a> for sponsoring this project and keeping it free!</i></p>
 
 <p align="center">
-  <a href="https://inngest.link/dai-nl">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/inngest-dark.svg">
-      <img src="assets/sponsors/inngest-light.svg" alt="Inngest" height="24">
-    </picture>
-  </a>
+  <a href="https://inngest.link/dai-gh"><img src="assets/sponsors/inngest-banner.png" alt="Inngest x Decoding AI" width="80%"></a>
 </p>
 
-<p align="center">Special thanks to <a href="https://inngest.link/dai-nl">Inngest</a> for sponsoring this project.</p>
+<p align="center"><a href="https://inngest.link/dai-gh">Try Inngest for free here</a> (free plan with 50k executions/month, or self-host it, since it's open-source)</p>
+
+<h3 align="center">Build AI agents and workflows that survive crashes, retries, and long waits:</h3>
+
+<p align="center">
+  <a href="https://inngest.link/dai-gh"><img src="https://img.shields.io/badge/Start_building_for_free-c0392b?style=for-the-badge" alt="Start building for free" height="40"></a>
+</p>
 
 ## Questions and troubleshooting
 
@@ -133,19 +138,13 @@ Open a [GitHub issue](https://github.com/decodingai-magazine/codeclimb/issues) f
 
 Coder agents run shell commands in Docker or Inngest sandboxes with open egress, and Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox: the program reaches models only through the metering proxy with a capped, revocable token. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback; in cloud mode, runs, step outputs and traces go to Inngest Cloud. Details: [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
 
-## Learn to build durable long-running agents
+## 📬 Learn to Build Long-Running Agents
 
-> Decoding AI teaches how to build AI agents you can trust to run unattended: evals, guardrails, durability and cost control.
+> Join 45k+ engineers subscribed to [the Decoding AI Magazine](https://www.decodingai.com/) to learn to build durable, secure long-running agents.
 
-<p align="center">
-  <a href="https://www.decodingai.com/">
-    <img src="https://img.shields.io/static/v1?label&logo=substack&message=Read%20on%20Substack&style=for-the-badge&color=black" alt="Decoding AI on Substack" height="40">
-  </a>
-  &nbsp;
-  <a href="https://www.youtube.com/@itsdecodingai">
-    <img src="https://img.shields.io/static/v1?label&logo=youtube&message=Watch%20on%20YouTube&style=for-the-badge&color=black" alt="Decoding AI on YouTube" height="40">
-  </a>
-</p>
+<a href="https://www.decodingai.com/" target="_blank">
+  <img src="assets/decodingai-banner.jpg" alt="Decoding AI Magazine" width="100%"/>
+</a>
 
 ## Star history
 
