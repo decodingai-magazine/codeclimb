@@ -142,8 +142,18 @@ def runs_from_jobs(dirs: list[Path]) -> dict[tuple[str, str], list[Run]]:
     return out
 
 
-def _git(*args: str) -> str:
-    return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True).stdout
+def _git(*args: str, repo: Path = ROOT) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
+
+
+def fix_size(base: str, commit: str, repo: Path = ROOT) -> tuple[dict[str, int], list[str]]:
+    """The reference's own fix (task commit -> base): lines added plus removed and files, and the changed paths."""
+    lines, changed = 0, []
+    for row in _git("diff", "--numstat", commit, base, repo=repo).splitlines():
+        added, removed, path = row.split("\t")
+        lines += int(added) + int(removed) if added != "-" else 0
+        changed.append(path)
+    return {"lines": lines, "files": len(changed)}, changed
 
 
 def _short(sha: str) -> str:
@@ -154,16 +164,12 @@ def _short(sha: str) -> str:
 def fix_and_hops(base: str, commit: str) -> tuple[dict[str, int], int | None]:
     """The fix (task commit -> base): lines added plus removed and files; and the import hops, in the base, from the
     `run-night` script's entry to the nearest changed source file."""
-    lines, changed = 0, []
-    for row in _git("diff", "--numstat", commit, base).splitlines():
-        added, removed, path = row.split("\t")
-        lines += int(added) + int(removed) if added != "-" else 0
-        changed.append(path)
+    fix, changed = fix_size(base, commit)
     tree = [p for p in _git("ls-tree", "-r", "--name-only", base).splitlines() if p.endswith(SOURCE)]
     files = {p: _git("show", f"{base}:{p}") for p in tree}
     script = json.loads(_git("show", f"{base}:package.json"))["scripts"]["run-night"]
     entry = next(w for w in script.split() if w.endswith(SOURCE))
-    return {"lines": lines, "files": len(changed)}, import_hops(files, entry, changed)
+    return fix, import_hops(files, entry, changed)
 
 
 def main() -> None:

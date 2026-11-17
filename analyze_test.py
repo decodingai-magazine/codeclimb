@@ -438,7 +438,7 @@ class MaintenanceTrials(unittest.TestCase):
         task.mkdir(parents=True)
         (task / "assembled.json").write_text(json.dumps({
             "kind": "change", "task": "c1", "stack": "inngest", "base": "bcabd72", "commit": "0c395fd",
-            "targets": ["pause-timeout", "pause-resume"]}))
+            "targets": ["pause-timeout", "pause-resume"], "fix": {"lines": 10, "files": 2}}))
 
         def trial(job: str, name: str, rewards: dict, *, maintenance: bool, nop: bool = False, cost: float = 1.0) -> None:
             t = jobs / job / name
@@ -461,6 +461,26 @@ class MaintenanceTrials(unittest.TestCase):
         trial("c1-inngest", "unfixed", {**base, "hidden.pause-resume": 0}, maintenance=True)
         trial("c1-inngest", "regressed", {**base, "checks.cli-done": 0}, maintenance=True)
         trial("inngest-bare", "build", {"checks.cli-done": 1}, maintenance=False)
+        # The fixed trial's /app: the task's one commit, then the harness's change, partly committed, partly not.
+        app = jobs / "c1-inngest" / "fixed" / "artifacts" / "app"
+        (app / "src").mkdir(parents=True)
+        (app / ".gitignore").write_text("node_modules/\n")
+        (app / "src" / "x.ts").write_text("a\nb\nc\n")
+        git = ["git", "-C", str(app), "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(git[:3] + ["init", "-q"], check=True)
+        subprocess.run(git + ["add", "-A"], check=True)
+        subprocess.run(git + ["commit", "-q", "-m", "initial commit"], check=True)
+        (app / "src" / "x.ts").write_text("a\nB\nc\nd\n")  # +2 -1
+        subprocess.run(git + ["commit", "-qam", "fix"], check=True)
+        (app / "test").mkdir()
+        (app / "test" / "x.test.ts").write_text("t\nu\nv\n")  # untracked: +3
+        (app / "package-lock.json").write_text("{}\n")  # npm's, not the harness's change
+        (app / "node_modules").mkdir()
+        (app / "node_modules" / "y.js").write_text("ignored\n")
+        # Services up at 1 min; the session ends at 6 min: 5 minutes from the first services-up.
+        s = SessionFile().call(0, 1, "Bash", {"command": "npm run worker", "run_in_background": True})
+        s.bash(59, 1, "curl -s localhost:7421/api/nights", '{"nights":[]}').bash(300, 60, "npm test", "# pass 3")
+        s.write(jobs / "c1-inngest" / "fixed")
         cls.rows = collect([jobs])
         cls.by_trial = {r["trial"]: r for r in cls.rows}
 
@@ -481,6 +501,16 @@ class MaintenanceTrials(unittest.TestCase):
         self.assertNotIn("n=4", build)
         self.assertIn("inngest   c1 bare      n=3 resolved 1/3", maintenance)
         self.assertIn("fixed resolved $2.50", maintenance)
+        self.assertIn("5.0 min from services-up, diff 6 lines in 2 files (0.60x the reference fix, 10 lines in 2 files),"
+                      " regression test added", maintenance)
+
+    def test_the_change_against_the_task_and_the_reference_fix(self):
+        r = self.by_trial["fixed"]
+        self.assertEqual(r["from_services_up_min"], 5.0)
+        self.assertEqual(r["change"], {"lines": 6, "files": 2, "test_added": True})
+        self.assertEqual((r["reference_fix"], r["fix_ratio"]), ({"lines": 10, "files": 2}, 0.6))
+        # No /app artifact: no change measured, never a zero.
+        self.assertEqual((self.by_trial["unfixed"]["change"], self.by_trial["unfixed"]["fix_ratio"]), (None, None))
 
 
 class CodeMetrics(unittest.TestCase):

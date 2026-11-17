@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / "verifier"))
 from blocked_hosts import managed_settings  # noqa: E402
 from leak import given_record  # noqa: E402
 
+from gate import fix_size
 from maintenance import ASK, MAINTENANCE, RUNS_DIRS, SERVICES as MAINTENANCE_SERVICES, Maintenance
 
 STACKS = ("inngest", "langchain")
@@ -335,7 +336,8 @@ def _write_maintenance_task(d: Path, task_id: str, task: Maintenance, src: Sourc
     copy_files(VERIFIER, d / "tests" / "verifier")
     given = given_record(app)
     (d / "tests" / "verifier" / "given.json").write_text(json.dumps(given, indent=1, sort_keys=True) + "\n")
-    record = {"kind": task.kind, "task": task_id, "base": task.bases[stack], "targets": list(task.targets), **record}
+    record = {"kind": task.kind, "task": task_id, "base": task.bases[stack], "targets": list(task.targets),
+              "fix": fix_size(task.bases[stack], task.commits[stack], src.repo)[0], **record}
     (d / "assembled.json").write_text(json.dumps(record, indent=2) + "\n")
 
 

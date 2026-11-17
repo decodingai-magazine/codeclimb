@@ -312,6 +312,8 @@ class AssembleMaintenanceTask(unittest.TestCase):
         self.assertEqual({k: record[k] for k in ("kind", "task", "stack", "base", "commit", "targets")},
                          {"kind": "change", "task": "t9", "stack": "inngest", "base": self.base, "commit": self.commit,
                           "targets": ["pause-timeout", "pause-resume"]})
+        # The reference's own fix (task commit -> base), for the trial's change to be read against.
+        self.assertEqual(record["fix"], {"lines": 2, "files": 1})
 
     def test_leak_baseline_is_the_maintenance_app(self):
         import leak  # on the path through assemble

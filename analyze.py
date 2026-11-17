@@ -28,7 +28,7 @@ from statistics import mean, median
 sys.path.insert(0, str(Path(__file__).resolve().parent / "verifier"))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "analysis"))
 from leak import without_heredocs  # noqa: E402
-from measure import GENERATED  # noqa: E402
+from measure import GENERATED, is_test  # noqa: E402
 
 from assemble import SHARED, STUBS
 from gate import resolved
@@ -397,11 +397,38 @@ def process_metrics(sessions: Path, stack: str, app: Path, cost_usd: float | Non
         "feedback_s": round(median(feedback), 1) if feedback else None,
     }
     priced = sum(_priced(m["usage"]) for m in messages)
-    for name, at in milestones(calls, stack).items():
+    reached = milestones(calls, stack)
+    # A maintenance /app has no node_modules or images: its time is counted from the first services-up to the end.
+    row["from_services_up_min"] = None if reached["services_up"] is None else round((max(stamps) - reached["services_up"]) / 60, 2)
+    for name, at in reached.items():
         spent = sum(_priced(m["usage"]) for m in messages if m["at"] <= at) if at is not None else 0
         row[f"{name}_min"] = None if at is None else round((at - min(stamps)) / 60, 2)
         row[f"{name}_usd"] = None if at is None or cost_usd is None or not priced else round(cost_usd * spent / priced, 2)
     return {**row, **_rework(calls, app), **_failures(calls, stack), **_lookups(calls, stack)}
+
+
+def _change(app: Path) -> dict | None:
+    """A maintenance trial's change: its final /app against the /app's own first commit (the task as given), committed
+    or not, untracked files counted whole; gitignored files and npm's lockfile left out. Lines are added plus removed,
+    as for the reference fix. A regression test is added when a test file (code metrics' rule) gains lines. None
+    without the /app's repository."""
+    if not (app / ".git").is_dir():
+        return None
+    git = ["git", "-C", str(app), "-c", "safe.directory=*"]
+    root = subprocess.run(git + ["rev-list", "--max-parents=0", "HEAD"], capture_output=True, text=True)
+    if root.returncode != 0 or not root.stdout.split():
+        return None
+    added: dict[str, tuple[int, int]] = {}
+    for line in subprocess.run(git + ["diff", "--numstat", root.stdout.split()[-1]], capture_output=True, text=True).stdout.splitlines():
+        plus, minus, path = line.split("\t", 2)
+        added[path] = (int(plus) if plus != "-" else 0, int(minus) if minus != "-" else 0)
+    untracked = subprocess.run(git + ["ls-files", "--others", "--exclude-standard", "-z"], capture_output=True, text=True).stdout
+    for path in filter(None, untracked.split("\0")):
+        data = (app / path).read_bytes() if (app / path).is_file() else b""
+        added[path] = (0 if b"\0" in data else len(data.decode(errors="replace").splitlines()), 0)
+    added = {p: n for p, n in added.items() if Path(p).name != "package-lock.json"}
+    return {"lines": sum(a + r for a, r in added.values()), "files": len(added),
+            "test_added": any(is_test(p) and a > 0 for p, (a, _) in added.items())}
 
 
 def families(rewards: dict) -> dict[str, int]:
@@ -520,11 +547,16 @@ def trial_row(trial: Path) -> dict | None:
         "task": m[2],
         "base": assembled.get("base") if m[2] else None,
         "targets": assembled.get("targets") if m[2] else None,
+        # The trial's change against the task's /app, beside the reference's own fix (assemble.py records its size).
+        "change": _change(app) if m[2] else None,
+        "reference_fix": assembled.get("fix") if m[2] else None,
         "resolved": None,
         "regressions": None,
         # Not all 34 ran (`basic` off): such a grade is no base for `resolved`.
         "partial": bool(rewards.get("partial")),
     }
+    fix = row["reference_fix"] or {}
+    row["fix_ratio"] = round(row["change"]["lines"] / fix["lines"], 3) if row["change"] and fix.get("lines") else None
     row["specs"] = "old specs" if row["started_at"] and _ts(row["started_at"]) < _ts(CURRENT_SPECS_SINCE) else "current"
     row.update(process_metrics(trial / "agent" / "sessions" / "projects" / "-app", m[1], app, row["cost_usd"]))
     row["status"] = classify(row)
@@ -581,8 +613,14 @@ def maintenance_table(rows: list[dict]) -> list[str]:
                    + (f" (no base grade: {sum(r['resolved'] is None for r in rs)})" if any(r["resolved"] is None for r in rs) else ""))
         for r in rs:
             state = {True: "resolved", False: "unresolved", None: "no base"}[r["resolved"]]
+            change, fix = r.get("change"), r.get("reference_fix")
+            diff = "no change measured" if not change else (
+                f"diff {change['lines']} lines in {change['files']} files"
+                + (f" ({r['fix_ratio']:.2f}x the reference fix, {fix['lines']} lines in {fix['files']} files)" if r.get("fix_ratio") is not None else "")
+                + (", regression test added" if change["test_added"] else ", no regression test"))
             out.append(f"    {r['job']}/{r['trial']} {state} ${_fmt(r['cost_usd'], 2)} {_fmt(r['agent_s'], 0)} s"
-                       f" turns {r['turns']}" + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else ""))
+                       f" turns {r['turns']}, {_fmt(r.get('from_services_up_min'), 1)} min from services-up, {diff}"
+                       + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else ""))
     kept = Counter(r["status"] for r in rows if r["status"] != "counted")
     out += [f"kept out: {', '.join(f'{s} {n}' for s, n in sorted(kept.items()))}"] if kept else []
     return out or ["no maintenance trials"]
