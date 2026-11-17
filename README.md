@@ -12,14 +12,15 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/decodingai-magazine/codeclimb" alt="License"></a>
-  <img src="https://img.shields.io/badge/mock_night-%240-green" alt="mock night: $0">
   <a href="https://inngest.link/dai-gh"><img src="https://img.shields.io/badge/durability-Inngest-black" alt="durability: Inngest"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A520-blue" alt="node: >=20">
 </p>
 
-You can't review a 23,546-line PR from a coding agent, and you can't leave one running overnight if it can burn your API credits, read your keys or lose hours of work in a 5 AM crash. CodeClimb, inspired by Karpathy's autoresearch, makes your spec, dataset and metrics the signal: a Pi coding agent writes an experiment in a sandbox, a separate sandbox scores it on a dev split the coder never sees, and the loop keeps only what beats the best checkpoint. Guardrails live in code, not in the prompt: a TypeScript orchestrator enforces the stop conditions and spend caps, a metering proxy holds the keys, and [Inngest](https://inngest.link/dai-gh) checkpoints every step, so a crash costs one round, never the night.
+You can't review a 23,546-line PR from a coding agent. And you can't leave one running overnight if it can burn your API credits, read your keys or lose hours of work in a 5 AM crash.
 
-**Before:** a $10 OpenRouter top-up that ran out after 6 rounds and died mid-turn, losing the work. **After:** a 26-round GraphRAG night, 11.8 hours, $74.63, where a crash costs at most one $2.87 round and an empty account pauses for free.
+CodeClimb, inspired by Karpathy's autoresearch, makes your spec, dataset and metrics the signal. A Pi coding agent writes an experiment in a sandbox, a separate sandbox scores it on a dev split the coder never sees, and the loop keeps only what beats the best checkpoint.
+
+Guardrails live in code, not in the prompt. A TypeScript orchestrator enforces the stop conditions and spend caps, a metering proxy holds the keys, and [Inngest](https://inngest.link/dai-gh) checkpoints every step, so a crash costs one round, never the night.
 
 ## How it works
 
