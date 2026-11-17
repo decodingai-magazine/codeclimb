@@ -1,7 +1,7 @@
 <div align="center">
   <h1>CodeClimb</h1>
-  <h3>Let a coding agent climb your eval scores overnight, with caps it can't override</h3>
-  <p><a href="#quickstart">Quickstart</a> · <a href="#guides">Guides</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#questions-and-troubleshooting">Questions</a></p>
+  <h3>An overnight eval-driven code search: a coding agent climbs your metrics while you sleep</h3>
+  <p><a href="#quickstart">Quickstart</a> · <a href="#guides">Guides</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#learn-more">Learn more</a> · <a href="#questions-and-troubleshooting">Questions</a></p>
   <h3>Sponsored by&nbsp;
     <a href="https://inngest.link/dai-gh"><picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sponsors/inngest-dark.svg">
@@ -17,21 +17,21 @@
   <img src="https://img.shields.io/badge/node-%E2%89%A520-blue" alt="node: >=20">
 </p>
 
-A coding agent left alone overnight burns credits with no stop, holds your API keys in its sandbox, and loses every paid round when it crashes at 5 AM. CodeClimb runs Pi coding agents in sandboxes, round after round, and keeps a change only when it beats the best checkpoint on a dev split the agent never sees. Spend caps, deadlines and stops fire in code, keys stay in a metering proxy on the host, and [Inngest](https://inngest.link/dai-gh) checkpoints every step, so a crash costs one round.
+You can't review a 23,546-line PR from a coding agent, and you can't leave one running overnight if it can burn your API credits, read your keys or lose hours of work in a 5 AM crash. CodeClimb, inspired by Karpathy's autoresearch, makes your spec, dataset and metrics the signal: a Pi coding agent writes an experiment in a sandbox, a separate sandbox scores it on a dev split the coder never sees, and the loop keeps only what beats the best checkpoint. Guardrails live in code, not in the prompt: a TypeScript orchestrator enforces the stop conditions and spend caps, a metering proxy holds the keys, and [Inngest](https://inngest.link/dai-gh) checkpoints every step, so a crash costs one round, never the night.
 
-**Before:** a 23,000-line agent diff you can't review and a $10 run that died mid-turn. **After:** a 26-round graphrag night, 11.8 hours, $74.63, every kept commit scored on dev and the winner once on test.
+**Before:** a $10 OpenRouter top-up that ran out after 6 rounds and died mid-turn, losing the work. **After:** a 26-round GraphRAG night, 11.8 hours, $74.63, where a crash costs at most one $2.87 round and an empty account pauses for free.
 
 ## How it works
 
 ![CodeClimb architecture: experiment, evaluate on dev, repeat until done, then evaluate on test](assets/architecture.png)
 
-- **Experiment** — a Pi coding agent in a Docker or [Inngest](https://inngest.link/dai-gh) sandbox; writes one commit per round from the spec, the train split and the history.
-- **Evaluation** — a separate sandbox runs the commit on dev; host-side scorers turn outputs into metrics the coder never sees.
-- **Keep rule and stops** — TypeScript in the worker; keeps a commit only above the measured noise, stops on thresholds, rounds, deadline, budget or plateau.
-- **Metering proxy** — in the worker; holds the provider keys, hands each sandbox a capped, expiring token for the allowed models only.
-- **[Inngest](https://inngest.link/dai-gh) + dashboard** — Inngest checkpoints and retries every step; the Next.js app watches, stops and exports nights.
+- **Experiment** — a Pi coding agent in a Docker or [Inngest](https://inngest.link/dai-gh) sandbox; writes one commit per round from the spec, the train split and the decision history.
+- **Evaluator** — a separate sandbox scores the commit on dev, and a reviewer agent writes the feedback for the next round; the coder never grades itself.
+- **Guardrails** — a TypeScript orchestrator, not the agent, keeps a commit only when it beats the checkpoint by more than the measured noise, and ends the night on thresholds, rounds, deadline, budget or plateau.
+- **Metering proxy** — holds the real credentials, allows only the config's models, and gives each session a one-off token with a dollar cap, revoked when the run ends.
+- **Durability and a human in the loop** — Inngest saves every step, so a crashed night replays from the last one; an out-of-credits night pauses for free for up to 3 days until you resume it.
 
-The same loop made durable and secure: a proxy that holds the credentials, cost checks around every step, [Inngest](https://inngest.link/dai-gh) checkpoints, and a pause for credits that waits for a human.
+Layer by layer, the same loop becomes one you can leave unattended: the proxy, cost checks around every step, Inngest checkpoints, a credit pause that waits for a human, and a Next.js dashboard to watch, stop and resume nights.
 
 ![How to build durable and secure long-running agents: the CodeClimb loop with its proxy, Inngest checkpoints and credit pauses](assets/architecture-durable-secure.png)
 
@@ -80,13 +80,13 @@ Ask me for any API key it needs.
 
 | Audience | What you get |
 |---|---|
-| AI engineers with a measurable problem (RAG, extraction, retrieval) | A loop that improves code against your dataset and metrics while you sleep, with test scored once at the end |
-| Engineers running long or overnight coding agents | Working patterns for spend caps, a key-holding proxy, checkpoints and a credit pause with human resume |
+| AI engineers building measurable AI software (RAG, GraphRAG, extraction) | A loop that improves code against your dataset and metrics while you sleep, scored on dev every round and on test once, so you can spot overfitting |
+| Engineers building or running long-running coding agents | Working patterns for spend caps the agent can't override, credentials it never reads, checkpoints and a credit pause with human resume |
 | [Inngest](https://inngest.link/dai-gh) users | A real `connect()` worker with parent and child functions, step retries, cancellation and Inngest Sandboxes |
 
 ## See it in action
 
-**Build GraphRAG from a spec.** We gave CodeClimb a GraphRAG spec, 22 Decoding AI articles split 6 train / 8 dev / 8 test, and a gold knowledge graph, then let it climb overnight. The coder never sees dev or test: only the metrics and the reviewer's feedback reach it.
+**Build GraphRAG from a spec.** We gave CodeClimb a GraphRAG spec and 22 Decoding AI articles split 6 train / 8 dev / 8 test, with a gold knowledge graph extracted by Opus 5.5, Fable 5.1 and human review, then let it climb. The coder never sees dev or test: only the metrics and the reviewer's feedback reach it.
 
 ```bash
 npm run run-night:cloud -- --config configs/graphrag.yaml
@@ -108,11 +108,17 @@ Graph merge recall (0.994), retrieval recall (0.909) and MRR (0.922) all scored 
 
 ![The night's dashboard summary: kept mention F1 0.764, test graph recall 0.994, test retrieval 0.909, 26 rounds, $74.63, 11.8 h](assets/example-graphrag-dashboard.png)
 
-Then look at your data: the dev graph against gold shows 72 missed entities and 52 extra ones, so the extractor loses more on recall than on precision, and some "extra" ones are valid, so the gold needs another pass:
+Then look at your data. Against gold, the dev graph has 72 missed entities and 52 extra ones, so the extractor loses more on recall than on precision, and some "extra" ones (such as "unified memory" as a system) are valid, so the gold needs another pass:
 
 ![The dev split graph against gold: matched, wrong type, extra and missed entities](assets/example-graphrag-dev-diff.png)
 
 The screenshots are from a 26-round night with a larger budget; the shipped `graphrag.yaml` runs 24 rounds with a $60 cap, paid on an Anthropic key and OpenRouter. To check the loop for free first, run the [Quickstart](#quickstart) mock night.
+
+## Learn more
+
+| # | Article | Video | Code |
+|---|---|---|---|
+| 1 | [How to Build a Durable and Secure Long-Running Agent](https://www.decodingai.com/p/build-durable-secure-long-running-agents) | — | [inngest/codeclimb/](inngest/codeclimb/) |
 
 ## Sponsors
 
@@ -136,7 +142,7 @@ Open a [GitHub issue](https://github.com/decodingai-magazine/codeclimb/issues) f
 
 ## Security
 
-Coder agents run shell commands in Docker or [Inngest](https://inngest.link/dai-gh) sandboxes with open egress, and Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox: the program reaches models only through the metering proxy with a capped, revocable token. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback; in cloud mode, runs, step outputs and traces go to Inngest Cloud. Details: [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
+Coder agents run shell commands in Docker or [Inngest](https://inngest.link/dai-gh) sandboxes with open egress, but Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox; the program reaches models only through the metering proxy, with a one-off token that is capped and revoked when its run ends. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback. In cloud mode, runs, step outputs and traces go to Inngest Cloud; details in [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
 
 ## 📬 Learn to Build Long-Running Agents
 
