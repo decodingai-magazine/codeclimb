@@ -115,9 +115,11 @@ class Platform(unittest.TestCase):
 
     def test_names_tiers_and_order(self):
         self.assertEqual([t.name for t in P.TESTS], [
-            "continue-after-stop", "outside-cancel", "fail-at-init", "eval-keeps-failing", "kill-after-row",
-            "stop-then-crash", "backstop-mid-step", "pause-timeout", "pause-resume",
+            "continue-after-stop", "outside-cancel", "fail-at-init", "eval-keeps-failing", "hard-deadline-mid-step",
+            "kill-after-row", "stop-then-crash", "backstop-mid-step", "pause-timeout", "pause-resume",
         ])
+        # Driven by a config key, not a hook in .env: it needs no restart of the services.
+        self.assertEqual(next(t.tier for t in P.TESTS if t.name == "hard-deadline-mid-step"), "hidden-3a")
         self.assertTrue(all(t.tier in families.TIERS for t in P.TESTS))
         # The hook tests run last of all.
         self.assertEqual(families.TIERS[-1], "hidden-4")

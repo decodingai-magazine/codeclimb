@@ -209,6 +209,7 @@ Contract only. Source layout and everything not listed here is yours.
 | `max_tokens` | none | Cap on coder + reviewer tokens |
 | `plateau_rounds` | 3 | Rounds in a row that kept nothing; 0 = never |
 | `deadline` | required | ISO time, or a duration from the start: `90m`, `8h`, `30s` |
+| `hard_deadline` | none | ISO time, or a duration from the start (`90m`, `8h`, `30s`). When it passes the night stops hard, even mid-step: the running experiment or evaluation is aborted, the night's sandboxes are removed and `stop.json` has `reason` `hard_deadline`; no test score |
 | `timeouts.experiment_min`, `.eval_min` | required | `eval_min` is per stage run |
 | `model`, `reviewer_model` | required | `<provider>/<id>` through Pi; the reviewer must differ from the coder in model or thinking |
 | `coder_thinking`, `reviewer_thinking` | `medium`, `low` | `off`, `minimal`, `low`, `medium`, `high` |
@@ -225,6 +226,7 @@ Contract only. Source layout and everything not listed here is yours.
 | `results_path` | required | `<folder>/results.jsonl`, relative to `<root>/runs-langchain/`. Absolute paths, `..` and deeper paths are refused |
 
 - `<root>` is `CODECLIMB_ROOT`, by default the start directory. The CLI resolves `results_path` once; `night.json` holds the resolved form
+- also refused at load: a `budget_usd.experiment` above `budget_usd.night`
 
 ### Scenario contract
 

@@ -170,6 +170,24 @@ class Pure(unittest.TestCase):
         self.assertEqual(len(set(names)), 19)
         self.assertEqual([t.tier for t in H.TESTS], ["hidden-1"] * 10 + ["hidden-2"] * 9)
 
+    def test_config_rejects_cases_break_the_given_config(self):
+        given = Path(__file__).resolve().parent.parent / H.DATENORM
+        if not given.exists():
+            self.skipTest("no given configs here")
+        from families import set_field
+
+        self.assertEqual(list(H.REJECTS), ["same-reviewer", "deadline-soon", "results-dotdot", "experiment-over-night"])
+        text = given.read_text()
+        edited = {}
+        for what, fields in H.REJECTS.items():
+            edited[what] = text
+            for k, v in fields.items():
+                edited[what] = set_field(edited[what], k, v)
+            self.assertNotEqual(edited[what], text, what)
+        # The case of change C6: one experiment's cap above the night's.
+        budget = H.yaml_map(edited["experiment-over-night"], "budget_usd")
+        self.assertEqual(budget, {"experiment": 0.6, "night": 0.5})
+
 
 if __name__ == "__main__":
     unittest.main()

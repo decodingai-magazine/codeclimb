@@ -328,6 +328,20 @@ class AssembleMaintenanceTask(unittest.TestCase):
         for name in c1.targets:
             self.assertNotIn(name, assemble.maintenance_prompt("inngest", c1))
 
+    def test_c7_and_c6_start_from_the_pins_and_name_no_target(self):
+        for tid in ("c7", "c6"):
+            t = assemble.MAINTENANCE[tid]
+            # A change on the pin: the /app is the pin, the reference's own patch is the build the targets pass on.
+            self.assertEqual((t.kind, t.commits), ("change", assemble.PINS))
+            self.assertEqual(set(t.bases), set(assemble.PINS))
+            self.assertTrue(all(t.bases[s] != t.commits[s] for s in assemble.PINS))
+            for stack in assemble.PINS:
+                prompt = assemble.maintenance_prompt(stack, t)
+                for name in t.targets:
+                    self.assertNotIn(name, prompt)
+        self.assertEqual(assemble.MAINTENANCE["c7"].targets, ("hard-deadline-mid-step",))
+        self.assertEqual(assemble.MAINTENANCE["c6"].targets, ("config-rejects",))
+
 
 if __name__ == "__main__":
     unittest.main()

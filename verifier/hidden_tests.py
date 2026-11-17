@@ -447,20 +447,27 @@ def night_folders(ctx: Ctx, night_id: str) -> list[str]:
     return sorted({str(h.relative_to(ctx.app)) for h in hits})
 
 
+# Test 10's cases: the fields each copy of datenorm-smoke changes. Both build specs refuse each at load.
+REJECTS: dict[str, dict[str, str]] = {
+    "same-reviewer": {"reviewer_model": "github-copilot/claude-haiku-5.5", "coder_thinking": "medium", "reviewer_thinking": "medium"},
+    "deadline-soon": {"deadline": "soon"},
+    "results-dotdot": {"results_path": "../verifier-reject-dotdot/results.jsonl"},
+    # Change C6 (docs/codeclimb-eval-spec.md, "Maintenance tasks"): one experiment's cap above the night's (0.5).
+    "experiment-over-night": {"budget_usd.experiment": "0.6"},
+}
+
+
 def config_rejects(ctx: Ctx) -> tuple[bool, str]:
-    # Both specs refuse these at load. The positive partner: an unchanged copy starts and makes its night folder.
-    bad_configs = {
-        "same-reviewer": ctx.config(DATENORM, "reject-reviewer", reviewer_model="github-copilot/claude-haiku-5.5",
-                                    coder_thinking="medium", reviewer_thinking="medium"),
-        "deadline-soon": ctx.config(DATENORM, "reject-deadline", deadline="soon"),
-        "results-dotdot": ctx.config(DATENORM, "reject-dotdot", results_path="../verifier-reject-dotdot/results.jsonl"),
-    }
+    # The positive partner: an unchanged copy starts and makes its night folder.
+    bad_configs = {what: ctx.config(DATENORM, f"reject-{what}", **fields) for what, fields in REJECTS.items()}
     out, bad = [], []
     for what, config in bad_configs.items():
         nid = ctx.night_id("rej")
         code, text = run_group([*RUN_NIGHT, "--config", config, "--mock", "--no-wait", "--night-id", nid], ctx.app, 120)
         time.sleep(2)
         folders = night_folders(ctx, nid)
+        if code == 0:  # a night that started anyway never outlives the test
+            end_night(ctx, ctx.night(config, nid))
         out.append(f"{what}: exit {code}, night folders {folders}")
         if code == 0 or folders:
             bad.append(f"{what}: exit {code}, folders {folders}: {text[-200:]}")

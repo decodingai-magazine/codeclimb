@@ -175,6 +175,7 @@ Isolation invariants every feature protects:
 | `max_tokens` | none | Cap on coder + reviewer tokens |
 | `plateau_rounds` | 3 | Rounds in a row that kept nothing; 0 = never |
 | `deadline` | required | ISO time, or a duration from night start (`90m`, `8h`, `30s`) |
+| `hard_deadline` | none | ISO time, or a duration from the start (`90m`, `8h`, `30s`). When it passes the night stops hard, even mid-step: the running experiment or evaluation is aborted, the night's sandboxes are removed and `stop.json` has `reason` `hard_deadline`; no test score |
 | `timeouts.experiment_min`, `timeouts.eval_min` | required | Per experiment; per stage run |
 | `model`, `reviewer_model` | required | `<provider>/<id>` |
 | `coder_thinking`, `reviewer_thinking` | `medium`, `low` | `off`, `minimal`, `low`, `medium`, `high` |
@@ -192,6 +193,7 @@ Isolation invariants every feature protects:
 
 - runs folder: `<root>/runs-inngest/`; a mock night writes under `<root>/runs-inngest/mock/`. `<root>` is `CODECLIMB_ROOT`, default the start directory. The results directory is the folder of the resolved `results_path`
 - refused at load: `reviewer_model` equal to `model` with the same thinking level; an unparsable `deadline`; a `results_path` that is absolute, has `..`, or is not one folder and a file name; `lessons` not `off` on a scenario without lessons
+- also refused at load: a `budget_usd.experiment` above `budget_usd.night`
 
 ### Scenario contract
 

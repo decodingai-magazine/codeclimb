@@ -104,6 +104,29 @@ MAINTENANCE = {
         targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
         commits={"inngest": "0c395fd", "langchain": "9567643"},
     ),
+    # Changes on the pins: the bases are the references' own patches, on maint-c7-* and maint-c6-* (the gate's proof).
+    "c7": Maintenance(
+        kind="change",
+        request=(
+            "Add the night config key `hard_deadline` that `SPEC.md` lists: an ISO time, or a duration from the start"
+            " (`90m`, `8h`, `30s`). When it passes, the night stops hard, even in the middle of a step: the running"
+            " experiment or evaluation is aborted, the night's sandboxes are removed and `stop.json` has `reason`"
+            " `hard_deadline`, with no test score. A night without the key runs as before."
+        ),
+        targets=("hard-deadline-mid-step",),
+        commits=dict(PINS),
+        bases={"inngest": "1452a93", "langchain": "9d04590"},
+    ),
+    "c6": Maintenance(
+        kind="change",
+        request=(
+            "Refuse one more night config at load, as `SPEC.md` now says: a `budget_usd.experiment` above"
+            " `budget_usd.night`. `run-night` exits non-zero and starts nothing, as for the configs it already refuses."
+        ),
+        targets=("config-rejects",),
+        commits=dict(PINS),
+        bases={"inngest": "1360cb4", "langchain": "9911231"},
+    ),
 }
 MAINTENANCE_TEMPLATE = ROOT / "tasks/shared/maintenance.md"
 ASK = {"change": "Make this change:", "repair": "Something is broken. This is what was seen:"}

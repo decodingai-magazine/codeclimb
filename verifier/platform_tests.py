@@ -1,5 +1,5 @@
 """Platform: hidden tests on runtime behaviour that the stacks' skills and docs teach (docs/codeclimb-eval-spec.md,
-"Hidden and real checks", tests 50 to 58). Each test starts a `datenorm-smoke` mock night, puts a fault into it and
+"Hidden and real checks", tests 50 to 59). Each test starts a `datenorm-smoke` mock night, puts a fault into it and
 reads the outcome from the night's files, `docker events` and `docker ps -a`, as the durability tests do.
 """
 
@@ -23,6 +23,8 @@ KILLS = 2
 # Test 53: the backstop the hook sets, and how long after the start stop.json and a clean night may take.
 BACKSTOP_S = 30
 BACKSTOP_END_S = 90
+# Test 59: the config's `hard_deadline` (change C7), with test 53's bounds; the soft deadline stays the config's 3h.
+HARD_DEADLINE_S = 30
 # Tests 56 and 57: the pause timeout the hook sets; the scripted credit error ends the coder's first call.
 PAUSE_TIMEOUT_S = 60
 MOCK_CREDIT = "coder:1"
@@ -218,6 +220,49 @@ def eval_keeps_failing(ctx: Ctx) -> tuple[bool, str]:
 
 
 @guarded_test
+def slow_stage(ctx: Ctx) -> str:
+    """Tests 53 and 59: a datenorm copy whose stage sleeps 300 s before it runs, so round 1's evaluation is running
+    when the stop comes."""
+    return scenario_copy(ctx, "slow-stage", lambda t: t.replace("run: python3 /eval/run.py", "run: sleep 300; python3 /eval/run.py"))
+
+
+def stop_mid_eval(ctx: Ctx, short: str, config: str, after_s: int, reason: str | None = None) -> tuple[bool, str]:
+    """Start a night on a slow-stage config whose stop is due `after_s` after the start: `stop.json` (with `reason`,
+    when given) no earlier than that, after round 1's evaluation sandbox was created; within BACKSTOP_END_S of the
+    start `stop.json` and no `cc-<id>` container; no `done.json`, no test row."""
+    nt, events = start(ctx, short, config)
+    t0 = time.monotonic()
+    try:
+        stopped = wait_until(lambda: stop_reason(nt) is not None or nt.done() is not None, BACKSTOP_END_S, poll_s=0.5)
+        stop_s = time.monotonic() - t0
+        evals = [n for n in created(events.log, 0, f"cc-{nt.night_id}") if round_eval_sandbox(nt.night_id, 1, n)]
+        within = stopped and wait_until(lambda: stopped_clean(nt), max(BACKSTOP_END_S - stop_s, 0), poll_s=1)
+        got = stop_reason(nt)
+        done = nt.done() is not None
+        tests = not no_test_row(nt)
+        left = leftover_containers(nt.night_id)
+    finally:
+        kill_group(events, wait_s=2)
+        tidy(ctx, nt)
+    not_early = stop_s >= after_s - EARLY_S
+    reason_ok = reason is None or got == reason
+    ok = within and not_early and bool(evals) and reason_ok and not done and not tests
+    return ok, (
+        f"{nt.night_id}: stop.json {round(stop_s)}s after the start (due {after_s}s, not early {not_early}); "
+        f"round 1 evaluation sandboxes before it {evals}; within {BACKSTOP_END_S}s stop.json and no cc-{nt.night_id} "
+        f"{within}; reason {got!r}{'' if reason is None else f' (want {reason!r})'}; done.json {done}; test row {tests}; left {left}"
+    )
+
+
+@guarded_test
+def hard_deadline_mid_step(ctx: Ctx) -> tuple[bool, str]:
+    """59: a slow-stage config with `hard_deadline: 30s`: the hard deadline reaches the running evaluation, as test
+    53's backstop does: `stop.json` with reason `hard_deadline` no earlier than 30 s, after round 1's evaluation
+    sandbox was created; within 90 s of the start no `cc-<id>` container; no `done.json`, no test row."""
+    config = ctx.config(DATENORM_SMOKE, "hard-deadline", scenario=slow_stage(ctx), hard_deadline=f"{HARD_DEADLINE_S}s")
+    return stop_mid_eval(ctx, "hdl", config, HARD_DEADLINE_S, reason="hard_deadline")
+
+
 def fail_at_init(ctx: Ctx) -> tuple[bool, str]:
     """52: a scenario copy whose `bundle` command exits 1, so the night fails in init, before `night.json`: the
     following `run-night` prints `stopped` and exits 0 within a mock night's 300 s; `stop.json`, no `done.json`, no
@@ -343,29 +388,7 @@ def backstop_mid_step(ctx: Ctx) -> tuple[bool, str]:
     """53: `CODECLIMB_BACKSTOP_S=30` and a scenario copy whose stage sleeps 300 s before it runs: the backstop
     reaches the running evaluation. `stop.json` no earlier than the backstop, after round 1's evaluation sandbox
     was created; within 90 s of the start `stop.json` and no `cc-<id>` container; no `done.json`, no test row."""
-    scenario = scenario_copy(ctx, "slow-stage", lambda t: t.replace("run: python3 /eval/run.py", "run: sleep 300; python3 /eval/run.py"))
-    config = ctx.config(DATENORM_SMOKE, "slow-stage", scenario=scenario)
-    nt, events = start(ctx, "bms", config)
-    t0 = time.monotonic()
-    try:
-        stopped = wait_until(lambda: stop_reason(nt) is not None or nt.done() is not None, BACKSTOP_END_S, poll_s=0.5)
-        stop_s = time.monotonic() - t0
-        evals = [n for n in created(events.log, 0, f"cc-{nt.night_id}") if round_eval_sandbox(nt.night_id, 1, n)]
-        within = stopped and wait_until(lambda: stopped_clean(nt), max(BACKSTOP_END_S - stop_s, 0), poll_s=1)
-        reason = stop_reason(nt)
-        done = nt.done() is not None
-        tests = not no_test_row(nt)
-        left = leftover_containers(nt.night_id)
-    finally:
-        kill_group(events, wait_s=2)
-        tidy(ctx, nt)
-    not_early = stop_s >= BACKSTOP_S - EARLY_S
-    ok = within and not_early and bool(evals) and not done and not tests
-    return ok, (
-        f"{nt.night_id}: stop.json {round(stop_s)}s after the start (backstop {BACKSTOP_S}s, not early {not_early}); "
-        f"round 1 evaluation sandboxes before it {evals}; within {BACKSTOP_END_S}s stop.json and no cc-{nt.night_id} "
-        f"{within}; reason {reason!r}; done.json {done}; test row {tests}; left {left}"
-    )
+    return stop_mid_eval(ctx, "bms", ctx.config(DATENORM_SMOKE, "slow-stage", scenario=slow_stage(ctx)), BACKSTOP_S)
 
 
 def paused_clean(nt: Night) -> bool:
@@ -444,6 +467,7 @@ TESTS: list[Test] = [
     Test("outside-cancel", "hidden-3a", outside_cancel),
     Test("fail-at-init", "hidden-3a", fail_at_init),
     Test("eval-keeps-failing", "hidden-3a", eval_keeps_failing),
+    Test("hard-deadline-mid-step", "hidden-3a", hard_deadline_mid_step),
     Test("kill-after-row", "hidden-3b", kill_after_row_test),
     Test("stop-then-crash", "hidden-3b", stop_then_crash),
     Test("backstop-mid-step", "hidden-4", backstop_mid_step),
