@@ -1,6 +1,6 @@
 // `run-night`: start, stop, resume or continue a night through the Agent Server, and follow it (spec: CLI).
 import { existsSync, readFileSync } from "node:fs";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { type NightConfig, loadNightConfig, RUNS_DIR } from "../config.ts";
 import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
@@ -172,36 +172,26 @@ async function continueCommand(argv: string[]): Promise<void> {
 		rounds = Number(values.rounds);
 		if (!Number.isInteger(rounds) || rounds < 1) die("--rounds must be an integer ≥ 1");
 	}
-	// A mock night lives under runs-langchain/mock/: the night's folder says which one it is.
-	const plain = loadOrDie(values.config, false);
-	const mockConfig = loadOrDie(values.config, true);
-	const candidates = [
-		...endedNights(nightPaths(root, plain.results_path, "_").resultsDir).map((n) => ({ ...n, mock: false })),
-		...endedNights(nightPaths(root, mockConfig.results_path, "_").resultsDir).map((n) => ({ ...n, mock: true })),
-	].sort((a, b) => Date.parse(b.night.startedAt) - Date.parse(a.night.startedAt));
+	const config = loadOrDie(values.config, false);
+	const candidates = endedNights(nightPaths(root, config.results_path, "_").resultsDir).sort((a, b) => Date.parse(b.night.startedAt) - Date.parse(a.night.startedAt));
 	let nightId = values.night;
-	let mock: boolean;
 	if (nightId) {
-		const dir = findNightDir(root, nightId);
-		if (!dir) die(`night ${nightId} not found under ${join(root, RUNS_DIR)}`);
-		mock = dir.includes(`${sep}${RUNS_DIR}${sep}mock${sep}`);
+		if (!findNightDir(root, nightId)) die(`night ${nightId} not found under ${join(root, RUNS_DIR)}`);
 	} else {
 		const newest = candidates[0];
 		if (!newest) die(`no ended night under the results of ${values.config}`);
 		nightId = newest.id;
-		mock = newest.mock;
 	}
 	try {
 		await fetch(`${serverUrl()}/ok`);
 	} catch {
 		die(`the Agent Server at ${serverUrl()} is not reachable (is \`npm run server\` running?)`);
 	}
-	const config = mock ? mockConfig : plain;
-	await checkOrDie(config, mock);
+	await checkOrDie(config, false);
 	const paths = nightPaths(root, config.results_path, nightId);
 	let started: Awaited<ReturnType<typeof continueNight>>;
 	try {
-		started = await continueNight(root, nightId, config, { mock, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
+		started = await continueNight(root, nightId, config, { mock: false, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
 	} catch (error) {
 		die(`cannot start the variation on the Agent Server: ${(error as Error).message}`);
 	}
