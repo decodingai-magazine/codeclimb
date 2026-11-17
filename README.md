@@ -74,7 +74,7 @@ Ask me for any API key it needs.
 |---|---|
 | [01_setup.md](guides/01_setup.md) | You install CodeClimb, add model credentials or [Inngest](https://inngest.link/dai-gh) Cloud keys, or want the cost of each run path |
 | [02_running.md](guides/02_running.md) | You start, stop, resume, continue, seed or export a night, run graphrag, use [Inngest](https://inngest.link/dai-gh) Cloud or open the dashboard |
-| [03_how_it_works.md](guides/03_how_it_works.md) | You need the loop's steps, the keep rule, the stops, the metering proxy, the files a night writes, the worker API or the code layout |
+| [03_how_it_works.md](guides/03_how_it_works.md) | You need the loop's steps, the keep rule, the stops, the metering proxy, what stays off the sandbox, the files a night writes, the worker API or the code layout |
 | [00_troubleshooting.md](guides/00_troubleshooting.md) | A command fails, a night pauses, or a score looks wrong |
 
 ## Who is this for
@@ -139,10 +139,6 @@ The screenshots are from a 26-round night with a larger budget; the shipped `gra
 ## Questions and troubleshooting
 
 Open a [GitHub issue](https://github.com/decodingai-magazine/codeclimb/issues) for questions and bugs. Known failures and their fixes are in [00_troubleshooting.md](guides/00_troubleshooting.md).
-
-## Security
-
-Coder agents run shell commands in Docker or [Inngest](https://inngest.link/dai-gh) sandboxes with open egress, but Pi runs in the worker on your machine, so provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox; the program reaches models only through the metering proxy, with a one-off token that is capped and revoked when its run ends. The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback. In cloud mode, runs, step outputs and traces go to Inngest Cloud; details in [03_how_it_works.md#metering-proxy](guides/03_how_it_works.md#metering-proxy).
 
 ## 📬 Learn to Build Long-Running Agents
 

@@ -1,6 +1,6 @@
 # How CodeClimb works
 
-After this guide you know what each step of a night does, what stops it, what it writes to disk, the worker API the dashboard reads, and which file to open for each part.
+After this guide you know what each step of a night does, what stops it, what stays off the sandbox, what it writes to disk, the worker API the dashboard reads, and which file to open for each part.
 
 ![How to build durable and secure long-running agents: the CodeClimb loop with its proxy, Inngest checkpoints and credit pauses](../assets/architecture-durable-secure.png)
 
@@ -66,6 +66,15 @@ A program may call models only when `allowed_models` lists some, and only throug
 - **Limits.** `budget_usd.experiment` caps `coder_usd + dev_usd`; `budget_usd.night` caps the whole night. A cap is checked before each call. Errors: `401` bad or revoked token, `403` model not allowed, `402` budget spent, `400` unsupported request, `502` upstream failure.
 - **OpenRouter.** `openrouter/<id>` models skip Pi: the proxy calls OpenRouter with `OPENROUTER_API_KEY`, forwards `response_format`, `seed`, `top_p`, `stop` and `reasoning`, and charges the reported `usage.cost`. Decisions models are served at `POST /v1/decisions`, rerank models at `POST /v1/rerank`.
 - **Not supported yet.** Streaming, tools and non-text chat content; outside OpenRouter, embeddings only for `openai/text-embedding-3-small` and `-large` (priced in `codeclimb/meter/backends.ts`).
+
+## Security
+
+What runs where, and what leaves your machine:
+
+- **Sandboxes.** Coder agents run shell commands in Docker or Inngest sandboxes with open egress. Pi itself runs in the worker on your machine; only its shell and file tools reach the sandbox.
+- **Credentials and gold.** Provider keys (`.env`, `~/.pi/agent/auth.json`) and gold data never enter a sandbox. The program reaches models only through the metering proxy, with a one-off token that is capped and revoked when its run ends (`## Metering proxy` above).
+- **Local services.** The worker API and the app bind to `127.0.0.1` and need `CODECLIMB_WORKER_TOKEN` off loopback (`## Worker API` below).
+- **Cloud mode.** Runs, step outputs and traces go to Inngest Cloud.
 
 ## Outputs on disk
 
