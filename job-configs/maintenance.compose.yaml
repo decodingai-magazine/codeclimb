@@ -1,0 +1,6 @@
+# A maintenance task graded with the `nop` agent (job-configs/maintenance.sh): Harbor's own command for `main`,
+# after creating the sessions folder a harness would leave, so the sessions artifact collects and the trial can be
+# regraded (as in reference.compose.yaml). /app is the task image's own: the maintenance /app assemble.py baked in.
+services:
+  main:
+    command: ["sh", "-c", "mkdir -p /logs/agent/sessions/projects && sleep infinity"]

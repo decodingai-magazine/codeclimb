@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
+from gate import resolved
+
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
 # inngest-dev's three, measured in the #48 smoke trial (52 tools in all). A server listed with None is docs only.
 DOCS_TOOLS: dict[str, frozenset[str] | None] = {
@@ -179,7 +181,8 @@ def classify(row: dict) -> str:
 def trial_row(trial: Path) -> dict | None:
     """One row of trials.jsonl from a Harbor trial folder, or None for a trial of another task or one unfinished."""
     result = _json(trial / "result.json")
-    m = re.fullmatch(r"(?:.*/)?codeclimb-(inngest|langchain)", result.get("task_name") or "")
+    # A maintenance task is codeclimb-<stack>-<task id> (assemble.py maintenance).
+    m = re.fullmatch(r"(?:.*/)?codeclimb-(inngest|langchain)(?:-([a-z0-9]+))?", result.get("task_name") or "")
     if not m or not result.get("finished_at"):
         return None
     cfg = result.get("config") or {}
@@ -265,6 +268,12 @@ def trial_row(trial: Path) -> dict | None:
         "regrade_of": None,
         # Harbor deletes a retried attempt's folder; only the job's count of retries is left.
         "job_retries": ((_json(trial.parent / "result.json").get("stats") or {}).get("n_retries")),
+        # Maintenance trials: the task, its base and target tests; `resolved` is set by collect against the base.
+        "task": m[2],
+        "base": assembled.get("base") if m[2] else None,
+        "targets": assembled.get("targets") if m[2] else None,
+        "resolved": None,
+        "regressions": None,
     }
     row["status"] = classify(row)
     return row
@@ -288,7 +297,42 @@ def collect(jobs_dirs: list[Path]) -> list[dict]:
         key = (r["job"], r["stack"], r["arm"], r["workflow"])
         seen[key] += 1
         r["attempt"] = seen[key]
+    resolve_maintenance(rows)
     return rows
+
+
+def grade_of(row: dict) -> dict:
+    return {**{f"checks.{k}": v for k, v in row["checks"].items()}, **row["families"]}
+
+
+def resolve_maintenance(rows: list[dict]) -> None:
+    """`resolved` of each maintenance trial, against the grades of its base: the reference runs of the base commit
+    (`job-configs/reference.sh`, jobs named reference-<stack>-<sha>-*) in the same folders."""
+    for r in rows:
+        if not r.get("task") or r["reward"] is None:
+            continue
+        bases = [grade_of(b) for b in rows if b["arm"] == "reference" and b["status"] == "counted" and b["stack"] == r["stack"]
+                 and r["base"] and re.match(rf"reference-{r['stack']}-{r['base'][:7]}-", b["job"])]
+        r["resolved"], r["regressions"] = resolved(grade_of(r), bases, r["targets"] or [])
+
+
+def maintenance_table(rows: list[dict]) -> list[str]:
+    """Maintenance trials, apart from build trials: `resolved` and the metrics beside it, per task, stack and arm."""
+    cells: dict[tuple, list[dict]] = defaultdict(list)
+    for r in rows:
+        if r["status"] == "counted":
+            cells[(r["stack"], r["task"], r["arm"])].append(r)
+    out = []
+    for (stack, task, arm), rs in sorted(cells.items()):
+        out.append(f"{stack:9} {task} {arm:9} n={len(rs)} resolved {sum(r['resolved'] is True for r in rs)}/{len(rs)}"
+                   + (f" (no base grade: {sum(r['resolved'] is None for r in rs)})" if any(r["resolved"] is None for r in rs) else ""))
+        for r in rs:
+            state = {True: "resolved", False: "unresolved", None: "no base"}[r["resolved"]]
+            out.append(f"    {r['job']}/{r['trial']} {state} ${_fmt(r['cost_usd'], 2)} {_fmt(r['agent_s'], 0)} s"
+                       f" turns {r['turns']}" + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else ""))
+    kept = Counter(r["status"] for r in rows if r["status"] != "counted")
+    out += [f"kept out: {', '.join(f'{s} {n}' for s, n in sorted(kept.items()))}"] if kept else []
+    return out or ["no maintenance trials"]
 
 
 # --- effects -------------------------------------------------------------------------------------------------------
@@ -488,6 +532,8 @@ def stack_comparison(rows: list[dict]) -> list[str]:
 
 
 def report(rows: list[dict]) -> str:
+    maintenance = [r for r in rows if r.get("task")]
+    rows = [r for r in rows if not r.get("task")]
     lines = ["== outcome per cell (counted trials)", *cell_table(rows), "",
              "== hidden and real tests per cell (beside the reward, not in it)", *family_table(rows), "",
              "== full against bare, one-shot, within a stack"]
@@ -516,6 +562,7 @@ def report(rows: list[dict]) -> str:
     retried = {j: n for j, n in sorted(retries.items()) if n}
     lines.append(f"retried attempts: {sum(retried.values())}" + (f" ({', '.join(f'{j} {n}' for j, n in retried.items())})" if retried else "")
                  + "; Harbor deletes a retried attempt's folder, so its cost is not recorded")
+    lines += ["", "== maintenance trials (apart from build trials; resolved against the base's grade)", *maintenance_table(maintenance)]
     return "\n".join(lines)
 
 

@@ -1,6 +1,7 @@
 """Build a task's /app from files on this branch only.
 
     python3 assemble.py <stack> [--pile <dir>]     # inngest | langchain; --pile: another pile of build tickets
+    python3 assemble.py maintenance <task> <stack> # a maintenance task: tasks/codeclimb-<stack>-<task>/
 
 Writes tasks/codeclimb-<stack>/environment/app/ (gitignored): the shared given inputs,
 specs/<stack>/given/, SPEC.md (the build spec, wikilinks flattened), E2E.md and an
@@ -14,11 +15,13 @@ the output holds a string that would tell the harness where it is.
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -47,7 +50,7 @@ STUBS = frozenset({"SPEC.md", "E2E.md", "AGENTS.md"})
 
 # Forbidden in every file of /app. The reference builds' commits, by 7-char prefix:
 # update them when a reference is re-pinned (docs/codeclimb-eval-spec.md, "Reference builds").
-EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "4a71177", "0c395fd", "2ab1ad3", "bcabd72", "400bd40", "01-Projects", "codeclimb-eval-spec")
+EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "4a71177", "0c395fd", "2ab1ad3", "bcabd72", "400bd40", "9567643", "01-Projects", "codeclimb-eval-spec")
 # Forbidden only in the files the benchmark writes (SPEC.md, E2E.md, AGENTS.md,
 # specs/<stack>/given/). The shared given inputs are vendored unchanged, and the
 # graphrag corpus discusses benchmarks and names skill authors.
@@ -61,6 +64,58 @@ AUTHORED_ONLY = (
     "langchain-docs",
     "inngest-dev",
 )
+
+# A maintenance task's /app leaves out the reference's own guidance (docs/codeclimb-eval-spec.md, "Maintenance tasks").
+GUIDANCE = ("AGENTS.md", ".mcp.json", ".claude", "notes")
+# The one fresh commit of a maintenance /app: the image's identity and a fixed date, so a rebuild is identical.
+COMMIT_ENV = {
+    "GIT_AUTHOR_NAME": "codeclimb", "GIT_AUTHOR_EMAIL": "codeclimb@localhost",
+    "GIT_COMMITTER_NAME": "codeclimb", "GIT_COMMITTER_EMAIL": "codeclimb@localhost",
+    "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+    "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+}
+
+@dataclass(frozen=True)
+class Maintenance:
+    """One maintenance task: a change (a request) or a repair (a symptom), as one commit per stack on that stack's
+    reference branch. `bases` are the builds its target tests pass on."""
+
+    kind: str  # change | repair
+    request: str  # the request or the symptom, the same words on both stacks; never a test name
+    targets: tuple[str, ...]
+    commits: dict[str, str]
+    bases: dict[str, str] = field(default_factory=lambda: dict(PINS))
+
+
+# The reference pins (docs/codeclimb-eval-spec.md, "Reference builds"), the base of every maintenance task.
+PINS = {"inngest": "bcabd72", "langchain": "400bd40"}
+MAINTENANCE = {
+    # The smoke task, never counted: the commits before the test hooks; the pins are the reference's own fix.
+    "c1": Maintenance(
+        kind="change",
+        request=(
+            "Add the three test hooks `SPEC.md` lists, read from the environment when the services start:"
+            " `CODECLIMB_BACKSTOP_S` replaces the night backstop and `CODECLIMB_PAUSE_TIMEOUT_S` the pause timeout,"
+            " both in seconds, and `CODECLIMB_MOCK_CREDIT=<who>:<n>` makes call number `n` of a mock night's calls by"
+            " `who` (`coder`, `reviewer` or `program`) fail once with a credit error, so the night pauses for credits."
+            " A night stopped by the backstop writes `stop.json` and leaves no sandbox, even while it is still"
+            " starting."
+        ),
+        targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
+        commits={"inngest": "0c395fd", "langchain": "9567643"},
+    ),
+}
+MAINTENANCE_TEMPLATE = ROOT / "tasks/shared/maintenance.md"
+ASK = {"change": "Make this change:", "repair": "Something is broken. This is what was seen:"}
+RUNS = {"inngest": "runs-inngest", "langchain": "runs-langchain"}
+MAINTENANCE_SERVICES = {
+    "inngest": "the Inngest dev server already runs at `http://127.0.0.1:8288` (use it, don't start another);"
+    " start the worker with `npm run worker`, again after every code change",
+    "langchain": "`npm run server`, until `curl -s http://127.0.0.1:8123/ok` answers, again after every code change;"
+    " `/app/.env` holds the key it needs",
+}
+# The build task's image commits the /app it copies; a maintenance /app already holds its one commit.
+IMAGE_COMMIT = 'RUN git init -q && git add -A && git commit -q -m "given inputs"\n'
 
 WIKILINK = re.compile(r"\[\[([^\]|\\]*)(?:\\?\|([^\]]*))?\]\]")
 
@@ -193,6 +248,95 @@ def assemble_pocock(stack: str, out: Path, pile: Path | None = None) -> dict[str
     return record
 
 
+def assemble_maintenance_app(stack: str, commit: str, out: Path, repo: Path = ROOT) -> dict[str, str]:
+    """A maintenance task's /app in `out`: the `git archive` of `commit` without the reference's guidance files,
+    plus SPEC.md and the AGENTS.md stub, as a fresh repository with one commit (neither `git log` nor `git diff`
+    shows the change)."""
+    if stack not in STACKS:
+        raise SystemExit(f"unknown stack {stack!r}: one of {', '.join(STACKS)}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".app-", dir=out.parent))
+    try:
+        archive = subprocess.run(["git", "-C", str(repo), "archive", commit], check=True, capture_output=True).stdout
+        subprocess.run(["tar", "-x", "-C", str(stage)], input=archive, check=True)
+        for rel in GUIDANCE:
+            p = stage / rel
+            if p.is_dir():
+                shutil.rmtree(p)
+            elif p.exists():
+                p.unlink()
+        (stage / "SPEC.md").write_text(flatten_wikilinks((ROOT / "specs" / stack / "spec.md").read_text()))
+        (stage / "AGENTS.md").write_text(AGENTS_STUB)
+        found = [
+            f"{p.relative_to(stage).as_posix()}: {t}"
+            for p in sorted(stage.rglob("*")) if p.is_file()
+            for t in forbidden_terms(p.read_bytes().decode("utf-8", "replace"), p.relative_to(stage).as_posix() in STUBS)
+        ]
+        if found:
+            raise ForbiddenString("forbidden strings in the maintenance /app:\n  " + "\n  ".join(found))
+        subprocess.run(["git", "init", "-q", "-b", "main", str(stage)], check=True)
+        if not (stage / ".git").is_dir():
+            raise RuntimeError(f"git init made no repository in {stage}")
+        env = {**os.environ, **COMMIT_ENV}
+        subprocess.run(["git", "-C", str(stage), "add", "-A"], check=True, env=env)
+        subprocess.run(["git", "-C", str(stage), "commit", "-q", "--no-gpg-sign", "-m", "initial commit"],
+                       check=True, env=env)
+        record = {"stack": stack, "commit": commit, "spec_sha256": sha256_bytes((stage / "SPEC.md").read_bytes())}
+        if out.exists():
+            shutil.rmtree(out)
+        stage.rename(out)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+    return record
+
+
+def maintenance_prompt(stack: str, task: Maintenance) -> str:
+    """The task's instruction: one template for both stacks, filled with the request or symptom, the runs folder and
+    the service commands. It never names a test."""
+    return MAINTENANCE_TEMPLATE.read_text().format(
+        canary=AGENTS_STUB.rstrip("\n"), ask=ASK[task.kind], request=task.request, runs=RUNS[stack],
+        services=MAINTENANCE_SERVICES[stack],
+    )
+
+
+def assemble_maintenance_task(task_id: str, stack: str, task: Maintenance | None = None, repo: Path = ROOT,
+                              tasks_dir: Path = ROOT / "tasks") -> Path:
+    """tasks/codeclimb-<stack>-<task id>/ (gitignored): the stack's build task with the maintenance /app baked in,
+    its prompt, and the leak baseline taken from that /app. Returns the folder."""
+    task = task or MAINTENANCE[task_id]
+    build = ROOT / "tasks" / f"codeclimb-{stack}"
+    name = f"codeclimb-{stack}-{task_id}"
+    d = tasks_dir / name
+    if d.exists():
+        shutil.rmtree(d)
+    for part in ("environment", "tests"):
+        copy_files(build / part, d / part)
+    dockerfile = d / "environment" / "Dockerfile"
+    text = dockerfile.read_text()
+    if IMAGE_COMMIT not in text:
+        raise RuntimeError(f"{dockerfile}: no {IMAGE_COMMIT!r} line to replace")
+    dockerfile.write_text(text.replace(IMAGE_COMMIT, "# /app arrives as a repository with one commit (assemble.py).\n"))
+    toml = (build / "task.toml").read_text()
+    toml = toml.replace(f'name = "codeclimb/codeclimb-{stack}"', f'name = "codeclimb/{name}"')
+    toml = re.sub(r'(?m)^description = .*$', f'description = "Maintenance task {task_id} ({task.kind}) on the {stack} reference build."', toml)
+    (d / "task.toml").write_text(toml)
+    app = d / "environment" / "app"
+    record = assemble_maintenance_app(stack, task.commits[stack], app, repo=repo)
+    prompt = maintenance_prompt(stack, task)
+    found = forbidden_terms(prompt, authored=True)
+    if found:
+        raise ForbiddenString(f"forbidden strings in the {task_id} prompt: {found}")
+    (d / "instruction.md").write_text(prompt)
+    (d / "environment" / "managed-settings.json").write_text(json.dumps(managed_settings(), indent=2) + "\n")
+    copy_files(VERIFIER, d / "tests" / "verifier")
+    given = given_record(app)
+    (d / "tests" / "verifier" / "given.json").write_text(json.dumps(given, indent=1, sort_keys=True) + "\n")
+    record = {"kind": task.kind, "task": task_id, "base": task.bases[stack], "targets": list(task.targets), **record}
+    (d / "assembled.json").write_text(json.dumps(record, indent=2) + "\n")
+    return d
+
+
 def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:
     task = ROOT / "tasks" / f"codeclimb-{stack}"
     record = assemble(stack, task / "environment" / "app")
@@ -211,6 +355,12 @@ def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["maintenance"] and len(sys.argv) == 4:
+        try:
+            print(assemble_maintenance_task(sys.argv[2], sys.argv[3]).relative_to(ROOT))
+        except ForbiddenString as e:
+            raise SystemExit(str(e))
+        raise SystemExit(0)
     if len(sys.argv) not in (2, 4) or (len(sys.argv) == 4 and sys.argv[2] != "--pile"):
         raise SystemExit(__doc__)
     try:

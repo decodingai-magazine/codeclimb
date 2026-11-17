@@ -228,5 +228,61 @@ class Families(unittest.TestCase):
                          ["counted trials without hidden or real keys (graded before them; regrade to add): 1"])
 
 
+class MaintenanceTrials(unittest.TestCase):
+    """C1-shaped: two base grades of the pin, then maintenance trials resolved, unresolved, and unresolved through a
+    regression; one build trial beside them."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name)
+        jobs = root / "jobs"
+        task = root / "tasks" / "codeclimb-inngest-c1"
+        task.mkdir(parents=True)
+        (task / "assembled.json").write_text(json.dumps({
+            "kind": "change", "task": "c1", "stack": "inngest", "base": "bcabd72", "commit": "0c395fd",
+            "targets": ["pause-timeout", "pause-resume"]}))
+
+        def trial(job: str, name: str, rewards: dict, *, maintenance: bool, nop: bool = False, cost: float = 1.0) -> None:
+            t = jobs / job / name
+            (t / "agent").mkdir(parents=True)
+            (t / "result.json").write_text(json.dumps({
+                "task_name": "codeclimb/codeclimb-inngest-c1" if maintenance else "codeclimb/codeclimb-inngest",
+                "task_id": {"path": str(task) if maintenance else "tasks/codeclimb-inngest"},
+                "config": {"agent": {"name": "nop" if nop else "claude-code", "kwargs": {}},
+                           "environment": {"extra_docker_compose": [] if maintenance or not nop else ["/x/reference.compose.yaml"]}},
+                "agent_result": {"cost_usd": cost}, "verifier_result": {"rewards": {"reward": 0.5, "done": 0, "leak": 0, **rewards}},
+                "started_at": "2026-11-17T10:00:00Z", "finished_at": "2026-11-17T11:00:00Z",
+            }))  # fmt: skip
+
+        base = {"checks.typecheck": 1, "checks.cli-done": 1, "hidden.pause-timeout": 1, "hidden.pause-resume": 1, "hidden.seed": 1}
+        trial("reference-inngest-bcabd72-100000", "b1", base, maintenance=False, nop=True)
+        trial("reference-inngest-bcabd72-100000", "b2", {**base, "hidden.seed": 0}, maintenance=False, nop=True)
+        trial("c1-inngest", "fixed", {**base, "hidden.seed": 0}, maintenance=True, cost=2.5)  # seed is flaky on the base
+        trial("c1-inngest", "unfixed", {**base, "hidden.pause-resume": 0}, maintenance=True)
+        trial("c1-inngest", "regressed", {**base, "checks.cli-done": 0}, maintenance=True)
+        trial("inngest-bare", "build", {"checks.cli-done": 1}, maintenance=False)
+        cls.rows = collect([jobs])
+        cls.by_trial = {r["trial"]: r for r in cls.rows}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_resolved_against_the_base(self):
+        self.assertEqual(self.by_trial["fixed"]["task"], "c1")
+        self.assertEqual([self.by_trial[t]["resolved"] for t in ("fixed", "unfixed", "regressed")], [True, False, False])
+        self.assertEqual(self.by_trial["regressed"]["regressions"], ["checks.cli-done"])
+        self.assertIsNone(self.by_trial["build"]["task"])
+
+    def test_reported_apart_from_build_trials(self):
+        text = report(self.rows)
+        build, _, maintenance = text.partition("== maintenance trials")
+        self.assertIn("inngest   one-shot bare      n=1", build)
+        self.assertNotIn("n=4", build)
+        self.assertIn("inngest   c1 bare      n=3 resolved 1/3", maintenance)
+        self.assertIn("fixed resolved $2.50", maintenance)
+
+
 if __name__ == "__main__":
     unittest.main()

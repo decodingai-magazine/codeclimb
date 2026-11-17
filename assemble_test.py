@@ -202,5 +202,124 @@ class Assemble(unittest.TestCase):
         self.assertEqual(saved, record)
 
 
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                          check=True, capture_output=True, text=True).stdout
+
+
+def fixture_reference(root: Path) -> tuple[Path, str, str]:
+    """A reference branch in miniature: (repo, base, task commit). The task commit cuts a hook the base has."""
+    repo = root / "ref"
+    files = {
+        "AGENTS.md": "how to work here\n",
+        ".mcp.json": "{}\n",
+        ".claude/settings.json": "{}\n",
+        "notes/ideas.md": "ideas\n",
+        "README.md": "codeclimb\n",
+        "package.json": json.dumps({"scripts": {"run-night": "tsx src/cli/run-night.ts"}}) + "\n",
+        "src/cli/run-night.ts": "import { loop } from '../night/loop.ts';\nloop();\n",
+        "src/night/loop.ts": "import { hook } from './hook.ts';\nexport function loop() { hook(); }\n",
+        "src/night/hook.ts": "export function hook() { return process.env.X_HOOK; }\n",
+    }
+    for rel, text in files.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(text)
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base: the hook")
+    base = git(repo, "rev-parse", "HEAD").strip()
+    (repo / "src/night/hook.ts").write_text("export function hook() { return undefined; }\n")
+    git(repo, "commit", "-qam", "cut the hook")
+    return repo, base, git(repo, "rev-parse", "HEAD").strip()
+
+
+class AssembleMaintenanceApp(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo, self.base, self.commit = fixture_reference(self.tmp)
+        self.out = self.tmp / "task/environment/app"
+        assemble.assemble_maintenance_app("inngest", self.commit, self.out, repo=self.repo)
+
+    def test_one_fresh_commit_with_nothing_of_the_task_commit(self):
+        log = git(self.out, "log", "--format=%H %an %s").splitlines()
+        self.assertEqual(len(log), 1)
+        self.assertNotIn(self.commit, log[0])
+        self.assertIn("codeclimb", log[0])
+        self.assertEqual(git(self.out, "status", "--porcelain"), "")
+        self.assertEqual(git(self.out, "diff", "HEAD"), "")
+        self.assertEqual((self.out / "src/night/hook.ts").read_text(), "export function hook() { return undefined; }\n")
+
+    def test_guidance_files_out_spec_and_stub_in(self):
+        files = {f for f in tree(self.out) if not f.startswith(".git/")}
+        self.assertEqual(files, {"README.md", "package.json", "src/cli/run-night.ts", "src/night/loop.ts",
+                                 "src/night/hook.ts", "SPEC.md", "AGENTS.md"})
+        self.assertEqual((self.out / "AGENTS.md").read_text(), assemble.AGENTS_STUB)
+        self.assertNotIn("[[", (self.out / "SPEC.md").read_text())
+        self.assertIn("SPEC.md", git(self.out, "ls-files"))
+
+    def test_fails_on_a_reference_sha(self):
+        (self.repo / "README.md").write_text("built at bcabd72\n")
+        git(self.repo, "commit", "-qam", "name a pin")
+        with self.assertRaises(assemble.ForbiddenString) as e:
+            assemble.assemble_maintenance_app("inngest", "HEAD", self.tmp / "other", repo=self.repo)
+        self.assertIn("README.md: bcabd72", str(e.exception))
+
+
+class AssembleMaintenanceTask(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo, self.base, self.commit = fixture_reference(self.tmp)
+        self.task = assemble.Maintenance(
+            kind="change", request="Add the X hook.", targets=("pause-timeout", "pause-resume"),
+            commits={"inngest": self.commit, "langchain": self.commit}, bases={"inngest": self.base, "langchain": self.base},
+        )
+        self.dirs = {s: assemble.assemble_maintenance_task("t9", s, task=self.task, repo=self.repo, tasks_dir=self.tmp / "tasks")
+                     for s in assemble.STACKS}
+
+    def test_task_folder(self):
+        d = self.dirs["inngest"]
+        self.assertEqual(d.name, "codeclimb-inngest-t9")
+        self.assertTrue((d / "environment/app/.git").is_dir())
+        self.assertTrue((d / "tests/test.sh").exists() and (d / "tests/verifier/run.py").exists())
+        self.assertIn('name = "codeclimb/codeclimb-inngest-t9"', (d / "task.toml").read_text())
+        # The image keeps the /app it is given: its one commit is the assemble's.
+        self.assertNotIn("git commit", (d / "environment/Dockerfile").read_text())
+        record = json.loads((d / "assembled.json").read_text())
+        self.assertEqual({k: record[k] for k in ("kind", "task", "stack", "base", "commit", "targets")},
+                         {"kind": "change", "task": "t9", "stack": "inngest", "base": self.base, "commit": self.commit,
+                          "targets": ["pause-timeout", "pause-resume"]})
+
+    def test_leak_baseline_is_the_maintenance_app(self):
+        import leak  # on the path through assemble
+        d = self.dirs["langchain"]
+        given = json.loads((d / "tests/verifier/given.json").read_text())
+        app = d / "environment/app"
+        self.assertEqual(set(given), {f for f in tree(app) if not f.startswith(".git/")})
+        logs = self.tmp / "logs"
+        (logs / "sessions/projects").mkdir(parents=True)
+        self.assertEqual(leak.scan(app, logs, given)["leak"], 0)
+        (app / "src/night/hook.ts").write_text("// decodingai-magazine\n")
+        self.assertEqual(leak.scan(app, logs, given)["leak"], 1)
+
+    def test_prompt_is_stack_neutral_and_names_no_test(self):
+        prompts = {s: (d / "instruction.md").read_text() for s, d in self.dirs.items()}
+        for stack, text in prompts.items():
+            self.assertTrue(text.startswith(assemble.AGENTS_STUB))
+            self.assertIn("Add the X hook.", text)
+            for name in self.task.targets:
+                self.assertNotIn(name, text)
+            self.assertIn(assemble.RUNS[stack], text)
+        neutral = {s: t.replace(assemble.MAINTENANCE_SERVICES[s], "{services}").replace(assemble.RUNS[s], "{runs}")
+                   for s, t in prompts.items()}
+        self.assertEqual(neutral["inngest"], neutral["langchain"])
+
+    def test_c1_prompt_names_no_target(self):
+        c1 = assemble.MAINTENANCE["c1"]
+        for name in c1.targets:
+            self.assertNotIn(name, assemble.maintenance_prompt("inngest", c1))
+
+
 if __name__ == "__main__":
     unittest.main()
