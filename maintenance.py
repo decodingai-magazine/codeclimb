@@ -3,8 +3,9 @@ target tests and commits, and the per-stack text its prompt is filled with. Read
 
 from dataclasses import dataclass, field
 
-# The reference pins (docs/codeclimb-eval-spec.md, "Reference builds"), the base of every maintenance task.
-PINS = {"inngest": "bcabd72", "langchain": "400bd40"}
+# The maintenance base (docs/codeclimb-eval-spec.md, "Maintenance tasks"): the reference commits every maintenance task
+# starts from. Not the build tasks' reference pins (assemble.BUILD_PINS), which carry C7 and C6 on top of these.
+BASES = {"inngest": "bcabd72", "langchain": "400bd40"}
 # The prompt's first line per kind.
 ASK = {"change": "Make this change:", "repair": "Something is broken. This is what was seen:"}
 # The runs folder each stack's build writes, and the service commands the prompt names.
@@ -26,7 +27,7 @@ class Maintenance:
     request: str  # the request or the symptom, the same words on both stacks; never a test name
     targets: tuple[str, ...]
     commits: dict[str, str]
-    bases: dict[str, str] = field(default_factory=lambda: dict(PINS))
+    bases: dict[str, str] = field(default_factory=lambda: dict(BASES))
 
     def __post_init__(self) -> None:
         if self.kind not in ASK:
@@ -34,7 +35,7 @@ class Maintenance:
 
 
 MAINTENANCE = {
-    # The smoke task, never counted: the commits before the test hooks; the pins are the reference's own fix.
+    # The smoke task, never counted: the commits before the test hooks; the maintenance bases are the reference's own fix.
     "c1": Maintenance(
         kind="change",
         request=(
@@ -48,7 +49,7 @@ MAINTENANCE = {
         targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
         commits={"inngest": "0c395fd", "langchain": "9567643"},
     ),
-    # Changes on the pins: the bases are the references' own patches (the gate's proof).
+    # Changes on the maintenance base: the bases are the references' own patches (the gate's proof).
     "c7": Maintenance(
         kind="change",
         request=(
@@ -58,7 +59,7 @@ MAINTENANCE = {
             " `hard_deadline`, with no test score. A night without the key runs as before."
         ),
         targets=("hard-deadline-mid-step",),
-        commits=dict(PINS),
+        commits=dict(BASES),
         bases={"inngest": "1452a93", "langchain": "9d04590"},
     ),
     "c6": Maintenance(
@@ -68,7 +69,7 @@ MAINTENANCE = {
             " `budget_usd.night`. `run-night` exits non-zero and starts nothing, as for the configs it already refuses."
         ),
         targets=("config-rejects",),
-        commits=dict(PINS),
+        commits=dict(BASES),
         bases={"inngest": "1360cb4", "langchain": "9911231"},
     ),
     "r14": Maintenance(

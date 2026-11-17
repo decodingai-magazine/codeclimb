@@ -4,15 +4,16 @@
 #
 #   job-configs/reference.sh <stack> [commit] [harbor run args...]
 #
-# The commit defaults to the stack's pin in docs/codeclimb-eval-spec.md ("Reference builds"). It is exported with
+# The commit defaults to the stack's build-task pin (assemble.BUILD_PINS; docs/codeclimb-eval-spec.md, "Reference
+# builds"). A maintenance base or task commit is passed by SHA. It is exported with
 # `git archive` to jobs/reference-<stack>-<commit>/ (gitignored). LangChain expects CODECLIMB_BENCH_LANGSMITH_API_KEY
 # (and CODECLIMB_BENCH_LANGSMITH_ENDPOINT) exported, as for any LangChain trial.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 stack="$1"; shift
 case "$stack" in
-  inngest) pin=bcabd72 ;;
-  langchain) pin=400bd40 ;;
+  inngest) pin=5a81c07 ;;
+  langchain) pin=3612892 ;;
   *) echo "stack: inngest | langchain" >&2; exit 2 ;;
 esac
 commit="${1:-$pin}"; [ $# -gt 0 ] && shift

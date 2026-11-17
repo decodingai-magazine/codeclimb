@@ -49,9 +49,19 @@ class Scan(unittest.TestCase):
         ]:
             self.assertIn(term, assemble.forbidden_terms(text, authored=True), text)
 
-    def test_every_maintenance_commit_and_patch_is_scanned_for(self):
+    def test_every_maintenance_commit_and_patch_and_build_pin_is_scanned_for(self):
         shas = {sha[:7] for task in maintenance.MAINTENANCE.values() for sha in (*task.commits.values(), *task.bases.values())}
+        shas |= set(assemble.BUILD_PINS.values()) | set(maintenance.BASES.values())
         self.assertEqual(shas - set(assemble.EVERYWHERE), set())
+
+    def test_build_pins_carry_c7_and_c6_and_maintenance_keeps_its_base(self):
+        # A build-task reference must pass every check it grades: the build specs gained C7 and C6 on 2026-11-17.
+        self.assertEqual(assemble.BUILD_PINS, {"inngest": "5a81c07", "langchain": "3612892"})
+        self.assertEqual(maintenance.BASES, {"inngest": "bcabd72", "langchain": "400bd40"})
+
+    def test_reference_sh_defaults_to_the_build_pins(self):
+        text = (Path(__file__).parent / "job-configs/reference.sh").read_text()
+        self.assertEqual(dict(re.findall(r"^\s*(inngest|langchain)\) pin=([0-9a-f]{7}) ;;", text, re.M)), assemble.BUILD_PINS)
 
     def test_shared_inputs_skip_authored_only_terms(self):
         # The given scenarios mention benchmarks and skill packs in their own corpus.
@@ -360,10 +370,10 @@ class AssembleMaintenanceTask(unittest.TestCase):
         for tid in ("c7", "c6"):
             t = maintenance.MAINTENANCE[tid]
             # A change on the pin: the /app is the pin, the reference's own patch is the build the targets pass on.
-            self.assertEqual((t.kind, t.commits), ("change", maintenance.PINS))
-            self.assertEqual(set(t.bases), set(maintenance.PINS))
-            self.assertTrue(all(t.bases[s] != t.commits[s] for s in maintenance.PINS))
-            for stack in maintenance.PINS:
+            self.assertEqual((t.kind, t.commits), ("change", maintenance.BASES))
+            self.assertEqual(set(t.bases), set(maintenance.BASES))
+            self.assertTrue(all(t.bases[s] != t.commits[s] for s in maintenance.BASES))
+            for stack in maintenance.BASES:
                 prompt = assemble.maintenance_prompt(stack, t)
                 for name in t.targets:
                     self.assertNotIn(name, prompt)

@@ -54,11 +54,17 @@ SERVICES = {
 # The files the benchmark writes into every build /app beside the given inputs.
 STUBS = frozenset({"SPEC.md", "E2E.md", "AGENTS.md"})
 
+# The build tasks' reference pins (docs/codeclimb-eval-spec.md, "Reference builds"): the maintenance base
+# (maintenance.BASES) with the C7 and C6 patches on top. job-configs/reference.sh defaults to them.
+BUILD_PINS = {"inngest": "5a81c07", "langchain": "3612892"}
+
 # Forbidden in every file of /app. The reference builds' commits, by 7-char prefix:
 # update them when a reference is re-pinned (docs/codeclimb-eval-spec.md, "Reference builds").
-# The maintenance tasks' commits and patches (maintenance.py) are reference commits too.
+# The maintenance tasks' commits and patches (maintenance.py) are reference commits too, and so are the build pins and
+# the C7 commits under them (5c7150b, 5ac7f82).
 EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "4a71177", "0c395fd", "2ab1ad3", "bcabd72", "400bd40", "9567643",
               "1452a93", "1360cb4", "9d04590", "9911231", "f76da25", "c3a1ec3", "2c8eaa7", "3f7793d",
+              "5a81c07", "3612892", "5c7150b", "5ac7f82",
               "01-Projects", "codeclimb-eval-spec")
 # Forbidden only in the files the benchmark writes (SPEC.md, E2E.md, AGENTS.md,
 # specs/<stack>/given/). The shared given inputs are vendored unchanged, and the
