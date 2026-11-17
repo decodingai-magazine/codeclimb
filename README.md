@@ -1,6 +1,6 @@
 <div align="center">
   <h1>CodeClimb</h1>
-  <h3>An overnight eval-driven code search: a coding agent climbs your metrics while you sleep</h3>
+  <h3>Eval-driven code search: bring a data-scientist mindset to coding agents</h3>
   <p><a href="#quickstart">Quickstart</a> · <a href="#guides">Guides</a> · <a href="#see-it-in-action">See it in action</a> · <a href="#learn-more">Learn more</a> · <a href="#questions-and-troubleshooting">Questions</a></p>
   <h3>Sponsored by&nbsp;
     <a href="https://inngest.link/dai-gh"><picture>
