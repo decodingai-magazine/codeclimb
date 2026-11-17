@@ -18,15 +18,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
 
+from maintenance import MAINTENANCE
+
 ROOT = Path(__file__).resolve().parent
-RUNS = 3
+REPEATS = 3  # reference runs per side (base, task commit) and stack
 JOB = re.compile(r"reference-(inngest|langchain)-([0-9a-f]{7})-\d+")
 GREEN = ("typecheck", "unit-tests")
 IMPORT = re.compile(r"""(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""")
 SOURCE = (".ts", ".tsx", ".mts")
 
 
-def grade_of(reward: dict, target: str) -> int | None:
+def target_grade(reward: dict, target: str) -> int | None:
     """A target's grade in one run: a counted check (`checks.<name>`, e.g. `crash-resume`) or a hidden test
     (`hidden.<name>`); None when it did not run."""
     return reward.get(f"checks.{target}", reward.get(f"hidden.{target}"))
@@ -39,13 +41,13 @@ class Run:
 
 
 def _check_runs(stack: str, side: str, runs: list[Run], targets: tuple[str, ...]) -> list[str]:
-    reasons = [] if len(runs) == RUNS else [f"{stack}: {len(runs)} {side} runs, not {RUNS}"]
+    reasons = [] if len(runs) == REPEATS else [f"{stack}: {len(runs)} {side} runs, not {REPEATS}"]
     for i, r in enumerate(runs, 1):
         if r.reward.get("checks.services-up") != 1:
             reasons.append(f"{stack}: {side} run {i}: services not up")
             continue
         reasons += [f"{stack}: {side} run {i}: {c} failed" for c in GREEN if r.reward.get(f"checks.{c}") != 1]
-        reasons += [f"{stack}: {side} run {i}: {t} did not run" for t in targets if grade_of(r.reward, t) is None]
+        reasons += [f"{stack}: {side} run {i}: {t} did not run" for t in targets if target_grade(r.reward, t) is None]
     return reasons
 
 
@@ -62,14 +64,14 @@ def gate(targets: tuple[str, ...], runs: dict[str, dict[str, list[Run]]], fix: d
         reasons += _check_runs(stack, "base", base, targets) + _check_runs(stack, "task", task, targets)
         failing = []
         for t in targets:
-            passed = sum(grade_of(r.reward, t) == 1 for r in base)
-            failed = sum(grade_of(r.reward, t) == 0 for r in task)
-            if passed != RUNS:
-                reasons.append(f"{stack}: base passes {t} {passed} of {RUNS}")
-            if failed == RUNS:
+            passed = sum(target_grade(r.reward, t) == 1 for r in base)
+            failed = sum(target_grade(r.reward, t) == 0 for r in task)
+            if passed != REPEATS:
+                reasons.append(f"{stack}: base passes {t} {passed} of {REPEATS}")
+            if failed == REPEATS:
                 failing.append(t)
             else:
-                reasons.append(f"{stack}: task commit fails {t} {failed} of {RUNS}")
+                reasons.append(f"{stack}: task commit fails {t} {failed} of {REPEATS}")
         spent = [sum(r.seconds.get(t, 0.0) for t in targets) for r in task if r.seconds]
         stacks[stack] = {"failing": sorted(failing), "fix": fix[stack], "hops": hops[stack],
                          "reproduce_s": median(spent) if spent else None}
@@ -90,7 +92,7 @@ def resolved(grade: dict, bases: list[dict], targets: list[str]) -> tuple[bool |
     held = sorted(k for k in set.intersection(*(set(b) for b in bases)) - keys
                   if k.startswith(("checks.", "hidden.", "real.")) and all(b[k] == 1 for b in bases))
     regressions = [k for k in held if grade.get(k) != 1]
-    return all(grade_of(grade, t) == 1 for t in targets) and not regressions, regressions
+    return all(target_grade(grade, t) == 1 for t in targets) and not regressions, regressions
 
 
 def _resolve(spec: str, importer: str, files: dict[str, str]) -> str | None:
@@ -144,6 +146,11 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True, text=True).stdout
 
 
+def _short(sha: str) -> str:
+    """A commit's 7-character name, as the reference jobs' folders carry it."""
+    return _git("rev-parse", "--short=7", f"{sha}^{{commit}}").strip()
+
+
 def fix_and_hops(base: str, commit: str) -> tuple[dict[str, int], int | None]:
     """The fix (task commit -> base): lines added plus removed and files; and the import hops, in the base, from the
     `run-night` script's entry to the nearest changed source file."""
@@ -162,15 +169,12 @@ def fix_and_hops(base: str, commit: str) -> tuple[dict[str, int], int | None]:
 def main() -> None:
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    from assemble import MAINTENANCE
-
     task = MAINTENANCE[sys.argv[1]]
     found = runs_from_jobs([Path(a) for a in sys.argv[2:]])
     runs, fix, hops = {}, {}, {}
     for stack, commit in task.commits.items():
         base = task.bases[stack]
-        short = lambda sha: _git("rev-parse", "--short=7", f"{sha}^{{commit}}").strip()  # noqa: E731
-        runs[stack] = {"base": found.get((stack, short(base)), []), "task": found.get((stack, short(commit)), [])}
+        runs[stack] = {"base": found.get((stack, _short(base)), []), "task": found.get((stack, _short(commit)), [])}
         fix[stack], hops[stack] = fix_and_hops(base, commit)
     print(json.dumps(gate(task.targets, runs, fix, hops), indent=1))
 

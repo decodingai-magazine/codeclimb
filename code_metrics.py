@@ -18,11 +18,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from assemble import AGENTS_STUB, ROOT, SHARED, STACKS, STUBS
+
 ANALYSIS = ROOT / "analysis"
-STACKS = ("inngest", "langchain")
-SHARED = ("scenarios", "configs", "docker")
-STUBS = ("SPEC.md", "E2E.md", "AGENTS.md", "LICENSE")
 # The stack SDK: a file importing one of these modules is glue. Tracing packages count on both stacks alike.
 SDK = {"inngest": r"^(inngest|@inngest/[^/]+)(/.*)?$", "langchain": r"^(@langchain/[^/]+|langsmith)(/.*)?$"}
 # Measured as a ratio to the same stack's reference build (spec, Metrics: "(ratio)").
@@ -57,8 +55,8 @@ def context(stack: str) -> dict:
     return {
         "stack": stack,
         "given_dirs": list(SHARED),
-        "given_files": [*given_files, *STUBS],
-        "agents_stub": (ROOT / "tasks/shared/instruction.md").read_text().splitlines()[0] + "\n",
+        "given_files": [*given_files, *sorted(STUBS)],
+        "agents_stub": AGENTS_STUB,
         "given_tsconfig": tsconfig.decode(),
         "given_tsconfig_sha256": hashlib.sha256(tsconfig).hexdigest(),
         "dependency_table": dependency_table((ROOT / "specs" / stack / "spec.md").read_text()),

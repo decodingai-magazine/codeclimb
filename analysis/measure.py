@@ -22,15 +22,14 @@ GENERATED = frozenset({"node_modules", ".git", ".next", "out", "dist", "build", 
 TEST_DIRS = frozenset({"test", "tests", "__tests__"})
 
 
-def generated(rel: Path) -> bool:
-    return any(p in GENERATED or p.startswith("runs-") for p in rel.parts[:-1]) or rel.name.endswith(".tsbuildinfo")
-
-
 def files_of(root: Path) -> list[str]:
+    """Every file under `root` but symlinks and generated files (under a GENERATED or runs folder, or a .tsbuildinfo)."""
     out = []
     for p in sorted(root.rglob("*")):
         rel = p.relative_to(root)
-        if p.is_file() and not p.is_symlink() and not generated(rel):
+        if p.is_file() and not p.is_symlink() and not (
+            any(d in GENERATED or d.startswith("runs-") for d in rel.parts[:-1]) or rel.name.endswith(".tsbuildinfo")
+        ):
             out.append(rel.as_posix())
     return out
 

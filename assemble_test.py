@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 import assemble
+import maintenance
 
 ROOT = Path(__file__).resolve().parent
 
@@ -246,7 +247,7 @@ class AssembleMaintenanceApp(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.repo, self.base, self.commit = fixture_reference(self.tmp)
         self.out = self.tmp / "task/environment/app"
-        assemble.assemble_maintenance_app("inngest", self.commit, self.out, repo=self.repo)
+        assemble.assemble_maintenance_app(assemble.Source("inngest", self.repo), self.commit, self.out)
 
     def test_one_fresh_commit_with_nothing_of_the_task_commit(self):
         log = git(self.out, "log", "--format=%H %an %s").splitlines()
@@ -259,7 +260,7 @@ class AssembleMaintenanceApp(unittest.TestCase):
 
     def test_pocock_keeps_the_glossary_adrs_and_agent_docs_but_no_spec_copy(self):
         out = self.tmp / "pocock-app"
-        assemble.assemble_maintenance_app("inngest", self.commit, out, repo=self.repo, workflow="pocock")
+        assemble.assemble_maintenance_app(assemble.Source("inngest", self.repo, "pocock"), self.commit, out)
         files = {f for f in tree(out) if not f.startswith(".git/")}
         self.assertEqual(files, {"README.md", "package.json", "src/cli/run-night.ts", "src/night/loop.ts",
                                  "src/night/hook.ts", "SPEC.md", "AGENTS.md", "GLOSSARY.md", "CONTEXT.md",
@@ -273,11 +274,17 @@ class AssembleMaintenanceApp(unittest.TestCase):
         self.assertNotIn("[[", (self.out / "SPEC.md").read_text())
         self.assertIn("SPEC.md", git(self.out, "ls-files"))
 
+    def test_a_bad_workflow_or_kind_fails_by_name(self):
+        with self.assertRaisesRegex(ValueError, "unknown workflow 'pocok'"):
+            assemble.Source("inngest", self.repo, "pocok")
+        with self.assertRaisesRegex(ValueError, "unknown maintenance kind 'fix'"):
+            maintenance.Maintenance(kind="fix", request="r", targets=(), commits={})
+
     def test_fails_on_a_reference_sha(self):
         (self.repo / "README.md").write_text("built at bcabd72\n")
         git(self.repo, "commit", "-qam", "name a pin")
         with self.assertRaises(assemble.ForbiddenString) as e:
-            assemble.assemble_maintenance_app("inngest", "HEAD", self.tmp / "other", repo=self.repo)
+            assemble.assemble_maintenance_app(assemble.Source("inngest", self.repo), "HEAD", self.tmp / "other")
         self.assertIn("README.md: bcabd72", str(e.exception))
 
 
@@ -286,11 +293,11 @@ class AssembleMaintenanceTask(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.repo, self.base, self.commit = fixture_reference(self.tmp)
-        self.task = assemble.Maintenance(
+        self.task = maintenance.Maintenance(
             kind="change", request="Add the X hook.", targets=("pause-timeout", "pause-resume"),
             commits={"inngest": self.commit, "langchain": self.commit}, bases={"inngest": self.base, "langchain": self.base},
         )
-        self.dirs = {s: assemble.assemble_maintenance_task("t9", s, task=self.task, repo=self.repo, tasks_dir=self.tmp / "tasks")
+        self.dirs = {s: assemble.assemble_maintenance_task("t9", assemble.Source(s, self.repo), task=self.task, tasks_dir=self.tmp / "tasks")
                      for s in assemble.STACKS}
 
     def test_task_folder(self):
@@ -325,51 +332,51 @@ class AssembleMaintenanceTask(unittest.TestCase):
             self.assertIn("Add the X hook.", text)
             for name in self.task.targets:
                 self.assertNotIn(name, text)
-            self.assertIn(assemble.RUNS[stack], text)
-        neutral = {s: t.replace(assemble.MAINTENANCE_SERVICES[s], "{services}").replace(assemble.RUNS[s], "{runs}")
+            self.assertIn(maintenance.RUNS_DIRS[stack], text)
+        neutral = {s: t.replace(maintenance.SERVICES[s], "{services}").replace(maintenance.RUNS_DIRS[s], "{runs}")
                    for s, t in prompts.items()}
         self.assertEqual(neutral["inngest"], neutral["langchain"])
 
     def test_a_failed_assemble_leaves_no_task_folder(self):
         (self.repo / "README.md").write_text("see codeclimb-eval-spec\n")
         git(self.repo, "commit", "-qam", "name the benchmark spec")
-        task = assemble.Maintenance(kind="change", request="r", targets=(), commits={"inngest": "HEAD"})
+        task = maintenance.Maintenance(kind="change", request="r", targets=(), commits={"inngest": "HEAD"})
         with self.assertRaises(assemble.ForbiddenString):
-            assemble.assemble_maintenance_task("t8", "inngest", task=task, repo=self.repo, tasks_dir=self.tmp / "tasks")
+            assemble.assemble_maintenance_task("t8", assemble.Source("inngest", self.repo), task=task, tasks_dir=self.tmp / "tasks")
         self.assertFalse((self.tmp / "tasks/codeclimb-inngest-t8").exists())
 
     def test_c1_prompt_names_no_target(self):
-        c1 = assemble.MAINTENANCE["c1"]
+        c1 = maintenance.MAINTENANCE["c1"]
         for name in c1.targets:
             self.assertNotIn(name, assemble.maintenance_prompt("inngest", c1))
 
     def test_c7_and_c6_start_from_the_pins_and_name_no_target(self):
         for tid in ("c7", "c6"):
-            t = assemble.MAINTENANCE[tid]
+            t = maintenance.MAINTENANCE[tid]
             # A change on the pin: the /app is the pin, the reference's own patch is the build the targets pass on.
-            self.assertEqual((t.kind, t.commits), ("change", assemble.PINS))
-            self.assertEqual(set(t.bases), set(assemble.PINS))
-            self.assertTrue(all(t.bases[s] != t.commits[s] for s in assemble.PINS))
-            for stack in assemble.PINS:
+            self.assertEqual((t.kind, t.commits), ("change", maintenance.PINS))
+            self.assertEqual(set(t.bases), set(maintenance.PINS))
+            self.assertTrue(all(t.bases[s] != t.commits[s] for s in maintenance.PINS))
+            for stack in maintenance.PINS:
                 prompt = assemble.maintenance_prompt(stack, t)
                 for name in t.targets:
                     self.assertNotIn(name, prompt)
-        self.assertEqual(assemble.MAINTENANCE["c7"].targets, ("hard-deadline-mid-step",))
-        self.assertEqual(assemble.MAINTENANCE["c6"].targets, ("config-rejects",))
+        self.assertEqual(maintenance.MAINTENANCE["c7"].targets, ("hard-deadline-mid-step",))
+        self.assertEqual(maintenance.MAINTENANCE["c6"].targets, ("config-rejects",))
 
     def test_r14_and_r3_are_registered_symptoms_that_name_no_target(self):
         # #59. R3's target shares its name with the CLI command its symptom must give: only a quoted `run-night ...`
         # command may hold it.
         for task_id in ("r14", "r3"):
-            task = assemble.MAINTENANCE[task_id]
+            task = maintenance.MAINTENANCE[task_id]
             self.assertEqual(task.kind, "repair")
             self.assertEqual(set(task.commits), {"inngest", "langchain"})
             for stack in task.commits:
                 prose = re.sub(r"`run-night [^`]*`", "", assemble.maintenance_prompt(stack, task))
                 for name in task.targets:
                     self.assertNotIn(name, prose, f"{task_id} on {stack}")
-        self.assertEqual(assemble.MAINTENANCE["r3"].targets, ("continue",))
-        self.assertEqual(assemble.MAINTENANCE["r14"].targets,
+        self.assertEqual(maintenance.MAINTENANCE["r3"].targets, ("continue",))
+        self.assertEqual(maintenance.MAINTENANCE["r14"].targets,
                          ("crash-resume", "crash-mid-eval", "crash-during-test-eval", "crash-at-init", "row-identity"))
 
 
