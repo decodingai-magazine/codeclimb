@@ -66,6 +66,10 @@ test("an unparsable deadline is refused", () => {
 	assert.throws(() => load({ deadline: "90 minutes" }), /deadline/);
 });
 
+test("an experiment's cap above the night's is refused", () => {
+	assert.throws(() => load({ budget_usd: { experiment: 11, night: 10 } }), /budget_usd\.experiment/);
+});
+
 test("a threshold of 0 or less is refused", () => {
 	assert.throws(() => load({ thresholds: { accuracy: 0 } }), /threshold/);
 	assert.throws(() => load({ thresholds: { accuracy: -1 } }), /threshold/);

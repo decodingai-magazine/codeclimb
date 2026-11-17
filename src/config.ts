@@ -278,6 +278,7 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 		experiment: num(b.experiment, "budget_usd.experiment", (n) => n > 0, "> 0"),
 		night: num(b.night, "budget_usd.night", (n) => n > 0, "> 0"),
 	};
+	if (budget.experiment > budget.night) fail("budget_usd.experiment must not exceed budget_usd.night");
 
 	const nm = isObj(raw.noise_margin) ? (raw.noise_margin as Obj) : {};
 	const noise: NightConfig["noise_margin"] = {
