@@ -104,6 +104,30 @@ MAINTENANCE = {
         targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
         commits={"inngest": "0c395fd", "langchain": "9567643"},
     ),
+    "r14": Maintenance(
+        kind="repair",
+        request=(
+            "A mock night was started with `run-night --mock`. Once its round 2 had begun, the service that runs the"
+            " night's steps was killed (`SIGKILL`) and started again, with nothing else touched. The night then did"
+            " round 1's finished work a second time: `docker ps -a` shows round 1's coder sandbox"
+            " `cc-<night id>-r1-e0` created again after the restart, and round 1's"
+            " `exps/<night id>-r1-e0/code-state.json` changed after it."
+        ),
+        targets=("crash-resume", "crash-mid-eval", "crash-during-test-eval", "crash-at-init", "row-identity"),
+        commits={"inngest": "f76da25", "langchain": "c3a1ec3"},
+    ),
+    # The control: nothing stack-specific in it.
+    "r3": Maintenance(
+        kind="repair",
+        request=(
+            "A mock night, started with `run-night --mock`, ended normally. Then"
+            " `run-night continue --config <its config> --night <its id> --rounds 1`, with no `--mock` (the command"
+            " takes none), did not go on with it as a mock night: it checked the real models first and stopped with"
+            " `no github-copilot credentials`."
+        ),
+        targets=("continue",),
+        commits={"inngest": "2c8eaa7", "langchain": "3f7793d"},
+    ),
 }
 MAINTENANCE_TEMPLATE = ROOT / "tasks/shared/maintenance.md"
 ASK = {"change": "Make this change:", "repair": "Something is broken. This is what was seen:"}
