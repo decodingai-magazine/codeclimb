@@ -103,7 +103,7 @@ These nights ran on the old k-fold protocol, before fixed splits. Night `hard1` 
 The yearless convention was found by A/B across branches: "nearest past" lost in round 4, "current year" brought no gain in round 5, "next occurrence" won in round 6. Night `hard2` (threshold 0.90, about 10 min, $0.31, on the older k-fold protocol) stopped on `thresholds` after 6 rounds: 0.804 → 0.872 (r2) → 0.884 (r4) → 0.936 (r6), test 0.896.
 
 **What happens when the worker is killed mid-night?**
-It resumes after about 2 minutes, once Inngest's lease expires and the step retries. The retried step reopens the Pi session JSONL on the still-running sandbox.
+It resumes after about 2 minutes, once Inngest's lease expires and the step [retries](https://www.inngest.com/docs/durable-execution/guides-and-advanced/error-handling/retries?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai). The retried step reopens the Pi session JSONL on the still-running sandbox.
 
 **Can the local and the cloud worker run at the same time?**
 Yes, each only sees its own Inngest. Give the second one another `CODECLIMB_API_PORT`.

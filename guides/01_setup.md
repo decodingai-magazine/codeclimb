@@ -49,9 +49,9 @@ npm run build:image:graphrag
 
 ## Inngest dev server config
 
-`inngest.json` points the dev server at `http://localhost:3000/api/inngest` and turns off auto-discovery. `npm run dev:inngest` passes `--ignore-scripts=false --allow-scripts=inngest-cli` to `npx`, because the CLI downloads its binary in a postinstall script and npm 12 needs `--allow-scripts` to run it.
+How the dev server works: [Inngest local development](https://www.inngest.com/docs/local-development?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai). `inngest.json` points the dev server at `http://localhost:3000/api/inngest` and turns off auto-discovery. `npm run dev:inngest` passes `--ignore-scripts=false --allow-scripts=inngest-cli` to `npx`, because the CLI downloads its binary in a postinstall script and npm 12 needs `--allow-scripts` to run it.
 
-The dev server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` (configured in `.mcp.json`) for listing functions, sending events and checking runs from a coding agent.
+The dev server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` (configured in `.mcp.json`) for listing functions, sending events and checking runs from a coding agent ([Inngest MCP docs](https://www.inngest.com/docs/ai-dev-tools/mcp?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)).
 
 > [!WARNING]
 > Never put `INNGEST_DEV` in `.env`: cloud mode shares that file, and the SDK would quietly use the dev server instead of Inngest Cloud.
@@ -65,8 +65,8 @@ The dev server exposes an MCP endpoint at `http://127.0.0.1:8288/mcp` (configure
 | `OPENROUTER_API_KEY` | For `openrouter/<id>` models | `codeclimb/pi/session.ts`, `codeclimb/meter/openrouter.ts` | Coders, or the program's models in `allowed_models`; [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `OPENROUTER_BASE_URL` | No (default `https://openrouter.ai/api`) | `codeclimb/meter/openrouter.ts` | Another OpenRouter endpoint, for tests |
 | `CODECLIMB_PI_AUTH_PATH` | No (default `~/.pi/agent/auth.json`) | `codeclimb/pi/session.ts` | Another Pi credentials file |
-| `INNGEST_EVENT_KEY` | Cloud mode only | `codeclimb/env.ts` | Inngest dashboard, **Manage → Event Keys** |
-| `INNGEST_SIGNING_KEY` | Cloud mode only | `codeclimb/env.ts` | Inngest dashboard, **Manage → Signing Key** |
+| `INNGEST_EVENT_KEY` | Cloud mode only | `codeclimb/env.ts` | Inngest dashboard, **Manage → Event Keys** ([keys and access](https://www.inngest.com/docs/platform-and-operations/keys-and-access?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)) |
+| `INNGEST_SIGNING_KEY` | Cloud mode only | `codeclimb/env.ts` | Inngest dashboard, **Manage → Signing Key** ([keys and access](https://www.inngest.com/docs/platform-and-operations/keys-and-access?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)) |
 | `CODECLIMB_ENV` | Set by the `:cloud` scripts | `codeclimb/env.ts` | `cloud` requires both Inngest keys and pins the proxy port to 7422 |
 | `INNGEST_DEV` | Set by the local scripts | `codeclimb/env.ts`, `scripts/worker.ts` | `1` puts the SDK in local mode; never in `.env` |
 | `CODECLIMB_API_HOST` | No (default `127.0.0.1`) | `codeclimb/api.ts` | Where the worker API binds |
@@ -113,7 +113,7 @@ npx tsx scripts/smoke-pi-sandbox.ts anthropic/claude-haiku-5-5
 
 ### Inngest Cloud
 
-Optional; local nights use the dev server. Free plan with 50k executions/month at [Inngest](https://inngest.link/dai-gh). Fills `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. Inngest Sandboxes (`--sandbox inngest`) need the cloud worker. How to run on it: [02_running.md#inngest-cloud](02_running.md#inngest-cloud).
+Optional; local nights use the dev server. Sign up at [Inngest](https://inngest.link/dai-gh): free plan with 50k executions/month ([pricing](https://www.inngest.com/pricing?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)). Fills `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. Inngest Sandboxes (`--sandbox inngest`) need the cloud worker. How to run on it: [02_running.md#inngest-cloud](02_running.md#inngest-cloud).
 
 ### OpenRouter
 

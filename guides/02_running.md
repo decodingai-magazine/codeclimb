@@ -8,7 +8,7 @@ Scenarios follow the order a night runs in: services up, a night started, watche
 
 Needs: [01_setup.md](01_setup.md). Every local night needs both processes running, each in its own terminal.
 
-Entry points: `scripts/worker.ts` (the `connect()` worker, app id `codeclimb-worker`), `inngest/codeclimb/functions.ts` (`run-night`, `run-experiment`, `run-evaluator`, the cleanup handlers and `distill-lessons`).
+Entry points: `scripts/worker.ts` (the `connect()` worker, app id `codeclimb-worker`), `inngest/codeclimb/functions.ts` (`run-night`, `run-experiment`, `run-evaluator`, the cleanup handlers and `distill-lessons`). The worker dials out to Inngest over a persistent connection instead of serving an HTTP endpoint: [Inngest Connect](https://www.inngest.com/docs/durable-execution/deploying-functions/connect?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai).
 
 ```bash
 npm run dev:inngest
@@ -227,7 +227,7 @@ npm run run-night:cloud -- stop --night <night_id>
 
 ### Inngest Sandboxes
 
-Needs: the cloud worker (the dev worker refuses it). Entry point: `codeclimb/sandbox/inngest.ts`.
+Needs: the cloud worker (the dev worker refuses it). Entry point: `codeclimb/sandbox/inngest.ts`. Docs: [Inngest Sandboxes](https://www.inngest.com/docs/sandboxes/overview?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai), [limits](https://www.inngest.com/docs/sandboxes/limits?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai).
 
 Each coder and evaluator runs in a microVM with 2 vCPUs and 2 GB, on Inngest's base image (Python 3.14, git).
 
