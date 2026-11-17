@@ -59,13 +59,23 @@ npm run run-night -- --config configs/datenorm-smoke.yaml --mock   # terminal 3
 
 In about 30 seconds the last command prints `done` and the night's `done.json` with `"stop_reason": "max_rounds"` and `"spend_usd": 0`: two rounds of sandboxes, commits, evaluations and reviews on scripted models. Results land in `runs-inngest/mock/datenorm-smoke/`.
 
-**Set up with your coding agent:**
+**Set up with your coding agent, local** (Inngest dev server and Docker on your machine, no keys):
 
 ```txt
 Clone https://github.com/decodingai-magazine/codeclimb, follow guides/ from 01_setup.md onward
 (00_troubleshooting.md on any error), and set it up until npm test passes and
 npm run run-night -- --config configs/datenorm-smoke.yaml --mock prints done.
 Ask me for any API key it needs.
+```
+
+**Set up with your coding agent, Inngest Cloud** (needs your Inngest event and signing keys):
+
+```txt
+Clone https://github.com/decodingai-magazine/codeclimb, follow guides/ from 01_setup.md onward,
+including 01_setup.md#inngest-cloud and 02_running.md#inngest-cloud (00_troubleshooting.md on
+any error), and set it up until npm test passes and, with npm run worker:cloud running,
+npm run run-night:cloud -- --config configs/datenorm-smoke.yaml --mock prints done.
+Ask me for INNGEST_EVENT_KEY, INNGEST_SIGNING_KEY and any other API key it needs.
 ```
 
 ## Guides
