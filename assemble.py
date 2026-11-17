@@ -111,7 +111,7 @@ MAINTENANCE = {
         targets=("backstop-mid-step", "pause-timeout", "pause-resume"),
         commits={"inngest": "0c395fd", "langchain": "9567643"},
     ),
-    # Changes on the pins: the bases are the references' own patches, on maint-c7-* and maint-c6-* (the gate's proof).
+    # Changes on the pins: the bases are the references' own patches (the gate's proof).
     "c7": Maintenance(
         kind="change",
         request=(
