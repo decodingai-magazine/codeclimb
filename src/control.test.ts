@@ -67,7 +67,7 @@ test("control: every server run CodeClimb creates passes durability sync", async
 	await startNight(input);
 	await startVariation({ ...input, variation: 1 });
 	await resumeErroredThread("00000000-0000-4000-8000-000000000002");
-	await startTimer("n1", { variation: 0 }, 60);
+	await startTimer("n1", { pause: 1 }, 60);
 	await runStopGraph("n1", "manual");
 	await startLessons({ night_id: "n1", scenario: "datenorm" } as LessonsInput);
 	const bodies = runBodies();

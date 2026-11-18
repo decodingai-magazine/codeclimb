@@ -65,7 +65,7 @@ The operator's command that ends a pause.
 _Avoid_: continue (that starts a new variation)
 
 **Timer**:
-A stop scheduled for later: it ends a pause after 3 days or a variation after 4, and does nothing if that pause or variation has already ended.
+A stop scheduled for later: it ends a pause after 3 days, and does nothing if that pause has already ended.
 
 **Crash resume**:
 The Agent Server running again a server run that a crash cut off.

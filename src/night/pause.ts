@@ -10,7 +10,7 @@ const hookSeconds = (name: string, fallback: number): number => {
 	return Number.isFinite(s) && s > 0 ? Math.round(s) : fallback;
 };
 export const PAUSE_TIMEOUT_S = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", 3 * 24 * 3600);
-export const VARIATION_TIMEOUT_S = hookSeconds("CODECLIMB_BACKSTOP_S", 4 * 24 * 3600);
+export const BACKSTOP_S = hookSeconds("CODECLIMB_BACKSTOP_S", 4 * 24 * 3600);
 
 const CREDIT = /\b402\b|payment required|insufficient (credits|quota|funds|balance)|credit balance|out of (credits|budget)|quota (exceeded|exhausted)|usage limit reached|key limit exceeded|billing/i;
 /** A credit or quota message: a 429 rate limit is not one. */

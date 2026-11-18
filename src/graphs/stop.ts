@@ -2,7 +2,7 @@
 import { entrypoint } from "@langchain/langgraph";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { cancelNightRuns, nightThreads, pendingPause, startLessons, type TimerGuard } from "../control.ts";
+import { cancelNightRuns, pendingPause, startLessons, type TimerGuard } from "../control.ts";
 import { lessonsOn } from "../lessons.ts";
 import { sandboxPrefix } from "../ids.ts";
 import { findNightDir, readJson, type StopReason, writeStopIfMissing } from "../night/files.ts";
@@ -17,16 +17,15 @@ registerTracing();
 export interface StopInput {
 	night_id: string;
 	reason?: StopReason;
-	/** A timer's guard: the pause or the variation it watches. */
+	/** A timer's guard: the pause it watches. */
 	guard?: TimerGuard;
 }
 
-/** A timer fires only while its pause is pending, or while its variation is the newest and has not ended. */
+/** A timer fires only while its pause is pending and the night has not ended. */
 async function guardHolds(id: string, guard: TimerGuard): Promise<boolean> {
 	const dir = findNightDir(serverRoot(), id);
 	if (!dir || existsSync(join(dir, "done.json")) || existsSync(join(dir, "stop.json"))) return false;
 	if (guard.pause !== undefined) return (await pendingPause(id))?.pause === guard.pause;
-	if (guard.variation !== undefined) return (await nightThreads(id))[0]?.variation === guard.variation;
 	return false;
 }
 

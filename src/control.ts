@@ -106,7 +106,6 @@ export async function resumeNight(root: string, nightId: string): Promise<Resume
 
 export interface TimerGuard {
 	pause?: number;
-	variation?: number;
 }
 
 /** A delayed server run of `stop` on the night's timer thread (created if missing), carrying its guard. */
