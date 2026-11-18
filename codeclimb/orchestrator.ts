@@ -299,8 +299,8 @@ export const noteOutcome = (decision: string, reason: string): string => {
 };
 
 /**
- * One experiment's note, /spec/history/notes/<exp>.md in every later sandbox: the loop's outcome, the
- * coder's notes from before its evaluation, and the reviewer's verdict after it; held-out names masked.
+ * One experiment's note, /spec/history/notes/<exp>.md: the loop's outcome, the coder's notes from before
+ * its evaluation, and the reviewer's verdict after it; held-out names masked.
  */
 export async function writeNote(
   cfg: NightConfig,
@@ -675,9 +675,17 @@ export async function reviewRound(args: {
   return review;
 }
 
+const pending = new Map<string, { rows: ResultRow[]; notes: Parameters<typeof writeNote>[] }>();
+const pendingOf = (nightId: string) => pending.get(nightId) ?? pending.set(nightId, { rows: [], notes: [] }).get(nightId)!;
+
 export function recordRows(cfg: NightConfig, rows: ResultRow[]): number {
-  appendRows(cfg.results_path, rows);
+  pendingOf(rows[0].night_id).rows.push(...rows);
   return rows.length;
+}
+
+export function recordNote(cfg: NightConfig, nightId: string, expId: string, note: Parameters<typeof writeNote>[3]): string {
+  pendingOf(nightId).notes.push([cfg, nightId, expId, note]);
+  return expId;
 }
 
 export async function finishNight(b: RowBase & {
@@ -699,6 +707,10 @@ export async function finishNight(b: RowBase & {
     leftover_sandboxes_destroyed: swept,
     finished_at: new Date().toISOString(),
   };
+  const held = pendingOf(b.nightId);
+  for (const note of held.notes) await writeNote(...note);
+  appendRows(b.cfg.results_path, held.rows);
+  pending.delete(b.nightId);
   writeFileSync(nightPaths(b.cfg, b.nightId).doneJson, JSON.stringify(summary, null, 2));
   return summary;
 }

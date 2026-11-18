@@ -33,7 +33,7 @@ import {
   type Noise,
   type PausedAt,
   recordNoise, recordRows, renameKept, rescoreRow, saveRejected,
-  reviewRound, scanText, smokeTest, noteOutcome, writeNote,
+  recordNote, reviewRound, scanText, smokeTest, noteOutcome,
 } from "../../codeclimb/orchestrator";
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import type { HypothesisLogEntry, ReviewOutput } from "../../codeclimb/reviewer";
@@ -321,7 +321,7 @@ export const runNight = ccInngest.createFunction(
           await step.run(`r${round}-record-failed`, () => recordRows(cfg, [first.row]));
           const firstNotes = experiment.ok ? experiment.code.notes : undefined;
           await step.run(`r${round}-note-failed`, () =>
-            writeNote(cfg, nightId, first.summary.expId, { outcome: noteOutcome(first.summary.decision, errors.join("; ")), coder: firstNotes }),
+            recordNote(cfg, nightId, first.summary.expId, { outcome: noteOutcome(first.summary.decision, errors.join("; ")), coder: firstNotes }),
           );
           experiment = await attempt(1, first.summary.expId, { failures: toFix, hypothesis: first.summary.hypothesis, repair: true });
           const fixed = experiment;
@@ -382,7 +382,7 @@ export const runNight = ccInngest.createFunction(
       log.push(entry);
       const verdict = review.verdict;
       await step.run(`r${round}-note`, () =>
-        writeNote(cfg, nightId, s.expId, { outcome: noteOutcome(s.decision, entry.reason ?? ""), coder: coderNotes, reviewer: verdict }),
+        recordNote(cfg, nightId, s.expId, { outcome: noteOutcome(s.decision, entry.reason ?? ""), coder: coderNotes, reviewer: verdict }),
       );
       history.push(await step.run(`r${round}-history`, () => historyLine(cfg, entry)));
       // A rejected commit stays readable to later coders, whatever rejected it.
