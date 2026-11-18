@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, beforeEach, test } from "node:test";
-import { type LessonsInput, resumeErroredThread, resumeNight, runStopGraph, startLessons, startNight, startTimer, startVariation } from "./control.ts";
+import { type LessonsInput, resumeErroredThread, resumeNight, runStopGraph, startLessons, startNight, startTimer } from "./control.ts";
 import type { NightInput } from "./night/types.ts";
 
 interface Seen {
@@ -65,13 +65,12 @@ const input = { night_id: "n1" } as NightInput;
 
 test("control: every server run CodeClimb creates passes durability sync", async () => {
 	await startNight(input);
-	await startVariation({ ...input, variation: 1 });
 	await resumeErroredThread("00000000-0000-4000-8000-000000000002");
 	await startTimer("n1", { variation: 0 }, 60);
 	await runStopGraph("n1", "manual");
 	await startLessons({ night_id: "n1", scenario: "datenorm" } as LessonsInput);
 	const bodies = runBodies();
-	assert.equal(bodies.length, 6);
+	assert.equal(bodies.length, 5);
 	for (const b of bodies) assert.equal(b.durability, "sync", JSON.stringify(b));
 });
 

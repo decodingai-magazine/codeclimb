@@ -1,16 +1,14 @@
-// Continue, seed and rescore without LangGraph: a night's state from its rows, the host-side reopen, seed resolution
-// (spec: Continue, seed and rescore).
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { deadlineAt, type NightConfig } from "../config.ts";
+// Seed and rescore without LangGraph: a night's state from its rows, seed resolution (spec: Continue, seed and rescore).
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { NightConfig } from "../config.ts";
 import { weightedScore } from "../decision.ts";
 import { isMockConfig, pendingRounds } from "../lessons.ts";
 import { type ResultRow, readRows } from "../results.ts";
-import { type NightPaths, nightPaths, readJson, writeJson } from "./files.ts";
+import { type NightPaths, nightPaths, readJson } from "./files.ts";
 import type { PauseJson, PauseLogEntry } from "./pause.ts";
 import { scoringHashes } from "./init.ts";
-import type { NightInput, NightJson, SeedInfo } from "./types.ts";
+import type { NightJson, SeedInfo } from "./types.ts";
 import type { Checkpoint } from "./rows.ts";
 
 /** A rescore row: an `experiment` row with no model. */
@@ -41,9 +39,6 @@ export function spendOf(rows: ResultRow[]): number {
 	return usd;
 }
 
-/** Every continuation's night budget: what the night spent plus the run budget kept from the first continuation. Never compounds. */
-export const continuedBudget = (spentUsd: number, runBudgetUsd: number) => spentUsd + runBudgetUsd;
-
 /** The highest pause number the night used: a new variation's pauses number on from it. */
 export function pausesUsed(paths: NightPaths): number {
 	const log = join(paths.nightDir, "pauses.jsonl");
@@ -59,11 +54,6 @@ export function pausesUsed(paths: NightPaths): number {
 const sameHashes = (a: Record<string, string>, b: Record<string, string>) => {
 	const ka = Object.keys(a).sort();
 	return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
-};
-
-const lessonsHashes = (root: string, config: NightConfig): string[] => {
-	const file = config.scenario_spec.lessons ? join(root, config.scenario, config.scenario_spec.lessons) : undefined;
-	return file && existsSync(file) ? [createHash("sha256").update(readFileSync(file)).digest("hex")] : [];
 };
 
 export interface EndedNight {
@@ -127,71 +117,4 @@ export function seedInfo(root: string, config: NightConfig, seedNight: string, r
 	const rows = readRows(paths.results).filter((r) => r.night_id === seedNight);
 	const k = keptOf(rows, night);
 	return { night: seedNight, exp_id: k.exp_id, commit: k.commit, round: lastRound(rows), primary: k.metrics[config.primary_metric] ?? 0, metrics: k.metrics, rescore };
-}
-
-export interface ReopenOptions {
-	/** Rounds to add; default the config's `max_rounds`. */
-	rounds?: number;
-	direction?: string;
-	mock: boolean;
-}
-
-/**
- * Reopen an ended night for one more variation, before its server run exists (spec: Continue). In order: refusals, the
- * files of rounds past the last recorded one moved aside, the end file renamed, then night.json rewritten. Returns the
- * start input of the variation.
- */
-export function reopenNight(root: string, nightId: string, config: NightConfig, o: ReopenOptions, now = new Date()): NightInput | Refusal {
-	const paths = nightPaths(root, config.results_path, nightId);
-	const night = readJson<NightJson>(paths.nightJson);
-	if (!night) return { refused: `night ${nightId} has no night.json under ${paths.resultsDir}: it can't be continued` };
-	const end = existsSync(paths.doneJson) ? "done" : existsSync(paths.stopJson) ? "stop" : null;
-	if (!end) return { refused: `night ${nightId} has not ended (no done.json or stop.json): it may be running` };
-	if (night.config.scenario !== config.scenario) return { refused: `night ${nightId} ran ${night.config.scenario}, not ${config.scenario}` };
-
-	const rows = readRows(paths.results).filter((r) => r.night_id === nightId);
-	const last = lastRound(rows);
-	const stamp = now.toISOString().replace(/[:.]/g, "-");
-	// Files of rounds past the last recorded one (a night that failed mid-round): that round reruns from scratch.
-	const aside = join(paths.nightDir, "unfinished", `after-r${last}-${stamp}`);
-	// An evaluation with a row stays: a noise run at the start of the unfinished round is recorded, and noise.json stands.
-	const recorded = new Set(rows.map((r) => r.eval_id));
-	// The round a file belongs to: a noise run's is the round it ran in (`<exp>-noise-r<N>`), else the first `-r<N>-`.
-	const roundOf = (name: string) => Number(/-noise-r(\d+)$/.exec(name)?.[1] ?? /-r(\d+)-/.exec(`${name}-`)?.[1] ?? /^r(\d+)[.-]/.exec(name)?.[1] ?? Number.NaN);
-	const move = (path: string) => {
-		const to = join(aside, relative(paths.nightDir, path));
-		mkdirSync(dirname(to), { recursive: true });
-		renameSync(path, to);
-	};
-	for (const sub of ["exps", "evals", "reviews", join("bundle", "history", "notes"), join("bundle", "history")]) {
-		const dir = join(paths.nightDir, sub);
-		if (!existsSync(dir)) continue;
-		for (const name of readdirSync(dir)) {
-			const n = roundOf(name.startsWith(`${nightId}-`) ? name.slice(nightId.length) : name);
-			if (Number.isFinite(n) && n > last) move(join(dir, name));
-		}
-	}
-	const endFile = end === "done" ? paths.doneJson : paths.stopJson;
-	const renamed = join(paths.nightDir, `${end}-r${last}.json`);
-	renameSync(endFile, existsSync(renamed) ? join(paths.nightDir, `${end}-r${last}-${stamp}.json`) : renamed);
-
-	const current = scoringHashes(root, join(root, config.scenario));
-	const rescore = !sameHashes(night.metric_script_sha256, current);
-	const runBudget = night.run_budget_usd ?? config.budget_usd.night;
-	const variation = (night.variation ?? 0) + 1;
-	const next: NightConfig = {
-		...config,
-		max_rounds: last + (o.rounds ?? config.max_rounds) + (rescore ? 1 : 0),
-		budget_usd: { ...config.budget_usd, night: continuedBudget(spendOf(rows), runBudget) },
-	};
-	writeJson(paths.nightJson, {
-		...night,
-		deadlineMs: deadlineAt(next.deadline, now.getTime()),
-		config: next,
-		metric_script_sha256: current,
-		lessons_sha256: [...night.lessons_sha256, ...lessonsHashes(root, next)],
-		run_budget_usd: runBudget,
-		variation,
-	} satisfies NightJson);
-	return { night_id: nightId, config: next, mock: o.mock, variation, continue: { rescore, ...(o.direction ? { direction: o.direction } : {}) } };
 }

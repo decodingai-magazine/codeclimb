@@ -30,7 +30,7 @@ const busy = { thread_id: "t1", status: "busy" };
 test("watchdog: error on two checks in a row resumes, at most twice per thread; the third error stops", () => {
 	assert.deepEqual(checks([err, busy, err, busy]), ["none", "none", "none", "none"], "one check of error is not enough");
 	assert.deepEqual(checks([err, err, busy, err, err, err, err]), ["none", "resume", "none", "none", "resume", "none", "stop"]);
-	// A new thread (a continue) has resumes of its own.
+	// A new thread has resumes of its own.
 	assert.deepEqual(checks([err, err, err, err, { thread_id: "t2", status: "error" }, { thread_id: "t2", status: "error" }]), ["none", "resume", "none", "resume", "none", "resume"]);
 	for (const status of ["busy", "interrupted", "idle"]) assert.deepEqual(checks([{ thread_id: "t1", status }, { thread_id: "t1", status }]), ["none", "none"]);
 });
@@ -70,7 +70,7 @@ async function listen(handler: WorkerApi): Promise<{ server: Server; url: string
 	return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
 
-test("routes: health, nights, a summary, live, report; unknown night 404, bad id 400; continue validates before it reaches the server", async () => {
+test("routes: health, nights, a summary, live, report; unknown night 404, bad id 400", async () => {
 	const { root } = checkout();
 	const { server, url } = await listen(new WorkerApi({ root, host: "127.0.0.1" }));
 	try {
@@ -86,7 +86,6 @@ test("routes: health, nights, a summary, live, report; unknown night 404, bad id
 		assert.equal(rep.config.primary_metric, "accuracy");
 		assert.equal((await fetch(`${url}/api/nights/nope`)).status, 404);
 		assert.equal((await fetch(`${url}/api/nights/-bad`)).status, 400);
-		assert.equal((await fetch(`${url}/api/nights/fin/continue`, { method: "POST", body: JSON.stringify({ rounds: 0 }) })).status, 400);
 		assert.equal((await fetch(`${url}/api/nights/fin/export/other-r1-e0`)).status, 400, "an experiment of another night");
 	} finally {
 		server.close();

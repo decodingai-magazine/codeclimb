@@ -25,7 +25,7 @@ export interface RoundState {
 	history: HistoryEntry[];
 	failures?: string;
 	noise: NoiseState & { base: number | null };
-	/** The operator's direction on a continued night, masked: every coder and reviewer of the variation reads it. */
+	/** The operator's direction, masked: every coder and reviewer of the variation reads it. */
 	direction?: string;
 }
 
@@ -179,7 +179,7 @@ export async function runRound(root: string, night: string, config: NightConfig,
 
 /**
  * The rescore round: the kept commit under a new name `<night>-r<N>-e0`, evaluated on dev, recorded as `keep` with the
- * new metrics (the old ones if the evaluation failed), so a later continuation finds the commit (spec: Rescore).
+ * new metrics (the old ones if the evaluation failed) (spec: Rescore).
  */
 export async function runRescore(root: string, night: string, config: NightConfig, paths: NightPaths, mock: boolean, round: number, cp: Checkpoint, spentUsd: number, pauses: Pauses): Promise<{ checkpoint: Checkpoint; spendUsd: number }> {
 	const expId = experimentId(night, round);

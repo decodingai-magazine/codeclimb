@@ -50,7 +50,7 @@ export interface CodeRequest {
 	trajectory?: string;
 	/** The last experiment's errors, when it was never scored. */
 	failures?: string;
-	/** The operator's direction on a continued night, masked. */
+	/** The operator's direction, masked. */
 	direction?: string;
 	/** A repair attempt: no send-backs, no wrap-up turn. */
 	repair?: boolean;

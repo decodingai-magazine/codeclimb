@@ -10,9 +10,8 @@ export interface NightInput {
 	mock_offline?: number;
 	/** Tests only, with `mock`: one scripted credit error (spec: Mock mode). */
 	mock_credit?: MockCredit;
-	/** The variation number: 0 at start, +1 per continue. */
+	/** The variation number: 0 at start. */
 	variation?: number;
-	continue?: { rescore: boolean; direction?: string };
 	/** `--seed`, resolved by the CLI to a night id. */
 	seed?: string;
 }
@@ -38,9 +37,7 @@ export interface NightJson {
 	metric_script_sha256: Record<string, string>;
 	/** One per variation: the lessons.md its coders read. */
 	lessons_sha256: string[];
-	/** The config's `budget_usd.night` at the first continuation: every continuation adds it to the night's spend. */
-	run_budget_usd?: number;
-	/** The variation number: 0 at start, +1 per continue. */
+	/** The variation number: 0 at start. */
 	variation?: number;
 	/** The last pause whose time was added to `deadlineMs`. */
 	pausesApplied?: number;

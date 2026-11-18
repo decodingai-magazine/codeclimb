@@ -258,7 +258,7 @@ test("lessons: propose, skip a repeat, never apply a mock night; apply a real pr
 	assert.match(readFileSync(file, "utf8"), /raised mention recall/);
 	assert.equal(JSON.parse(readFileSync(join(out.dir, "proposal.json"), "utf8")).applied, true);
 	assert.throws(() => applyProposal(root, real, out.dir), /changed since/);
-	// A continued night distills from past the applied round (no model call here: a real night calls a real model).
+	// A night distills from past the applied round (no model call here: a real night calls a real model).
 	writeNight(root, real, "n7", [1, 2, 3]);
 	assert.equal(distilledThrough(root, real, "n7"), 2);
 	assert.equal(pendingRounds(root, real, "n7"), 1);

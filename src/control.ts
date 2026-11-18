@@ -7,7 +7,6 @@ import type { NightConfig } from "./config.ts";
 import { lessonsThreadId, nightThreadId, stopThreadId, timerThreadId } from "./ids.ts";
 import { findNightDir, type StopReason, writeStopIfMissing } from "./night/files.ts";
 import type { NightInput } from "./night/types.ts";
-import { type ReopenOptions, reopenNight } from "./night/variation.ts";
 
 export const serverUrl = () => process.env.CODECLIMB_SERVER_URL ?? "http://127.0.0.1:8123";
 const client = () => new Client({ apiUrl: serverUrl() });
@@ -33,35 +32,9 @@ export async function startNight(input: NightInput): Promise<StartResult> {
 	return { started: true, threadId };
 }
 
-/** A continued variation: a new thread (a random UUID, so it never meets the saved steps of the variation before), then its server run. */
-export async function startVariation(input: NightInput): Promise<string> {
-	const c = client();
-	const thread = await c.threads.create({ metadata: { kind: "night", night_id: input.night_id, run: input.variation ?? 0 } });
-	await c.runs.create(thread.thread_id, "night", { input: { ...input }, multitaskStrategy: "reject", durability: DURABILITY });
-	return thread.thread_id;
-}
-
 /** The watchdog's resume: a server run of `night` with no input on an errored thread, which replays from the last saved step. */
 export async function resumeErroredThread(threadId: string): Promise<void> {
 	await client().runs.create(threadId, "night", { multitaskStrategy: "reject", durability: DURABILITY });
-}
-
-export type ContinueResult = { thread: string; input: NightInput } | { refused: string };
-
-/**
- * Continue an ended night: reopen it on disk, then start the variation on a new thread. A failed start ends the
- * night again with stop.json (failed), since the rewritten night.json reads as running.
- */
-export async function continueNight(root: string, nightId: string, config: NightConfig, o: ReopenOptions): Promise<ContinueResult> {
-	const input = reopenNight(root, nightId, config, o);
-	if ("refused" in input) return input;
-	const dir = findNightDir(root, nightId);
-	try {
-		return { thread: await startVariation(input), input };
-	} catch (error) {
-		if (dir) writeStopIfMissing(dir, "failed");
-		throw error;
-	}
 }
 
 /** The night's threads, newest first. */

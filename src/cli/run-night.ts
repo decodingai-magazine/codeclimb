@@ -1,10 +1,10 @@
-// `run-night`: start, stop, resume or continue a night through the Agent Server, and follow it (spec: CLI).
+// `run-night`: start, stop or resume a night through the Agent Server, and follow it (spec: CLI).
 import { existsSync, readFileSync } from "node:fs";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { type NightConfig, loadNightConfig, RUNS_DIR } from "../config.ts";
-import { continueNight, nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
-import { endedNights, resolveSeed } from "../night/variation.ts";
+import { nightThreads, resumeNight, serverUrl, startNight, stopNight } from "../control.ts";
+import { resolveSeed } from "../night/variation.ts";
 import { loadEnvFile } from "../env.ts";
 import { checkNightModels } from "../pi/check.ts";
 import type { MockCredit } from "../pi/models.ts";
@@ -160,70 +160,10 @@ async function stop(argv: string[]): Promise<void> {
 	if (stopJson) console.log(JSON.stringify(stopJson, null, 2));
 }
 
-async function continueCommand(argv: string[]): Promise<void> {
-	const { values } = parseArgs({
-		args: argv,
-		options: { config: { type: "string" }, night: { type: "string" }, direction: { type: "string" }, rounds: { type: "string" }, seed: { type: "string" }, "no-wait": { type: "boolean", default: false } },
-	});
-	if (!values.config) die("--config <yaml> is required");
-	if (values.seed !== undefined) die("--seed never goes with continue");
-	let rounds: number | undefined;
-	if (values.rounds !== undefined) {
-		rounds = Number(values.rounds);
-		if (!Number.isInteger(rounds) || rounds < 1) die("--rounds must be an integer ≥ 1");
-	}
-	// A mock night lives under runs-langchain/mock/: the night's folder says which one it is.
-	const plain = loadOrDie(values.config, false);
-	const mockConfig = loadOrDie(values.config, true);
-	const candidates = [
-		...endedNights(nightPaths(root, plain.results_path, "_").resultsDir).map((n) => ({ ...n, mock: false })),
-		...endedNights(nightPaths(root, mockConfig.results_path, "_").resultsDir).map((n) => ({ ...n, mock: true })),
-	].sort((a, b) => Date.parse(b.night.startedAt) - Date.parse(a.night.startedAt));
-	let nightId = values.night;
-	let mock: boolean;
-	if (nightId) {
-		const dir = findNightDir(root, nightId);
-		if (!dir) die(`night ${nightId} not found under ${join(root, RUNS_DIR)}`);
-		mock = dir.includes(`${sep}${RUNS_DIR}${sep}mock${sep}`);
-	} else {
-		const newest = candidates[0];
-		if (!newest) die(`no ended night under the results of ${values.config}`);
-		nightId = newest.id;
-		mock = newest.mock;
-	}
-	try {
-		await fetch(`${serverUrl()}/ok`);
-	} catch {
-		die(`the Agent Server at ${serverUrl()} is not reachable (is \`npm run server\` running?)`);
-	}
-	const config = mock ? mockConfig : plain;
-	await checkOrDie(config, mock);
-	const paths = nightPaths(root, config.results_path, nightId);
-	let started: Awaited<ReturnType<typeof continueNight>>;
-	try {
-		started = await continueNight(root, nightId, config, { mock, ...(rounds !== undefined ? { rounds } : {}), ...(values.direction ? { direction: values.direction } : {}) });
-	} catch (error) {
-		die(`cannot start the variation on the Agent Server: ${(error as Error).message}`);
-	}
-	if ("refused" in started) die(started.refused);
-	const { input } = started;
-	console.log(`continued night ${nightId} as variation ${input.variation} (thread ${started.thread}): rounds up to ${input.config.max_rounds}${input.continue?.rescore ? ", a rescore round first" : ""}`);
-	if (values["no-wait"]) return;
-	await follow(paths, nightId, config.primary_metric);
-}
-
 /** The model check on the CLI's side, before anything starts; the Agent Server checks again with its own credentials. */
 async function checkOrDie(config: NightConfig, mock: boolean): Promise<void> {
 	try {
 		await checkNightModels(config, mock);
-	} catch (error) {
-		die((error as Error).message);
-	}
-}
-
-function loadOrDie(file: string, mock: boolean): NightConfig {
-	try {
-		return loadNightConfig(file, { cwd, root, mock });
 	} catch (error) {
 		die((error as Error).message);
 	}
@@ -245,5 +185,4 @@ async function resume(argv: string[]): Promise<void> {
 const [command, ...rest] = process.argv.slice(2);
 if (command === "stop") await stop(rest);
 else if (command === "resume") await resume(rest);
-else if (command === "continue") await continueCommand(rest);
 else await start(process.argv.slice(2));

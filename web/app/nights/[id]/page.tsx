@@ -71,40 +71,6 @@ function SpendKpi({ live, rows }: { live: Live; rows: Row[] }) {
   );
 }
 
-/** More rounds on this night from its kept commit, with an optional direction. The next poll shows it running. */
-function ContinueCard({ id, onError }: { id: string; onError: (message: string) => void }) {
-  const [direction, setDirection] = useState("");
-  const [count, setCount] = useState(2);
-  const [starting, setStarting] = useState(false);
-
-  async function start() {
-    setStarting(true);
-    try {
-      await api(`nights/${encodeURIComponent(id)}/continue`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ direction, rounds: count }),
-      });
-    } catch (e) {
-      onError((e as Error).message);
-      setStarting(false);
-    }
-  }
-
-  return (
-    <section className="card form">
-      <div className="card-head"><h2>Continue this night</h2><span className="sub">more rounds from its kept commit, with what it learned</span></div>
-      <label className="field">
-        <span>Direction (optional)</span>
-        <textarea className="input" rows={3} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="What should the next rounds work on?" />
-      </label>
-      <label className="field">
-        <span>Rounds</span>
-        <input className="input" type="number" min={1} value={count} onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))} />
-      </label>
-      <button className="btn" type="button" onClick={start} disabled={starting}>{starting ? "Starting…" : "Continue"}</button>
-    </section>
-  );
-}
-
 export default function NightPage() {
   const id = String(useParams<{ id: string }>().id);
   const [live, setLive] = useState<Live | null>(null);
@@ -208,7 +174,6 @@ export default function NightPage() {
           )}
         </div>
         {error && <p className="notice">{error}</p>}
-        {(live.status === "finished" || live.status === "stopped") && <ContinueCard id={id} onError={setError} />}
         {live.pause && (
           <p className="notice">
             Paused (pause {live.pause.pause}, round {live.pause.round}) since {new Date(live.pause.at).toLocaleTimeString()}, out of credits. Add credits, then resume.

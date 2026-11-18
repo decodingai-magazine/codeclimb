@@ -1,4 +1,4 @@
-// The worker API: the nights on this checkout's disk, and the stop, resume, continue and export operations
+// The worker API: the nights on this checkout's disk, and the stop, resume and export operations
 // (spec: Worker API). Default 127.0.0.1:7421. Off loopback, CODECLIMB_WORKER_TOKEN is required as a bearer on everything.
 import { spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -6,8 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isMockResults } from "../config.ts";
-import { continueNight, resumeNight, stopNight } from "../control.ts";
+import { resumeNight, stopNight } from "../control.ts";
 import { type ExportTarget, exportExperiment, validateExpId } from "../export.ts";
 import { isValidNightId } from "../ids.ts";
 import { nightPaths } from "../night/files.ts";
@@ -79,17 +78,6 @@ export class WorkerApi {
 		}
 		if (!expId.startsWith(`${n.id}-`)) throw new HttpError(400, "the experiment is not from this night");
 		return join(nightPaths(this.o.root, n.night.config.results_path, n.id).resultsDir, "experiments.git");
-	}
-
-	private async continue(n: NightEntry, body: Record<string, unknown>) {
-		const { direction, rounds } = body;
-		if (direction !== undefined && typeof direction !== "string") throw new HttpError(400, "direction must be text");
-		if (!(typeof rounds === "number" && Number.isInteger(rounds) && rounds >= 1)) throw new HttpError(400, "rounds must be an integer ≥ 1");
-		const cfg = n.night.config;
-		const mock = isMockResults(cfg.results_path);
-		const r = await continueNight(this.o.root, n.id, cfg, { mock, rounds, ...(direction?.trim() ? { direction } : {}) });
-		if ("refused" in r) throw new HttpError(409, r.refused);
-		return { night_id: n.id, variation: r.input.variation, thread: r.thread, max_rounds: r.input.config.max_rounds, rescore: r.input.continue?.rescore ?? false };
 	}
 
 	/** A download: `repo` (default) a .tar.gz of a git repository on codeclimb/<exp> with the lineage; `source` the tree; `bundle` a git bundle. */
@@ -168,7 +156,7 @@ export class WorkerApi {
 					.sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
 				return send(res, 200, { nights });
 			}
-			const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|continue|export)(?:\/([^/]+))?)?$/.exec(path);
+			const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|export)(?:\/([^/]+))?)?$/.exec(path);
 			if (m?.[1]) {
 				const n = this.find(decodeURIComponent(m[1]));
 				const op = m[2];
@@ -186,7 +174,6 @@ export class WorkerApi {
 					if ("refused" in r) throw new HttpError(409, r.refused);
 					return send(res, 200, { night_id: n.id, ...r });
 				}
-				if (req.method === "POST" && op === "continue") return send(res, 200, await this.continue(n, await readBody(req)));
 				if (req.method === "GET" && op === "export" && exp) return await this.download(n, exp, url.searchParams.get("format") ?? "repo", res);
 				if (req.method === "POST" && op === "export" && exp) return send(res, 200, await this.exportTo(n, exp, await readBody(req)));
 			}

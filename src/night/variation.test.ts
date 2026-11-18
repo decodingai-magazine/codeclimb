@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadNightConfig, type NightConfig } from "../config.ts";
 import { appendRow, type ResultRow } from "../results.ts";
 import { nightPaths, readJson, writeJson } from "./files.ts";
-import { scoringHashes } from "./init.ts";
 import type { NightJson } from "./types.ts";
-import { continuedBudget, keptOf, lastRound, reopenNight, resolveSeed, spendOf } from "./variation.ts";
+import { keptOf, lastRound, resolveSeed, spendOf } from "./variation.ts";
 
 const ROOT = process.cwd();
 
@@ -66,66 +65,6 @@ test("spend over all rows: coder + dev + program, plus each round's review once"
 		row({ kind: "test", round: 2, eval_id: "n-test-r2", coder_usd: 0, dev_usd: 0, program_usd: 0.05, reviewer_usd: 0 }),
 	];
 	assert.equal(Math.round(spendOf(rows) * 1e6) / 1e6, Math.round((3 * 1.75 + 0.05 + 0.1 + 0.2) * 1e6) / 1e6);
-});
-
-test("the budget does not compound: each continuation is the spend so far plus the first continuation's run budget", () => {
-	const run = 10;
-	const first = continuedBudget(4, run);
-	assert.equal(first, 14);
-	// The second continuation reads the saved config's budget (14) but adds the run budget, not 14.
-	assert.equal(continuedBudget(9, run), 19);
-});
-
-test("reopen: refuses a running night; moves the files of an unfinished round aside, renames the end file, rewrites night.json", () => {
-	const id = `tv${randomBytes(3).toString("hex")}`;
-	const base = loadNightConfig("configs/datenorm-smoke.yaml", { cwd: ROOT, root: ROOT, mock: true });
-	const config = { ...base, results_path: `runs-langchain/mock/${id}/results.jsonl`, max_rounds: 2, budget_usd: { ...base.budget_usd, night: 10 } };
-	const paths = nightPaths(ROOT, config.results_path, id);
-	try {
-		mkdirSync(join(paths.nightDir, "exps", `${id}-r2-e0`), { recursive: true });
-		mkdirSync(join(paths.nightDir, "exps", `${id}-r1-e0`), { recursive: true });
-		mkdirSync(join(paths.nightDir, "evals", `${id}-r1-e0-noise-r2`), { recursive: true });
-		mkdirSync(join(paths.nightDir, "reviews"), { recursive: true });
-		writeFileSync(join(paths.nightDir, "reviews", "r2.md"), "x");
-		writeFileSync(join(paths.nightDir, "reviews", "r1.md"), "x");
-		const night: NightJson = { night_id: id, startedAt: "2026-01-01T00:00:00Z", deadlineMs: 0, round0: { exp_id: `${id}-r0-starter`, sha: "c0" }, seed: null, config, metric_script_sha256: scoringHashes(ROOT, join(ROOT, config.scenario)), lessons_sha256: [] };
-		writeJson(paths.nightJson, night);
-		appendRow(paths.results, row({ night_id: id, exp_id: `${id}-r1-e0`, eval_id: `${id}-r1-e0-eval`, decision: "keep" }));
-		mkdirSync(join(paths.nightDir, "evals", `${id}-r1-e0-noise-r2-b`), { recursive: true });
-		appendRow(paths.results, row({ night_id: id, kind: "noise", round: 2, exp_id: `${id}-r1-e0`, eval_id: `${id}-r1-e0-noise-r2-b`, coder_usd: 0, dev_usd: 0, program_usd: 0, reviewer_usd: 0 }));
-
-		assert.match((reopenNight(ROOT, id, config, { mock: true }) as { refused: string }).refused, /has not ended/);
-		writeJson(paths.stopJson, { stop_reason: "failed" });
-		const input = reopenNight(ROOT, id, config, { mock: true, rounds: 3, direction: "try regexes" });
-		assert.ok(!("refused" in input));
-		assert.deepEqual(input.continue, { rescore: false, direction: "try regexes" });
-		assert.equal(input.variation, 1);
-		assert.equal(input.config.max_rounds, 4);
-		// Spend 1.75 + 0.1 plus the run budget 10.
-		assert.equal(Math.round(input.config.budget_usd.night * 100) / 100, 11.85);
-
-		// Round 2 never finished: its files move aside; round 1's stay.
-		assert.deepEqual(readdirSync(join(paths.nightDir, "exps")), [`${id}-r1-e0`]);
-		// The recorded noise run of round 2 stays; the unrecorded one moves.
-		assert.deepEqual(readdirSync(join(paths.nightDir, "evals")), [`${id}-r1-e0-noise-r2-b`]);
-		assert.deepEqual(readdirSync(join(paths.nightDir, "reviews")), ["r1.md"]);
-		const aside = readdirSync(join(paths.nightDir, "unfinished"));
-		assert.equal(aside.length, 1);
-		assert.ok(existsSync(join(paths.nightDir, "unfinished", aside[0] as string, "exps", `${id}-r2-e0`)));
-		assert.ok(existsSync(join(paths.nightDir, "stop-r1.json")) && !existsSync(paths.stopJson));
-		const saved = readJson<NightJson>(paths.nightJson);
-		assert.equal(saved?.variation, 1);
-		assert.equal(saved?.run_budget_usd, 10);
-
-		// A second continuation reads the saved config but keeps adding the first run budget.
-		writeJson(paths.doneJson, { stop_reason: "max_rounds" });
-		const again = reopenNight(ROOT, id, saved?.config as NightConfig, { mock: true, rounds: 1 });
-		assert.ok(!("refused" in again));
-		assert.equal(Math.round(again.config.budget_usd.night * 100) / 100, 11.85);
-		assert.ok(existsSync(join(paths.nightDir, "done-r1.json")));
-	} finally {
-		rmSync(dirname(paths.results), { recursive: true, force: true });
-	}
 });
 
 test("seed: refused while the seed night applies lessons that lessons.md doesn't hold yet; a mock night never is", () => {

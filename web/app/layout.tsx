@@ -4,7 +4,7 @@ import { ThemeToggle } from "./ui";
 
 export const metadata: Metadata = {
   title: "CodeClimb",
-  description: "Watch, stop, continue and export CodeClimb nights.",
+  description: "Watch, stop and export CodeClimb nights.",
 };
 
 // Applies a stored light/dark pick before the first paint, so a dark pick never flashes light.
