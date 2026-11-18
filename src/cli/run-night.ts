@@ -152,7 +152,7 @@ async function stop(argv: string[]): Promise<void> {
 	const { values } = parseArgs({ args: argv, options: { night: { type: "string" } } });
 	if (!values.night) die("--night <id> is required");
 	const dir = findNightDir(root, values.night);
-	// A night still in init has no night.json yet: its cancel path writes stop.json itself.
+	// A night still in init may have no folder yet: the stop operation writes stop.json once it has one.
 	if (!dir && (await nightThreads(values.night)).length === 0) die(`night ${values.night} not found under ${join(root, RUNS_DIR)} nor on the Agent Server`);
 	await stopNight(root, values.night, "manual", dir);
 	console.log("stopped");

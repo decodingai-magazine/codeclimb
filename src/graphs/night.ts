@@ -1,5 +1,4 @@
 // The `night` graph: init, rounds, finish; any failure ends in the stop operation (spec: Round loop; Cleanup).
-import { existsSync } from "node:fs";
 import { entrypoint, getConfig, isGraphInterrupt } from "@langchain/langgraph";
 import { runStopGraph, startLessons, startTimer } from "../control.ts";
 import { lessonsOn } from "../lessons.ts";
@@ -115,14 +114,11 @@ export const night = entrypoint("night", async (input: NightInput) => {
 		if (isGraphInterrupt(error)) throw error;
 		// Resumed after a stop while paused: the stop operation already cleaned up.
 		if (error instanceof NightStopped) return { night_id: id, stopped: true };
-		const runAborted = runSignal?.aborted === true && !isOwnFailure(error);
-		const cancelledFromOutside = runAborted && !existsSync(paths.stopJson);
-		// Aborted with a stop.json on disk: CodeClimb's own stop operation is cleaning up.
-		if (runAborted && !cancelledFromOutside) throw error;
-		const reason = cancelledFromOutside ? "cancelled" : "failed";
-		if (writeStopIfMissing(paths.nightDir, reason)) {
+		// Aborted: CodeClimb's own stop operation is cleaning up.
+		if (runSignal?.aborted === true && !isOwnFailure(error)) throw error;
+		if (writeStopIfMissing(paths.nightDir, "failed")) {
 			try {
-				await runStopGraph(id, reason);
+				await runStopGraph(id, "failed");
 			} catch (stopError) {
 				console.error(`night ${id}: could not start the stop operation:`, stopError);
 			}

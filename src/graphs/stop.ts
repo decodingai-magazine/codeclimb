@@ -35,7 +35,7 @@ export const stop = entrypoint("stop", async (input: StopInput) => {
 	if (input.guard) {
 		const guard = input.guard;
 		if (!(await step("guard", () => guardHolds(id, guard))())) return { night_id: id, skipped: true };
-		// A timer has no caller: it writes stop.json itself, before the cancel, so the night reads it as a stop.
+		// A timer has no caller: it writes stop.json itself, before the cancel, as a caller would.
 		await step("timer-stop-json", async () => {
 			const dir = findNightDir(serverRoot(), id);
 			return dir ? writeStopIfMissing(dir, "failed") : false;

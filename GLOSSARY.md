@@ -47,7 +47,7 @@ The end of a night by one of its own rules (thresholds, rounds, deadline, budget
 _Avoid_: stop
 
 **Hard stop**:
-The end of a night from outside its rules: the operator, a failure, a cancel or a timeout. The night gets no test score.
+The end of a night from outside its rules: the operator, a failure or a timeout. The night gets no test score.
 _Avoid_: stop, cancel
 
 **Credit stop**:

@@ -359,7 +359,7 @@ Soft stops. The first five are checked in this order at the start of a round, an
 
 Spend: a row's spend is `coder_usd + dev_usd + program_usd`. A round's spend is its rows plus one review. The night's spend adds the noise, rescore and test evaluations' program calls.
 
-Hard stops: the stop operation (CLI, app), a night that fails out of retries, a cancel of the night's server run from outside CodeClimb (Studio, the API by hand), the pause timeout, and the 4-day backstop of a variation. All go through one path ([[#Cleanup]]).
+Hard stops: the stop operation (CLI, app), a night that fails out of retries, the pause timeout, and the 4-day backstop of a variation. All go through one path ([[#Cleanup]]).
 
 ### Repair
 
@@ -869,7 +869,7 @@ Under the directory of `results_path`: `runs-langchain/<name>/`, or `runs-langch
 | `lessons/<night>-r<N>/` | Lesson proposals |
 | `nights/<id>/night.json` | `night_id`, `startedAt`, `deadlineMs`, the round-0 experiment id and SHA, `seed`, the resolved `config`, `metric_script_sha256`, `lessons_sha256`; once they apply, `run_budget_usd`, `variation` and `pausesApplied` |
 | `nights/<id>/done.json` | `night_id`, `stop_reason`, `rounds`, `kept` (`exp_id`, `commit`, `dev_score`), `test_metrics`, `spend_usd` (4 decimals), `leftover_sandboxes_destroyed`, `finished_at` |
-| `nights/<id>/stop.json` | `at`, `reason` (`manual`, `app`, `failed`, `cancelled`). Written only if the night has no `done.json`; the first stop wins |
+| `nights/<id>/stop.json` | `at`, `reason` (`manual`, `app`, `failed`). Written only if the night has no `done.json`; the first stop wins |
 | `nights/<id>/pause.json`, `pauses.jsonl` | The current pause; every pause |
 | `nights/<id>/noise.json` | The A/A run |
 | `nights/<id>/bundle/` | The coder's `/spec`: `spec/`, optional `train/` and more, `history/` growing |
@@ -888,7 +888,7 @@ The Inngest twin's four events, as calls to the Agent Server's API through `@lan
 | operation | call | input | called by |
 |---|---|---|---|
 | start | Create the night's thread, then a server run of `night` on it. If the thread exists, nothing starts and the CLI follows the running night | `night_id`, `config`, `mock`; optional `seed` (a night id), `variation`, `continue` (`rescore`, optional `direction`), `mock_offline`, `mock_credit` | CLI, API (continue) |
-| stop | Write `stop.json` (the first stop wins), then a server run of `stop` on the night's stop thread | `night_id`, optional `reason` | CLI, API, the night's failure and cancel paths, the watchdog |
+| stop | Write `stop.json` (the first stop wins), then a server run of `stop` on the night's stop thread | `night_id`, optional `reason` | CLI, API, the night's failure path, the watchdog |
 | resume | A server run of `night` on the night's newest thread with a resume command | `night_id`; the pause number is read from the thread's pending interrupt | CLI, API |
 | lessons | A server run of `lessons` on the scenario's lessons thread, queued behind any in flight | `night_id`, `scenario`, `config` | the night at its end; the stop cleanup. Only when lessons are on |
 | timer | A server run of `stop` on the night's timer thread, with `afterSeconds` | `night_id`, `reason: failed`, a guard: the pause number or the variation number | the night: at each pause, and at the start of each variation |
@@ -1018,7 +1018,7 @@ State the night carries across rounds: the checkpoint, feedback, failures, hypot
 
 One path for every hard stop: the stop operation.
 
-- the caller writes `stop.json` first: the CLI (`manual`), the API (`app`), the night's failure path (`failed`), its cancel path (`cancelled`), the watchdog (`failed`). A timer has no caller: the stop graph writes `stop.json` (`failed`) once the timer's guard passes. The first stop wins
+- the caller writes `stop.json` first: the CLI (`manual`), the API (`app`), the night's failure path (`failed`), the watchdog (`failed`). A timer has no caller: the stop graph writes `stop.json` (`failed`) once the timer's guard passes. The first stop wins
 - then a server run of `stop`, in the Agent Server process, step by step, so a crash mid-cleanup resumes it:
   - cancel the night's pending and running server runs on its night threads, action `interrupt`, without waiting
   - abort the night's live registry entries
@@ -1028,7 +1028,7 @@ One path for every hard stop: the stop operation.
 - the stop operation never assumes a cancelled step has stopped: the server reports the run as interrupted while the step's body may still be running, so the registry abort and the sweep always follow the cancel
 - the night's catch, around the whole entrypoint:
   - a graph interrupt (a pause for credits) is rethrown untouched. It travels through the entrypoint as a thrown `GraphInterrupt`, which is why there is no cleanup in a `finally`: it would fire on every pause
-  - an abort of the server run with no `stop.json` means someone cancelled it from outside CodeClimb: write `stop.json` with reason `cancelled`, start the stop operation, rethrow
+  - an abort of the server run is the stop operation's own cancel: rethrow
   - any other error, after the step's retries: write `stop.json` with reason `failed`, start the stop operation, rethrow
 - the round-start stop check also reads `stop.json`: when it exists, the night ends its server run quietly and the stop graph does the rest
 - a finished night sweeps its own prefix before `done.json`
