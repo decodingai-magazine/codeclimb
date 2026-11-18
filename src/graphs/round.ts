@@ -15,7 +15,7 @@ import { RESCORE_HYPOTHESIS } from "../night/variation.ts";
 import { writeJson } from "../night/files.ts";
 import type { Pauses } from "./pause.ts";
 import { existsSync } from "node:fs";
-import { type LoopState, softStop } from "../night/loop.ts";
+import { hold, type LoopState, softStop } from "../night/loop.ts";
 import { maskText, type Scanner } from "../night/scan.ts";
 import { withRoot } from "../spans.ts";
 
@@ -83,11 +83,13 @@ export async function runRound(root: string, night: string, config: NightConfig,
 		const usd0 = e0.facts.coderUsd + e0.facts.devUsd + e0.facts.programUsd;
 		const allowed = await step(`${e0.expId}/repair-check`, async () => !existsSync(paths.stopJson) && softStop(config, { ...loop, spentUsd: spentUsd + noiseUsd + usd0, tokens: loop.tokens + e0.facts.tokens }, round, Date.now(), pauses.deadlineMs) === null)();
 		if (allowed) {
-			// The failed attempt keeps its row (no review of its own) and its note, both written before `e1` starts.
+			// The failed attempt keeps its row (no review of its own) and its note.
 			const failed = await step(`${e0.expId}/failed`, async (ctx) => {
-				appendRow(paths.results, { ...experimentRow(night, config, e0.facts), reviewer_usd: 0, t_review: 0 });
+				const failedRow = { ...experimentRow(night, config, e0.facts), reviewer_usd: 0, t_review: 0 };
+				hold(paths, () => appendRow(paths.results, failedRow));
 				const sc = scanner(ctx.signal);
-				writeFileAtomic(notePath(paths.bundle, round, 0), await maskText(sc, noteText(round, 0, e0.decision.decision, e0.decision.reason, failedCode.notes, null)));
+				const note = await maskText(sc, noteText(round, 0, e0.decision.decision, e0.decision.reason, failedCode.notes, null));
+				hold(paths, () => writeFileAtomic(notePath(paths.bundle, round, 0), note));
 				return { failures: await maskText(sc, e0.errors ?? ""), hypothesis: e0.facts.hypothesis === null ? null : await maskText(sc, e0.facts.hypothesis) };
 			})();
 			repaired = { usd: usd0, tokens: e0.facts.tokens, programUsd: e0.facts.programUsd };
@@ -148,14 +150,15 @@ export async function runRound(root: string, night: string, config: NightConfig,
 
 	const row = { ...experimentRow(night, config, facts), reviewer_usd: reviewerUsd, t_review: review?.t_review ?? 0, tokens };
 	row.wall_s += row.t_review;
-	await step(`${exp.expId}/record`, async () => appendRow(paths.results, row))();
+	await step(`${exp.expId}/record`, async () => hold(paths, () => appendRow(paths.results, row)))();
 
 	// Learn, in order: log entry and history line (state), the note, the rejected diff, the next guidance; everything a coder reads is masked.
 	const line = historyLine(round, facts.hypothesis, movesText(config, s.checkpoint.metrics, decision), decision, exp.errors);
 	const code = exp.code;
 	const learned = await step(`${exp.expId}/learn`, async (ctx) => {
 		const sc = scanner(ctx.signal);
-		writeFileAtomic(notePath(paths.bundle, round, attempt), await maskText(sc, noteText(round, attempt, decision.decision, decision.reason, code?.notes ?? "", review?.review?.verdict ?? "")));
+		const note = await maskText(sc, noteText(round, attempt, decision.decision, decision.reason, code?.notes ?? "", review?.review?.verdict ?? ""));
+		hold(paths, () => writeFileAtomic(notePath(paths.bundle, round, attempt), note));
 		// The rejected diff compares with the checkpoint: an `e1` equal to `e0` still changed code.
 		if (decision.decision !== "keep" && code?.differs) {
 			const repo = await ExperimentRepo.open(paths.repo);

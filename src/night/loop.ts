@@ -48,6 +48,14 @@ export function thresholdsMet(config: NightConfig, metrics: Record<string, numbe
 	return Object.entries(config.thresholds).every(([name, target]) => typeof metrics[name] === "number" && (metrics[name] as number) >= target);
 }
 
+const pending = new Map<string, (() => unknown)[]>();
+
+export function hold(paths: NightPaths, write: () => unknown): number {
+	const writes = [...(pending.get(paths.nightDir) ?? []), write];
+	pending.set(paths.nightDir, writes);
+	return writes.length;
+}
+
 export interface FinishInput {
 	nightId: string;
 	stopReason: string;
@@ -73,6 +81,8 @@ export async function finishNight(paths: NightPaths, f: FinishInput): Promise<Do
 		leftover_sandboxes_destroyed: destroyed,
 		finished_at: new Date().toISOString(),
 	};
+	for (const write of pending.get(paths.nightDir) ?? []) write();
+	pending.delete(paths.nightDir);
 	writeJson(paths.doneJson, done);
 	return done;
 }
