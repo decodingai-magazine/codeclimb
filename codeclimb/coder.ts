@@ -8,7 +8,7 @@
 // notes for later rounds, before destroying the sandbox.
 //
 // With `allowed_models`, the coder's runs of the program may call those models
-// as they will during evaluation: the sandbox joins the metering network and
+// as they will during evaluation, and
 // the shell gets a token for this experiment's own ledger, inside
 // `budget_usd.experiment` with the coder's tokens. That spend is `dev_usd`, never the program's cost metrics.
 //
@@ -23,7 +23,7 @@ import { efficiencyMetrics, type NightConfig } from "./config";
 import type { Seed } from "./continuation";
 import { type CreditStop, isCreditError } from "./credits";
 import { ExperimentRepo, expRef } from "./git";
-import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
+import { isMetered, meter, meterBaseUrl, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
 import { armMockCredit, armMockOffline } from "./pi/mock";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
@@ -627,7 +627,7 @@ export async function runCoder(
       commit: input.resume ? await repo.bundle(input.expId, input.parentExpId) : await repo.bundle(input.parentExpId),
       specDir: paths.bundleDir,
       labels: { "cc.night": input.nightId, "cc.run": ctx.runId },
-      network: metered ? METER_NETWORK : "bridge",
+      network: metered ? meterUrl : "bridge",
     });
     state.tProvision += secs(performance.now() - t0);
     save();
