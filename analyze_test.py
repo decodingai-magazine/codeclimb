@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, runtime_table, stream_facts
+from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, runtime_table, stream_facts, web_table
 
 
 def trajectory(*calls):
@@ -29,6 +29,9 @@ class LeverCounts(unittest.TestCase):
             ("WebSearch", {"query": "inngest"}),
             ("Bash", {"command": "curl -s https://www.inngest.com/llms-full.txt | head"}),
             ("Bash", {"command": "curl -s http://127.0.0.1:8288"}),
+            ("Bash", {"command": "wget -qO- -T 3 http://h:2375/version"}),
+            ("Bash", {"command": "curl -s --unix-socket /var/run/docker.sock http://x/version"}),
+            ("Bash", {"command": "curl -s http://host.docker.internal:9999/x"}),
             ("Bash", {"command": "npm ci --ignore-scripts"}),
             ("ToolSearch", {"query": "select:mcp__inngest-dev__get_apps"}),
         )
@@ -536,6 +539,11 @@ class MaintenanceTrials(unittest.TestCase):
         self.assertIn("5.0 min from services-up, diff 6 lines in 2 files (0.60x the reference fix, 10 lines in 2 files),"
                       " regression test added", maintenance)
 
+    def test_web_calls_in_the_report_for_build_and_maintenance_cells(self):
+        web = report(self.rows).partition("== web calls per cell")[2].partition("\n\n")[0]
+        self.assertIn("inngest   build current   one-shot bare      n=1 WebFetch 0 (0/1)", web)
+        self.assertIn("inngest   maintenance c1  one-shot bare      n=3 WebFetch 0 (0/3) WebSearch 0 (0/3) curl/wget 0 (0/3)", web)
+
     def test_the_change_against_the_task_and_the_reference_fix(self):
         r = self.by_trial["fixed"]
         self.assertEqual(r["from_services_up_min"], 5.0)
@@ -613,6 +621,26 @@ class ReferencePins(unittest.TestCase):
         code = text.split("== code and practice metrics")[1].split("\n\n")[0]
         self.assertIn("inngest   current   reference n=2 (measured 2/2) code lines 100", code)
         self.assertNotIn("bcabd72", code)
+
+
+class WebCalls(unittest.TestCase):
+    """The web calls per cell: a dimension beside the reward, for every arm, build and maintenance trials apart."""
+
+    @staticmethod
+    def row(arm: str, fetch: int, search: int, bash: int, *, task: str | None = None, specs: str = "current", **kw) -> dict:
+        return {"status": "counted", "harness": "claude-code", "workflow": "one-shot", "stack": "inngest", "arm": arm,
+                "specs": specs, "task": task, "web_fetch": fetch, "web_search": search, "bash_fetch": bash, **kw}
+
+    def test_totals_and_trials_with_any_per_cell(self):
+        rows = [self.row("bare", 0, 0, 1), self.row("bare", 0, 0, 0), self.row("mcp-docs", 3, 1, 0),
+                self.row("bare", 0, 0, 2, task="c1"), self.row("bare", 2, 0, 0, specs="old specs"),
+                self.row("reference", 9, 9, 9, harness="nop"), self.row("bare", 9, 9, 9, status="leak")]
+        text = "\n".join(web_table(rows))
+        self.assertIn("inngest   build current   one-shot bare      n=2 WebFetch 0 (0/2) WebSearch 0 (0/2) curl/wget 1 (1/2)", text)
+        self.assertIn("inngest   build current   one-shot mcp-docs  n=1 WebFetch 3 (1/1) WebSearch 1 (1/1) curl/wget 0 (0/1)", text)
+        self.assertIn("inngest   build old specs one-shot bare      n=1 WebFetch 2 (1/1)", text)
+        self.assertIn("inngest   maintenance c1  one-shot bare      n=1 WebFetch 0 (0/1) WebSearch 0 (0/1) curl/wget 2 (1/1)", text)
+        self.assertNotIn("9", text)  # no nop run, no trial kept out of the means
 
 
 if __name__ == "__main__":

@@ -47,7 +47,9 @@ WORKFLOW_SKILLS = frozenset(
     {"implement", "tdd", "code-review", "diagnosing-bugs", "research", "domain-modeling", "codebase-design", "prototype"}
 )
 STATUS = re.compile(r"^\*\*Status:\*\*\s*(\S+)", re.MULTILINE)
-FETCH = re.compile(r"\b(curl|wget)\b[^|;&]*?https?://(?!(?:127\.0\.0\.1|localhost|0\.0\.0\.0)[:/])")
+# A web URL: a dotted host name that is not this machine or the Docker host (a daemon probe such as http://h:2375 or
+# http://$(ip route ...):2375 is not a web call).
+FETCH = re.compile(r"\b(curl|wget)\b[^|;&]*?https?://(?!(?:127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/])[\w-]+(?:\.[\w-]+)+")
 
 
 def lever_counts(trajectory: dict, arm_skills: frozenset[str] = frozenset()) -> dict:
@@ -895,6 +897,24 @@ def process_table(rows: list[dict]) -> list[str]:
     return out
 
 
+WEB = (("web_fetch", "WebFetch"), ("web_search", "WebSearch"), ("bash_fetch", "curl/wget"))
+
+
+def web_table(rows: list[dict]) -> list[str]:
+    """The web calls of the counted harness trials, per cell: each kind's total and the trials with any. Build trials
+    (current and old specs apart) and maintenance trials (per task) are separate cells. A dimension, never in a mean."""
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in rows:
+        if r["status"] == "counted" and r["harness"] != "nop" and r["workflow"] != "probe":
+            kind = f"maintenance {r['task']}" if r.get("task") else f"build {r.get('specs')}"
+            groups[(r["stack"], kind, r["workflow"], r["arm"])].append(r)
+    out = []
+    for (stack, kind, workflow, arm), rs in sorted(groups.items()):
+        parts = [f"{label} {sum(r.get(col) or 0 for r in rs)} ({sum(bool(r.get(col)) for r in rs)}/{len(rs)})" for col, label in WEB]
+        out.append(f"{stack:9} {kind:15} {workflow:8} {arm:9} n={len(rs)} " + " ".join(parts))
+    return out or ["no counted harness trials"]
+
+
 def _mean_s(values: list, n: int) -> str:
     vals = [v for v in values if v is not None]
     return ("-" if not vals else f"{mean(vals):.1f} s") + (f" ({len(vals)}/{n})" if n > 1 and len(vals) < n else "")
@@ -996,6 +1016,8 @@ def report(rows: list[dict]) -> str:
                 lines.append(f"{stack:9} {e['metric']:8} {e['effect']:11} {_fmt(e['value'])}  {e['call']}" + ("" if e.get("exact", True) else " (sampled)"))
     lines += ["", "== stack comparison", *stack_comparison(rows), "",
               "== process metrics per stack, from the session files (beside the reward, not in it)", *process_table(rows),
+              "", "== web calls per cell (WebFetch, WebSearch, curl or wget of a non-local URL; total, trials with any)",
+              *web_table(rows + maintenance),
               "", "== runtime metrics per stack, from the verifier's checks.json (beside the reward, not in it)", *runtime_table(rows),
               "", "== code and practice metrics per stack, from code_metrics.py (beside the reward, not in it)", *code_table(rows),
               "", "== kept out of every mean"]
