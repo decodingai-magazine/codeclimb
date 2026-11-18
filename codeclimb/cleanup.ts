@@ -24,7 +24,7 @@ export function sweepRun(runId: string): Promise<number> {
 
 /**
  * Record a stop in the night's folder (`stop.json`), for the app's status. A finished night is left alone.
- * The first stop wins: a user stop cancels `run-night`, which sends a follow-up `cancelled` stop.
+ * The first stop wins.
  */
 export function markStopped(nightId: string, reason: string): void {
   // A night that failed in init has no night.json, and still ends with a stop.json: its following run-night waits for one.

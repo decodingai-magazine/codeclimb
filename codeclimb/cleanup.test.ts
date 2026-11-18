@@ -31,8 +31,7 @@ test("markStopped keeps the first stop reason", () => {
   withRoot((root) => {
     const dir = nightDir(root, "n1");
     markStopped("n1", "app");
-    // The follow-up stop sent when `run-night` is cancelled must not overwrite the user's reason.
-    markStopped("n1", "cancelled");
+    markStopped("n1", "failed");
     assert.equal(reason(dir), "app");
   });
 });

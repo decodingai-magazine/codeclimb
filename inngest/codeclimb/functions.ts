@@ -46,9 +46,9 @@ const hookSeconds = (name: string, fallback: `${number}d`): `${number}s` | `${nu
   const s = Number(process.env[name]);
   return Number.isFinite(s) && s > 0 ? `${Math.round(s)}s` : fallback;
 };
-/** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
+/** How long a night waits for credits before it stops. Stay under the backstop. */
 const PAUSE_TIMEOUT = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", "3d");
-/** The night's backstop. */
+/** The night's backstop: past any sane deadline + one round + the test eval + a pause (PAUSE_TIMEOUT). */
 const BACKSTOP = hookSeconds("CODECLIMB_BACKSTOP_S", "4d");
 /** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
 const SMOKE_WAIT = "5m";
@@ -119,9 +119,6 @@ export const runNight = ccInngest.createFunction(
     triggers: [nightStart],
     retries: 2,
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
-    // Backstop past any sane deadline + one round + the test eval + a pause (PAUSE_TIMEOUT); the deadline
-    // itself is a soft stop. A timeout cancels this run; `onRunCancelled` turns that into a night stop.
-    timeouts: { finish: BACKSTOP },
     // Out of retries: stop the night through the one cleanup path (`cancelOn` + `night-stop-cleanup`).
     onFailure: async ({ event, step }) => {
       const nightId = String(event.data.event.data.night_id);
@@ -423,7 +420,7 @@ export const onNightStop = ccInngest.createFunction(
     const aborted = await step.run("abort-pi", () => abortNight(event.data.night_id));
     const swept = await step.run("sweep", () => sweepNight(event.data.night_id));
     await step.run("mark-stopped", () => markStopped(event.data.night_id, event.data.reason ?? "stop"));
-    // A stopped night's rounds teach as much as a finished one's. Its second stop (a cancel) sends the same id.
+    // A stopped night's rounds teach as much as a finished one's.
     const stopped = await step.run("find-night", () => stoppedNight(event.data.night_id));
     if (stopped && lessonsOn(stopped)) {
       await step.sendEvent("lessons", {
@@ -434,27 +431,23 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
-/**
- * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
- * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
- * no sandboxes itself, so sweeping its run id alone would leave the children running. After a stop this
- * sends a second `night.stop`; its cleanup reruns and ends there, because `run-night` is already cancelled.
- */
+/** A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created. */
 export const onRunCancelled = ccInngest.createFunction(
   { id: "run-cancelled-cleanup", triggers: [{ event: "inngest/function.cancelled" }] },
   async ({ event, step }) => {
     const runId = event.data.run_id;
     const aborted = await step.run("abort-pi", () => abortRun(runId));
     const swept = await step.run("sweep", () => sweepRun(runId));
-    // The SDK's CancelledEventPayload type omits it, but the payload carries the triggering event.
-    // Only `run-night` is triggered by `night.start` (the children by `inngest/function.invoked`), and the
-    // event name does not depend on how `function_id` is spelled (a slug on the dev server, unchecked on Cloud).
-    const trigger = (event.data as { event?: { name?: string; data?: { night_id?: unknown } } }).event;
-    const nightId = trigger?.data?.night_id;
-    if (trigger?.name === nightStart.name && typeof nightId === "string") {
-      await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: nightId, reason: "cancelled" } });
-    }
     return { aborted, swept };
+  },
+);
+
+/** The night's backstop: a hard stop once BACKSTOP has passed since the start, unless the night stopped first. */
+export const nightBackstop = ccInngest.createFunction(
+  { id: "night-backstop", triggers: [nightStart], cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }] },
+  async ({ event, step }) => {
+    await step.sleep("backstop", BACKSTOP);
+    await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: event.data.night_id, reason: "failed" } });
   },
 );
 
@@ -475,4 +468,4 @@ export const distillLessons = ccInngest.createFunction(
   },
 );
 
-export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled, distillLessons];
+export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled, nightBackstop, distillLessons];
