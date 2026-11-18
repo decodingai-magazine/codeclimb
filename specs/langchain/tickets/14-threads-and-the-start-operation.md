@@ -4,7 +4,7 @@
 
 **Spec sections:**
 - "Interfaces" > "Control operations": the intro and the `start` row
-- "Durable runtime on LangGraph": the "Threads" table and its bullets; the requirements table rows "One night id, one night" and "The loop survives a crash" (`durability: "sync"` on every server run)
+- "Durable runtime on LangGraph": the "Threads" table and its bullets; the requirements table rows "One night id, one night" and "The loop survives a crash" (every server run saves its state after every step)
 - "CLI": the two bullets on a night id that was used before and on a night id that already has a thread
 
 **Not yet:** the stop, resume, lessons and timer operations (tickets 26, 29, 34); the `night` graph is still ticket 01's placeholder.
@@ -14,7 +14,7 @@
 **Status:** ready-for-agent
 
 - [ ] Thread ids are UUIDs: v5 of `night/<night_id>`, `stop/<night_id>`, `timer/<night_id>` and `lessons/<scenario>` under one namespace constant
-- [ ] Start creates the night thread with `ifExists: "raise"` and the metadata `kind: night`, `night_id`, `run: 0`, then a server run of `night` with `multitaskStrategy: "reject"` and `durability: "sync"`
+- [ ] Start creates the night thread, refused if it exists already, with the metadata `kind: night`, `night_id`, `run: 0`, then a server run of `night` that refuses a second run on the thread while one is active, its state saved after every step
 - [ ] The start input carries `night_id`, `config`, `mock` and the optional fields the spec lists
 - [ ] A 409 on thread creation is reported as "already running", not as an error
 - [ ] The newest night thread is found by a metadata search (`kind: night`, `night_id`), newest first

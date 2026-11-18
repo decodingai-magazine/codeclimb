@@ -16,9 +16,9 @@
 **Status:** ready-for-agent
 
 - [ ] The watchdog starts with the API and checks every 60 s every night found by files that has neither `done.json` nor `stop.json`
-- [ ] A thread whose status is `error` on two checks in a row gets a server run of `night` with no input, `durability: "sync"`; at most 2 such resumes per thread; the third `error` runs the stop operation with reason `failed`
+- [ ] A thread whose last run failed on two checks in a row gets a server run of `night` with no input, its state saved after every step; at most 2 such resumes per thread; the third failure runs the stop operation with reason `failed`
 - [ ] No thread found on two checks in a row runs the stop operation with reason `failed`
-- [ ] A thread that is busy, interrupted or idle is left alone, so a killed night waiting for the server's runs sweeper is not touched
+- [ ] A thread that is running, suspended or idle is left alone, so a killed night waiting for the server's runs sweeper is not touched
 - [ ] One check alone never acts: a night between its failure and its `stop.json`, or between its start and the server's first write, is left alone
 - [ ] Unit tests with a faked client and a faked clock cover each rule and the two-check delay
 - [ ] Night 5 of ticket 27 still passes with `npm run api` running during the kill: the watchdog creates no run and writes no `stop.json`

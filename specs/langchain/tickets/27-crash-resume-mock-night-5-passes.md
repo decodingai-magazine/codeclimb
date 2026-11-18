@@ -6,7 +6,7 @@
 - "Coder" > "Crash and resume": the first bullet
 - "Coder" > "End of an experiment": `code-state.json` (`freshRestarts`, `infraErrors`) and `code-result.json`
 - "Durable runtime on LangGraph": requirements rows "The loop survives a crash" and "Crash resume"; "Rules the loop depends on" (replay takes the same path, idempotent writes)
-- "Platform facts": the facts on `durability`, on the runs sweeper and on the mid-round kill
+- "Platform facts": the facts on saving a run's state, on the runs sweeper and on the mid-round kill
 - "Evaluator": a retried step reuses its sandbox after the reset
 - "Known gaps": the bullets on the sweeper's wait, on a step rerunning from its start, and on lost in-process memory
 - "Goal and done signal": night 5

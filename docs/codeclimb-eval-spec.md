@@ -149,6 +149,7 @@
 - `pocock`: `full` + `SPEC.md` + the stack's pile of build tickets + Matt Pocock's skills (`mattpocock-skills` 1.3.1, vendored), driven by the prompt template
   - the pile is `specs/<stack>/tickets/`, frozen: written before the runs by Paul with an agent, never by the trial. The same pile in every trial removes decomposition noise
   - every build ticket in a pile is `ready-for-agent`: nothing waits on a human, and no pile holds a paid-night ticket
+  - no pile names a stack API: a ticket states behaviour, as the build specs do. 2026-11-18: the LangChain pile named LangGraph and LangSmith API calls and options (`task()`, `retry`, `retryOn`, `getConfig()`, `signal.aborted`, `interrupt()`, `ifExists`, `multitaskStrategy`, `durability`, `enqueue`, `afterSeconds`, `RunTree`, `feedbackId`, thread statuses) and the Inngest pile none, so a `pocock` trial told the LangChain harness more. Each was replaced by the behaviour it stands for, in 11 files (pile sha256 `f9b7a367…`); the phase D2 `pocock` trials ran on the earlier pile
   - the assemble step rewrites the spec path inside each ticket to `SPEC.md` and changes nothing else. The pile's sha256 is logged per trial
   - the trial: `/implement` per build ticket, frontier first (any ticket whose blockers are done), until all are done; then run `E2E.md`
   - model-invocable skills on demand: `tdd`, `code-review`, `diagnosing-bugs`, `research`, `domain-modeling`, `codebase-design`, `prototype`
@@ -681,5 +682,6 @@ Changes, hardest first:
 
 ## Open points
 
+- the piles predate the settled build specs: their "Spec sections" lines cite sections that are no longer in them (LangChain: "Platform facts", "Durable runtime on LangGraph", "Every number in one place" and others; Inngest: "Prompt", "Round loop" and others), and both carry design detail the build specs leave to the build (watchdog intervals, cut lengths, commit authors). Decided 2026-11-18: both piles are regenerated from scratch against the current build specs, by the operator; the build specs stay as they are (they name no stack API)
 - maintenance tasks: the LangChain verifier's flakes (`crash-resume`, failed on the pin 1 of 3 and in the R14 pilot grade; the Agent Server down in a hidden test, once in the C7 pilot grade): whether a failing LangChain grade is regraded by rule before it counts; whether both references already run two nights at once (C8); whether a 20 s runtime pause can be made the same on both stacks (R11)
 - how a subscription usage-limit stop shows in a trial: read from the sources, not triggered (see Jobs, repeats, cost). The first one in phase B confirms the `analyze.py` rule

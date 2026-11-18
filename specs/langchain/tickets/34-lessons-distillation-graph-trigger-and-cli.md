@@ -18,7 +18,7 @@
 **Status:** ready-for-agent
 
 - [ ] The night starts the lessons operation at its end, and the stop cleanup starts it for a night that didn't finish, reading the config from `night.json`; neither starts it when the mode is `off` or the scenario declares no lessons
-- [ ] The lessons run goes to the scenario's lessons thread (UUID v5 of `lessons/<scenario>`, created if missing) with `enqueue` and `durability: "sync"`
+- [ ] The lessons run goes to the scenario's lessons thread (UUID v5 of `lessons/<scenario>`, created if missing) queued behind any run on it, its state saved after every step
 - [ ] A night is distilled when it has notes or reviews for rounds past its newest applied proposal, and skipped when a proposal folder for its last such round exists; a second run for the same night changes nothing
 - [ ] The model's input holds only those rounds' notes and reviews (feedback, hypothesis), the spec without `lessons.md`, and `lessons.md` with numbered bullets; never `done.json`, a test evaluation or a review prompt
 - [ ] The session runs on the reviewer's model and effort, in memory, with no tools; a credit error fails the step and its retries run it again

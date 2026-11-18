@@ -15,12 +15,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] Step bodies call only `@opentelemetry/api`; the tracer provider is CodeClimb's own, registered when the graph module loads, and writes each span as a LangSmith trace run through `RunTree`
+- [ ] Step bodies call only `@opentelemetry/api`; the tracer provider is CodeClimb's own, registered when the graph module loads, and writes each span as a LangSmith trace run
 - [ ] With no `LANGSMITH_API_KEY`, or with `LANGSMITH_TRACING=false`, no provider is registered and no LangSmith call is made
 - [ ] Spans: one chat span per assistant message (model, tokens, cache, finish reason, cost); one per tool call; one per sandbox exec, read and write; one per program operation of an evaluation; one per metered call under its evaluation
 - [ ] Each coder session opens a root named after the experiment; each evaluation, whatever its kind (dev, noise, test), and each review opens a root named after its own id; every root carries `night_id` and, where it has one, `exp_id` as metadata
 - [ ] A rerun step opens a new root; a step that needs another step's root gets its run id as plain data in its input
-- [ ] After a successful dev evaluation, the primary and headline metrics (every metric when the scenario has no headlines) are sent as feedback on the experiment's root, one per metric from the sorted names, with a `feedbackId` derived from the evaluation id and the metric; a failed feedback call is swallowed; no decision reads feedback
+- [ ] After a successful dev evaluation, the primary and headline metrics (every metric when the scenario has no headlines) are sent as feedback on the experiment's root, one per metric from the sorted names, with a feedback id derived from the evaluation id and the metric; a failed feedback call is swallowed; no decision reads feedback
 - [ ] Unit tests with a faked LangSmith client cover the span tree of a scripted session, the root metadata, the stable feedback ids, and the no-op mode
 - [ ] The three mock nights of ticket 25 still pass with `LANGSMITH_TRACING=false`; with tracing on, a `datenorm-smoke --mock` night finishes and each experiment's root is found in the project by its `night_id`
 - [ ] `npm run typecheck` and `npm test` pass

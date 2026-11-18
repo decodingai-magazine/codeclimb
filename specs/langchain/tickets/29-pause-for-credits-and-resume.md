@@ -1,19 +1,19 @@
 # 29: Pause for credits and resume
 
-**What to build:** Running out of credits pauses a night instead of failing it. The experiment, evaluation or review that hit the credit error returns a credit stop; the night writes `pause.json` and waits in an interrupt with no sandbox running. `npm run run-night -- resume --night <id>` ends the pause and only what stopped reruns.
+**What to build:** Running out of credits pauses a night instead of failing it. The experiment, evaluation or review that hit the credit error returns a credit stop; the night writes `pause.json` and waits suspended with no sandbox running. `npm run run-night -- resume --night <id>` ends the pause and only what stopped reruns.
 
 **Spec sections:**
 - "Experiment lifecycle" > "Pause for credits": all of it
 - "Experiment lifecycle" > "Ids": the `-resume<n>` identities
 - "Interfaces" > "Control operations": the `resume` row
-- "Durable runtime on LangGraph": requirements row "Pause and resume"; "only the night interrupts"
+- "Durable runtime on LangGraph": requirements row "Pause and resume"; "only the night suspends"
 - "Coder" > "End of an experiment": the `credits` stop and the `paused` state; "Crash and resume": after a pause for credits
 - "Evaluator" > "Outcomes": a credit stop gives no score
 - "Reviewer" > "Handling": a credit error pauses the night
 - "CLI": `run-night resume` and its refusals; what following prints at a pause
 - "CLI" > "Mock mode": `mock_credit`
 - "Data and files" > "Files a night writes": `pause.json`, `pauses.jsonl`, `pausesApplied`
-- "Platform facts": the fact on `interrupt()` replay
+- "Platform facts": the fact on what reruns when a suspended night resumes
 
 **Not yet:** pause numbers running on across a night's variations (ticket 32). the real providers' credit signals reaching the proxy (ticket 44): here a program's credit stop comes from `mock_credit`. A lessons run never pauses (ticket 34). The pause timeout and the variation backstop (ticket 30).
 
@@ -24,9 +24,9 @@
 - [ ] The credit test matches every phrase the spec lists and not a 429; it runs on every assistant message end and on a thrown error
 - [ ] A coder commits its partial work and returns the stop, leaving `stop` and `paused` in `code-state.json` with no `finishedAt`; an evaluation ends its stage at the first credit call and reports no score; a review just stops; after a coder's credit stop, `check`, `scan` and the evaluation are skipped
 - [ ] The noise and the test evaluations pause the same way as the dev one, and a rerun keeps its `eval_id`
-- [ ] The night writes `pause.json` in a step, then calls `interrupt()` in its own code between steps with `{ pause, at, stops }`; `pause.json` and `pauses.jsonl` hold the keys the spec lists, and one pause holds one stop
-- [ ] Resume reads the pause number from the thread's pending interrupt and creates a server run with `{ resume: { pause: n } }` and `durability: "sync"`; a resume with another number is answered with another interrupt
-- [ ] `run-night resume` is refused for a night with a `stop.json` or a `done.json`, that is not paused, or whose pause was resumed already; a night is paused when its newest thread holds a pending interrupt with a pause number, never by the thread's status
+- [ ] The night writes `pause.json` in a step, then suspends in its own code between steps with `pause`, `at` and `stops`; `pause.json` and `pauses.jsonl` hold the keys the spec lists, and one pause holds one stop
+- [ ] Resume reads the pause number from the thread's pending suspension and creates a server run that resumes it with that number, its state saved after every step; a resume with another number is answered by suspending again
+- [ ] `run-night resume` is refused for a night with a `stop.json` or a `done.json`, that is not paused, or whose pause was resumed already; a night is paused when its newest thread holds a pending suspension with a pause number, never by the thread's status
 - [ ] Ending a pause logs it to `pauses.jsonl` once, deletes `pause.json`, and adds the paused time to the deadline once (`pausesApplied`); running that step twice changes nothing more (unit test); a night stopped while paused stays stopped
 - [ ] After a resume: the coder carries on in the same Pi session on a new sandbox built from a git bundle holding the paused commit and the round's parent, with its clock set once; the evaluation reruns from scratch under the same `eval_id` on a `-resume<n>` sandbox; the review runs again; rerun work uses new step names ending `-resume<n>`
 - [ ] Stop works while paused

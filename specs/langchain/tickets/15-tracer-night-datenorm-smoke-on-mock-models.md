@@ -21,7 +21,7 @@
 - [ ] Init builds the bundle, imports the starter as `<night>-r0-starter`, computes the deadline and writes `night.json` with the keys the spec lists that apply so far; the night resolves the config's paths against `CODECLIMB_ROOT`
 - [ ] Backstops: the code step gets `experiment_min × 3 + 30` minutes per attempt; an evaluation gets `eval_min × stages × 3 + 15` minutes over all its steps; a fired backstop makes the experiment or the evaluation an `error` outcome
 - [ ] The coder runs on a fresh sandbox from the checkpoint; the evaluator's sandbox is created after the coder's is destroyed; an evaluation is skipped with no commit or unchanged files
-- [ ] A failure of an experiment or an evaluation becomes an `error` outcome and the night goes on; a graph interrupt and an abort of the server run are rethrown
+- [ ] A failure of an experiment or an evaluation becomes an `error` outcome and the night goes on; a suspension and an abort of the server run are rethrown
 - [ ] `run-night` validates the config (exit 2 on a usage or validation error), starts the night, prints new rows every 5 s, prints `done` with `done.json` or `stopped` with `stop.json`, and exits 0; Ctrl-C detaches; `--no-wait` exits after the start; `--sandbox docker` is accepted
 - [ ] Starting a night id that already has a thread starts nothing: `run-night` prints a note and follows the running night
 - [ ] Experiment rows carry `stack: langchain`, `backend: docker`, the cost and timing fields, `infra_errors` and `evaluator_instance`; an experiment that was never evaluated still has `eval_id` `<exp>-eval`; the test evaluation is `<night>-test-r<N>` on the sandbox `cc-<night>-test-r<N>`

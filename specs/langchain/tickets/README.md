@@ -83,7 +83,7 @@
 26. **Stop operation and cleanup; mock night 4 passes** (`26-stop-operation-and-cleanup-mock-night-4-passes.md`) — blocked by: 15, 25. The `stop` graph, `run-night stop`, the night's failure and cancel paths, the create refusal.
 27. **Crash resume; mock night 5 passes** (`27-crash-resume-mock-night-5-passes.md`) — blocked by: 23, 25. A killed server reruns only the running step; the coder's state file drives session resume and the fresh restart.
 28. **Lost connection mid-turn; mock night 6 passes** (`28-lost-connection-mid-turn-mock-night-6-passes.md`) — blocked by: 23, 25. `--mock-offline N` and the rule that a turn ended by a failed model call is sent back.
-29. **Pause for credits and resume** (`29-pause-for-credits-and-resume.md`) — blocked by: 22, 25, 26, 27. Credit stops, the night's interrupt, `pause.json`, `run-night resume`, `mock_credit`.
+29. **Pause for credits and resume** (`29-pause-for-credits-and-resume.md`) — blocked by: 22, 25, 26, 27. Credit stops, the night's suspension, `pause.json`, `run-night resume`, `mock_credit`.
 30. **Pause timeout and variation backstop** (`30-pause-timeout-and-variation-backstop.md`) — blocked by: 29. The timer operation: delayed `stop` runs that end a pause after 3 days and a variation after 4, each behind its guard.
 31. **Repair** (`31-repair.md`) — blocked by: 17, 19, 25. One repair attempt `e1` for a commit that failed before it was scored.
 32. **Continue** (`32-continue.md`) — blocked by: 23, 25, 26, 29. More rounds on an ended night: reopening, the rebuilt state, a new thread, `run-night continue`.
