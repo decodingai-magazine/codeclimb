@@ -46,10 +46,10 @@ const hookSeconds = (name: string, fallback: `${number}d`): `${number}s` | `${nu
   const s = Number(process.env[name]);
   return Number.isFinite(s) && s > 0 ? `${Math.round(s)}s` : fallback;
 };
-/** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
+/** How long a night waits for credits before it stops. */
 const PAUSE_TIMEOUT = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", "3d");
-/** The night's backstop. */
-const BACKSTOP = hookSeconds("CODECLIMB_BACKSTOP_S", "4d");
+/** The night's backstop, in ms. */
+const BACKSTOP_MS = (Number(process.env.CODECLIMB_BACKSTOP_S) > 0 ? Number(process.env.CODECLIMB_BACKSTOP_S) : 4 * 24 * 3600) * 1000;
 /** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
 const SMOKE_WAIT = "5m";
 const SMOKE_RETRIES = 6;
@@ -119,9 +119,6 @@ export const runNight = ccInngest.createFunction(
     triggers: [nightStart],
     retries: 2,
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
-    // Backstop past any sane deadline + one round + the test eval + a pause (PAUSE_TIMEOUT); the deadline
-    // itself is a soft stop. A timeout cancels this run; `onRunCancelled` turns that into a night stop.
-    timeouts: { finish: BACKSTOP },
     // Out of retries: stop the night through the one cleanup path (`cancelOn` + `night-stop-cleanup`).
     onFailure: async ({ event, step }) => {
       const nightId = String(event.data.event.data.night_id);
@@ -229,9 +226,10 @@ export const runNight = ccInngest.createFunction(
 
     while (!stopReason) {
       round += 1;
-      const check = await step.run(`r${round}-check`, () =>
-        checkStop({ round, cfg, deadlineMs, spend, roundSpends, maxEvalUsd, tokens, roundTokens, roundsWithoutKeep }),
-      );
+      const check = await step.run(`r${round}-check`, () => {
+        if (event.ts !== undefined && Date.now() - event.ts >= BACKSTOP_MS) throw new NonRetriableError(`night ${nightId}: past its backstop`);
+        return checkStop({ round, cfg, deadlineMs, spend, roundSpends, maxEvalUsd, tokens, roundTokens, roundsWithoutKeep });
+      });
       if (check.stop) {
         stopReason = check.reason!;
         round -= 1;
@@ -436,7 +434,7 @@ export const onNightStop = ccInngest.createFunction(
 
 /**
  * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
- * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
+ * A cancelled `run-night` (a stop, or a cancel from outside) also stops its night: the parent creates
  * no sandboxes itself, so sweeping its run id alone would leave the children running. After a stop this
  * sends a second `night.stop`; its cleanup reruns and ends there, because `run-night` is already cancelled.
  */
