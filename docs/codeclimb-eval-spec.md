@@ -644,7 +644,19 @@ Changes, hardest first:
 - first authored and gated: R14 and its control R3, C7 and its control C6. The others follow once a pilot reads clean
 - R14's targets narrowed to `crash-during-test-eval` (24), 2026-11-17: at one run per stack, the fault commits `f76da25` (Inngest) and `c3a1ec3` (LangChain) both fail `crash-resume` and 24, only Inngest fails 23, both pass 26 and 1 (no crash fault reaches them), and the LangChain pin passed `crash-resume` only 2 of 3, so it cannot be a target. Its symptom is what 24 saw: Inngest rewrote both rounds' `code-state.json` and recreated their coder sandboxes, LangChain rewrote `reviews/r1.json` and `reviews/r2.json`; the symptom names only the rewritten files. Gate on 24, 3 runs per side, 2026-11-17 (jobs `reference-inngest-bcabd72-190635`, `reference-inngest-f76da25-192234`, `reference-langchain-400bd40-193829`, `reference-langchain-c3a1ec3-195823`): both bases pass 24 3 of 3, both fault commits fail it 3 of 3, typecheck and unit tests green in every run; fix sizes 9 and 8 lines. Pass
 - C7 and C6, gated 2026-11-17 (`gate.py c7|c6` on the jobs `reference-inngest-bcabd72-141950`, `reference-langchain-400bd40-143159`, `reference-inngest-1452a93-145054`, `reference-langchain-9d04590-145929`, `reference-inngest-1360cb4-151501`, `reference-langchain-9911231-152722`): the task commit is the maintenance base; the base it is gated against is the reference's own patch, one commit on the maintenance base, Inngest `1452a93` (C7) and `1360cb4` (C6), LangChain `9d04590` and `9911231`. Through `job-configs/reference.sh`, `hidden` only, `CODECLIMB_VERIFIER_ONLY=hard-deadline-mid-step,config-rejects`, 3 runs each: both pins fail 59 and 10 3 of 3 (59: no `stop.json` by 90 s, the evaluation sandbox left; 10: the new case exits 0 and makes a night folder); each C7 patch passes 59 3 of 3 (`stop.json` `hard_deadline` 30 to 31 s after the start, no sandbox left), each C6 patch passes 10 3 of 3; typecheck and unit tests green in every run. Fix sizes: C7 Inngest 33 lines in 4 files (a function that sleeps until the deadline, writes `stop.json`, then sends the night stop), LangChain 23 in 6 (the backstop's timer with its own reason); C6 3 and 5 lines in 2 files each. Import hops 1, reproduce 93 s (C7) and 22 to 26 s (C6). Both pairs pass. One full run per patch (`basic` and `hidden`, `real` skipped; jobs `reference-inngest-1452a93-154613`, `reference-langchain-9d04590-162507`, `reference-inngest-1360cb4-165820`, `reference-langchain-9911231-174044`), the bases' grades for `resolved`: all four 34 of 34 and 37 of 38 hidden, the one failure the other change's test (10 on the C7 patches, 59 on the C6 patches), as on the pins; every other test passes as on the pins
-- pilot: one trial per stack of C1, R14, R3, C7 and C6, on the subscription, after the operator's go-ahead. Cost (guess) $1 to $4 a trial
+- pilot: one `bare` one-shot trial per stack of C1, R14, R3, C7 and C6, on the subscription, after the operator's go-ahead (`job-configs/pilot.sh`, `basic` and `hidden`). Run 2026-11-17 (jobs `pilot-<task>-<stack>-20261117-2109`): 10 of 10 resolved, `leak` 0 in all, $9.32 in all, $0.23 to $2.74 a trial (median $0.59). Two LangChain grades failed on the verifier, not the change, and were regraded (`pilot-r14-langchain-regrade-0257`, `pilot-c7-langchain-regrade-0328`): R14's `crash-resume` night 5 never ended after the restart (its source change equals the reference fix), C7's `eval-keeps-failing` found the Agent Server down 3 s in; each regrade passed every test its base passes. Per trial ($, agent seconds, turns, diff lines against the reference fix's):
+
+  | task | Inngest | LangChain |
+  |---|---|---|
+  | C1 | $2.74, 963 s, 64, 243 (65) | $1.51, 850 s, 32, 157 (13) |
+  | R3 | $0.46, 209 s, 17, 45 (36) | $0.37, 298 s, 15, 24 (22) |
+  | R14 | $0.64, 1765 s, 25, 7 (9) | $0.53, 362 s, 18, 31 (8) |
+  | C6 | $0.31, 85 s, 16, 9 (3) | $0.23, 64 s, 10, 6 (5) |
+  | C7 | $1.37, 438 s, 34, 227 (33) | $1.16, 1030 s, 32, 63 (23) |
+
+  - platform task minus control, per stack: R14 − R3 Inngest +$0.18, +1556 s, +8 turns, −38 lines; LangChain +$0.16, +64 s, +3 turns, +7 lines. C7 − C6 Inngest +$1.06, +353 s, +18 turns, +218 lines; LangChain +$0.93, +966 s, +22 turns, +57 lines. Both pairs resolve on both stacks, so `resolved` does not separate them at n = 1; the effort metrics do
+  - minutes from `services-up` is empty for Inngest C6 and R14 and LangChain C6: those harnesses never started the services
+  - regression test added in 8 of 10 (not Inngest R14, LangChain R3)
 - later: a trace task (read-only: a resumed night's folder and logs, questions the verifier answers from the same files); the tooling arm on R2, R5, R14
 
 
@@ -669,5 +681,5 @@ Changes, hardest first:
 
 ## Open points
 
-- maintenance tasks: the pilot's cost per trial (guess $1 to $4); whether both references already run two nights at once (C8); whether a 20 s runtime pause can be made the same on both stacks (R11)
+- maintenance tasks: the LangChain verifier's flakes (`crash-resume`, failed on the pin 1 of 3 and in the R14 pilot grade; the Agent Server down in a hidden test, once in the C7 pilot grade): whether a failing LangChain grade is regraded by rule before it counts; whether both references already run two nights at once (C8); whether a 20 s runtime pause can be made the same on both stacks (R11)
 - how a subscription usage-limit stop shows in a trial: read from the sources, not triggered (see Jobs, repeats, cost). The first one in phase B confirms the `analyze.py` rule
