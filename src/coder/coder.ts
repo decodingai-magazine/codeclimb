@@ -18,7 +18,7 @@ import { PARENT_BUNDLE, pullCommit } from "../sandbox/transfer.ts";
 import { coderPrompt, targetLines } from "./prompt.ts";
 import type { Ledger } from "../meter/ledger.ts";
 import { closeLedger, openLedger, proxyPort } from "../meter/proxy.ts";
-import { ensureMeterPath, METER_NETWORK, meterEnv } from "../meter/relay.ts";
+import { ensureMeterPath, meterEnv, RELAY_URL } from "../meter/relay.ts";
 import { inReserve, MIN_MINUTES_LEFT, RESERVE_SHARE, sendBackMessage, WRAP_UP } from "./sendback.ts";
 
 export type CoderStop = "done" | "timeout" | "idle" | "budget" | "agent_error" | "credits" | "cancelled";
@@ -226,7 +226,7 @@ export async function runCoder(backend: SandboxBackend, req: CodeRequest, signal
 			labels: { night: req.night, run: req.expId },
 			commit: { repo, sha: startSha },
 			specDir: req.bundleDir,
-			...(ledger ? { network: METER_NETWORK } : {}),
+			...(ledger ? { network: RELAY_URL } : {}),
 		});
 	} catch (e) {
 		closeDev();
