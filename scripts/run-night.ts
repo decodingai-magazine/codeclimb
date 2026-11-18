@@ -3,9 +3,7 @@
 //     --mock-offline N: the coder's model calls 2 to N+1 of the night's first experiment fail, as a lost connection
 //   npm run run-night:cloud -- --config configs/graphrag.yaml [--sandbox docker|inngest] [--seed ID|latest|best] [--direction TEXT]
 //     --seed (or the config's `seed`): start from an ended night's kept commit and its dev scores, not the starter
-//     --direction: the operator's direction for every round, as with continue
-//   npm run run-night:cloud -- continue --config configs/graphrag.yaml [--night ID] [--direction TEXT] [--rounds N]
-//     more rounds on a night, from its kept commit; default: the newest night that ended
+//     --direction: the operator's direction for every round
 //   npm run run-night -- stop --night ID     (waits for the night's stop.json and prints `stopped`; `done` if it finished first)
 //   npm run run-night -- resume --night ID     (after a pause for credits)
 import "../codeclimb/env";
@@ -13,7 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkSandboxLimits, loadConfig, mockConfig, relativeConfig, type NightConfig } from "../codeclimb/config";
-import { continuesMock, latestNight, reopenNight, resolveSeed, seedFrom } from "../codeclimb/continuation";
+import { resolveSeed, seedFrom } from "../codeclimb/continuation";
 import { newNightId, nightDirs, nightPaths, runsRoot } from "../codeclimb/paths";
 import { checkNightModels } from "../codeclimb/meter/backends";
 import { readRows, rowSpend } from "../codeclimb/results";
@@ -100,13 +98,10 @@ if (positionals[0] === "stop") {
   }
   process.exit(0);
 } else {
-  const continuing = positionals[0] === "continue";
-  if (positionals.length && !continuing) throw new Error(`unknown command ${positionals[0]}`);
-  if (!values.config) throw new Error("usage: run-night [continue] --config <yaml>");
-  if (continuing && values.seed) throw new Error("--seed starts a new night: a continued night goes on from its own kept commit");
+  if (positionals.length) throw new Error(`unknown command ${positionals[0]}`);
+  if (!values.config) throw new Error("usage: run-night --config <yaml>");
   const loaded = loadConfig(resolve(values.config));
-  // A night under runs-inngest/mock/ is continued as a mock: continue takes no --mock.
-  const cfg = values.mock || (continuing && continuesMock(loaded, values.night)) ? mockConfig(loaded) : loaded;
+  const cfg = values.mock ? mockConfig(loaded) : loaded;
   if (values["mock-offline"] !== undefined) {
     if (!values.mock) throw new Error("--mock-offline only with --mock");
     const n = Number(values["mock-offline"]);
@@ -123,22 +118,20 @@ if (positionals[0] === "stop") {
     if (!(Number.isInteger(cfg.max_rounds) && cfg.max_rounds >= 1)) throw new Error("--rounds must be an integer >= 1");
   }
   checkSandboxLimits(cfg);
-  const wantedSeed = continuing ? null : (values.seed ?? cfg.seed);
+  const wantedSeed = values.seed ?? cfg.seed;
   cfg.seed = null;
   if (wantedSeed) {
     // Resolved here, so the night's events carry the night it starts from, not "best".
     cfg.seed = resolveSeed(cfg, wantedSeed);
     const seed = seedFrom(cfg, cfg.seed);
-    // Scoring the seed again takes a round of its own (run-night's rescore round; `reopenNight` does the same for a continue).
+    // Scoring the seed again takes a round of its own (run-night's rescore round).
     if (seed.rescore) cfg.max_rounds += 1;
     console.log(`[run-night] seed: ${seed.expId} (night ${seed.night}), ${cfg.primary_metric}=${seed.score.toFixed(4)}${seed.rescore ? ", scored again first: the evaluation changed" : ""}`);
   }
   await checkNightModels(cfg);
   if (cfg.mock) console.log("[run-night] mock: scripted models, metrics mean nothing");
-  const nightId = continuing ? (values.night ?? latestNight(cfg)) : (values["night-id"] ?? newNightId());
-  const reopened = continuing ? reopenNight(cfg, nightId) : null;
-  const start = reopened ? { rescore: reopened.rescore, ...(values.direction ? { direction: values.direction } : {}) } : undefined;
-  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(reopened?.config ?? cfg), start, values.direction));
-  console.log(`[run-night] ${continuing ? "continued" : "started"} night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
-  if (!values["no-wait"]) await follow(reopened?.config ?? cfg, nightId);
+  const nightId = values["night-id"] ?? newNightId();
+  const { ids } = await ccInngest.send(nightStartEvent(nightId, relativeConfig(cfg), values.direction));
+  console.log(`[run-night] started night ${nightId} (event ${ids[0]}); results → ${cfg.results_path}`);
+  if (!values["no-wait"]) await follow(cfg, nightId);
 }

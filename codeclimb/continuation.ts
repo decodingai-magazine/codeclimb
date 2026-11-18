@@ -1,29 +1,14 @@
-// A night that ended can go on: more rounds under the same id, on the same experiments and results. It
-// picks up at its kept commit with its last feedback and hypothesis, its log of rounds and its rejected
-// diffs, and its round numbers go on from the last. `reopenNight` runs before the start event goes out, so
-// from then on the night reads as running, and a second continue is refused.
-//
-// A new night can instead start from an ended night's kept commit (a seed): a new id, budget and trajectory,
+// A new night can start from an ended night's kept commit (a seed): a new id, budget and trajectory,
 // with only the code and the dev scores it was kept on. What that night learned reaches the new one
 // through the scenario's lessons.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { efficiencyMetrics, mockConfig, type NightConfig, resolveDeadline } from "./config";
+import type { NightConfig } from "./config";
 import { distilledThrough, pendingRounds } from "./lessons";
 import { nightPaths } from "./paths";
-import { nightSpend } from "./report/data";
 import { readRows, type ResultRow } from "./results";
-import type { HypothesisLogEntry } from "./reviewer";
 import { type Metrics, weightedScore } from "./stats";
-
-/** The start event's `continue`. */
-export interface NightStart {
-  /** For every new round. */
-  direction?: string;
-  /** The scorers changed since the kept commit was scored: its recorded scores can't be compared. */
-  rescore: boolean;
-}
 
 /** Where a seeded night starts: another night's kept commit, with the dev scores it was kept on. */
 export interface Seed {
@@ -43,8 +28,6 @@ interface NightFile {
   startedAt: number;
   config: NightConfig;
   metric_script_sha256: Record<string, string | null>;
-  /** The night's budget for one run: a continuation adds it to what the night has spent. */
-  run_budget_usd?: number;
   /** The round-0 commit; nights before seeds always had `<id>-r0-starter`. */
   starterExpId?: string;
   seed?: Seed | null;
@@ -89,21 +72,11 @@ function endedNights(cfg: NightConfig): string[] {
 /** The newest night that ended, among the nights sharing `cfg`'s results. */
 export function latestNight(cfg: NightConfig): string {
   const id = endedNights(cfg)[0];
-  if (!id) throw new Error(`no finished night under ${join(nightPaths(cfg, "").root, "nights")} to continue`);
+  if (!id) throw new Error(`no finished night under ${join(nightPaths(cfg, "").root, "nights")} to seed from`);
   return id;
 }
 
-/**
- * Whether `continue` goes on from a mock night, since it takes no `--mock`: night `id` is under `runs-inngest/mock/`
- * and not under the config's own results; with no id, no night of the config ended and a mock one did.
- */
-export function continuesMock(cfg: NightConfig, id?: string): boolean {
-  const mock = mockConfig(cfg);
-  if (id) return !existsSync(nightPaths(cfg, id).nightJson) && existsSync(nightPaths(mock, id).nightJson);
-  return endedNights(cfg).length === 0 && endedNights(mock).length > 0;
-}
-
-/** Throws unless a night of `cfg` can continue from `id`. */
+/** Throws unless a night of `cfg` can start from `id`. */
 export function checkSource(cfg: NightConfig, id: string): void {
   const p = nightPaths(cfg, id);
   if (!existsSync(p.nightJson)) throw new Error(`no night ${id} under ${p.root}`);
@@ -160,101 +133,5 @@ export function seedFrom(cfg: NightConfig, id: string): Seed {
   return { night: id, expId, round: lastRound(cfg, id), score, metrics, rescore: !sameScoring(scoringHashes(cfg), night.metric_script_sha256) };
 }
 
-/** The night's last review: what its next round would have started with. */
-export function lastReview(cfg: NightConfig, id: string): { feedback: string; hypothesis: string | null } {
-  const { reviewJson } = nightPaths(cfg, id);
-  const rounds = [...new Set(experimentRows(cfg, id).map((r) => r.round))].sort((a, b) => b - a);
-  const round = rounds.find((r) => existsSync(reviewJson(r)));
-  if (round === undefined) return { feedback: "", hypothesis: null };
-  const { feedback, hypothesis } = JSON.parse(readFileSync(reviewJson(round), "utf8")) as { feedback: string; hypothesis: string };
-  return { feedback, hypothesis: hypothesis || null };
-}
-
 /** The night's last round so far. */
 export const lastRound = (cfg: NightConfig, id: string): number => Math.max(0, ...experimentRows(cfg, id).map((r) => r.round));
-
-/** What the night has spent so far. */
-export const spentBy = (cfg: NightConfig, id: string): number => nightSpend(readRows(cfg.results_path).filter((r) => r.night_id === id));
-
-/** The round a night file belongs to: `<id>-r5-e0`, `<id>-r5-e0-eval` and `r5.json` to 5, a noise run `<id>-r4-e0-noise-r5` to the round it ran in. */
-function fileRound(id: string, name: string): number | null {
-  const m = /-noise-r(\d+)$/.exec(name) ?? (name.startsWith(`${id}-`) ? /^-r(\d+)-/.exec(name.slice(id.length)) : /^r(\d+)\./.exec(name));
-  return m ? Number(m[1]) : null;
-}
-
-/**
- * Moves the files of rounds past `last` to `unfinished/after-r<last>-<time>/`. A night that fails between a
- * round's work and its row leaves them behind, and the round's rerun would pick them up: its coder resumed the
- * old clock and stopped at once on `timeout`, recorded as "no code change".
- */
-function setAsideUnfinished(nightDir: string, id: string, last: number): void {
-  const aside = join(nightDir, "unfinished", `after-r${last}-${Date.now()}`);
-  for (const sub of ["exps", "evals", "reviews"]) {
-    const dir = join(nightDir, sub);
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
-      const round = fileRound(id, name);
-      if (round === null || round <= last) continue;
-      mkdirSync(join(aside, sub), { recursive: true });
-      renameSync(join(dir, name), join(aside, sub, name));
-    }
-  }
-}
-
-/**
- * Makes an ended night a running one again, with `rounds` more rounds and the budget of one more run.
- * Returns the config to start it with. Its done or stop file stays beside the night, under its last round,
- * and the files of a round that never got its row are set aside, so the round reruns from scratch.
- */
-export function reopenNight(cfg: NightConfig, id: string, rounds: number = cfg.max_rounds): { config: NightConfig; rescore: boolean } {
-  checkSource(cfg, id);
-  const paths = nightPaths(cfg, id);
-  const night = readNight(cfg, id);
-  const last = lastRound(cfg, id);
-  setAsideUnfinished(paths.nightDir, id, last);
-  const hashes = scoringHashes(cfg);
-  const rescore = !sameScoring(hashes, night.metric_script_sha256) && keptOf(cfg, id).metrics !== null;
-  const runBudget = night.run_budget_usd ?? cfg.budget_usd.night;
-  const config: NightConfig = {
-    ...cfg, max_rounds: last + rounds + (rescore ? 1 : 0), budget_usd: { ...cfg.budget_usd, night: spentBy(cfg, id) + runBudget },
-  };
-  for (const [file, name] of [[paths.doneJson, "done"], [paths.stopJson, "stop"]]) {
-    if (existsSync(file)) renameSync(file, join(paths.nightDir, `${name}-r${last}.json`));
-  }
-  const deadlineMs = resolveDeadline(cfg.deadline, Date.now());
-  writeFileSync(paths.nightJson, JSON.stringify({ ...night, deadlineMs, config, metric_script_sha256: hashes, run_budget_usd: runBudget }, null, 2));
-  return { config, rescore };
-}
-
-/** Every round of night `id`, rebuilt from its rows: a night keeps its log only in memory. */
-export function priorLog(cfg: NightConfig, id: string): HypothesisLogEntry[] {
-  const metricNames = [...efficiencyMetrics(cfg), ...cfg.scenario.headline];
-  const { reviewJson } = nightPaths(cfg, id);
-  const rows = experimentRows(cfg, id);
-  // A repaired round has two rows: the last stands.
-  const rounds = [...new Map(rows.map((r) => [r.round, r])).values()].sort((a, b) => a.round - b.round);
-  // A seeded night's first round moved from its seed's scores.
-  const seed = readNight(cfg, id).seed;
-  let parent: Metrics | null = seed?.metrics ?? null;
-  let parentScore = seed ? weightedScore(seed.metrics, cfg.thresholds, cfg.weights) : 0;
-  return rounds.map((r): HypothesisLogEntry => {
-    const before: Metrics | null = parent;
-    const scoreBefore = parentScore;
-    const scored = metricNames.filter((m) => r.decision !== "error" && typeof r.metrics[m] === "number");
-    const moved = before
-      ? { deltas: Object.fromEntries(scored.flatMap((m) => (typeof before[m] === "number" ? [[m, r.metrics[m] - before[m]]] : []))) }
-      : { scores: Object.fromEntries(scored.map((m) => [m, r.metrics[m]])) };
-    const review = existsSync(reviewJson(r.round)) ? (JSON.parse(readFileSync(reviewJson(r.round), "utf8")) as { keep_reason?: string }) : {};
-    if (r.decision === "keep") {
-      parent = r.metrics;
-      parentScore = r.score ?? 0;
-    }
-    const P = cfg.primary_metric;
-    return {
-      round: r.round, hypothesis: r.hypothesis ?? "(unknown)", deltaPrimary: (r.metrics[P] ?? 0) - (before?.[P] ?? 0),
-      ...(r.score === undefined || r.unchanged ? {} : { deltaScore: r.score - scoreBefore }), ...moved, decision: r.decision,
-      // Nights before the weighted score kept the reviewer's reason.
-      reason: r.unchanged ? "no code change" : r.decision_reason ?? review.keep_reason ?? "",
-    };
-  });
-}

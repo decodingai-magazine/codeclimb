@@ -244,7 +244,7 @@ test("lessons: a night is read from its notes and reviews only, never from test 
   assert.doesNotMatch(prompt, /0\.987654/, "a review prompt reached the distiller");
 });
 
-test("lessons: propose, skip a repeat, apply, refuse a stale proposal, and distill a continued night from the applied round", async () => {
+test("lessons: propose, skip a repeat, apply, refuse a stale proposal, and distill a night from past the applied round", async () => {
   const cfg = scenarioCfg();
   const file = join(cfg.scenario_dir, "spec", "agent", "lessons.md");
   writeNight(cfg, "n7", [1, 2]);

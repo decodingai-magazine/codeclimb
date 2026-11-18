@@ -1,5 +1,5 @@
 // The worker's HTTP API, the app's only backend: the nights on this worker's disk
-// (summaries, live branches, the report data), stop, continue and export. New nights
+// (summaries, live branches, the report data), stop, resume and export. New nights
 // start from the CLI (`npm run run-night`). It also mounts the
 // metering proxy at /v1. Every request but /v1 needs the bearer token
 // (CODECLIMB_WORKER_TOKEN); without one the API only binds to loopback.
@@ -9,16 +9,14 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { ccInngest, nightStartEvent } from "../inngest/codeclimb/client";
+import { ccInngest } from "../inngest/codeclimb/client";
 import { markStopped } from "./cleanup";
-import { type NightConfig, relativeConfig } from "./config";
-import { reopenNight } from "./continuation";
+import type { NightConfig } from "./config";
 import { exportExperiment, type ExportTarget, validateExpId } from "./export";
 import { meter } from "./meter";
 import { nightDirs, nightPaths, runsRoot } from "./paths";
 import { buildReportData, nightSpend, type ReportData } from "./report/data";
 import { readRows } from "./results";
-import { loadScenario } from "./scenario";
 
 const root = () => process.env.CODECLIMB_ROOT ?? process.cwd();
 const NIGHT_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,47}$/;
@@ -146,22 +144,6 @@ async function stopNight(n: ReturnType<typeof findNight>) {
   return { stopped: n.night.night_id };
 }
 
-/** More rounds on this night, on its config with the scenario as it stands now. */
-async function continueFrom(n: ReturnType<typeof findNight>, body: Record<string, unknown>) {
-  const { direction, rounds } = body;
-  if (direction !== undefined && typeof direction !== "string") throw new HttpError(400, "direction must be text");
-  if (!(Number.isInteger(rounds) && (rounds as number) >= 1)) throw new HttpError(400, "rounds must be an integer >= 1");
-  const id = n.night.night_id;
-  let reopened;
-  try {
-    reopened = reopenNight({ ...n.night.config, scenario: loadScenario(n.night.config.scenario_dir) }, id, rounds as number);
-  } catch (e) {
-    throw new HttpError(409, (e as Error).message);
-  }
-  await ccInngest.send(nightStartEvent(id, relativeConfig(reopened.config), { rescore: reopened.rescore, ...(direction?.trim() ? { direction } : {}) }));
-  return { night_id: id };
-}
-
 function nightGitDir(n: ReturnType<typeof findNight>, expId: string): string {
   validateExpId(expId);
   if (!expId.startsWith(`${n.night.night_id}-`)) throw new HttpError(400, "experiment is not from this night");
@@ -273,7 +255,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     // The metering proxy authenticates by its own per-ledger tokens.
     if (path.startsWith("/v1/")) return void (await (await meter()).handle(req, res));
     if (!authorized(req)) throw new HttpError(401, "missing or wrong worker token");
-    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|continue|export)(?:\/([^/]+))?)?$/.exec(path);
+    const m = /^\/api\/nights\/([^/]+)(?:\/(live|report|stop|resume|export)(?:\/([^/]+))?)?$/.exec(path);
     if (req.method === "GET" && path === "/api/health") return send(res, 200, { ok: true });
     if (req.method === "GET" && path === "/api/nights") {
       const all = nightFiles().map(summary).sort((a, b) => b.started_at - a.started_at);
@@ -286,7 +268,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (req.method === "GET" && m[2] === "report") return send(res, 200, await report(n));
       if (req.method === "POST" && m[2] === "stop") return send(res, 200, await stopNight(n));
       if (req.method === "POST" && m[2] === "resume") return send(res, 200, await resumeNight(n));
-      if (req.method === "POST" && m[2] === "continue") return send(res, 200, await continueFrom(n, await readBody(req)));
       if (req.method === "GET" && m[2] === "export" && m[3]) return await exportStream(n, decodeURIComponent(m[3]), url.searchParams.get("format") ?? "repo", res);
       if (req.method === "POST" && m[2] === "export" && m[3]) return send(res, 200, await exportTo(n, decodeURIComponent(m[3]), await readBody(req)));
     }

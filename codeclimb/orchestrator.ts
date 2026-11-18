@@ -10,7 +10,7 @@ import { sweepNight } from "./cleanup";
 import type { CodeResult, EvalFailure } from "./coder";
 import { CODER_PART, notesDir, readSpecText, readTrajectory, REVIEWER_PART, trainFell } from "./coder";
 import { efficiencyMetrics, type NightConfig, resolveDeadline } from "./config";
-import { keptOf, lastReview, lastRound, type NightStart, priorLog, scoringHashes, type Seed, seedFrom, spentBy } from "./continuation";
+import { scoringHashes, type Seed, seedFrom } from "./continuation";
 import type { EvalResult } from "./evaluate";
 import { ExperimentRepo } from "./git";
 import { bundleLessonsSha } from "./lessons";
@@ -180,7 +180,7 @@ export async function maskFailures(cfg: NightConfig, failures: EvalFailure[]): P
   return failures.map((f) => ({ ...f, errors: f.errors.map((e) => maskTerms(e, found)) }));
 }
 
-/** Where a night's rounds start: nothing for a new night, what it learned for a continued one. */
+/** Where a night's rounds start. */
 export interface NightState {
   /** The checkpoint's scores came from another evaluation: a round of its own scores it again first. */
   rescore: boolean;
@@ -206,26 +206,6 @@ export const freshNight = (init: NightInit): NightState => ({
   kept: { expId: init.starterExpId, sha: init.starterSha, score: init.seed?.score ?? 0, metrics: init.seed?.metrics ?? null },
   feedback: "", hypothesis: null, log: [], history: [], round: 0, spend: 0, noise: init.noise,
 });
-
-/** Picks a reopened night up at its checkpoint, on the bundle as the scenario stands now. */
-export async function continueNight(cfg: NightConfig, nightId: string, start: NightStart): Promise<NightState> {
-  const paths = nightPaths(cfg, nightId);
-  await writeBundle(cfg, nightId);
-  // The new bundle carries the lessons as they stand now: night.json says which.
-  const saved = JSON.parse(readFileSync(paths.nightJson, "utf8")) as Record<string, unknown>;
-  writeFileSync(paths.nightJson, JSON.stringify({ ...saved, lessons_sha256: bundleLessonsSha(cfg, paths.bundleDir) }, null, 2));
-  const { expId, score, metrics } = keptOf(cfg, nightId);
-  const sha = await new ExperimentRepo(paths.gitDir).sha(expId);
-  const log = priorLog(cfg, nightId);
-  const history = await Promise.all(log.map((entry) => historyLine(cfg, entry)));
-  const direction = start.direction?.trim() ? await maskText(cfg, start.direction.trim()) : "";
-  const { deadlineMs } = JSON.parse(readFileSync(paths.nightJson, "utf8")) as { deadlineMs: number };
-  // New scorers make new noise: the rescored commit is measured again.
-  const noise = start.rescore || !existsSync(paths.noiseJson) ? null : (JSON.parse(readFileSync(paths.noiseJson, "utf8")) as Noise);
-  return {
-    rescore: start.rescore, deadlineMs, direction, kept: { expId, sha, score, metrics }, ...lastReview(cfg, nightId), log, history, round: lastRound(cfg, nightId), spend: spentBy(cfg, nightId), noise,
-  };
-}
 
 /**
  * The evaluation's noise, from an A/A run: the kept commit scored again with no replayed model calls.
@@ -392,7 +372,7 @@ export function evalRow(b: RowBase, kept: Pick<Kept, "expId" | "sha">, outcome: 
 
 /**
  * The row of a kept commit scored again because the scorers changed. It stays the checkpoint if that
- * evaluation failed, with the scores it came with: a later continuation finds it here either way.
+ * evaluation failed, with the scores it came with.
  */
 export function rescoreRow(b: RowBase, kept: Kept, outcome: EvalOutcome): ResultRow {
   const scored = outcome.ok && outcome.result.ok;

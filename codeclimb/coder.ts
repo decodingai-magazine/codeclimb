@@ -49,7 +49,7 @@ export type ExperimentInput = {
   repair?: boolean;
   /** One log line per earlier round, held-out names masked: what was tried, what moved, why it went. With the notes and reviews on disk, the trajectory. */
   history?: string[];
-  /** The operator's direction for every round of a continued night, held-out names masked. */
+  /** The operator's direction for every round, held-out names masked. */
   direction?: string;
   /** Reviewer's hypothesis for this experiment; null in round 1 (the agent picks and reports its own). */
   hypothesis: string | null;

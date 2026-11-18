@@ -1,7 +1,6 @@
 import { eventType, Inngest, staticSchema } from "inngest";
 import { extendedTracesMiddleware, scoreMiddleware } from "inngest/experimental";
 import type { NightConfig } from "../../codeclimb/config";
-import type { NightStart } from "../../codeclimb/continuation";
 
 // A separate app from the Next.js one: the CodeClimb worker connects with
 // `connect()` and keeps Pi (and its native deps) out of the Next bundle.
@@ -11,7 +10,7 @@ export const ccInngest = new Inngest({
 });
 
 export const nightStart = eventType("codeclimb/night.start", {
-  schema: staticSchema<{ night_id: string; config: NightConfig; continue?: NightStart; direction?: string }>(),
+  schema: staticSchema<{ night_id: string; config: NightConfig; direction?: string }>(),
 });
 
 /**
@@ -19,9 +18,8 @@ export const nightStart = eventType("codeclimb/night.start", {
  * The dedup also holds for a later retry of the same night id (within Inngest's dedup window), so a
  * night whose start failed before `init` needs a new id.
  */
-export function nightStartEvent(nightId: string, config: NightConfig, start?: NightStart, direction?: string) {
-  const fresh = !start && direction?.trim() ? { direction } : {};
-  return { id: start ? `night-continue-${nightId}-${Date.now()}` : `night-start-${nightId}`, name: nightStart.name, data: { night_id: nightId, config, ...(start ? { continue: start } : {}), ...fresh } };
+export function nightStartEvent(nightId: string, config: NightConfig, direction?: string) {
+  return { id: `night-start-${nightId}`, name: nightStart.name, data: { night_id: nightId, config, ...(direction?.trim() ? { direction } : {}) } };
 }
 
 /** Goes on from a pause for credits: `run-night resume`, or the app's Resume. */

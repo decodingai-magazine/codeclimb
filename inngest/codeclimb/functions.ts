@@ -16,7 +16,6 @@ import { lessonsOn, proposeLessons, stoppedNight, writeProposal } from "../../co
 import {
   checkRepo,
   checkStop,
-  continueNight,
   creditStopOf,
   decideRound,
   diffLeaks,
@@ -138,14 +137,10 @@ export const runNight = ccInngest.createFunction(
         throw new NonRetriableError(e.message);
       }),
     );
-    const start = event.data.continue;
     const given = event.data.direction?.trim();
-    const fresh = async (): Promise<NightState> => {
-      const init = freshNight(await step.run("init", () => initNight(cfg, nightId)));
-      // A new night's direction, masked like a continue's (`continueNight`).
-      return given ? { ...init, direction: await step.run("mask-direction", () => maskText(cfg, given)) } : init;
-    };
-    const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : await fresh();
+    const init = freshNight(await step.run("init", () => initNight(cfg, nightId)));
+    // The operator's direction, masked.
+    const state: NightState = given ? { ...init, direction: await step.run("mask-direction", () => maskText(cfg, given)) } : init;
     const { direction } = state;
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 
@@ -211,7 +206,7 @@ export const runNight = ccInngest.createFunction(
     // The A/A move, scaled per experiment by `decideRound`; a fixed margin in the config replaces it.
     const margin = () => cfg.noise_margin.fixed ?? noise?.margin ?? 0;
 
-    // The scorers changed since the kept commit (continued or seeded) was scored: a round of its own scores
+    // The scorers changed since the kept commit (a seed) was scored: a round of its own scores
     // it again, or the next round would be compared with scores from another evaluation.
     if (state.rescore) {
       round += 1;
@@ -253,7 +248,7 @@ export const runNight = ccInngest.createFunction(
       }
       const rowBase = { cfg, nightId, round };
 
-      // The first checkpoint with scores, new, continued or rescored, is scored once more with nothing
+      // The first checkpoint with scores, new or rescored, is scored once more with nothing
       // replayed: how far its weighted score moves is the margin every later experiment must beat. Once.
       if (kept.metrics && !noise && noiseRuns < 2 && cfg.noise_margin.fixed === null) {
         noiseRuns += 1;
@@ -331,7 +326,7 @@ export const runNight = ccInngest.createFunction(
       const final = decided;
 
       // Review, even of a reverted experiment and in the last round: its feedback is what the next round
-      // learns from it, and a continued night's next round is the one after this. It decides nothing.
+      // learns from it. It decides nothing.
       let review: ReviewOutput = { feedback, hypothesis: hypothesis ?? "", verdict: "", reviewer_usd: 0, t_review: 0, tokens: 0 };
       const coderNotes = experiment.ok ? experiment.code.notes : undefined;
       const decision = final;
@@ -408,7 +403,6 @@ export const runNight = ccInngest.createFunction(
     const test = await evaluate(`test-r${round}`, round, { evalId: `${nightId}-test-r${round}`, expId: kept.expId, split: "test" });
     if (test.ok) spend += test.result.program_usd;
     const summary = await step.run("finish", () => finishNight({ cfg, nightId, round, kept, test, stopReason, rounds: round, spend }));
-    // The id holds the round: a continued night finishes again, and its new rounds are new lessons.
     if (lessonsOn(cfg)) {
       await step.sendEvent("lessons", { id: `lessons-${nightId}-r${round}`, name: nightFinished.name, data: { night_id: nightId, scenario: cfg.scenario.name, config: event.data.config } });
     }

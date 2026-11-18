@@ -74,7 +74,7 @@ export interface ReviewInput {
   result: BranchSummary;
   /** Every earlier round of the night (`readTrajectory`): log line, notes, feedback. Empty in round 1. */
   trajectory: string;
-  /** The operator's direction for every round of a continued night; empty without one. */
+  /** The operator's direction for every round; empty without one. */
   direction?: string;
   /** The scenario's headline metrics; when set, no single metric frames the prompt. */
   headline: string[];
