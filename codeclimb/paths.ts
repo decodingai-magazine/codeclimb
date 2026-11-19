@@ -12,7 +12,8 @@ export const runsRoot = (root = process.env.CODECLIMB_ROOT ?? process.cwd()): st
  * Every night folder under the runs folder, at any depth: `<runs>/<results dir>/nights/<id>/night.json`.
  * `scenario` is the results dir relative to the runs folder (`datenorm`, `mock/capitals-smoke`).
  */
-export function nightDirs(runs = runsRoot()): { scenario: string; id: string; dir: string }[] {
+/** The nights under `runs`; with `inInit`, also those still in init, which have no night.json yet. */
+export function nightDirs(runs = runsRoot(), inInit = false): { scenario: string; id: string; dir: string }[] {
   if (!existsSync(runs)) return [];
   const found: { scenario: string; id: string; dir: string }[] = [];
   const walk = (dir: string): void => {
@@ -24,7 +25,7 @@ export function nightDirs(runs = runsRoot()): { scenario: string; id: string; di
         continue;
       }
       for (const id of readdirSync(sub)) {
-        if (existsSync(join(sub, id, "night.json"))) found.push({ scenario: relative(runs, dir), id, dir: join(sub, id) });
+        if (inInit || existsSync(join(sub, id, "night.json"))) found.push({ scenario: relative(runs, dir), id, dir: join(sub, id) });
       }
     }
   };

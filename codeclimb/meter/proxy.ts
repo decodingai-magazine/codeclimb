@@ -11,6 +11,7 @@
 // Status codes follow SDK retry policy: 401 bad token, 403 model not allowed,
 // 402 budget spent, 400 unsupported request; only upstream failures are 502.
 import { type CreditStop, isCreditError } from "../credits";
+import { MOCK_CREDIT_MESSAGE, mockCreditDue } from "../pi/mock";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -78,11 +79,13 @@ export interface MeterBackends {
 const NO_USAGE: CallUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
 /** Free canned answers, for `run-night --mock`. */
+const mockCall = <T>(answer: () => T): Promise<T> =>
+  mockCreditDue("program") ? Promise.reject(new BackendError(MOCK_CREDIT_MESSAGE, NO_USAGE, true)) : Promise.resolve(answer());
 const MOCK_BACKENDS: MeterBackends = {
-  chat: async () => ({ text: "mock", finishReason: "stop", usage: NO_USAGE }),
-  embed: async (_model, input) => ({ vectors: input.map(() => [1, 0, 0, 0]), usage: NO_USAGE }),
-  decide: async () => ({ answers: {}, usage: NO_USAGE }),
-  rerank: async (_model, { documents }) => ({ results: documents.map((_, index) => ({ index, relevance_score: 0 })), usage: NO_USAGE }),
+  chat: () => mockCall(() => ({ text: "mock", finishReason: "stop", usage: NO_USAGE })),
+  embed: (_model, input) => mockCall(() => ({ vectors: input.map(() => [1, 0, 0, 0]), usage: NO_USAGE })),
+  decide: () => mockCall(() => ({ answers: {}, usage: NO_USAGE })),
+  rerank: (_model, { documents }) => mockCall(() => ({ results: documents.map((_, index) => ({ index, relevance_score: 0 })), usage: NO_USAGE })),
 };
 
 /** An upstream failure. `usage` is what the failed call still cost. */

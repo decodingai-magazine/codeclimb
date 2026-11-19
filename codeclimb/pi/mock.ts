@@ -30,8 +30,33 @@ function offlineDue(): boolean {
   return offline.seen >= offline.first && offline.seen <= offline.last;
 }
 
+/** The scripted credit error's message: a 402, as a provider out of credits answers. */
+export const MOCK_CREDIT_MESSAGE = "402 insufficient credits (mock credit stop)";
+
+/**
+ * `CODECLIMB_MOCK_CREDIT=<who>:<n>`, a test hook with no CLI flag: call number `n` of the night's calls by `who`
+ * (`coder`, `reviewer` or `program`) fails once with a credit error, to exercise the credit pause. The count starts
+ * again when a coder of another night arms it (`armMockCredit`).
+ */
+const credit = (() => {
+  const m = /^(coder|reviewer|program):(\d+)$/.exec(process.env.CODECLIMB_MOCK_CREDIT?.trim() ?? "");
+  return { who: m?.[1], n: m ? Number(m[2]) : 0, night: "", seen: { coder: 0, reviewer: 0, program: 0 } };
+})();
+
+export function armMockCredit(nightId: string): void {
+  if (credit.night === nightId) return;
+  Object.assign(credit, { night: nightId, seen: { coder: 0, reviewer: 0, program: 0 } });
+}
+
+export function mockCreditDue(who: "coder" | "reviewer" | "program"): boolean {
+  if (credit.who !== who) return false;
+  credit.seen[who] += 1;
+  return credit.seen[who] === credit.n;
+}
+
 /** One bash call, then the closing text. A resumed session ends on a tool result or a prompt, and either works. */
 export function coderReply(messages: Messages) {
+  if (mockCreditDue("coder")) return fauxAssistantMessage([], { stopReason: "error", errorMessage: MOCK_CREDIT_MESSAGE });
   if (offlineDue()) return fauxAssistantMessage([], { stopReason: "error", errorMessage: "fetch failed" });
   return messages.at(-1)?.role === "toolResult"
     ? fauxAssistantMessage(MOCK_APPROACH)
@@ -40,6 +65,7 @@ export function coderReply(messages: Messages) {
 
 /** The JSON `parseReview` wants. */
 export function reviewerReply() {
+  if (mockCreditDue("reviewer")) return fauxAssistantMessage([], { stopReason: "error", errorMessage: MOCK_CREDIT_MESSAGE });
   return fauxAssistantMessage(JSON.stringify({ feedback: "mock feedback", hypothesis: "mock hypothesis", verdict: "mock verdict" }));
 }
 

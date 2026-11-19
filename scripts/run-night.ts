@@ -80,7 +80,7 @@ if (positionals[0] === "resume") {
 
 if (positionals[0] === "stop") {
   if (!values.night) throw new Error("stop needs --night <id>");
-  const found = nightDirs().find((n) => n.id === values.night);
+  const found = nightDirs(runsRoot(), true).find((n) => n.id === values.night);
   if (!found) throw new Error(`no night ${values.night} under ${runsRoot()}`);
   await ccInngest.send({ name: "codeclimb/night.stop", data: { night_id: values.night, reason: "manual" } });
   console.log(`[run-night] sent codeclimb/night.stop for ${values.night}`);

@@ -25,7 +25,7 @@ import { type CreditStop, isCreditError } from "./credits";
 import { ExperimentRepo, expRef } from "./git";
 import { isMetered, METER_NETWORK, meter, meterBaseUrl, meterEnv } from "./meter";
 import { nightPaths, sandboxName } from "./paths";
-import { armMockOffline } from "./pi/mock";
+import { armMockCredit, armMockOffline } from "./pi/mock";
 import { createIsolatedSession, sessionManagerFor } from "./pi/session";
 import { sandboxTools } from "./pi/tools";
 import { originRepo } from "./pi/web";
@@ -657,6 +657,7 @@ export async function runCoder(
 
   // The night's first coder session arms the lost connection (`--mock-offline`); later ones leave it alone.
   if (cfg.mock && cfg.mock_offline) armMockOffline(input.nightId, cfg.mock_offline);
+  if (cfg.mock) armMockCredit(input.nightId);
   const session: AgentSession = await createIsolatedSession({
     model: input.model,
     mock: cfg.mock ? "coder" : undefined,

@@ -33,6 +33,11 @@ export const nightStop = eventType("codeclimb/night.stop", {
   schema: staticSchema<{ night_id: string; reason?: string }>(),
 });
 
+/** A night's `hard_deadline`, as epoch ms: when it passes, the night stops. */
+export const nightHardDeadline = eventType("codeclimb/night.hard-deadline", {
+  schema: staticSchema<{ night_id: string; at: number }>(),
+});
+
 /** A night ended, finished or stopped: its rounds go to the scenario's lessons (codeclimb/lessons.ts). */
 export const nightFinished = eventType("codeclimb/night.finished", {
   schema: staticSchema<{ night_id: string; scenario: string; config: NightConfig }>(),

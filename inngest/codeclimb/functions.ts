@@ -9,7 +9,7 @@ import { invoke, NonRetriableError, staticSchema } from "inngest";
 import { abortNight, abortRun } from "../../codeclimb/aborts";
 import { markStopped, sweepNight, sweepRun } from "../../codeclimb/cleanup";
 import { type EvalFailure, type ExperimentInput, runCoder } from "../../codeclimb/coder";
-import { efficiencyMetrics, evalMinutes, rootConfig, type NightConfig } from "../../codeclimb/config";
+import { efficiencyMetrics, evalMinutes, resolveDeadline, rootConfig, type NightConfig } from "../../codeclimb/config";
 import { OutOfCredits } from "../../codeclimb/credits";
 import { closeEvaluator, type EvalRequest, evalCandidate, openEvaluator } from "../../codeclimb/evaluate";
 import { lessonsOn, proposeLessons, stoppedNight, writeProposal } from "../../codeclimb/lessons";
@@ -38,11 +38,18 @@ import {
 import { checkNightModels } from "../../codeclimb/meter/backends";
 import type { HypothesisLogEntry, ReviewOutput } from "../../codeclimb/reviewer";
 import { passesThresholds } from "../../codeclimb/stats";
-import { ccInngest, nightFinished, nightResume, nightStart, nightStop } from "./client";
+import { ccInngest, nightFinished, nightHardDeadline, nightResume, nightStart, nightStop } from "./client";
 
 
+/** Seconds from a test hook in the environment (`.env` is loaded before this module), else the default. */
+const hookSeconds = (name: string, fallback: `${number}d`): `${number}s` | `${number}d` => {
+  const s = Number(process.env[name]);
+  return Number.isFinite(s) && s > 0 ? `${Math.round(s)}s` : fallback;
+};
 /** How long a night waits for credits before it stops. Stay under `run-night`'s `timeouts.finish`. */
-const PAUSE_TIMEOUT = "3d";
+const PAUSE_TIMEOUT = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", "3d");
+/** The night's backstop. */
+const BACKSTOP = hookSeconds("CODECLIMB_BACKSTOP_S", "4d");
 /** A failed round-start smoke test is tried again this often, this many times, before the night stops. */
 const SMOKE_WAIT = "5m";
 const SMOKE_RETRIES = 6;
@@ -114,7 +121,7 @@ export const runNight = ccInngest.createFunction(
     cancelOn: [{ event: nightStop, if: "async.data.night_id == event.data.night_id" }],
     // Backstop past any sane deadline + one round + the test eval + a pause (PAUSE_TIMEOUT); the deadline
     // itself is a soft stop. A timeout cancels this run; `onRunCancelled` turns that into a night stop.
-    timeouts: { finish: "4d" },
+    timeouts: { finish: BACKSTOP },
     // Out of retries: stop the night through the one cleanup path (`cancelOn` + `night-stop-cleanup`).
     onFailure: async ({ event, step }) => {
       const nightId = String(event.data.event.data.night_id);
@@ -140,6 +147,12 @@ export const runNight = ccInngest.createFunction(
     };
     const state = start ? await step.run("continue", () => continueNight(cfg, nightId, start)) : await fresh();
     const { direction } = state;
+    // The hard deadline stops the night beside it (`night-hard-deadline`), as a stop does: even mid-step.
+    const hard = cfg.hard_deadline;
+    if (hard) {
+      const at = await step.run("hard-deadline-at", () => resolveDeadline(hard, Date.now()));
+      await step.sendEvent("hard-deadline", { name: nightHardDeadline.name, data: { night_id: nightId, at } });
+    }
     const expTimeout = `${cfg.timeouts.experiment_min * 3 + 30}m`;
 
     // One evaluator run (and sandbox, `cc-<night>-<id>`) per call.
@@ -427,6 +440,16 @@ export const onNightStop = ccInngest.createFunction(
   },
 );
 
+/** The hard deadline: then the one cleanup path. stop.json first, so the follow-up `cancelled` stop can't win. */
+export const onHardDeadline = ccInngest.createFunction(
+  { id: "night-hard-deadline", triggers: [nightHardDeadline], cancelOn: [nightStop, nightStart].map((e) => ({ event: e, if: "async.data.night_id == event.data.night_id" })) },
+  async ({ event, step }) => {
+    await step.sleepUntil("wait", new Date(event.data.at));
+    await step.run("mark-stopped", () => markStopped(event.data.night_id, "hard_deadline"));
+    await step.sendEvent("stop-night", { name: nightStop.name, data: { night_id: event.data.night_id, reason: "hard_deadline" } });
+  },
+);
+
 /**
  * A cancelled run: abort its Pi session (if this worker runs it) and destroy the sandboxes it created.
  * A cancelled `run-night` (a `timeouts.finish` hit, or a stop) also stops its night: the parent creates
@@ -468,4 +491,4 @@ export const distillLessons = ccInngest.createFunction(
   },
 );
 
-export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onRunCancelled, distillLessons];
+export const codeclimbFunctions = [runNight, runExperiment, runEvaluator, onNightStop, onHardDeadline, onRunCancelled, distillLessons];

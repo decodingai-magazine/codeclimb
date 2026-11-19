@@ -36,6 +36,8 @@ export type NightConfig = {
   plateau_rounds: number;
   /** ISO timestamp, or a duration from night start like "90m" / "8h". */
   deadline: string;
+  /** A hard stop, even mid-step: an ISO timestamp, or a duration from night start. */
+  hard_deadline?: string;
   timeouts: { experiment_min: number; eval_min: number };
   /** The coder's model. */
   model: string;
@@ -171,6 +173,7 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   if (!LESSONS_MODES.includes(cfg.lessons)) throw new Error(`config: lessons must be ${LESSONS_MODES.join(" | ")}`);
   if (cfg.lessons !== "off" && !cfg.scenario.lessons) throw new Error(`config: lessons is ${cfg.lessons}, but scenario ${cfg.scenario.name} declares no lessons in its scenario.yaml`);
+  if (cfg.budget_usd.experiment > cfg.budget_usd.night) throw new Error("config: budget_usd.experiment must not exceed budget_usd.night");
   if (cfg.max_rounds < 1) throw new Error("config: max_rounds must be >= 1");
   if (cfg.max_tokens !== null && !(Number.isInteger(cfg.max_tokens) && cfg.max_tokens > 0)) {
     throw new Error("config: max_tokens must be a positive integer, or omitted for no cap");
@@ -195,6 +198,8 @@ export function parseConfig(text: string, baseDir: string): NightConfig {
   }
   checkSandboxLimits(cfg);
   resolveDeadline(cfg.deadline, Date.now()); // throws if malformed
+  if (raw.hard_deadline != null) cfg.hard_deadline = raw.hard_deadline instanceof Date ? raw.hard_deadline.toISOString() : String(raw.hard_deadline);
+  if (cfg.hard_deadline) resolveDeadline(cfg.hard_deadline, Date.now());
   return cfg;
 }
 
