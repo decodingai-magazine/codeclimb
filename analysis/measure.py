@@ -464,7 +464,7 @@ def main(ctx_path: str, out_path: str) -> None:
         "dead_code": dead_code(work, measured),
         "dependencies": dependencies(ctx, pkg),
         "tsconfig": tsconfig(ctx),
-        # Code checks: deterministic, read from the code; never an LLM's answer (that is the judge, judge.py).
+        # Code checks: deterministic, read from the code.
         "code_checks": {"hardcoded_thresholds": hardcoded_thresholds(ctx, work, measured)},
         "practices": practices(ctx, pkg, work),
         "coverage": coverage(work, pkg, measured, glued["glue_files"]),
