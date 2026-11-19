@@ -8,6 +8,8 @@
 # builds"). A maintenance base or task commit is passed by SHA. It is exported with
 # `git archive` to jobs/reference-<stack>-<commit>/ (gitignored). LangChain expects CODECLIMB_BENCH_LANGSMITH_API_KEY
 # (and CODECLIMB_BENCH_LANGSMITH_ENDPOINT) exported, as for any LangChain trial.
+# CODECLIMB_ASSEMBLED=1 skips the assemble (job-configs/run-all.sh assembled every task first, so grades run side by
+# side); CODECLIMB_JOBS_DIR sets the job output folder (default jobs).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . job-configs/bench-env.sh  # the LangSmith key from .env when not exported
@@ -23,7 +25,7 @@ commit=$(git rev-parse --short=7 "$commit^{commit}")
 build="$PWD/jobs/reference-$stack-$commit"
 rm -rf "$build" && mkdir -p "$build"
 git archive "$commit" | tar -x -C "$build"
-python3 assemble.py "$stack" > /dev/null
+[ -n "${CODECLIMB_ASSEMBLED:-}" ] || python3 assemble.py "$stack" > /dev/null
 
 name="reference-$stack-$commit-$(date +%H%M%S)"
 cat > "jobs/$name.yaml" <<EOF
@@ -38,4 +40,4 @@ agents:
   - name: nop
 EOF
 export CODECLIMB_REFERENCE_DIR="$build"
-exec harbor run -c "jobs/$name.yaml" -y -o jobs "$@"
+exec harbor run -c "jobs/$name.yaml" -y -o "${CODECLIMB_JOBS_DIR:-jobs}" "$@"

@@ -184,3 +184,11 @@ MAINTENANCE = {
         commits={"inngest": "2c8eaa7", "langchain": "3f7793d"},
     ),
 }
+
+# The counted catalogue (docs/codeclimb-eval-spec.md, "Maintenance tasks"): the tasks the full run (job-configs/run-all.sh)
+# runs, 3 attempts per task per stack. C1 is the smoke and never counted.
+COUNTED = ("r14", "r3", "r10", "r15", "r2", "r12", "c7", "c2", "c4", "c6")
+# The verifier families of a maintenance trial, of its regrade and of its base's grades: `resolved` holds every key that
+# passed in every base grade, so all three must run the same families.
+FAMILIES = "basic,hidden"
+assert set(COUNTED) <= set(MAINTENANCE), set(COUNTED) - set(MAINTENANCE)
