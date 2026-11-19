@@ -1,19 +1,19 @@
 # 12: Reviewer: feedback, hypothesis and verdict every round
 
-**What to build:** After each decision the reviewer, a Pi session with no tools and its own system prompt, reads the experiment against the checkpoint and writes feedback, the next hypothesis and a verdict. It decides nothing. A multi-round night now passes the reviewer's hypothesis to the next coder, the review's cost and time land on the round's rows, and a failed review never kills the night.
+**What to build:** Every round ends with a review: one tool-less Pi session on the reviewer's model reads the round's evidence and writes `feedback`, the next `hypothesis` and a `verdict`, which the next round's coder tests. The review decides nothing, runs on reverted rounds too, never names a dev item, and a failed review never kills the night.
 
-**Spec sections** (`specs/inngest/spec.md`): "Reviewer", "Round loop", "Standard metrics", "Files a night writes", "Mock mode"
+**Spec sections** (`specs/inngest/spec.md`): "Features" (Reviewer; Loop), "Architecture", "Night config", "Scenario contract", "Files a night writes", "Mock mode"
 
 **Blocked by:** 11 (Tracer night: one mock round on the Inngest dev server)
 
 **Status:** ready-for-agent
 
-- [ ] The review prompt holds what "Reads" lists, with the metric-visibility rule (thresholds, gates and headlines always; diagnostics with headlines; every scorer metric without) and the optimized-standard-metrics rule with `min_efficiency_gain`; an `unchanged` experiment gets the checkpoint's scores, the nothing-was-tested note and the closing message (unit tests)
-- [ ] Every evidence cap of the table is implemented and unit-tested: per-item errors at 70,000 characters per stage with the equal-share rule, the run log at 4,000 with dropped lines and flagged lines first, diff and checkpoint source cut at 60,000 with a note, tasks and train measurements at 4,000, unchanged stages by output hash
-- [ ] The reviewer is asked for the three fields as the spec describes them: the hypothesis one concrete change per threshold metric still short, largest weighted shortfall first, at most four; the verdict at most 8 lines
-- [ ] The system prompt carries the five rules of the spec and contains neither `You stopped with` nor `change no more code` (unit test)
-- [ ] Reply handling: the object between the first `{` and the last `}`, trimmed fields, `feedback` a string and `hypothesis` non-empty, a missing `verdict` allowed, one retry asking for JSON only, then the review fails (unit tests)
-- [ ] Leak loop: the three fields go through `scan`; a find triggers one rewrite request; what survives is masked (unit tests with a fake scan)
-- [ ] `reviews/r<N>.prompt.md` is written before the call and `reviews/r<N>.json` after, with the listed keys
-- [ ] In the loop: the review runs every round, also after a revert and in the last round; a failed review keeps the last feedback and hypothesis and leaves the verdict empty; `reviewer_usd` and `t_review` are on the round's rows; the next round's coder prompt has the reviewer's hypothesis in `<hypothesis>`
-- [ ] End-to-end, mock, dev server: `datenorm-smoke --mock` (its two rounds) prints `done`, `reviews/r1.json` and `reviews/r2.json` exist with `feedback: mock feedback`, and the round-2 commit message is `<exp id>: mock hypothesis`
+- [ ] One review per round, in a tool-less session on `reviewer_model` at `reviewer_thinking`
+- [ ] The review reads the scenario's spec and `protocol` files, the checkpoint, the diff, the dev metrics with per-item errors, the run logs, the coder's notes and the night so far; the metrics it is shown include the scenario's `headline` and the ones its `diagnostics` match (unit tests on the prompt builder)
+- [ ] The review is told about the standard metrics `standard_metrics` enables and mentions a change in one larger than `min_efficiency_gain` (unit test)
+- [ ] `reviews/r<N>.json` holds `round`, `model`, `feedback`, `hypothesis`, `verdict` and `reviewer_usd`; `reviewer_usd` is on the round's row
+- [ ] The review runs every round, kept, reverted or `error`, and the keep decision never reads it (unit test)
+- [ ] The review's text passes the scenario's `scan` before any coder reads it, and found names are masked (unit test with a fake scan)
+- [ ] A review that fails leaves the round recorded and the night running (test with a failing fake reviewer)
+- [ ] The next round's coder prompt carries the review's hypothesis, and that round's commit message is `<exp id>: <hypothesis>`
+- [ ] With the dev server and the worker up, `datenorm-smoke --mock` prints `done`; `reviews/r1.json` and `reviews/r2.json` exist with `feedback: mock feedback` (C7), and round 2's commit message ends with `mock hypothesis`

@@ -1,26 +1,24 @@
 # 29: Multi-stage mock night: graphrag-smoke, mock night 7, passes its checks
 
-**What to build:** The graphrag scenario runs end to end on mock models: three stages, a metered program, stage `files` uploaded into the evaluator's sandbox, host commands run through `uv`, the repository check, the leak scan, a repair, and a lessons run at the end. This is night 7 of the done signal, with its own checks. This ticket adds little code of its own; it is where the pieces first meet a multi-stage scenario, and it fixes what that shows.
+**What to build:** The `graphrag` scenario runs a whole mock night: three stages (`extraction`, `graph`, `retrieval`), a repository check, host commands through `uv`, a metered program, a repair, and lessons at the end. Mock night 7 passes every check the spec lists for it, whether or not a dev evaluation fails.
 
-**Spec sections** (`specs/inngest/spec.md`): "Goal and done signal", "What you get, what you build", "How a scenario is loaded", "Splits", "Stage reports become metrics", "Evaluator", "Standard metrics", "Repair", "Lessons across nights", "Metering proxy", "Mock mode", "Files a night writes"
+**Spec sections** (`specs/inngest/spec.md`): "Goal and done signal", "Scenario contract", "Files a night writes", "Result row"
 
-**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check); 25 (Repair: one fix attempt for a commit that failed before scoring); 28 (Lessons distillation: what a night learned reaches the next night)
+**Blocked by:** 25 (Repair: one fix attempt for a commit that failed before scoring); 28 (Lessons distillation: what a night learned reaches the next night)
 
 **Status:** ready-for-agent
 
-- [ ] `npm run build:image:graphrag` builds `codeclimb-graphrag` from `codeclimb-python` with the scenario's requirements installed system-wide, build context `scenarios/graphrag`
-- [ ] With the dev server and the worker up, `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` writes to `runs-inngest/mock/graphrag-smoke/`, prints `done` with `stop_reason` `max_rounds` or `thresholds`, and exits 0
-- [ ] The rows of the first table of "Goal and done signal" that the spec carries over hold: `done.json` without `stop.json` or `pause.json`, `validate-results`, the mock commit of `r1-e0` adding `MOCK.md`, `code-state.json` with `stop: done` and a session file, `reviews/r<n>.json` with `mock feedback`, `decision_reason` on every experiment row, `spend_usd: 0`, no `cc-<id>` container
-- [ ] `results.jsonl` has an `e0` experiment row for every round and exactly one `test` row; a round has an `e1` row only after an `e0` row with decision `error`, and no round has an `e2`
-- [ ] Every `e0` session holds eight send-backs then one wrap-up, and an `e1` session holds neither; `train-score.json` and `tasks.json` exist for both
-- [ ] `bundle/history/notes/r<round>-e<n>.md` exists per experiment with the `mock note` part; the `mock verdict` part is on the note of the round's last experiment
+- [ ] With `codeclimb-graphrag` built, `uv` on the path, and the dev server and the worker up, `npm run run-night -- --config configs/graphrag-smoke.yaml --mock` writes to `runs-inngest/mock/graphrag-smoke/` and passes C1, C2, C3, C5, C6, C7, C10, C12 and C14
+- [ ] An `e0` experiment row for every round and exactly one `test` row; an `e1` row only after an `e0` row with decision `error`; no `e2`
+- [ ] Every `e0` session holds eight send-backs, then one wrap-up; an `e1` session holds neither; `train-score.json` and `tasks.json` exist for both
+- [ ] A note per experiment with a `mock note` coder part; the `mock verdict` part is on the note of the round's last experiment
 - [ ] Every experiment has `exps/<exp>/check.json` with an empty `errors` list
-- [ ] Every evaluation, dev and test, has `evals/<eval>/extraction/inputs.jsonl` with 8 lines and `extraction/run.log`
-- [ ] The test evaluation `evals/<id>-test-r<last round>/` holds `extraction/`, `graph/` and `retrieval/`, each with `inputs.jsonl`, `run.log`, `outputs/` and `report.json`
-- [ ] `metrics.json` exists for the test evaluation; a dev row that was not scored holds the primary metric at 0 and nothing else
-- [ ] The `test` row and `done.json`'s `test_metrics` hold metrics named `extraction.…`, `graph.…` and `retrieval.…`, with `<stage>.output_bytes` for each stage; every other name is a standard metric (`cost_*`, `model_calls*`, `latency_*`)
+- [ ] Every evaluation has `evals/<eval>/extraction/inputs.jsonl` with 8 lines and `extraction/run.log`
+- [ ] The test evaluation `evals/<id>-test-r<last round>/` holds `extraction/`, `graph/` and `retrieval/`, each with `inputs.jsonl`, `run.log`, `outputs/` and `report.json`, and a `metrics.json`
+- [ ] A dev row that was not scored holds the primary metric at 0 and nothing else
+- [ ] The `test` row and `done.json`'s `test_metrics` hold metrics of all three stages, named `<stage>.…`, with `<stage>.output_bytes` for each; every other name is a standard metric (`cost_*`, `model_calls*`, `latency_*`)
 - [ ] Every `evals/*/meter.jsonl` lists the program's calls, none with `error`; the `test` row has `model_calls` above 0 and `cost_usd` 0
 - [ ] `noise.json` and a `noise` row exist only if a round was kept
-- [ ] Within a minute of `done`, `lessons/<id>-r<last round>/` holds `lessons.md`, `changes.md` and `proposal.json` with an empty `ops` list and no `applied: true`; the scenario's `lessons.md` is unchanged
-- [ ] These checks hold whether or not a dev stage fails and a round ends in `error` with a repair `e1`; the check never asserts that a dev evaluation failed or passed
-- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them; `npm run typecheck` and `npm test` pass
+- [ ] Within a minute of `done`, `lessons/<id>-r<last round>/` holds `lessons.md`, `changes.md` and `proposal.json`; the proposal has an empty `ops` list and is not marked applied; `scenarios/graphrag/spec/agent/lessons.md` is unchanged
+- [ ] The checks hold whether or not a dev evaluation fails; none asserts that one failed or passed
+- [ ] Nights 1 to 3 still pass the check of ticket 20

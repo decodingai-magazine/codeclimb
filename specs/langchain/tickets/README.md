@@ -1,116 +1,113 @@
-# CodeClimb on LangGraph: build tickets
+# CodeClimb on the LangChain ecosystem: build tickets
 
-46 tickets that rebuild CodeClimb from `specs/langchain/spec.md` alone. Each ticket names the spec sections it implements by heading; the spec is the contract, the ticket only scopes it. One file per ticket: `<NN>-<slug>.md`.
+42 tickets that build CodeClimb from `specs/langchain/spec.md` alone. Each ticket names the spec sections it implements by heading (the bold paragraph names under "Features" count as sections); the spec is the contract, the ticket only scopes it. Where a ticket and the spec differ, the spec wins. One file per ticket: `<NN>-<slug>.md`.
 
 ## How to work them
 
 - Work a ticket only when every ticket in its "Blocked by" is done. Numbers are in dependency order: a blocker always has a lower number.
-- Given inputs are present and are consumed, not rebuilt: `scenarios/`, `configs/` and `docker/` (the two Dockerfiles). Ticket 01 creates the rest of the scaffold. The end-to-end test is the spec's "Goal and done signal": nothing outside the spec defines it. A test that needs a different scenario or config uses a temporary copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` folder of its own, which lands directly under `runs-langchain/`.
-- Preconditions for every ticket that runs a night or a Docker test: Docker is running; `.env` exists with `LANGSMITH_API_KEY` (the server container exits with code 3 without it); `LANGSMITH_TRACING=false` unless the ticket is about tracing.
-- Nights run one at a time: one night per server, and the relay is shared. Tickets whose blockers allow parallel work must still take turns on the Agent Server.
-- After a code change the Agent Server needs `npm run server` again before a night sees it.
-- Every ticket ends with `npm run typecheck` and `npm test` passing, plus the checks it lists.
+- Given inputs are present and are consumed, not rebuilt: `scenarios/`, `configs/`, `docker/` and `E2E.md`. Ticket 01 brings the starting point (`package.json`, `langgraph.json`, `src/hello.ts`, `tsconfig.json`, `.env.example`) to the spec. A test that needs a different scenario or config uses a temporary copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` folder of its own.
+- Preconditions for every ticket that runs a night or a Docker test: Docker is running; `codeclimb-python` is built; `.env` holds `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT` and `LANGSMITH_TRACING=false`, and nothing else. A test hook (`CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S`, `CODECLIMB_MOCK_CREDIT`) is set from the shell for the one check that needs it.
+- Nights run one at a time on one Agent Server. Tickets whose blockers allow parallel work still take turns on it.
+- After a code change, run `npm run server` again before a night sees it.
+- Every ticket ends with `npm run typecheck` and `npm test` passing, plus the checks it lists. `npm test` runs with no Agent Server up and no `codeclimb-graphrag` image, so whole-night checks are separate commands, never part of `npm test`.
 - "Not yet" in a ticket lists behaviour a later ticket adds. Leave it out; do not stub it with guesses.
-- Every ticket is `ready-for-agent` and needs no paid call and no human: the real-model paths (tickets 24, 44 and 45) are verified with stubbed providers; whole nights run with `--mock`.
-- The order follows the spec's "Suggested build order", cut so that a mock night runs at ticket 15 and nights 1 to 3 of the done signal pass at ticket 25. Tickets 26 to 45 are gated on ticket 25, directly or through a blocker (all but ticket 33, the pure lessons file), and those that touch the loop rerun its check.
+- Where the spec gives no number (an idle limit, the watchdog's limit, the trajectory's budget, the lessons size bound), the build picks one and the ticket tests the behaviour, not a value.
+- Every ticket is `ready-for-agent` and needs no paid call and no human: whole nights run with `--mock`; the real-model paths (tickets 20, 40 and 41) are verified against stubbed providers.
+- The order follows "Goal and done signal": a mock night runs at ticket 12, nights 1 to 3 pass every check at ticket 21, and nights 4 to 7 pass in the tickets that build what they prove (22, 24, 25, 31). Every ticket after 21 is gated on it, directly or through a blocker, except ticket 29 (the pure lessons file), and those that touch the loop rerun its check.
 
 ## Phases
 
 | # | phase | tickets |
 |---|---|---|
 | 1 | Scaffold | 01 |
-| 2 | Contracts and pure functions | 02 to 06 |
-| 3 | Experiment repository, sandbox, runtime primitives | 07 to 09 |
-| 4 | Pi sessions and mock models | 10 |
-| 5 | Coder | 11 to 12 |
-| 6 | Evaluator | 13 |
-| 7 | Tracer night: the first mock night | 14 to 15 |
-| 8 | Review, notes, send-backs | 16 to 19 |
-| 9 | Metering | 20 to 22 |
-| 10 | Noise run | 23 |
-| 11 | Model checks, soft stops, smoke test | 24 |
-| 12 | Check table passes on the base mock nights | 25 |
-| 13 | Hard stop and cleanup | 26 |
-| 14 | Crash resume | 27 to 28 |
-| 15 | Pause for credits | 29 to 30 |
-| 16 | Repair | 31 |
-| 17 | Continue | 32 |
-| 18 | Lessons | 33 to 34 |
-| 19 | Multi-stage mock night | 35 |
-| 20 | Seed and rescore | 36 to 37 |
-| 21 | Worker API | 38 to 39 |
-| 22 | Export | 40 |
-| 23 | App | 41 to 42 |
-| 24 | Tracing | 43 |
-| 25 | Real-model paths | 44 to 45 |
-| 26 | Final acceptance | 46 |
+| 2 | Contracts and pure rules | 02 to 06 |
+| 3 | Experiment repository and sandboxes | 07 to 08 |
+| 4 | Pi sessions on mock models | 09 |
+| 5 | Coder and evaluator | 10 to 11 |
+| 6 | Tracer night | 12 |
+| 7 | Notes, review, send-backs, check | 13 to 16 |
+| 8 | Metering | 17 to 18 |
+| 9 | Noise run | 19 |
+| 10 | Model checks, smoke test, soft stops | 20 |
+| 11 | Gate: nights 1 to 3 | 21 |
+| 12 | Hard stops | 22 to 23 |
+| 13 | Crash resume and lost connection | 24 to 25 |
+| 14 | Pause for credits | 26 |
+| 15 | Repair | 27 |
+| 16 | Continue | 28 |
+| 17 | Lessons | 29 to 30 |
+| 18 | Multi-stage night | 31 |
+| 19 | Seed and rescore | 32 to 33 |
+| 20 | Worker API and watchdog | 34 to 35 |
+| 21 | Export | 36 |
+| 22 | App | 37 to 38 |
+| 23 | Tracing | 39 |
+| 24 | Real-model paths | 40 to 41 |
+| 25 | Final acceptance | 42 |
 
-- phase 3: ticket 09, the step wrapper, is the one place where a step body meets LangGraph; it comes before the coder and the evaluator because their bodies take its abort signal
-- phase 12 is the gate: nights 1 to 3 of "Goal and done signal" pass every row of their tables before any phase after it starts. Nights 4 to 7 pass in the tickets that build what they prove (26, 27, 28, 35), and all seven run together in ticket 46
-- phase 14: ticket 28, `--mock-offline`, belongs here: a lost connection is a failure the coder's session survives
-- phase 15: ticket 30 holds the pause timeout and the variation backstop, both timers
-- phase 17: ticket 32, continue, waits for the pause (ticket 29): its pause count reads `pauses.jsonl`
-- phase 21: ticket 39, the watchdog, runs in the worker API's process
-- phase 23: the app is cut in two: ticket 41 is usable alone (list, status, controls, tiles); ticket 42 adds the views that read the report and the export
+- phase 7: nights 1, 2, 3 and 6 need every check C1 to C14, so the review (C7), the notes (C9) and the send-backs (C8) land before the first night that must pass in full. Only `graphrag` declares `check` and `scan`, so ticket 16 proves them on a temporary scenario copy
+- phase 11 is the gate: nothing after it starts until nights 1 to 3 pass every check. All seven nights run together in ticket 42
+- phase 12: ticket 23 holds the timed hard stops that need no pause (the hard deadline, the variation backstop) and the per-step backstops; the pause timeout is in ticket 26
+- phase 13: night 5 passes with no watchdog; the watchdog (ticket 35) is recovery past the server's own
+- phase 22: the app is cut in two: ticket 37 is usable alone; ticket 38 adds the views that read the report and the export
 
 ## Breakdown
 
-1. **Scaffold and Agent Server boot** (`01-scaffold-and-agent-server-boot.md`) — blocked by: none. Pinned dependencies, the fixed npm scripts, `langgraph.json` with placeholder `night`, `stop` and `lessons` graphs, the compose override, `.dockerignore`, `server` / `server:logs` / `server:stop`, the env loader, the `codeclimb-python` image; `/ok` answers on `127.0.0.1:8123`.
-2. **Scenario and night config loading** (`02-scenario-and-night-config-loading.md`) — blocked by: 01. `scenario.yaml` and night config parsed and validated, night-id rules, deadline parsing, the mock results path, the scoring hashes.
-3. **Host commands, placeholders and masking** (`03-host-commands-placeholders-and-masking.md`) — blocked by: 02. The host command runner, placeholder substitution, the `bundle`, `check` and `scan` commands, masking, the bundle rebuild that keeps `history/`.
-4. **Stage reports and standard metrics** (`04-stage-reports-and-standard-metrics.md`) — blocked by: 01. Report flattening, stage prefixes, `output_bytes`, latency metrics from `timings.jsonl`, cost metrics from ledger rows.
-5. **Weighted score, keep rule, noise margin and stop checks** (`05-weighted-score-keep-rule-noise-margin-and-stop-checks.md`) — blocked by: 01. The pure decision functions and the soft-stop check.
-6. **Result rows and `validate-results`** (`06-result-rows-and-validate-results.md`) — blocked by: 01. The row schema, the validated and deduplicated append, the `validate-results` command.
-7. **Experiment repository** (`07-experiment-repository.md`) — blocked by: 01. `experiments.git`: the starter commit with a fixed SHA, experiment refs, aliases, tree comparison, git bundles in and out, diffs.
-8. **Sandbox interface and Docker backend** (`08-sandbox-interface-and-docker-backend.md`) — blocked by: 07. One sandbox interface and its Docker backend: create, exec with process-tree kill, file transfer, find by name, sweep.
-9. **Step wrapper, abort signal and live registry** (`09-step-wrapper-abort-signal-and-live-registry.md`) — blocked by: 01. Steps as saved units with retry, failure as data, backstop timers, one abort signal, the live registry.
-10. **Pi sessions: mock models and sandbox tools** (`10-pi-sessions-mock-models-and-sandbox-tools.md`) — blocked by: 08. Isolated Pi sessions whose four tools act in a sandbox; the scripted `mock` provider for coder, reviewer and lessons.
-11. **Coder prompt** (`11-coder-prompt.md`) — blocked by: 02, 05. The coder's prompt as a pure function: sections, rules, targets / met / fragile, repair variant.
-12. **Coder experiment: code step and commit** (`12-coder-experiment-code-step-and-commit.md`) — blocked by: 03, 07, 09, 10, 11. One experiment's coder on a sandbox: stops, state files, the one squashed commit in `experiments.git`.
-13. **Evaluator, unmetered** (`13-evaluator-unmetered.md`) — blocked by: 03, 04, 07, 08, 09. One evaluation of a commit on its own sandbox: reset, environment, stages, score, metrics, files.
-14. **Threads and the start operation** (`14-threads-and-the-start-operation.md`) — blocked by: 02. Thread ids, the newest-thread search, start with one night per night id.
-15. **Tracer night: `datenorm-smoke` on mock models** (`15-tracer-night-datenorm-smoke-on-mock-models.md`) — blocked by: 05, 06, 12, 13, 14. The `night` graph and `run-night`: init, rounds (code, evaluate, decide, record, keep), stops, test evaluation, `done.json`.
-16. **Notes, history, rejected diffs and trajectory** (`16-notes-history-rejected-diffs-and-trajectory.md`) — blocked by: 03, 15. The memory within a night, written to the bundle's `history/` and read by the next coder.
-17. **Reviewer** (`17-reviewer.md`) — blocked by: 16. The review of every round: evidence with caps, the JSON reply, the leak loop, review files, the hypothesis handed to the next round.
-18. **Send-backs, reserve and wrap-up** (`18-send-backs-reserve-and-wrap-up.md`) — blocked by: 15. The coder is sent back until its reserve, then wrapped up once.
-19. **Check, leak scan and guardrails** (`19-check-leak-scan-and-guardrails.md`) — blocked by: 17. `check` and `scan` on each commit, `check.json`, the held-out-name guardrail.
-20. **Metering proxy: ledgers, routes, refusals, replay** (`20-metering-proxy-ledgers-routes-refusals-replay.md`) — blocked by: 04. The `/v1` server with per-token ledgers, the refusal order, ledger rows, canned mock answers, the replay cache.
-21. **Relay and path to the proxy** (`21-relay-and-path-to-the-proxy.md`) — blocked by: 08, 20. `cc-meter`, the `cc-meter-relay` forwarder, the "path is up" check.
-22. **Metered nights: mock nights 1 and 3 pass** (`22-metered-nights-mock-nights-1-and-3-pass.md`) — blocked by: 17, 18, 21. Meter tokens in the coder and the evaluator, the two ledgers, cost metrics; capitals-smoke and the plateau night.
-23. **Noise run; mock night 2 passes in full** (`23-noise-run-mock-night-2-passes.md`) — blocked by: 17, 18, 22. The A/A run, `noise.json`, noise rows; every unmetered row of the done signal's table holds for night 2.
-24. **Model checks, every soft stop, smoke test and outage** (`24-model-checks-soft-stops-smoke-test-and-outage.md`) — blocked by: 22, 23. The model check on the CLI and in the night's first step, the round-start smoke test, the `outage` stop; every soft stop proven on the loop.
-25. **Check table: mock nights 1 to 3 as one repeatable check** (`25-check-table-mock-nights-1-to-3.md`) — blocked by: 19, 22, 23, 24. Nights 1 to 3 of the done signal as one repeatable check that asserts every row of the table; later tickets rerun it.
-26. **Stop operation and cleanup; mock night 4 passes** (`26-stop-operation-and-cleanup-mock-night-4-passes.md`) — blocked by: 15, 25. The `stop` graph, `run-night stop`, the night's failure and cancel paths, the create refusal.
-27. **Crash resume; mock night 5 passes** (`27-crash-resume-mock-night-5-passes.md`) — blocked by: 23, 25. A killed server reruns only the running step; the coder's state file drives session resume and the fresh restart.
-28. **Lost connection mid-turn; mock night 6 passes** (`28-lost-connection-mid-turn-mock-night-6-passes.md`) — blocked by: 23, 25. `--mock-offline N` and the rule that a turn ended by a failed model call is sent back.
-29. **Pause for credits and resume** (`29-pause-for-credits-and-resume.md`) — blocked by: 22, 25, 26, 27. Credit stops, the night's suspension, `pause.json`, `run-night resume`, `mock_credit`.
-30. **Pause timeout and variation backstop** (`30-pause-timeout-and-variation-backstop.md`) — blocked by: 29. The timer operation: delayed `stop` runs that end a pause after 3 days and a variation after 4, each behind its guard.
-31. **Repair** (`31-repair.md`) — blocked by: 17, 19, 25. One repair attempt `e1` for a commit that failed before it was scored.
-32. **Continue** (`32-continue.md`) — blocked by: 23, 25, 26, 29. More rounds on an ended night: reopening, the rebuilt state, a new thread, `run-night continue`.
-33. **Lessons file, operations and gates** (`33-lessons-file-operations-and-gates.md`) — blocked by: 01. The `lessons.md` format, `add` / `edit` / `drop`, every gate, the rewrite and prune rounds, the proposal files.
-34. **Lessons distillation: graph, trigger and CLI** (`34-lessons-distillation-graph-trigger-and-cli.md`) — blocked by: 17, 25, 26, 33. The `lessons` graph, its queue per scenario, the start at a night's end and at a stop, the `lessons` command.
-35. **Graphrag mock night; mock night 7 passes** (`35-graphrag-mock-night-mock-night-7-passes.md`) — blocked by: 22, 31, 34. The `codeclimb-graphrag` image and a three-stage, metered scenario with `check`, `scan` and lessons, end to end.
-36. **Seed** (`36-seed.md`) — blocked by: 25, 32, 34. A night that starts from an ended night's kept commit: `latest` and `best`, the refusals, the alias, the `<start>` note, the inherited noise.
-37. **Rescore** (`37-rescore.md`) — blocked by: 32, 36. The extra round that scores a kept commit again when the scoring hashes changed, on a continued or a seeded night; the noise measured again.
-38. **Worker API** (`38-worker-api.md`) — blocked by: 29, 32. The `api` process: night summaries, live view, report, stop, resume, continue.
-39. **Watchdog** (`39-watchdog.md`) — blocked by: 27, 38. Crash recovery past the server's own: resume an errored thread twice, then stop; stop a night whose thread is lost.
-40. **Export** (`40-export.md`) — blocked by: 38. A kept commit as plain files, as a git repository with its lineage, or pushed to a remote; the `export` command and the API's export endpoints.
-41. **App: nights list, night status, controls and tiles** (`41-app-nights-list-night-status-controls-and-tiles.md`) — blocked by: 35, 38. The Next.js client of the worker API: the nights list, and the night page's status, Stop, Resume, Continue, tiles and live experiment.
-42. **App: metric tables, chart, heatmap, experiment and export** (`42-app-metric-tables-chart-heatmap-experiment-and-export.md`) — blocked by: 40, 41. The rest of the night page: per-stage tables, the convergence chart, the heatmap, the selected experiment's diff, the export download.
-43. **Tracing and feedback** (`43-tracing-and-feedback.md`) — blocked by: 22, 25. CodeClimb's tracer on LangSmith, one trace per experiment, dev metrics mirrored as feedback.
-44. **Proxy backends: OpenRouter and Pi** (`44-proxy-backends-openrouter-and-pi.md`) — blocked by: 10, 20, 25, 29. Real upstream calls for chat, embeddings, decisions and rerank, with their pricing and failure rules.
-45. **Real-model coder sessions and the web research guard** (`45-real-model-coder-sessions-and-the-web-research-guard.md`) — blocked by: 12, 25. Provider models and credentials for Pi sessions; `pi-web-access` behind the guard extension.
-46. **Final acceptance: the free end-to-end suite and the fixed contracts** (`46-final-acceptance-free-end-to-end-suite.md`) — blocked by: every ticket from 01 to 45. The seven mock nights of the done signal, one after the other, on a fresh server; then the audit of the fixed contracts, the constants and the known gaps.
+1. **Scaffold and Agent Server boot** (`01-scaffold-and-agent-server-boot.md`) — blocked by: none. Pinned dependencies, every npm script, `server` / `server:logs` / `server:stop` with `langgraph-api` beside Postgres and Redis, `.env` loading, host tools in the server, both images.
+2. **Night config and scenario loading** (`02-night-config-and-scenario-loading.md`) — blocked by: 01. The night config with its defaults and refusals, `scenario.yaml`, night ids, `<root>`, the mock results path, scoring hashes; exit 2.
+3. **Host commands, the bundle and masking** (`03-host-commands-bundle-and-masking.md`) — blocked by: 02. `bash -c` with quoted placeholders, the bundle, `check` and `scan` reports, masking.
+4. **Stage reports and standard metrics** (`04-stage-reports-and-standard-metrics.md`) — blocked by: 01. Report flattening, stage prefixes, `output_bytes`, latency from timings, cost and calls from ledger rows.
+5. **Decisions: weighted score, keep rule, noise margin and stop checks** (`05-decisions-keep-rule-noise-margin-and-stop-checks.md`) — blocked by: 02. The decision table, guardrails, the margin, the soft-stop order.
+6. **Result rows and `validate-results`** (`06-result-rows-and-validate-results.md`) — blocked by: 01. The row schema, the validated and unique append, the command.
+7. **Experiment repository** (`07-experiment-repository.md`) — blocked by: 01. `experiments.git`: the deterministic starter, one commit per experiment, refs, trees and diffs.
+8. **Sandboxes on Docker** (`08-sandboxes-on-docker.md`) — blocked by: 07. Create, exec with process-tree kill, files in and out, find by name, sweep by night.
+9. **Pi sessions on mock models** (`09-pi-sessions-on-mock-models.md`) — blocked by: 08. Isolated Pi sessions with four sandbox tools; the scripted coder, reviewer and lessons models.
+10. **Coder experiment** (`10-coder-experiment.md`) — blocked by: 03, 05, 07, 09. The prompt, the coder's ends, the one commit, `code-state.json` and the state files.
+11. **Evaluator, unmetered** (`11-evaluator-unmetered.md`) — blocked by: 03, 04, 07, 08. One evaluation on its own sandbox: environment, stages, scores, files, outcomes.
+12. **Tracer night: `datenorm-smoke` on mock models** (`12-tracer-night-datenorm-smoke-on-mock-models.md`) — blocked by: 05, 06, 10, 11. The night as durable steps on the Agent Server and `run-night`: init, rounds, test, `done.json`, following.
+13. **Notes, history, rejected diffs and the trajectory** (`13-notes-history-rejected-diffs-and-trajectory.md`) — blocked by: 12. The memory within a night, masked, under `/spec/history/`.
+14. **Reviewer** (`14-reviewer.md`) — blocked by: 13. The review of every round, its files, the scan, the hypothesis handed on.
+15. **Send-backs, reserve and wrap-up** (`15-send-backs-reserve-and-wrap-up.md`) — blocked by: 12. Up to 8 send-backs, then one wrap-up, with the literal phrases.
+16. **Check, leak scan and guardrails** (`16-check-leak-scan-and-guardrails.md`) — blocked by: 12. `check.json`, `not scored`, the held-out-name and gate guardrails.
+17. **Metering proxy** (`17-metering-proxy.md`) — blocked by: 04. The `/v1` routes, tokens, refusals, ledger rows, replay, mock answers.
+18. **Metered nights: nights 1 and 3 pass** (`18-metered-nights-1-and-3.md`) — blocked by: 14, 15, 17. Sandboxes on the proxy, the path check, the two ledgers; `capitals-smoke` and the plateau night.
+19. **Noise run: night 2 passes** (`19-noise-run-night-2.md`) — blocked by: 18. The A/A run, `noise.json`, noise rows; `datenorm-smoke` in full.
+20. **Model checks, smoke test, outage and every soft stop** (`20-model-checks-smoke-test-outage-and-every-soft-stop.md`) — blocked by: 19. The CLI's model check, the round-start smoke test, `outage`, every soft stop proven.
+21. **Gate: nights 1 to 3 as one repeatable check** (`21-gate-nights-1-to-3-as-one-repeatable-check.md`) — blocked by: 16, 19, 20. One command that runs nights 1 to 3 and asserts every check.
+22. **Stop command and cleanup: night 4 passes** (`22-stop-command-and-cleanup-night-4.md`) — blocked by: 21. `run-night stop`, the failure and cancel paths, no sandbox after a stop.
+23. **Hard deadline, variation backstop and step backstops** (`23-hard-deadline-variation-backstop-and-step-backstops.md`) — blocked by: 22. `hard_deadline` mid-step, the 4-day backstop, no step running for ever.
+24. **Crash resume: night 5 passes** (`24-crash-resume-night-5.md`) — blocked by: 21. A killed server reruns only the running step; session resume.
+25. **Lost connection mid-turn: night 6 passes** (`25-lost-connection-mid-turn-night-6.md`) — blocked by: 21. `--mock-offline N`; the session carries on.
+26. **Pause for credits, resume and the pause timeout** (`26-pause-for-credits-resume-and-pause-timeout.md`) — blocked by: 21, 22, 24. Credit stops, `pause.json`, `run-night resume`, `CODECLIMB_MOCK_CREDIT`, the 3-day timeout.
+27. **Repair** (`27-repair.md`) — blocked by: 16, 21. One repair `e1` for a commit that failed before it was scored.
+28. **Continue** (`28-continue.md`) — blocked by: 21, 22. More rounds on an ended night as a new variation.
+29. **Lessons file, operations and gates** (`29-lessons-file-operations-and-gates.md`) — blocked by: 03. The `lessons.md` format, add / edit / drop, the gates, the proposal files.
+30. **Lessons distillation** (`30-lessons-distillation.md`) — blocked by: 21, 22, 29. The distillation at a night's end or stop, one per scenario at a time, the `lessons` command.
+31. **Multi-stage night: night 7 passes** (`31-multi-stage-night-7.md`) — blocked by: 18, 27, 30. `graphrag-smoke`: three stages, metered, check, `uv`, repair, lessons.
+32. **Seed** (`32-seed.md`) — blocked by: 21. A new night from an ended night's kept commit: an id, `latest`, `best`.
+33. **Rescore** (`33-rescore.md`) — blocked by: 28, 32. The extra round when the scoring files changed.
+34. **Worker API** (`34-worker-api.md`) — blocked by: 26, 28. Summaries, live experiment, report, status from files, stop / resume / continue, the bearer off loopback.
+35. **Watchdog** (`35-watchdog.md`) — blocked by: 24, 34. Resumes a night the server left behind a limited number of times, then stops it.
+36. **Export** (`36-export.md`) — blocked by: 34. Plain files, a git repository with the kept lineage, or a push; from the CLI and the API.
+37. **App: nights list, status and controls** (`37-app-nights-list-status-and-controls.md`) — blocked by: 34. `/` and `/nights/<id>`: status, controls, scores, spend, live experiment.
+38. **App: metric tables, chart, heatmap, experiment and export** (`38-app-metric-tables-chart-heatmap-experiment-and-export.md`) — blocked by: 31, 36, 37. The rest of the night page.
+39. **Tracing and feedback** (`39-tracing-and-feedback.md`) — blocked by: 21. Traces findable by night id, headline scores as feedback, nothing with tracing off.
+40. **Proxy backends: OpenRouter and Pi** (`40-proxy-backends-openrouter-and-pi.md`) — blocked by: 17, 21, 26. Real upstreams, their cost, 502, credit stops; stubbed.
+41. **Real-model sessions and the web research guard** (`41-real-model-sessions-and-the-web-research-guard.md`) — blocked by: 21. Provider models and credentials for Pi; three guarded web tools; stubbed.
+42. **Final acceptance: the seven nights and the fixed contracts** (`42-final-acceptance.md`) — blocked by: every ticket from 01 to 41. The seven mock nights one after the other, then the audit of the contracts and the numbers.
 
 ## Critical path
 
-01 → 07 → 08 → 10 → 12 → 15 → 16 → 17 → 22 → 23 → 24 → 25 → 26 → 29 → 32 → 38 → 40 → 42 → 46.
+01 → 07 → 08 → 09 → 10 → 12 → 13 → 14 → 18 → 19 → 20 → 21 → 22 → 26 → 34 → 36 → 38 → 42.
 
 ## Spec gaps met while cutting
 
-- "Suggested build order" puts mock nights 1 and 2 at its step 5 and the noise run and send-backs at step 7, yet the done signal's table for those nights requires both. Tickets 15 to 25 use the order the table forces: review, notes and send-backs, then metering (night 1), then the noise run (night 2).
-- The spec calls `package.json` and `langgraph.json` given, as placeholders to replace, and the compose override the builder's to write. A from-scratch rebuild creates what is absent and brings what exists to the spec; ticket 01 says so.
-- `build:dataset` and `build:dataset:hard` are fixed script names whose behaviour the spec never states. Ticket 01 wires them to whatever the scenarios' own `scripts/` provide.
-- Pause and resume, continue, seed, rescore, applied lessons, the watchdog, the worker API, export and the app have no named end-to-end check. Their tickets define checks on mock nights or with a faked Agent Server client: a continued mock night runs mock end to end (ticket 32), and the pause timeout and the variation backstop fire in seconds through the spec's two timer test hooks (ticket 30).
-- `deadline`, `budget`, `tokens` and `thresholds` have no named end-to-end night (`max_rounds` and `plateau` have nights 2 and 3). Ticket 24 checks `deadline` and `thresholds` on mock nights with temporary config copies, and `budget` and `tokens` in unit tests with fabricated counters.
-- `configs/e2e/budget.yaml` and `overfit.yaml` are given and named by the spec, but they run on real models only and are in no night of the done signal. Ticket 02 loads them (`overfit.yaml` once ticket 01's `build:scenario:overfit` has written its scenario), and no ticket runs them.
+- The spec has no build order. The order here is the one "Goal and done signal" forces: nights 1, 2, 3 and 6 need the review, the notes, the send-backs, metering and the noise run before any of them passes in full.
+- The spec names the field `warmup?` of a `timings.jsonl` line without saying what it does; ticket 04 leaves its handling to the build.
+- `cost_per_item_usd` does not say what an item is (an input line of a stage, or of the evaluation).
+- A continue's "budget that does not compound" does not say whether the new variation's night cap is a fresh `budget_usd.night` or what is left of the earlier one.
+- Seed carries over the noise, while the A/A run is due "at the start of the first round whose checkpoint has metrics", which a seeded night's round 1 is. Ticket 32 uses the inherited noise and states no A/A rule.
+- A rescore row's `kind` is not given (`experiment`, `noise` and `test` are the only kinds).
+- "Unsafe remotes" for export is not defined; ticket 36 has the build state its rule.
+- `build:dataset` and `build:dataset:hard` are named scripts whose behaviour the spec does not state; ticket 01 wires them to the scenarios' own `build_dataset.py`.
+- Pause and resume, continue, seed, rescore, applied lessons, export, the worker API, the watchdog and the app have no named end-to-end check. Their tickets define checks on mock nights, temporary copies, or a faked Agent Server client.

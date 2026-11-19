@@ -1,20 +1,19 @@
 # 26: Continue: more rounds on an ended night, with an operator's direction
 
-**What to build:** An operator can add rounds to a night that finished or was stopped. The sender reopens the night's files before the start event goes out, so the night reads as running at once; the continued run rebuilds its state from the rows, reviews, notes and `noise.json`, numbers its rounds on, and ends with its own test evaluation. A direction, on a continued or a new night, reaches every coder and reviewer after masking.
+**What to build:** `run-night continue` runs more rounds on an ended night (one with a `done.json` or a `stop.json`) under the same id, from its kept commit (its round-0 commit when it kept nothing), with its last feedback and hypothesis and, optionally, an operator's direction. Its state is rebuilt from the night's files, and each continued run ends with its own test evaluation. A direction can also be given to a new night.
 
-**Spec sections** (`specs/inngest/spec.md`): "Continue, seed and rescore", "CLI", "Events", "Init", "Prompt", "Reviewer", "Files a night writes"
+**Spec sections** (`specs/inngest/spec.md`): "Features" (Continue; Loop), "CLI", "Files a night writes", "Ids and names", "Result row"
 
-**Blocked by:** 20 (Check table: mock nights 1 to 3 as one repeatable check); 21 (Hard stop and cleanup: every dead night ends in stop.json; mock night 4 passes)
+**Blocked by:** 21 (Hard stop and cleanup: every dead night ends in stop.json; mock night 4 passes)
 
 **Status:** ready-for-agent
 
-- [ ] Reopening is one function usable by the CLI and later by the worker API, doing the listed steps in order: check the night ended and ran this scenario; move files of rounds past the last recorded round to `unfinished/after-r<last>-<time>/`; rename the end file to `done-r<last>.json` / `stop-r<last>.json`; work out `max_rounds` and the budget; rewrite `night.json` with the new deadline, config and scoring hashes while `startedAt` stays (unit tests on a fabricated night folder)
-- [ ] A second continue of a night that is running is refused; a night with `stop.json` and no `night.json` can't be continued; `--seed` with `continue` is refused
-- [ ] The state table "Where a continued run's state comes from" is implemented as a pure rebuild from files and unit-tested row by row: checkpoint, last round, spend, feedback and hypothesis, log, noise, the counters that start at zero, `rounds` in the new `done.json`
-- [ ] Budget: `run_budget_usd` is saved at the first continuation and every continuation sets the night budget to spend so far plus `run_budget_usd`, never compounding (unit test over two continuations)
-- [ ] `--rounds` adds to the rounds so far (default: the config's `max_rounds`); the deadline restarts from now; the bundle is rebuilt with `history/` preserved; `run-night continue` defaults to the newest ended night under the config's results; the start event uses a fresh id and carries `continue`
-- [ ] A direction (`continue` with `--direction`, or a new night's `--direction`, never both in one event) is masked with `scan` in a step of its own right after init, appears as `<direction>` in every coder prompt and in the reviewer's prompt, and on a continued night replaces the hypothesis the night had reached
-- [ ] End-to-end, mock, dev server: after a finished `datenorm-smoke --mock` night `<id>`, `run-night continue --config configs/datenorm-smoke.yaml --night <id> --rounds 1 --direction "try X"`, with no `--mock`, runs mock end to end like any mock night. It follows the new round (it does not print `done` at its first poll) and ends with `done`; `done-r2.json` sits beside a new `done.json` with `rounds: 3` and `spend_usd: 0`; `results.jsonl` has a round-3 experiment row and a second `test` row and passes `validate-results`; round 3's commit is a mock commit whose diff changes `MOCK.md`; round 3 has `reviews/r3.json` with `feedback: mock feedback` and its coder prompt holds the direction; every file is under `runs-inngest/mock/datenorm-smoke/` and nothing was written under `runs-inngest/datenorm-smoke/`; no `cc-<id>` container is left
-- [ ] `continue` tells a mock night by its folder and takes no `--mock`: it looks the night up under the config's results directory and under that directory's `mock/` sibling, and without `--night` takes the newest ended night of the two folders together; a night found under `mock/` gets `mock` in its start event and keeps its resolved `results_path`, with no second `mock/` added, from the CLI and later from the API (unit tests on the lookup and the path)
-- [ ] End-to-end: a mock night stopped as soon as round 2's `code-state.json` appears and then continued reruns that round from scratch, with the old round's files under `unfinished/`
-- [ ] Mock nights 1 to 3 of ticket 20 still pass every check "Goal and done signal" lists for them
+- [ ] `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` continues the named night, or the newest ended one under the config's results; a night that has not ended is refused, and nothing starts
+- [ ] `--rounds` adds rounds to the night's rounds so far
+- [ ] The continued run starts from the kept commit, or the round-0 commit when nothing was kept, with the night's last feedback and hypothesis; its state is rebuilt from the night's files only (unit tests on fabricated night folders)
+- [ ] `--direction TEXT`, on `continue` or on a new night, reaches the coder's prompt of the rounds that follow (unit test on the prompt builder)
+- [ ] Each continued run ends with its own test evaluation, `<night>-test-r<N>` of its last round, and a new `done.json` (or `stop.json`); the night's folder never holds both
+- [ ] A night under `runs-inngest/mock/` is continued as a mock; `continue` takes no `--mock`
+- [ ] End to end: after a finished `datenorm-smoke --mock` night, `run-night continue --config configs/datenorm-smoke.yaml --night <id> --rounds 1 --direction "<text>"` runs one more round on mock models, prints `done` with `rounds: 3` in `done.json`, records its own `test` row, and every `eval_id` is in `results.jsonl` once
+- [ ] End to end: a mock night stopped with `run-night stop` during round 2 and then continued runs to `done`
+- [ ] Nights 1 to 3 still pass the check of ticket 20

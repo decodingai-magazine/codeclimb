@@ -1,16 +1,16 @@
 # 33: Export: a kept commit as files, as a git repository, or pushed to a remote
 
-**What to build:** `npm run export` writes a chosen experiment as plain files, as a git repository whose history is the kept lineage, or pushes that lineage to a remote branch. The worker API offers the same as downloads and as server-side exports. Nothing is ever force-pushed and git never prompts.
+**What to build:** A night's result leaves `experiments.git`: a kept commit as plain files, as a git repository with the kept lineage as history, or as a push to a remote branch, from `npm run export` and through the worker API. It never force-pushes and never runs a command transport.
 
-**Spec sections** (`specs/inngest/spec.md`): "Export", "Worker API", "Experiment repository"
+**Spec sections** (`specs/inngest/spec.md`): "Features" (Export), "CLI", "Worker API"
 
 **Blocked by:** 32 (Worker API: read nights, stop, resume, continue)
 
 **Status:** ready-for-agent
 
-- [ ] CLI: `export (--config <yaml> | --results <jsonl>) [--exp <id>|best] (--to-dir <path> [--with-history] [--force] | --to-remote <url> [--branch <name>])`; `best`, the default, is the kept commit of the most recently finished night
-- [ ] `--to-dir` writes plain files and refuses a non-empty folder unless `--force`; `--with-history` needs an empty or new folder and writes a git repository with the kept lineage as history on branch `codeclimb/<exp id>`
-- [ ] The kept lineage of an experiment, the kept commits that led to it, oldest first, is worked out from the rows and the repository (unit tests on fabricated rows, a seeded night and a rescore row included)
-- [ ] `--to-remote` pushes the lineage to `codeclimb/<exp id>` or the given branch, never with force; remotes are limited to `https`, `ssh`, `git`, `file` and local paths; option-like arguments and the `ext::` / `fd::` transports are refused; git runs with credential prompts off (unit tests, plus a push to a local bare repository)
-- [ ] API: `GET /api/nights/:id/export/:exp?format=repo|source|bundle` downloads a git repository `.tar.gz` (default), the tree only, or a git bundle; `POST /api/nights/:id/export/:exp` accepts `kind: dir` with a `path` (always the git-repository form) or `kind: remote` with `url` and optional `branch`
-- [ ] Integration test on a results directory left by `datenorm-smoke --mock`: exporting the kept commit with history gives a repository whose head tree equals the kept commit's tree and whose log holds the lineage
+- [ ] `npm run export -- (--config <yaml> | --results <jsonl>) [--exp <id>|best] (--to-dir <path> [--with-history] [--force] | --to-remote <url> [--branch <name>])` exports the chosen experiment, `best` naming a kept commit
+- [ ] `--to-dir` writes plain files and refuses a non-empty folder unless `--force`; `--with-history` writes a git repository whose history is the kept lineage, oldest first
+- [ ] The kept lineage of an experiment is worked out from the rows and the repository (unit tests on fabricated rows, a seeded night included)
+- [ ] `--to-remote` pushes the lineage to a branch, never with force; a command transport (such as `ext::`) is refused (unit tests, plus a push to a local bare repository)
+- [ ] `GET /api/nights/:id/export/:exp?format=repo|source|bundle` downloads the git repository, the tree only, or a git bundle; `POST /api/nights/:id/export/:exp` exports to a folder or a remote as the CLI does
+- [ ] Integration test on the results directory of a `datenorm-smoke --mock` night: the kept commit exported with history gives a repository whose head tree equals the kept commit's tree and whose log holds the lineage

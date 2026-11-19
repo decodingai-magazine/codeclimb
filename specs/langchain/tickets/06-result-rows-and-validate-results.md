@@ -1,20 +1,23 @@
 # 06: Result rows and `validate-results`
 
-**What to build:** A row can be appended to a `results.jsonl` only when it fits the schema, and appending a row whose `eval_id` is already in the file writes nothing. `npm run validate-results -- <file>` checks a file and `npm run validate-results -- --schema` prints the schema.
+**What to build:** One JSON line per experiment, noise run and test evaluation, validated against a JSON Schema on append and unique by `eval_id`. `npm run validate-results -- <file>` checks a rows file; `--schema` prints the schema.
 
 **Spec sections:**
-- "Data and files" > "Result row": the field table, required and optional fields, "Rows that are not experiments"
-- "Experiment lifecycle" > "Ids": the `eval_id` forms
+- "Interfaces the build must honour" > "Result row": all of it
+- "Interfaces the build must honour" > "CLI": the `validate-results` row
+- "Interfaces the build must honour" > "Files a night writes": `results.jsonl`
+- "Numbers": `validate-results` within 300 s
 
-**Not yet:** building rows from a round (ticket 15).
+**Not yet:** filling the rows from a night (ticket 12 onwards).
 
 **Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 
-- [ ] The schema is a JSON Schema with the field table's types: required and optional fields as listed; `round`, `tokens` and `infra_errors` integers ≥ 0; `parent_id`, `model` and `hypothesis` nullable; `metrics` a flat map of numbers
-- [ ] `stack` accepts `inngest` and `langchain`; `backend` accepts `docker`; `kind`, `split` and `decision` accept only their listed values
-- [ ] Append validates before writing and rejects an invalid row with the failing field named
-- [ ] Appending a row with an `eval_id` already in the file leaves the file byte for byte unchanged
-- [ ] `validate-results <file>` exits 0 on a valid file and non-zero, naming the line, on an invalid one; `validate-results --schema` prints the schema
-- [ ] Unit tests cover the above; `npm run typecheck` and `npm test` pass
+- [ ] The schema holds every field of the table with its type; `round`, `tokens` and `infra_errors` are integers ≥ 0; `kind` is `experiment`, `noise` or `test`; `split` is `dev` or `test`; `decision` is `keep`, `revert` or `error`; `stack` is `langchain`; `backend` is `docker`; `metrics` is a flat map of name → number
+- [ ] Optional in the schema: `kind`, `eval_id`, `night_id`, `score`, `decision_reason`, `dev_usd`, `evaluator_instance`, `unchanged`; `model`, `hypothesis` and `parent_id` may be null
+- [ ] An append validates the row and refuses an invalid one; an append whose `eval_id` is already in the file writes nothing
+- [ ] `validate-results <file>` exits 0 on a valid file and non-zero naming the line and the field otherwise, with the path relative or absolute; a duplicate `eval_id` fails it; `validate-results --schema` prints the schema
+- [ ] `validate-results` on a file of several nights' rows finishes well within 300 s
+- [ ] Unit tests cover a valid experiment, noise and test row, each refused shape, and the duplicate rule
+- [ ] `npm run typecheck` and `npm test` pass

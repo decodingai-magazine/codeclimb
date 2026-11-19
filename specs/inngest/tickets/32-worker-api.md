@@ -1,20 +1,17 @@
 # 32: Worker API: read nights, stop, resume, continue
 
-**What to build:** On `127.0.0.1:7421` the worker answers night summaries, the live state of the current experiment and a full report, all read from files so the answer doesn't depend on the durable runtime. It accepts stop, resume and continue, and routes `/v1/*` to the metering proxy's handler. Off loopback a bearer token is required. The export endpoints come with ticket 33.
+**What to build:** The worker's HTTP API, on the listener of ticket 11, reads nights from the files, so status never depends on the runtime, and offers stop, resume and continue. Any client can use it; the app of tickets 34 and 35 is one. Export comes in ticket 33.
 
-**Spec sections** (`specs/inngest/spec.md`): "Worker API", "Deployment and environment", "Continue, seed and rescore", "Cleanup", "Metering proxy", "Files a night writes", "Every number in one place"
+**Spec sections** (`specs/inngest/spec.md`): "Worker API", "Services", "Environment", "Features" (Worker API and app), "Architecture"
 
 **Blocked by:** 24 (Pause for credits and resume); 26 (Continue: more rounds on an ended night, with an operator's direction)
 
 **Status:** ready-for-agent
 
-- [ ] The API is built on `node:http`, binds `CODECLIMB_API_HOST` and `CODECLIMB_API_PORT` (falling back to `PORT`, default 7421), limits request bodies to 1 MB, and logs a busy port without failing the worker
-- [ ] No token on loopback; off loopback every route but `/v1` needs `CODECLIMB_WORKER_TOKEN` as a bearer and the API refuses to serve without one (unit tests)
-- [ ] `GET /api/health`, `GET /api/nights`, `GET /api/nights/:id` return summaries found under `runs-inngest/*/nights/*` and `runs-inngest/mock/*/nights/*`
-- [ ] Status comes from files: `done.json` → `finished`, `stop.json` → `stopped`, `pause.json` → `paused`, no file written for an hour → `stale`, else `running` (unit tests on fabricated folders)
-- [ ] `GET /api/nights/:id/live` returns the summary, the current round's experiment with the phase rule (`starting`, `coding`, `waiting for eval`, `evaluated`; `e1` taking over once its folder exists), elapsed, coder and dev spend, tokens, and the exportable experiments
-- [ ] `GET /api/nights/:id/report` returns the night's rows, reviews, a config extract and diffs as JSON
-- [ ] `POST /api/nights/:id/stop` sends the stop event with reason `app` and writes `stop.json` at once; `/resume` sends the resume event; `/continue` takes `{direction?, rounds ≥ 1}`, uses the night's saved config with `scenario.yaml` loaded again, reopens the night with the function of ticket 26 before sending, and answers 409 when the night can't continue
-- [ ] No endpoint starts a new night: nights start only from the CLI
-- [ ] `/v1/*` on the API port reaches the proxy handler; the proxy's own listener is unaffected by a busy API port
-- [ ] Integration test against a results directory left by a mock night: each read endpoint answers with the night's data; end-to-end on the dev server, a POST to `/stop` stops a running mock night and a POST to `/continue` adds a round to a finished one, which runs mock and stays under `runs-inngest/mock/`
+- [ ] `GET /api/health`, `GET /api/nights` and `GET /api/nights/:id` answer from the files, finding nights under `runs-inngest/*/nights/` and `runs-inngest/mock/*/nights/`
+- [ ] Night status comes from files: `finished`, `stopped`, `paused`, `stale` or `running` (unit tests on fabricated night folders)
+- [ ] `GET /api/nights/:id/live` answers the night's current state, the running experiment included; `GET /api/nights/:id/report` answers the night's rows and reviews
+- [ ] `POST /api/nights/:id/stop` stops the night hard with reason `app`; `/resume` ends a pause; `/continue` takes `{direction?, rounds}` and continues an ended night as `run-night continue` does, a mock night as a mock
+- [ ] No token on loopback; off loopback the API needs `CODECLIMB_WORKER_TOKEN` as a bearer (unit tests)
+- [ ] The API binds `CODECLIMB_API_HOST` and `CODECLIMB_API_PORT`, default `127.0.0.1:7421`, and still answers before the dev server is up, with no `.env` and no `runs-inngest/` folder
+- [ ] Integration test against a results directory a mock night left: each read endpoint answers with that night's data; end to end on the dev server, a POST to `/stop` stops a running mock night and a POST to `/continue` adds a round to a finished one, which runs on mock models and stays under `runs-inngest/mock/`

@@ -1,16 +1,15 @@
 # 14: Send-backs, reserve and wrap-up
 
-**What to build:** A coder that stops with open tasks, no train measurement, or time and budget left gets another turn with a concrete next step; when the last 20% of its time or budget starts, it gets one wrap-up message, mid-turn as a steering message or as one more turn. A mock coder, which stops at once on every turn, therefore ends with exactly eight send-backs and one wrap-up in its session file.
+**What to build:** A coder that stops early, with open tasks or without a train measurement, is sent back for one more turn, a bounded number of times, and is told once to wrap up: close its tasks, update its measurement and notes, change no more code. The rules are exact, because the done signal counts the messages.
 
-**Spec sections** (`specs/inngest/spec.md`): "Send-backs, reserve and wrap-up", "End of an experiment", "Known gaps", "Every number in one place"
+**Spec sections** (`specs/inngest/spec.md`): "Features" (Send-backs, reserve and wrap-up; Coder; Repair), "Files a night writes", "Numbers"
 
 **Blocked by:** 09 (Coder experiment: from the prompt to one commit)
 
 **Status:** ready-for-agent
 
-- [ ] The send-back decision covers each condition (task file missing, invalid or with an open task; train measurement missing, invalid, or fallen with no `why` when the bundle has `train/`; not yet in the reserve) and each limit (at most 8, none for a repair, none with less than 3 minutes left, none after a cap stop) (unit tests)
-- [ ] The send-back message contains `You stopped with N of N minutes and $X of $Y left` after any task or train problem, names the next step, and asks for exactly one change with the checkpoint, measure, keep-or-restore routine
-- [ ] The reserve is the last 20% of the time or of the budget, whichever comes first; the wrap-up is sent at most once per experiment, by the 80% timer or the after-message budget check as a steering message while the session streams, or as one more turn after the send-back loop for a coder sent back at least once, including when the loop ended on the cap of 8
-- [ ] No wrap-up turn with less than 3 minutes left, after a cap stop, or for a coder never sent back (unit tests)
-- [ ] A unit test over every prompt and message the project can send proves `You stopped with` occurs only in the send-back message and `change no more code` only in the wrap-up
-- [ ] Docker test with mock models and a 5-minute experiment: the session file holds eight messages containing `You stopped with` followed by one containing `change no more code`, all sent within the first 2 minutes, and the experiment ends with `stop: done`
+- [ ] The reserve is the last 20% of the experiment's time or budget
+- [ ] A coder that stops outside its reserve, or with an open task list, or (when the bundle has `train/`) with a missing train measurement, is sent back; at most 8 times, none with under 3 minutes left, none for a repair (unit tests, one per condition and per limit)
+- [ ] The wrap-up comes at most once per experiment: when the reserve starts while the coder works, or as one more turn after the send-back loop ends for a coder sent back at least once, also when the loop ended on the send-back cap before the reserve. No wrap-up with under 3 minutes left, after a time or budget cap stop, for a coder never sent back, or for a repair (unit tests, one per case)
+- [ ] A send-back message contains "You stopped with N of N minutes" and the wrap-up "change no more code"; no other prompt the project sends contains either phrase (unit test over every prompt builder)
+- [ ] Docker test with mock models and a 5-minute experiment: the session holds eight send-backs, then one wrap-up, all started within the first 2 minutes, and the experiment ends with `stop: done`. On whole nights this is C8, asserted in ticket 20

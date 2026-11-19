@@ -1,22 +1,22 @@
 # 04: Stage reports and standard metrics
 
-**What to build:** Given the files an evaluation leaves behind (each stage's report, its `timings.jsonl`, its input line count, its output size, the proxy's ledger rows), the build returns the evaluation's flat `metrics` map exactly as a result row carries it.
+**What to build:** An evaluation's metrics come from two places: the scorer's report per stage, and the standard metrics measured outside the code under optimization (latency from the runner's timings, cost and call counts from the proxy's ledger). This ticket turns those inputs into one flat map of metric name → number.
 
 **Spec sections:**
-- "Scenario contract" > "Stage reports become metrics"
-- "Evaluator" > "Standard metrics": the latency and cost bullets
-- "Every number in one place": the rounding row
+- "Interfaces the build must honour" > "Scenario contract": "metrics from a report", "standard metrics"
+- "Features": **Evaluator** (the standard metrics are always recorded)
+- "Interfaces the build must honour" > "Metering proxy": the ledger row fields
 
-**Not yet:** producing those files (tickets 13, 20); naming optimized metrics to the agents (tickets 11, 17).
+**Not yet:** reading files from a sandbox (ticket 11); writing ledger rows (ticket 17).
 
 **Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 
-- [ ] Flattening joins nested keys with `.`, skips lists, non-numbers, `per_item` and `details`, and turns `ci95: [lo, hi]` into `ci95_half`
-- [ ] With more than one stage every key gets `<stage>.` in front; with one stage none does; each stage adds its `output_bytes`
-- [ ] `timings.jsonl` parsing: `op` must match the pattern, warm-up records count for nothing, a malformed file is an error the evaluator can report
-- [ ] Latency metrics: `latency_<op>_p50_ms`, `latency_<op>_p95_ms` by linear interpolation at 3 decimals, `latency_<op>_total_s` and `latency_total_s` at 6 decimals
-- [ ] Cost metrics from ledger rows, refused calls excluded: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed`; all 0 without calls; a replayed call is priced as the call it stands for
-- [ ] Standard metrics are added last and win over a scorer's metric of the same name
-- [ ] Unit tests cover the above; `npm run typecheck` and `npm test` pass
+- [ ] A report's numbers are flattened with `.`; lists, `per_item` and `details` are skipped; `ci95: [lo, hi]` becomes `ci95_half`
+- [ ] With more than one stage, every key of a stage gets `<stage>.` in front; with one stage, keys stay bare
+- [ ] Each stage adds `output_bytes` (prefixed like the rest with more than one stage)
+- [ ] From `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` per op and `latency_total_s`; a missing or empty file adds no latency metric
+- [ ] From ledger rows: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed`
+- [ ] Unit tests cover a single-stage and a three-stage report, a `ci95` pair, skipped lists, timings with several ops, and a ledger with replayed and failed calls
+- [ ] `npm run typecheck` and `npm test` pass

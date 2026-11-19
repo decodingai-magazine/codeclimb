@@ -1,25 +1,24 @@
 # 07: Experiment repository
 
-**What to build:** A results directory gets a bare `experiments.git` that holds one commit per experiment under `refs/exp/<exp id>`. The build can import a starter directory as a commit whose SHA depends only on its tree, export a commit as a git bundle, import a git bundle a sandbox produced into an experiment's ref, alias a new experiment id to an existing commit, tell whether two commits have the same tree, and produce diffs.
+**What to build:** `experiments.git`, a bare repository under the results directory, holds the starter and one commit per experiment, each at `refs/exp/<exp id>`. Git holds the state of a night's code: the night imports the starter as its round-0 commit, records each experiment's result as exactly one commit on the commit its sandbox started from, and reads trees and diffs back for decisions, notes and export.
 
 **Spec sections:**
-- "Data and files" > "Experiment repository"
-- "Coder" > "End of an experiment": the host half of the commit (the host reads the git bundle and force-fetches `main` into the experiment's ref)
-- "Sandboxes": the bullets on git bundles
-- "Every number in one place": the git row
+- "Interfaces the build must honour" > "Files a night writes": the `experiments.git` row
+- "Interfaces the build must honour" > "Ids": the starter, seed, experiment and repair ids
+- "Architecture": the experiment store row; the data flow of an experiment ("exactly one commit on the commit its sandbox started from")
+- "Features": **Sandboxes** ("Git holds the state")
 
-**Not yet:** the sandbox half of the commit (ticket 12); export to the operator (ticket 40).
+**Not yet:** getting a commit into and out of a sandbox (tickets 08, 10).
 
 **Blocked by:** 01 (Scaffold and Agent Server boot)
 
 **Status:** ready-for-agent
 
-- [ ] The repository is bare, with no remote and no branches, and is created on first use
-- [ ] Importing the given `datenorm` starter twice, into two fresh repositories, gives the same SHA; the commit honours the starter's `.gitignore` and has the fixed message, author, committer and date
-- [ ] A git bundle of a commit can be written to a file, and a git bundle holding `main` can be force-fetched into `refs/exp/<exp id>`
-- [ ] A git bundle can hold two commits (a paused commit and its parent), as the pause resume needs
-- [ ] An alias ref points a new experiment id at an existing commit
-- [ ] `unchanged` compares tree ids, not SHAs
-- [ ] The diff between two commits, the lines a commit adds over another, and a checkout of a commit's files into a temporary folder are available
-- [ ] Git never prompts and reads no user or system identity from the host
-- [ ] Unit tests cover the above with temporary repositories; `npm run typecheck` and `npm test` pass
+- [ ] The repository is created bare under the results directory on first use and shared by every night of that results directory
+- [ ] Importing a scenario's `starter/` gives `refs/exp/<night>-r0-starter`; the starter commit is deterministic: the same tree has the same SHA across nights and machines (unit test with two imports)
+- [ ] Recording an experiment's files makes exactly one commit whose parent is the commit the experiment started from, at `refs/exp/<exp id>`, with the message `<exp id>: <hypothesis>`; recording it again for the same id does not make a second commit
+- [ ] A seed commit can be stored at `refs/exp/<night>-r0-seed` pointing at an ended night's kept commit
+- [ ] Two commits can be compared by tree (unchanged or not); a commit's diff against its parent and the diff's added lines can be read
+- [ ] A commit's files can be written out to a directory, without git metadata
+- [ ] Repository operations never need git credentials and never touch the checkout's own `.git`
+- [ ] `npm run typecheck` and `npm test` pass
