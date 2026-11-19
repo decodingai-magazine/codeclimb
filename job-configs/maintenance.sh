@@ -8,6 +8,7 @@
 # CODECLIMB_BENCH_LANGSMITH_ENDPOINT) exported, as for any LangChain trial.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 task="$1"; stack="$2"; shift 2
 python3 assemble.py maintenance "$task" "$stack" > /dev/null
 

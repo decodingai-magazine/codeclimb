@@ -5,6 +5,7 @@ Report only: never a check, never in `reward`. Off until it agrees with the oper
 
     python3 judge.py run --app <build dir> --stack <stack> --out <trial dir>/judge.json [--budget USD]
     python3 judge.py prompt --stack <stack>            # prints the prompt, no model call
+    python3 judge.py sheet <trial dir>...              # writes each trial's judge-operator.json to fill, answers null
     python3 judge.py agree <trial dir>...              # judge.json against the operator's judge-operator.json
 
 The judge is Claude Code on Opus 5.5 at high effort (the operator's choice, 2026-11-19), on the operator's
@@ -106,7 +107,8 @@ def agree(trials: list[Path]) -> dict:
             theirs = json.loads((t / "judge-operator.json").read_text())
         except (OSError, ValueError, KeyError):
             continue
-        same = {k: (mine.get(k) or {}).get("answer") == theirs.get(k) for k, _, _ in CHECKLIST if k in theirs}
+        same = {k: (mine.get(k) or {}).get("answer") == theirs[k] for k, _, _ in CHECKLIST
+                if isinstance(theirs.get(k), bool)}
         builds[str(t)] = all(same.values()) and len(same) == len(CHECKLIST)
         for k, ok in same.items():
             per_item[k][0 if ok else 1] += 1
@@ -114,9 +116,26 @@ def agree(trials: list[Path]) -> dict:
             "on": sum(builds.values()) >= 5 and all(builds.values())}
 
 
+def sheet(trials: list[Path]) -> list[Path]:
+    """Writes `judge-operator.json` in each trial that has none: every item null, for the operator to set true or
+    false from the build's code (`artifacts/app`), before reading the judge's answers. The questions are in
+    `_questions`, which `agree` ignores."""
+    written = []
+    for t in trials:
+        path = t / "judge-operator.json"
+        if not path.exists():
+            path.write_text(json.dumps({"_build": str(t / "artifacts" / "app"),
+                                        "_questions": {k: q for k, q, _ in CHECKLIST},
+                                        **{k: None for k, _, _ in CHECKLIST}}, indent=2) + "\n")
+            written.append(path)
+    return written
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if args[:1] == ["prompt"]:
+    if args[:1] == ["sheet"]:
+        print("\n".join(map(str, sheet([Path(a) for a in args[1:]]))))
+    elif args[:1] == ["prompt"]:
         print(prompt(args[args.index("--stack") + 1]))
     elif args[:1] == ["agree"]:
         print(json.dumps(agree([Path(a) for a in args[1:]]), indent=2))

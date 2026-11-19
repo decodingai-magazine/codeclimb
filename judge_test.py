@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from judge import CHECKLIST, agree, copy_build, prompt, schema
+from judge import CHECKLIST, agree, copy_build, prompt, schema, sheet
 
 
 class Judge(unittest.TestCase):
@@ -45,6 +45,18 @@ class Judge(unittest.TestCase):
             got = agree(trials)
             self.assertFalse(got["on"])  # one build disagrees
             self.assertEqual(got["per_item"][CHECKLIST[0][0]], {"agree": 5, "disagree": 1})
+
+    def test_sheet_starts_null_and_counts_nothing_until_filled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp) / "t"
+            t.mkdir()
+            (t / "judge.json").write_text(json.dumps(
+                {"answers": {k: {"answer": True, "evidence": [], "why": ""} for k, _, _ in CHECKLIST}}))
+            self.assertEqual(sheet([t]), [t / "judge-operator.json"])
+            self.assertEqual(sheet([t]), [])  # never overwrites the operator's answers
+            got = agree([t])
+            self.assertEqual(got["builds"], {str(t): False})
+            self.assertEqual(got["per_item"][CHECKLIST[0][0]], {"agree": 0, "disagree": 0})
 
 
 if __name__ == "__main__":

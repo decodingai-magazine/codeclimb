@@ -6,9 +6,11 @@
 #   job-configs/pilot.sh <task id>...        # e.g. c1 r3 c6 c7 r14; writes jobs/pilot-<task>-<stack>-<stamp>/
 #   DRY=1 job-configs/pilot.sh <task id>...  # checks each job file with --print-config; no trial
 #
-# Expects CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_FORCE_OAUTH=1 and CODECLIMB_BENCH_LANGSMITH_API_KEY exported, as for any trial.
+# Expects CLAUDE_CODE_OAUTH_TOKEN and CLAUDE_FORCE_OAUTH=1 exported, as for any trial; the LangSmith key comes from .env
+# (job-configs/bench-env.sh) unless CODECLIMB_BENCH_LANGSMITH_API_KEY is exported.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 [ $# -gt 0 ] || { echo "usage: job-configs/pilot.sh <task id>..." >&2; exit 2; }
 if [ -z "${DRY:-}" ]; then
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ "${CLAUDE_FORCE_OAUTH:-}" = 1 ] && [ -n "${CODECLIMB_BENCH_LANGSMITH_API_KEY:-}" ] \

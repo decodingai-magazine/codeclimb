@@ -9,6 +9,7 @@
 # CODECLIMB_BENCH_LANGSMITH_API_KEY), as for any trial.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 stack="$1"; shift
 if [ -n "${PILE:-}" ]; then
   python3 assemble.py "$stack" --pile "$PILE" > /dev/null

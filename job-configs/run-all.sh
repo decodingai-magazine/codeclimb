@@ -9,12 +9,14 @@
 #   job-configs/run-all.sh [slots]          # runs; writes jobs/all-<stamp>-<job file>/
 #   DRY=1 job-configs/run-all.sh [slots]    # prints the order and checks each job file with --print-config; no trial
 #
-# Expects CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_FORCE_OAUTH=1 and CODECLIMB_BENCH_LANGSMITH_API_KEY exported, as for any trial.
+# Expects CLAUDE_CODE_OAUTH_TOKEN and CLAUDE_FORCE_OAUTH=1 exported, as for any trial; the LangSmith key comes from .env
+# (job-configs/bench-env.sh) unless CODECLIMB_BENCH_LANGSMITH_API_KEY is exported.
 # The verifier's real.* family also needs the operator's Pi Copilot login, or it is skipped and reports no keys:
 #   export CODECLIMB_BENCH_PI_AUTH="$(python3 job-configs/pi-auth.py)"
 # CODECLIMB_VERIFIER_FAMILIES without `real` (e.g. basic,hidden) runs without it.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 slots=${1:-3}
 stamp=$(date +%Y%m%d-%H%M)
 logs=jobs/all-$stamp-logs

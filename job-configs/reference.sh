@@ -10,6 +10,7 @@
 # (and CODECLIMB_BENCH_LANGSMITH_ENDPOINT) exported, as for any LangChain trial.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 stack="$1"; shift
 case "$stack" in
   inngest) pin=5a81c07 ;;

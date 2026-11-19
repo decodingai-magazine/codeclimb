@@ -9,6 +9,7 @@
 # CODECLIMB_BENCH_LANGSMITH_API_KEY (and _ENDPOINT) exported. Output: jobs/smoke-<stack>-<arm>-<time>/.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. job-configs/bench-env.sh  # the LangSmith key from .env when not exported
 stack="$1"; shift
 
 CLAUDE_CODE_OAUTH_TOKEN="$(grep '^CLAUDE_CODE_OAUTH_TOKEN=' .env | cut -d= -f2-)"

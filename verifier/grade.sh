@@ -8,6 +8,7 @@ set -euo pipefail
 src=$(cd "$1" && pwd)
 stack=$2
 root=$(cd "$(dirname "$0")/.." && pwd)
+[ ! -f "$root/job-configs/bench-env.sh" ] || . "$root/job-configs/bench-env.sh"  # the LangSmith key from .env when not exported
 out=${3:-$root/jobs/grade-$stack-$(date +%Y%m%d-%H%M%S)}; mkdir -p "$out"; out=$(cd "$out" && pwd)
 tests=$root/tasks/codeclimb-$stack/tests
 test -d "$tests/verifier" || { echo "run: python3 assemble.py $stack" >&2; exit 2; }
