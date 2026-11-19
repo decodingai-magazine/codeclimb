@@ -16,7 +16,7 @@
 - [ ] A report's numbers are flattened with `.`; lists, `per_item` and `details` are skipped; `ci95: [lo, hi]` becomes `ci95_half`
 - [ ] With more than one stage, every key of a stage gets `<stage>.` in front; with one stage, keys stay bare
 - [ ] Each stage adds `output_bytes` (prefixed like the rest with more than one stage)
-- [ ] From `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` per op and `latency_total_s`; a missing or empty file adds no latency metric
-- [ ] From ledger rows: `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed`
-- [ ] Unit tests cover a single-stage and a three-stage report, a `ci95` pair, skipped lists, timings with several ops, and a ledger with replayed and failed calls
+- [ ] From `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` per op and `latency_total_s`; a line with `warmup: true` counts toward none of them; a missing or empty file adds no latency metric
+- [ ] From ledger rows: `cost_usd`, `cost_per_item_usd` (`cost_usd` over one item per line of every stage's `inputs.jsonl`), `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed`
+- [ ] Unit tests cover a single-stage and a three-stage report, a `ci95` pair, skipped lists, timings with several ops and a warm-up line, and a ledger with replayed and failed calls
 - [ ] `npm run typecheck` and `npm test` pass

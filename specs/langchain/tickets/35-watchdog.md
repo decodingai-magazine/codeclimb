@@ -14,7 +14,7 @@
 
 - [ ] With the API running, the watchdog checks the nights on disk at an interval of the build's choosing
 - [ ] A night with no `done.json` and no `stop.json` that the Agent Server is not running, and that is not paused, is resumed from its last saved step
-- [ ] A night resumed by the watchdog that is left behind again is resumed again, up to the build's limit; past it, the night is stopped: `stop.json` with a reason that names the watchdog, and no sandbox left
+- [ ] A night resumed by the watchdog that is left behind again is resumed again, up to the build's limit; past it, the night is stopped: `stop.json` with `reason` `failed`, and no sandbox left
 - [ ] A finished, stopped, paused or running night is never touched
 - [ ] Tests with a faked Agent Server client and night files cover each case and the limit
 - [ ] `npm run typecheck` and `npm test` pass

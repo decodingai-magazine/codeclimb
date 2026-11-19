@@ -106,9 +106,9 @@ Isolation invariants, which every feature protects:
 
 **Keep rule.** Each threshold metric contributes its share of its target, capped at 1; the weighted score is the weighted mean of the shares. An experiment is kept only when it has a scored commit that differs from the checkpoint, no guardrail fired (a gate whose metric is missing or above its cap, two or more held-out names in the diff's added lines), and its weighted score beats the checkpoint's by more than the noise margin. The reviewer never decides; cost and latency are reported, never scored. Every experiment row says why it was decided ([[#Decisions]]).
 
-**Noise margin.** A program that calls models scores differently on every run, so a small gain may be luck. At the start of the first round whose checkpoint has metrics, the night evaluates that checkpoint a second time with no replayed calls (the A/A run, a `noise` row of that round) and takes the weighted move between the two as the noise. The margin an experiment must beat is that move, made smaller when part of its model calls were replayed (replayed calls add no noise), and held between a floor and a cap, because one pair is one sample. A failed or implausibly large A/A run is measured again, with at most two A/A runs per night.
+**Noise margin.** A program that calls models scores differently on every run, so a small gain may be luck. At the start of the first round whose checkpoint has metrics while the night has no measured noise, the night evaluates that checkpoint a second time with no replayed calls (the A/A run, a `noise` row of that round) and takes the weighted move between the two as the noise. The margin an experiment must beat is that move, made smaller when part of its model calls were replayed (replayed calls add no noise), and held between a floor and a cap, because one pair is one sample. A second A/A run is due at the start of the next round after a failed one, or on the next kept checkpoint after a move above `noise_margin.max` (implausibly large: likely one bad run); at most two A/A runs per variation. With `noise_margin.fixed` set there is no A/A run: the fixed value stands in for the move.
 
-**Stops.** Soft stops are checked between rounds: `max_rounds`, `deadline`, `budget`, `tokens`, `plateau`, then `outage` from the smoke test; `thresholds` is checked after each round. The budget and token checks reserve room for one more round and for the test evaluation. Hard stops (the stop command, a failed night, a cancel from outside, the pause timeout, the variation backstop) each cancel the night and its running work, remove its sandboxes and leave a `stop.json`. A night always ends with `done.json` or `stop.json`, also when it fails before `night.json` exists, because the CLI waits for one of them.
+**Stops.** Soft stops are checked between rounds: `max_rounds`, `deadline`, `budget`, `tokens`, `plateau`, then `outage` from the smoke test; `thresholds` is checked after each round. The budget and token checks reserve room for one more round and for the test evaluation. Hard stops (the stop command, a failed night, a cancel from outside, the hard deadline, the pause timeout, the variation backstop) each cancel the night and its running work, remove its sandboxes and leave a `stop.json`. A night always ends with `done.json` or `stop.json`, also when it fails before `night.json` exists, because the CLI waits for one of them.
 
 **Smoke test.** Before money goes into a round, the night checks again that its models are available and, on a metered night, that the path to the proxy is up. A failure is retried; a lasting one ends the night with `outage`, so an outage never spends a coder's budget on a round that can't be scored.
 
@@ -116,11 +116,11 @@ Isolation invariants, which every feature protects:
 
 **Pause for credits.** A program that gets 402 on every call would score as a bad program, so running out of credits pauses the night instead. A credit error from a program call, the coder or the reviewer becomes a credit stop; the coder commits its partial work, the evaluation reports no score, and only the night waits, with no sandbox running. A resume reruns only what stopped: the coder in the same session from its commit, the evaluation from scratch, the review again. Paused time counts against nothing. A pause nobody ends times out and stops the night. Ending a pause is safe to repeat.
 
-**Continue, seed, rescore.** Continue adds rounds to an ended night (one with a `done.json` or a `stop.json`) under the same id: rounds number on from the last recorded round, from the kept commit (the round-0 commit when it kept nothing), with the last review, the history, the notes and the rejected diffs, an optional operator direction, a fresh deadline and a budget that does not compound. A mock night continues as a mock. Seed starts a new night from an ended night's kept commit (`latest`, `best` by weighted dev score, or an id); only the code, its dev metrics and its noise carry over. Rescore: when the scenario's scoring files changed since the kept commit was scored, one extra round first scores it again and measures the noise again, because old scores can't be compared.
+**Continue, seed, rescore.** Continue adds rounds to an ended night (one with a `done.json` or a `stop.json`) under the same id: rounds number on from the last recorded round, from the kept commit (the round-0 commit when it kept nothing), with the last review, the history, the notes and the rejected diffs, an optional operator direction, a fresh deadline and a budget that does not compound: the night's cap becomes what it has spent so far plus one `budget_usd.night`, so unspent money does not carry over. A mock night continues as a mock. Seed starts a new night from an ended night's kept commit (`latest`, `best` by weighted dev score, or an id); only the code, its dev metrics and its noise carry over. The seed night's measured noise stands, so no A/A run is due for the seed commit; a seed night that measured none gets its A/A run in round 1. A seed night whose checkpoint has no dev metrics (it kept nothing and was not seeded itself) is refused. Rescore: when the scenario's scoring files changed since the kept commit was scored, one extra round first scores it again and measures the noise again, because old scores can't be compared.
 
-**Crash recovery.** After the Agent Server is killed and started again, the night carries on by itself: only the step that was running reruns, and a rerun never redoes finished work or writes a row twice. The watchdog, in the worker API's process, resumes a night the server left behind, a limited number of times, then stops it.
+**Crash recovery.** After the Agent Server is killed and started again, the night carries on by itself: only the step that was running reruns, and a rerun never redoes finished work or writes a row twice. The watchdog, in the worker API's process, resumes a night the server left behind, a limited number of times (the build chooses it), then stops it.
 
-**Coder.** Pi runs in the Agent Server, never in a sandbox, so credentials stay out. Its session is isolated from the host's own Pi and agent setup, and its only tools are `read`, `write`, `edit` and `bash`, acting in the sandbox, plus guarded web research. Its prompt gives it the scenario's spec, the night so far, the targets still short of their thresholds, the hypothesis, how the keep works, and its time and budget. It plans in `/tmp/tasks.json`, leaves notes for the next coder, measures on train before and after, and ends with an `APPROACH` line. An experiment ends when the coder is done, on its time or budget cap, when idle, on an infrastructure error (a failed model call is not one), on a credit stop or when cancelled; every end but a cancel commits, because partial work is still a result. A turn that ends on a failed model call is a stop like any other, so the session carries on once calls succeed again.
+**Coder.** Pi runs in the Agent Server, never in a sandbox, so credentials stay out. Its session is isolated from the host's own Pi and agent setup, and its only tools are `read`, `write`, `edit` and `bash`, acting in the sandbox, plus guarded web research. Its prompt gives it the scenario's spec, the night so far, the targets still short of their thresholds, the hypothesis, how the keep works, and its time and budget. It plans in `/tmp/tasks.json`, leaves notes for the next coder, measures on train before and after, and ends with an `APPROACH` line. An experiment ends when the coder is done, on its time or budget cap, when idle (no session activity for longer than a limit the build chooses), on an infrastructure error (a failed model call is not one), on a credit stop or when cancelled; every end but a cancel commits, because partial work is still a result. A turn that ends on a failed model call is a stop like any other, so the session carries on once calls succeed again.
 
 **Send-backs and wrap-up.** A coder may stop long before its time is up, with open tasks or no measurement. So a coder that stops before its reserve (the last part of its time or budget), or with open tasks or a missing train measurement, is sent back for one more change, up to a cap. Once the reserve starts, or after the send-backs end, it gets one wrap-up telling it to change no more code and to close its work. A repair gets neither.
 
@@ -130,9 +130,9 @@ Isolation invariants, which every feature protects:
 
 **Reviewer.** One Pi session per round, with no tools, on a model or a thinking level that differs from the coder's. It reads the spec, the checkpoint, the experiment's diff, metrics, per-item dev errors and run logs, the coder's notes and the night so far, and writes `feedback`, the next round's `hypothesis` and a short `verdict`. It runs every round, also after a revert and in the last round. It may describe categories of error but never name a dev item; its output is scanned and what the scan finds is rewritten or masked. A failed review keeps the last feedback and never kills the night.
 
-**Notes, history, rejected diffs.** What a night learns stays with it: one note per experiment (the coder's notes, then the reviewer's verdict), one history line per round, and the whole diff of every round that kept nothing. They are masked, and later coders find them under `/spec/history/`. The coder and the reviewer of a round read the trajectory of all earlier rounds, cut from the oldest end when it outgrows its budget.
+**Notes, history, rejected diffs.** What a night learns stays with it: one note per experiment (the coder's notes, then the reviewer's verdict), one history line per round, and the whole diff of every round that kept nothing. They are masked, and later coders find them under `/spec/history/`. The coder and the reviewer of a round read the trajectory of all earlier rounds, cut from the oldest end when it outgrows its budget (the build chooses it).
 
-**Lessons across nights.** A night's notes die with its bundle; the scenario's `lessons.md` is the only memory between nights. When a night ends or is stopped, a distillation reads the new notes and reviews (never test) and proposes add, edit and drop operations on the file, which code applies, so untouched lessons stay byte for byte. Proposals pass gates: no held-out name, no metric value, bounded size, no near-duplicate. A proposal is written to disk; in `apply` mode it also updates the scenario's file, never for a mock night and never as a commit. One distillation at a time per scenario.
+**Lessons across nights.** A night's notes die with its bundle; the scenario's `lessons.md` is the only memory between nights. When a night ends or is stopped, a distillation reads the new notes and reviews (never test) and proposes add, edit and drop operations on the file, which code applies, so untouched lessons stay byte for byte. Proposals pass gates: no held-out name, no metric value, bounded size (the build chooses the bound), no near-duplicate. A proposal is written to disk; in `apply` mode it also updates the scenario's file, never for a mock night and never as a commit. One distillation at a time per scenario.
 
 **Metering.** Sandboxes hold no provider key: a program reaches a model only through the proxy, with a token that carries the allowed models and a dollar cap. Every call is a ledger row. Within a night a repeated call is replayed from a cache for free, so unchanged code scores the same and a metric moves only where a change reached. A coder has its own dev ledger, capped by the experiment's budget; an evaluation's ledger is the source of the cost metrics. The path from sandbox to proxy is checked before it is used, so a broken path is an outage and never a score.
 
@@ -140,7 +140,7 @@ Isolation invariants, which every feature protects:
 
 **Worker API and app.** The API serves night summaries, the live experiment, a report, stop, resume, continue and export. Status comes from the files on disk, not from the runtime. The app lists nights and shows one night: status and controls, the kept and test scores, spend, the live experiment, per-stage metric tables, a convergence chart, a heatmap of per-family accuracy, the selected experiment with its diff, and export.
 
-**Export.** A kept commit leaves CodeClimb as plain files, as a git repository with the kept lineage as history, or as a push to a remote branch. It never force-pushes and refuses unsafe remotes.
+**Export.** A kept commit leaves CodeClimb as plain files, as a git repository with the kept lineage as history, or as a push to a remote branch. It never force-pushes and refuses unsafe remotes: one that starts with `-`, holds whitespace or names a remote helper (`<name>::`, such as `ext::`), which would run a command. `best` is the kept commit of the most recently finished night.
 
 **Tracing.** LangSmith traces each experiment, evaluation and review, findable by night id, and holds each successful dev evaluation's headline scores as feedback on its experiment; nothing reads it back, and with tracing off none of it runs.
 
@@ -158,13 +158,14 @@ Contract only. Source layout and everything not listed here is yours.
 ### Commands and services
 
 - npm scripts: `server`, `server:logs`, `server:stop`, `api`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:dataset`, `build:dataset:hard`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build:app`, `typecheck`, `test`
+- `build:dataset` runs `scenarios/datenorm/scripts/build_dataset.py --out scenarios/datenorm/gold`, and `build:dataset:hard` the same for `datenorm-hard`; both rewrite the given `gold/` byte for byte
 - install: `npm ci --ignore-scripts` must be enough
 - graphs the Agent Server serves: declared in `langgraph.json`; their names and their number are yours
 - `npm run server`: starts or updates the Agent Server from the checkout and returns once `http://127.0.0.1:8123/ok` answers; fails when it cannot. The server container is the Docker Compose service `langgraph-api`; Postgres and Redis are services of their own and survive its kill. Running `server` again after a kill or a code change brings the server back with its state. `server:stop` stops the stack and keeps its state
 - everything a night writes lands in the checkout, under `<root>/runs-langchain/`
 - images: `codeclimb-python` (`build:image`) and `codeclimb-graphrag` (`build:image:graphrag`), built from the given Dockerfiles. Gold, evaluators and keys never enter an image
 - host commands run with `bash`, `git`, `tar`, `python3` and `uv`; graphrag's need Python 3.14
-- worker API: `127.0.0.1:7421`; app: `127.0.0.1`
+- worker API: `127.0.0.1:7421`; app: `127.0.0.1`, served by `npm run dev` on a port of the build's choice that the Agent Server and the worker API do not use
 
 ### CLI
 
@@ -197,7 +198,7 @@ Contract only. Source layout and everything not listed here is yours.
 
 - skipped: the model checks, the smoke test, web research; lessons are never applied
 - `--mock-offline N`: the coder's model calls 2 to N+1 of the night's first experiment fail: an assistant message with stop reason `error` and the text `fetch failed`
-- `CODECLIMB_MOCK_CREDIT=<who>:<n>`: a test hook with no CLI flag; on a mock night, call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fails once with a 402, to exercise the credit pause
+- `CODECLIMB_MOCK_CREDIT=<who>:<n>`: a test hook with no CLI flag; on a mock night, call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fails once with a 402, to exercise the credit pause. The `run-night` that starts a mock night reads it, from its shell or `.env`
 
 ### Night config
 
@@ -218,15 +219,14 @@ Contract only. Source layout and everything not listed here is yours.
 | `thresholds` | required | Metric → target > 0, higher is better |
 | `weights` | 1 each | Metric → weight > 0, threshold metrics only |
 | `gates` | `{}` | Metric → cap; a gate fails when its metric is missing or above its cap |
-| `standard_metrics` | `latency`, `cost`: true; `latency_metric`: `latency_total_s`; `cost_metric`: `cost_per_item_usd`; `min_efficiency_gain`: 0.10 | Which standard metrics the agents are told to watch |
+| `standard_metrics` | `latency`, `cost`: true; `latency_metric`: `latency_total_s`; `cost_metric`: `cost_per_item_usd`; `min_efficiency_gain`: 0.10 | Which standard metrics the agents are told to watch; `min_efficiency_gain` is a share in (0, 1) |
 | `budget_usd.experiment`, `.night` | required | Caps of one experiment (`coder_usd + dev_usd`) and of the night |
 | `noise_margin` | `min` 0.002, `max` 0.005, `fixed` none, `scale_by_replay` true | |
 | `lessons` | `apply` if the scenario declares lessons, else `off` | `off`, `propose`, `apply` |
-| `seed` | none | A night id, `latest` or `best` |
 | `results_path` | required | `<folder>/results.jsonl`, relative to `<root>/runs-langchain/`. Absolute paths, `..` and deeper paths are refused |
 
 - `<root>` is `CODECLIMB_ROOT`, by default the start directory. The CLI resolves `results_path` once; `night.json` holds the resolved form
-- also refused at load: a `budget_usd.experiment` above `budget_usd.night`
+- also refused at load: a `budget_usd.experiment` above `budget_usd.night`; a `max_rounds` below 1; a thinking level outside the five; a threshold or a weight not above 0, or a weight on a metric without a threshold; a `min_efficiency_gain` outside (0, 1); an unparsable `deadline` or `hard_deadline`; `lessons` not `off` on a scenario without lessons
 
 ### Scenario contract
 
@@ -254,8 +254,8 @@ CodeClimb never reads a scenario's data: it runs the commands in `scenario.yaml`
 - sandbox paths of a stage: `/eval/<stage>/inputs.jsonl`, `/eval/<stage>/out`, log `/eval/<stage>/run.log`; `/repo/.venv/bin` is first on the path
 - masking: every found name becomes `[hidden]`, any letter case, longest first
 - metrics from a report: numbers flattened with `.`; lists, `per_item` and `details` skipped; `ci95: [lo, hi]` becomes `ci95_half`. With more than one stage every key gets `<stage>.` in front. Each stage adds `output_bytes`
-- standard metrics: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s`, `latency_total_s` from `timings.jsonl` lines `{op, id?, ms, warmup?}`; `cost_usd`, `cost_per_item_usd`, `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed` from the ledger
-- scoring hashes: `night.json` records a sha256 of the scenario's scoring files, so a changed scorer is detected for a rescore
+- standard metrics: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s`, `latency_total_s` from `timings.jsonl` lines `{op, id?, ms, warmup?}`, where a line with `warmup: true` counts toward none of them; `cost_usd`, `cost_per_item_usd` (`cost_usd` over the items: one item per line of every stage's `inputs.jsonl`), `cost_<op>_usd`, `model_calls`, `model_calls_replayed`, `model_calls_failed` from the ledger
+- scoring hashes: `night.json` records a sha256 of each of the scenario's scoring files (`scenario.yaml` and every file under `evaluators/` and `gold/`), so a changed scorer is detected for a rescore
 
 ### Ids
 
@@ -281,7 +281,7 @@ Every sandbox name starts with `cc-<night>`, and labels name its night, so a swe
 | `thresholds` | every threshold metric of the checkpoint ≥ its target |
 
 - the first five are checked in this order at the start of a round
-- `stop.json` `reason`: `manual` for the CLI's stop; other reasons name the API, a failure or a cancel. The first stop wins; none is written once `done.json` exists
+- `stop.json` `reason`: `manual` (the CLI's stop), `app` (the worker API's), `cancelled` (a cancel from outside), `failed` (a night that failed, a pause that timed out, a night the watchdog gave up on), `hard_deadline`; the variation backstop gives `failed` or `cancelled`, the build's choice. The first stop wins; none is written once `done.json` exists
 - an experiment's `stop` in `code-state.json`: `done` when the coder finished; other values name the cap, idle, error, credit stop or cancel that ended it
 
 ### Decisions
@@ -306,7 +306,7 @@ Under the results directory, the folder of the resolved `results_path`:
 | `experiments.git` | Bare repo; one commit per experiment at `refs/exp/<exp id>`; commit message `<exp id>: <hypothesis>`. The starter commit is deterministic: the same tree has the same SHA |
 | `lessons/<night>-r<N>/` | `lessons.md`, `changes.md`, `proposal.json` (`ops`, base sha256, cost, `applied`) |
 | `nights/<id>/night.json` | The night's identity, start, deadline, round-0 commit, resolved config and scoring hashes, written at init |
-| `nights/<id>/done.json` | `night_id`, `stop_reason`, `rounds` (the last recorded round), `kept` (`exp_id`, `commit`, `dev_score`), `test_metrics`, `spend_usd`, `finished_at` |
+| `nights/<id>/done.json` | `night_id`, `stop_reason`, `rounds` (the last recorded round; after a continue it counts the earlier variations' rounds too), `kept` (`exp_id`, `commit`, `dev_score`), `test_metrics`, `spend_usd`, `finished_at` |
 | `nights/<id>/stop.json` | `at`, `reason` |
 | `nights/<id>/pause.json`, `pauses.jsonl` | The current pause and who stopped it; the log of pauses and how long each lasted |
 | `nights/<id>/noise.json` | The noise margin and the two A/A runs it came from |
@@ -319,7 +319,7 @@ Under the results directory, the folder of the resolved `results_path`:
 - a note: heading `## r<N>-e<n> · <decision>: <reason>`, then `### Coder, before the evaluation`, then `### Reviewer, after the evaluation`. A failed attempt that gets a repair has the coder part only
 - coder files in the sandbox: `/tmp/tasks.json` (a list of `{task, check, status}`, status `todo`, `done` or `dropped` with a `note`), `/tmp/notes.md`, `/tmp/train-score.json` (`before`, `after`, `command`, optional `why`)
 - literal phrases, each in no other prompt: "You stopped with N of N minutes and $X of $Y left" in every send-back; "change no more code" in the wrap-up. Send-backs and the wrap-up are user messages in Pi's own session file, where they are counted
-- `lessons.md`: a `# ` title, preamble, `## ` sections holding only `- ` bullets
+- `lessons.md`: a `# ` title, preamble, `## ` sections holding only `- ` bullets; a bullet may go on over lines indented two spaces
 
 ### Result row
 
@@ -340,6 +340,7 @@ One JSON line per experiment, noise run and test evaluation, validated against a
 - optional in the schema, written where they apply: `kind`, `eval_id`, `night_id`, `score`, `decision_reason`, `dev_usd`, `evaluator_instance`, `unchanged`. `night_id`, `kind` and `eval_id` are written on every row. `round`, `tokens`, `infra_errors` are integers ≥ 0
 - noise and test rows carry the checkpoint's `exp_id` and `commit` and the evaluation's id as `eval_id`; `decision` is `keep` if the evaluation succeeded, else `error`. An experiment never evaluated still has `eval_id` `<exp>-eval`
 - with nothing kept, test runs on the round-0 commit and `done.json`'s `kept` names it
+- a rescore row is an `experiment` row of its own round: `exp_id` `<night>-r<N>-e0` at the kept commit, `model` null, `decision` `keep`; when its evaluation fails, the earlier metrics stand
 
 ### Metering proxy
 
@@ -376,6 +377,7 @@ One JSON line per experiment, noise run and test evaluation, validated against a
 | `CODECLIMB_MOCK_CREDIT` | Test hook: a mock night's scripted credit error ([[#Mock mode]]) |
 
 - `.env` is loaded by the CLI and the API and reaches the Agent Server; values already in the shell win. The build needs no value in it beyond the three LangSmith ones of the done signal
+- the Agent Server reads `CODECLIMB_PAUSE_TIMEOUT_S` and `CODECLIMB_BACKSTOP_S` from `.env` when `npm run server` starts it; a value set only in a shell need not reach it
 
 ## Runtime and tools
 
@@ -400,7 +402,7 @@ What the build needs from the runtime, as outcomes:
 | area | constant | value |
 |---|---|---|
 | loop | smoke test | 7 tries, 5 min apart |
-| loop | A/A runs per night; repairs per round | at most 2; 1 |
+| loop | A/A runs per variation; repairs per round | at most 2; 1 |
 | loop | held-out names in a diff that block a keep | ≥ 2 |
 | loop | pause timeout; variation backstop | 3 days; 4 days |
 | runtime | crash resume: a mock night finishes after the restart | within 480 s (8 min) |
@@ -425,7 +427,7 @@ The mock coder stops at once on every turn, so a mock session holds the full 8 s
 
 ## Dependencies
 
-Pinned to exact versions.
+Pinned to exact versions. A package the table does not list (type definitions, for example) is the build's choice.
 
 | package | version |
 |---|---|

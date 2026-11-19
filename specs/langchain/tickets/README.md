@@ -6,7 +6,7 @@
 
 - Work a ticket only when every ticket in its "Blocked by" is done. Numbers are in dependency order: a blocker always has a lower number.
 - Given inputs are present and are consumed, not rebuilt: `scenarios/`, `configs/`, `docker/` and `E2E.md`. Ticket 01 brings the starting point (`package.json`, `langgraph.json`, `src/hello.ts`, `tsconfig.json`, `.env.example`) to the spec. A test that needs a different scenario or config uses a temporary copy inside the checkout but outside `scenarios/` and `configs/`, with its own name and a `results_path` folder of its own.
-- Preconditions for every ticket that runs a night or a Docker test: Docker is running; `codeclimb-python` is built; `.env` holds `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT` and `LANGSMITH_TRACING=false`, and nothing else. A test hook (`CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S`, `CODECLIMB_MOCK_CREDIT`) is set from the shell for the one check that needs it.
+- Preconditions for every ticket that runs a night or a Docker test: Docker is running; `codeclimb-python` is built; `.env` holds `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT` and `LANGSMITH_TRACING=false`, and nothing else. A test hook (`CODECLIMB_PAUSE_TIMEOUT_S`, `CODECLIMB_BACKSTOP_S`, `CODECLIMB_MOCK_CREDIT`) is set in `.env` for the one check that needs it, then `npm run server` runs again.
 - Nights run one at a time on one Agent Server. Tickets whose blockers allow parallel work still take turns on it.
 - After a code change, run `npm run server` again before a night sees it.
 - Every ticket ends with `npm run typecheck` and `npm test` passing, plus the checks it lists. `npm test` runs with no Agent Server up and no `codeclimb-graphrag` image, so whole-night checks are separate commands, never part of `npm test`.
@@ -103,11 +103,4 @@
 ## Spec gaps met while cutting
 
 - The spec has no build order. The order here is the one "Goal and done signal" forces: nights 1, 2, 3 and 6 need the review, the notes, the send-backs, metering and the noise run before any of them passes in full.
-- The spec names the field `warmup?` of a `timings.jsonl` line without saying what it does; ticket 04 leaves its handling to the build.
-- `cost_per_item_usd` does not say what an item is (an input line of a stage, or of the evaluation).
-- A continue's "budget that does not compound" does not say whether the new variation's night cap is a fresh `budget_usd.night` or what is left of the earlier one.
-- Seed carries over the noise, while the A/A run is due "at the start of the first round whose checkpoint has metrics", which a seeded night's round 1 is. Ticket 32 uses the inherited noise and states no A/A rule.
-- A rescore row's `kind` is not given (`experiment`, `noise` and `test` are the only kinds).
-- "Unsafe remotes" for export is not defined; ticket 36 has the build state its rule.
-- `build:dataset` and `build:dataset:hard` are named scripts whose behaviour the spec does not state; ticket 01 wires them to the scenarios' own `build_dataset.py`.
 - Pause and resume, continue, seed, rescore, applied lessons, export, the worker API, the watchdog and the app have no named end-to-end check. Their tickets define checks on mock nights, temporary copies, or a faked Agent Server client.

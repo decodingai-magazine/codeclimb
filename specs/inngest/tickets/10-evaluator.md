@@ -13,5 +13,5 @@
 - [ ] `{split}` is `dev` or `test`, never `train`; only the inputs and the stage's `files` enter the sandbox
 - [ ] Files land under `evals/<eval>/`: `<stage>/inputs.jsonl`, `<stage>/run.log`, `<stage>/outputs/`, `<stage>/report.json`, and `metrics.json` only when every stage was scored
 - [ ] A program crash, a timeout, a scorer failure or, on dev, a stage that wrote no output is an `error` outcome, not scored, carrying the run log's tail; an evaluation counts only if it reports the primary metric; test always runs every stage (unit tests with a fake sandbox, plus a Docker test of a crashing program)
-- [ ] Latency metrics come from `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` and `latency_total_s` (unit tests on fixtures)
+- [ ] Latency metrics come from `timings.jsonl` lines `{op, id?, ms, warmup?}`: `latency_<op>_p50_ms`, `latency_<op>_p95_ms`, `latency_<op>_total_s` and `latency_total_s`; a line with `warmup: true` counts toward none of them (unit tests on fixtures)
 - [ ] Docker test: the `datenorm` starter evaluated on dev with the `datenorm-smoke` config gives `accuracy` 0.125 and `output_bytes` above 0; evaluated on test it runs every stage

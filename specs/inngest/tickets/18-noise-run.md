@@ -11,6 +11,6 @@
 - [ ] The A/A run comes at the start of the first round whose checkpoint has metrics, before that round's experiment, as `<exp>-noise-r<N>` in its own sandbox `cc-<eval id>`, with no replayed calls
 - [ ] It writes `noise.json` with `margin`, `first` and `second`, and a `noise` row; its spend counts in the night's spend
 - [ ] Every later keep uses the margin of ticket 04 with the measured move (or `noise_margin.fixed`) and the experiment's replayed share, and its `decision_reason` says so
-- [ ] A night runs at most 2 A/A runs (unit test)
+- [ ] No A/A run comes while the night has measured noise, or when `noise_margin.fixed` is set. A second one is due at the start of the next round after a failed A/A run, or on the next kept checkpoint after a move above `noise_margin.max`. A night runs at most 2 A/A runs (unit tests)
 - [ ] With the dev server and the worker up, night 2, `npm run run-night -- --config configs/datenorm-smoke.yaml --mock`, prints `done` with `stop_reason` `max_rounds` after exactly 2 rounds: round 1 holds the starter's code, scores accuracy 0.125 on dev and is kept, a `noise` row follows in round 2, `noise.json` exists (C11), and round 2's coder tests the review's hypothesis
 - [ ] Night 1 still passes the checks of ticket 17, and runs no A/A run

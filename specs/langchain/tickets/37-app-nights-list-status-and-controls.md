@@ -15,7 +15,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] `npm run dev` serves the app on `127.0.0.1` only; `npm run build:app` builds it with no error
+- [ ] `npm run dev` serves the app on `127.0.0.1` only, on a port the Agent Server and the worker API do not use; `npm run build:app` builds it with no error
 - [ ] The app reaches the worker API at `CODECLIMB_WORKER_URL` (default the API's own address), with `CODECLIMB_WORKER_TOKEN` as a bearer when set; it never reads night files itself
 - [ ] `/` lists every night the API returns, mock nights included, with status, rounds, kept score, test score and spend, each linking to `/nights/<id>`
 - [ ] `/nights/<id>` shows the status, the kept and test scores, the spend and the live experiment, and refreshes while the night runs

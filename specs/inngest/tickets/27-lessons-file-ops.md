@@ -9,6 +9,6 @@
 **Status:** ready-for-agent
 
 - [ ] Operations `add`, `edit` and `drop` apply to a lessons file; every lesson no operation touches stays byte for byte (unit tests, including on a copy of `graphrag`'s `lessons.md`)
-- [ ] Gates, each with accepting and rejecting cases: held-out names (through the scenario's `scan`, faked in tests), metric values, near-duplicates of an existing lesson, a file that grows too long (unit tests)
-- [ ] `npm run lessons -- format --config <yaml>` rewrites the scenario's lessons file in one fixed layout; with `--check` it changes nothing and exits non-zero when the file would change
+- [ ] Gates, each with accepting and rejecting cases: held-out names (through the scenario's `scan`, faked in tests), metric values, near-duplicates of an existing lesson, a lesson or a file past a size bound the build chooses (unit tests)
+- [ ] `npm run lessons -- format --config <yaml>` rewrites the scenario's lessons file in one fixed layout (a `# ` title, a preamble, then `## ` sections holding only `- ` bullets, each wrapping onto lines indented by two spaces); with `--check` it changes nothing and exits non-zero when the file would change
 - [ ] What a proposal changed and what the gates rejected can be written as `changes.md` (unit test)

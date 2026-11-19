@@ -25,8 +25,8 @@
 - [ ] After a resume only what stopped reruns: the coder carries on in the same Pi session from its commit, the evaluation runs again from scratch under the same `eval_id`, the review runs again
 - [ ] Ending a pause deletes `pause.json`, appends one line to `pauses.jsonl` with how long it lasted, and the paused time counts against no deadline or counter
 - [ ] A stop while paused stops the night; a paused night creates no sandbox
-- [ ] A pause not ended within 3 days stops the night with a `stop.json` whose reason names the pause timeout; `CODECLIMB_PAUSE_TIMEOUT_S`, set in the shell or in `.env`, reaches the Agent Server and shortens it
-- [ ] With `CODECLIMB_MOCK_CREDIT` set from the shell to `coder:<n>`, `reviewer:<n>` and `program:<n>`, once each on a mock night: call `n` of that kind fails once with a 402, the night pauses with `pause.json` naming the stop; after `run-night resume` it finishes with `done.json`, no `pause.json`, one line in `pauses.jsonl`, every `eval_id` once and no `cc-<id>` container
+- [ ] A pause not ended within 3 days stops the night with `stop.json` `reason` `failed`; `CODECLIMB_PAUSE_TIMEOUT_S`, set in `.env`, reaches the Agent Server once `npm run server` runs again, and shortens it
+- [ ] With `CODECLIMB_MOCK_CREDIT` (read by the `run-night` that starts the night, from its shell or `.env`) set to `coder:<n>`, `reviewer:<n>` and `program:<n>`, once each on a mock night: call `n` of that kind fails once with a 402, the night pauses with `pause.json` naming the stop; after `run-night resume` it finishes with `done.json`, no `pause.json`, one line in `pauses.jsonl`, every `eval_id` once and no `cc-<id>` container
 - [ ] A mock night with `CODECLIMB_MOCK_CREDIT` and `CODECLIMB_PAUSE_TIMEOUT_S` of a few seconds stops on the pause timeout with no sandbox left
 - [ ] The gate of ticket 21 still passes
 - [ ] `npm run typecheck` and `npm test` pass

@@ -5,7 +5,7 @@
 **Spec sections:**
 - "Features": **Continue, seed, rescore** (rescore)
 - "Interfaces the build must honour" > "Scenario contract": "scoring hashes"
-- "Interfaces the build must honour" > "Result row": `parent_id` null on rescore rows
+- "Interfaces the build must honour" > "Result row": `parent_id` null on rescore rows; the rescore row
 
 **Not yet:** nothing.
 
@@ -14,7 +14,7 @@
 **Status:** ready-for-agent
 
 - [ ] A continue or a seed compares the scenario's current scoring hashes with the ones in the ended night's `night.json`; equal hashes add no round
-- [ ] Changed hashes add one rescore round before any experiment: the kept commit is evaluated on dev again, its row has `parent_id` null, the checkpoint takes the new dev metrics, and the noise is measured again into `noise.json`
+- [ ] Changed hashes add one rescore round before any experiment: the kept commit is evaluated on dev again as `<night>-r<N>-e0`; its row has `kind` `experiment`, `model` and `parent_id` null and `decision` `keep`; the checkpoint takes the new dev metrics (the earlier ones stand when that evaluation fails), and the noise is measured again into `noise.json`
 - [ ] The new variation's `night.json` records the new hashes
 - [ ] On mock models with a temporary `datenorm` copy whose scorer is edited between two nights (outside `scenarios/`): a continue and a seed each run the rescore round first; with the scorer unchanged neither does
 - [ ] `validate-results` passes on the rows; no `eval_id` is written twice

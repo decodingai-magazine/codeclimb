@@ -8,7 +8,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] `package.json` pins every package of "Dependencies" at its exact version and keeps the given `inngest` package and `dev:inngest` script as given; a package the table does not list is added only when the build cannot do without it, pinned to an exact version and named in the ticket's report
+- [ ] `package.json` pins every package of "Dependencies" at its exact version and keeps the given `inngest` package and `dev:inngest` script as given; a package the table does not list (type definitions, for example) may be added, pinned to an exact version and named in the ticket's report
 - [ ] On a fresh checkout `npm ci --ignore-scripts` succeeds within 900 s
 - [ ] Every npm script "Given inputs and tools" lists is defined: `dev:inngest`, `worker`, `run-night`, `validate-results`, `build:image`, `build:image:graphrag`, `build:scenario:overfit`, `export`, `lessons`, `dev`, `build`, `start`, `typecheck`, `test`. A script whose feature is not built yet exits non-zero with a message naming that feature
 - [ ] TypeScript on Node 24, ESM; `npm run typecheck` passes within 600 s; `npm test` runs Node's test runner and passes within 1,200 s with no service up

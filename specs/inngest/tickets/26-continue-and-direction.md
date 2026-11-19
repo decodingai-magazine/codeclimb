@@ -9,7 +9,8 @@
 **Status:** ready-for-agent
 
 - [ ] `run-night continue --config <yaml> [--night ID] [--direction TEXT] [--rounds N]` continues the named night, or the newest ended one under the config's results; a night that has not ended is refused, and nothing starts
-- [ ] `--rounds` adds rounds to the night's rounds so far
+- [ ] `--rounds` adds rounds to the night's rounds so far; the continued run's rounds number on from the last recorded round, and `done.json`'s `rounds` is the last recorded round
+- [ ] Each continued run has a fresh deadline and the budget of one run (`budget_usd.night`) on top of what the night has already spent: two continues in a row never stack two budgets into one run (unit tests on fabricated night folders)
 - [ ] The continued run starts from the kept commit, or the round-0 commit when nothing was kept, with the night's last feedback and hypothesis; its state is rebuilt from the night's files only (unit tests on fabricated night folders)
 - [ ] `--direction TEXT`, on `continue` or on a new night, reaches the coder's prompt of the rounds that follow (unit test on the prompt builder)
 - [ ] Each continued run ends with its own test evaluation, `<night>-test-r<N>` of its last round, and a new `done.json` (or `stop.json`); the night's folder never holds both

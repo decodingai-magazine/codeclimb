@@ -13,7 +13,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] `lessons.md` is parsed and written as a `# ` title, a preamble, and `## ` sections holding only `- ` bullets; a file that breaks the format is reported, not rewritten
+- [ ] `lessons.md` is parsed and written as a `# ` title, a preamble, and `## ` sections holding only `- ` bullets, a bullet going on over lines indented two spaces; a file that breaks the format is reported, not rewritten
 - [ ] `add`, `edit` and `drop` apply to named bullets of named sections; every lesson the operations do not touch stays byte for byte (unit test on a real `lessons.md` of `scenarios/`)
 - [ ] An operation is refused by a gate when it holds a held-out name (the scenario's scan), a metric value, more text than the build's size bound, or a near-duplicate of an existing lesson; a refused operation is recorded with its gate
 - [ ] A proposal directory holds `lessons.md` (the file after the accepted operations), `changes.md` (what changed and what was refused, readable by a person) and `proposal.json` (`ops`, the base file's sha256, the cost, `applied`)

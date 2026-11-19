@@ -20,7 +20,7 @@
 - [ ] A stop cancels the night and its running coder session, evaluation or host command; it removes every `cc-<id>` sandbox, running or stopped; `stop.json` holds `at` and `reason: manual`; no `done.json` and no `test` row follow
 - [ ] A step that runs after the stop creates no sandbox for that night
 - [ ] The first stop wins: a second stop changes nothing; no `stop.json` is written once `done.json` exists
-- [ ] A night that fails, and a cancel of the night from outside the CLI, each leave `stop.json` with a reason that names the failure or the cancel, and no sandbox; this replaces ticket 12's interim path
+- [ ] A night that fails, and a cancel of the night from outside the CLI, leave `stop.json` with `reason` `failed` and `cancelled` respectively, and no sandbox; this replaces ticket 12's interim path
 - [ ] A stop of a night still in init leaves `stop.json` and no sandbox
 - [ ] Night 4: `datenorm-smoke --mock --no-wait`, then `run-night stop` once `exps/<id>-r1-e0/` exists (reached within 120 s of the start): within 30 s of the stop, `stop.json` has `reason: manual`, there is no `done.json`, no `test` row and no `cc-<id>` container; a `run-night` following the night prints `stopped` within 60 s
 - [ ] The gate of ticket 21 still passes

@@ -12,8 +12,8 @@
 - [ ] From a coder turn it stops the coder as `credits` with its partial work committed; from a program call it ends the evaluation unscored; from the reviewer it ends the review. In each case the night pauses: `pause.json` exists, no sandbox of the night exists, nothing runs
 - [ ] `pauses.jsonl` records every pause; `pause.json` is deleted when the pause ends
 - [ ] `run-night resume --night ID` ends the pause; only the work that stopped runs again; the paused time counts against no deadline
-- [ ] A pause nobody ends times out after 3 days, or `CODECLIMB_PAUSE_TIMEOUT_S` seconds when set, and stops the night with `stop.json` (end to end on a mock night with a short value: no `done.json`, no `cc-<id>` container)
+- [ ] A pause nobody ends times out after 3 days, or `CODECLIMB_PAUSE_TIMEOUT_S` seconds when set, and stops the night with `stop.json` reason `failed` (end to end on a mock night with a short value: no `done.json`, no `cc-<id>` container)
 - [ ] A stop request ends a paused night as any hard stop does
-- [ ] `CODECLIMB_MOCK_CREDIT=<who>:<n>` on a mock night makes call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fail once with a credit error; it has no CLI flag (unit test)
+- [ ] `CODECLIMB_MOCK_CREDIT=<who>:<n>` on a mock night makes call number `n` of the night's calls by `who` (`coder`, `reviewer` or `program`) fail once with a credit error; it has no CLI flag. The worker reads it and `CODECLIMB_PAUSE_TIMEOUT_S` when it starts, from `.env` or its own shell (unit test)
 - [ ] End to end on mock nights, once for each `who`: the night pauses; `run-night resume` ends the pause; the night finishes with `done`, every `eval_id` once, and `pauses.jsonl` records the pause
 - [ ] Nights 1 to 3 still pass the check of ticket 20

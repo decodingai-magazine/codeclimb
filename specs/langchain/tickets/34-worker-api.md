@@ -19,7 +19,7 @@
 - [ ] Night summaries list every night of every results directory under `runs-langchain/`, mock nights included, with id, config, status, rounds, kept and test scores, and spend
 - [ ] Status is read from files: `finished` (a `done.json`), `stopped` (a `stop.json`), `paused` (a `pause.json`), `stale` (no file written for an hour), else `running`
 - [ ] A night's live experiment (its `code-state.json`, tasks and progress) and its report (rows, reviews, notes, metrics per evaluation) are served
-- [ ] Stop, resume and continue act as the CLI's commands do; a stop from the API leaves a `stop.json` whose reason names the API
+- [ ] Stop, resume and continue act as the CLI's commands do; a stop from the API leaves a `stop.json` with `reason` `app`
 - [ ] No token is needed on loopback; bound off loopback, every request needs `CODECLIMB_WORKER_TOKEN` as a bearer and is refused without it
 - [ ] Tests run the API against night files on disk and a faked Agent Server client: every route, every status, the token rule
 - [ ] A live check on a mock night: the API lists it as `running`, then `finished`; a stop through the API on another mock night leaves `stop.json` within 30 s

@@ -13,5 +13,5 @@
 - [ ] Every round that kept nothing saves its diff as `bundle/history/r<N>.diff`
 - [ ] Notes, history lines and diffs are masked for held-out names with the scenario's `scan` before they are written (unit test with a fake scan)
 - [ ] The next coder finds them under `/spec/history/`; the reviewer reads the night so far too
-- [ ] Past the size budget the oldest detail is dropped first (unit tests)
+- [ ] Past the size budget, whose value the build chooses, the oldest detail is dropped first (unit tests)
 - [ ] With the dev server and the worker up, after `datenorm-smoke --mock`: `bundle/history/notes/r1-e0.md` and `r2-e0.md` exist, each with a `mock note` coder part and a `mock verdict` reviewer part (C9), and round 2's coder prompt holds round 1's history line
