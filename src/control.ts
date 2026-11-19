@@ -110,11 +110,11 @@ export interface TimerGuard {
 }
 
 /** A delayed server run of `stop` on the night's timer thread (created if missing), carrying its guard. */
-export async function startTimer(nightId: string, guard: TimerGuard, afterSeconds: number): Promise<void> {
+export async function startTimer(nightId: string, guard: TimerGuard, afterSeconds: number, reason: StopReason = "failed"): Promise<void> {
 	const c = client();
 	const threadId = timerThreadId(nightId);
 	await c.threads.create({ threadId, ifExists: "do_nothing", metadata: { kind: "timer", night_id: nightId } });
-	await c.runs.create(threadId, "stop", { input: { night_id: nightId, reason: "failed", guard }, afterSeconds, multitaskStrategy: "enqueue", durability: DURABILITY });
+	await c.runs.create(threadId, "stop", { input: { night_id: nightId, reason, guard }, afterSeconds, multitaskStrategy: "enqueue", durability: DURABILITY });
 }
 
 /** Cancel every pending or running server run on the night's threads, action interrupt, without waiting. */

@@ -60,7 +60,7 @@ export function readJson<T>(path: string): T | null {
 	}
 }
 
-export type StopReason = "manual" | "app" | "failed" | "cancelled";
+export type StopReason = "manual" | "app" | "failed" | "cancelled" | "hard_deadline";
 
 /** Write `stop.json` unless the night has a `done.json` or a `stop.json` already: the first stop wins. Returns whether it wrote. */
 export function writeStopIfMissing(nightDir: string, reason: StopReason, at = new Date()): boolean {

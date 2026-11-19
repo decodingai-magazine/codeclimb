@@ -47,6 +47,8 @@ export interface NightConfig {
 	max_tokens?: number;
 	plateau_rounds: number;
 	deadline: string;
+	/** A hard stop, even mid-step: an ISO time, or a duration from the start. */
+	hard_deadline?: string;
 	timeouts: { experiment_min: number; eval_min: number };
 	model: string;
 	reviewer_model: string;
@@ -229,6 +231,8 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 
 	const deadline = String(raw.deadline ?? "");
 	deadlineAt(deadline, 0);
+	const hardDeadline = optStr(raw, "hard_deadline", path);
+	if (hardDeadline !== undefined) deadlineAt(hardDeadline, 0);
 
 	if (!isObj(raw.timeouts)) fail("timeouts.experiment_min and timeouts.eval_min are required");
 	const t = raw.timeouts as Obj;
@@ -278,6 +282,7 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 		experiment: num(b.experiment, "budget_usd.experiment", (n) => n > 0, "> 0"),
 		night: num(b.night, "budget_usd.night", (n) => n > 0, "> 0"),
 	};
+	if (budget.experiment > budget.night) fail("budget_usd.experiment must not exceed budget_usd.night");
 
 	const nm = isObj(raw.noise_margin) ? (raw.noise_margin as Obj) : {};
 	const noise: NightConfig["noise_margin"] = {
@@ -319,6 +324,7 @@ export function loadNightConfig(file: string, opts: LoadOptions): NightConfig {
 		results_path: results,
 	};
 	if (maxTokens !== undefined) config.max_tokens = maxTokens;
+	if (hardDeadline !== undefined) config.hard_deadline = hardDeadline;
 	if (optStr(raw, "seed", path)) fail("seed: starting from another night is not built yet");
 	return config;
 }

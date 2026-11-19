@@ -4,8 +4,13 @@ import { join } from "node:path";
 import { type NightPaths, readJson, writeJson } from "./files.ts";
 import type { NightJson } from "./types.ts";
 
-export const PAUSE_TIMEOUT_S = 3 * 24 * 3600;
-export const VARIATION_TIMEOUT_S = 4 * 24 * 3600;
+/** Seconds from a test hook in the server's environment (`.env`), else the default. */
+const hookSeconds = (name: string, fallback: number): number => {
+	const s = Number(process.env[name]);
+	return Number.isFinite(s) && s > 0 ? Math.round(s) : fallback;
+};
+export const PAUSE_TIMEOUT_S = hookSeconds("CODECLIMB_PAUSE_TIMEOUT_S", 3 * 24 * 3600);
+export const VARIATION_TIMEOUT_S = hookSeconds("CODECLIMB_BACKSTOP_S", 4 * 24 * 3600);
 
 const CREDIT = /\b402\b|payment required|insufficient (credits|quota|funds|balance)|credit balance|out of (credits|budget)|quota (exceeded|exhausted)|usage limit reached|key limit exceeded|billing/i;
 /** A credit or quota message: a 429 rate limit is not one. */
