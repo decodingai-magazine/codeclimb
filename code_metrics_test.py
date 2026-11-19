@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from code_metrics import measure
+from code_metrics import build_trials, measure
 
 FIXTURE = Path(__file__).resolve().parent / "analysis" / "fixture"
 
@@ -142,3 +142,27 @@ class FixtureBuild(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BuildTrials(unittest.TestCase):
+    """Which trials `code_metrics.py jobs` measures: build tasks with a collected /app and no metrics file yet."""
+
+    def test_build_trials_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "job"
+
+            def trial(name, task, app=True, done=False):
+                d = job / name
+                (d / "artifacts" / "app").mkdir(parents=True) if app else d.mkdir(parents=True)
+                (d / "config.json").write_text(json.dumps({"task": {"path": task}}))
+                if done:
+                    (d / "code-metrics.json").write_text("{}")
+                return d
+
+            a = trial("a", "tasks/codeclimb-inngest")
+            b = trial("b", "tasks/codeclimb-langchain")
+            trial("c", "tasks/codeclimb-inngest-r2")  # a maintenance task
+            trial("d", "tasks/codeclimb-langchain", app=False)  # /app not collected
+            trial("e", "tasks/codeclimb-inngest", done=True)  # already measured
+            trial("f", "tasks/topology-check")
+            self.assertEqual(build_trials([job]), [(a, "inngest"), (b, "langchain")])

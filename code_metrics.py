@@ -2,6 +2,7 @@
 
     python3 code_metrics.py --app <build dir> --stack <inngest|langchain> --out <trial dir>/code-metrics.json
                             [--reference <the stack's reference metrics.json>]
+    python3 code_metrics.py jobs <job dir>...    # every build trial without a metrics file, against its stack's pin
 
 The tools run at pinned versions in the benchmark's own container (analysis/Dockerfile), never in the build: the build
 is mounted read-only and copied inside, where `npm ci --ignore-scripts` installs its own packages. This file knows the
@@ -103,7 +104,52 @@ def measure(app: Path, stack: str, out: Path, reference: Path | None = None) -> 
     return metrics
 
 
+def build_trials(job_dirs: list[Path]) -> list[tuple[Path, str]]:
+    """The trials of build tasks (`tasks/codeclimb-<stack>`, not a maintenance task) whose `/app` was collected and
+    that have no metrics file yet, with their stack."""
+    out = []
+    for job in job_dirs:
+        for config in sorted(job.glob("*/config.json")):
+            trial = config.parent
+            task = Path((json.loads(config.read_text()).get("task") or {}).get("path") or "").name
+            stack = task.removeprefix("codeclimb-")
+            if stack in STACKS and (trial / "artifacts" / "app").is_dir() and not (trial / "code-metrics.json").exists():
+                out.append((trial, stack))
+    return out
+
+
+def reference_metrics(stack: str, cache: Path) -> Path:
+    """The metrics file of the stack's build-task pin (assemble.BUILD_PINS), measured once from its `git archive`."""
+    from assemble import BUILD_PINS
+
+    path = cache / f"{stack}-{BUILD_PINS[stack]}.json"
+    if not path.exists():
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = subprocess.run(["git", "-C", str(ROOT), "archive", BUILD_PINS[stack]], check=True,
+                                     capture_output=True).stdout
+            subprocess.run(["tar", "-x", "-C", tmp], input=archive, check=True)
+            measure(Path(tmp), stack, path)
+    return path
+
+
+def measure_jobs(job_dirs: list[Path], cache: Path) -> int:
+    """Measures every build trial of the jobs that has no metrics file yet, against its stack's pin. Returns the count of
+    trials that failed; a failure is reported and the next trial goes on."""
+    failed = 0
+    for trial, stack in build_trials(job_dirs):
+        try:
+            measure(trial / "artifacts" / "app", stack, trial / "code-metrics.json", reference_metrics(stack, cache))
+            print(f"ok {trial}")
+        except (subprocess.CalledProcessError, OSError, ValueError) as e:
+            failed += 1
+            print(f"FAILED {trial}: {e}", file=sys.stderr)
+    return failed
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["jobs"]:
+        # python3 code_metrics.py jobs <job dir>...: every build trial in them, the reference files cached in jobs/.
+        sys.exit(1 if measure_jobs([Path(p) for p in sys.argv[2:]], ROOT / "jobs" / "reference-metrics") else 0)
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--app", type=Path, required=True)
     ap.add_argument("--stack", required=True, choices=STACKS)

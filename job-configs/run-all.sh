@@ -3,7 +3,7 @@
 # jobs, 3 attempts each, 30 trials. At most <slots> jobs run at once, one trial each (default 3). The pocock jobs start
 # first: they are the longest (3 x about 95 min), so starting them last would leave slots idle at the end. The one-shot
 # jobs follow in shuffled order, one minute apart. Uses the operator's subscription (docs/codeclimb-eval-spec.md,
-# "Jobs, repeats, cost").
+# "Jobs, repeats, cost"). Once every job has ended, code_metrics.py measures each build trial against its stack's pin.
 #
 #   job-configs/run-all.sh [slots]          # runs; writes jobs/all-<stamp>-<job file>/
 #   DRY=1 job-configs/run-all.sh [slots]    # prints the order and checks each job file with --print-config; no trial
@@ -62,4 +62,7 @@ for f in $queue; do
   sleep 60
 done
 wait
+# The code and practice metrics of every build trial, against its stack's pin ($0, the analysis container).
+echo "$(date +%H:%M) code metrics"
+python3 code_metrics.py jobs jobs/all-$stamp-*-* > "$logs/code-metrics.log" 2>&1 || echo "code metrics: some trials failed, see $logs/code-metrics.log" >&2
 echo "$(date +%H:%M) all done; analyze with: uv run python analyze.py jobs/all-$stamp-*-* "
