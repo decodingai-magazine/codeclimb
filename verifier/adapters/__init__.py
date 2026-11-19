@@ -145,12 +145,21 @@ class Adapter:
         the build's function or graph names. Returns what it cancelled."""
         raise NotImplementedError
 
+    def pause_runtime(self, services: Services, seconds: float) -> list[str]:
+        """Durability (`runtime-blink`): freeze the durable runtime's own state for `seconds`, then let it go on,
+        with the build's processes untouched. Returns what it froze."""
+        raise NotImplementedError
+
     def stop_services(self, services: Services) -> None:
         for p in reversed(services.processes):
             kill_group(p)
 
     def service_logs(self, services: Services) -> str:
         return "\n".join(f"--- {p.name}\n{tail(p.log)}" for p in services.processes)
+
+    def log_files(self, services: Services) -> dict[str, str]:
+        """Every service's whole log by file name, for a kept night (`CODECLIMB_VERIFIER_KEEP`)."""
+        return {f"{p.name}.log": p.log.read_text(errors="replace") if p.log.exists() else "" for p in services.processes}
 
     def runtime_diagnostics(self, services: Services) -> str:
         """What the runtime shows when a night stalls, for a failed check's detail: its logs' ends."""

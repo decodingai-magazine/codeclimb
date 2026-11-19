@@ -1,0 +1,13 @@
+
+> codeclimb@0.1.0 worker
+> INNGEST_DEV=1 tsx --import @inngest/otel/node scripts/worker.ts
+
+Connecting
+Connection established
+{ connectionId: '01M7Q5BPWVC2XBWYVD029WJDAX', gatewayGroup: 'gw-dev' }
+Connection active
+{ connectionId: '01M7Q5BPWVC2XBWYVD029WJDAX', gatewayGroup: 'gw-dev' }
+[api] http://127.0.0.1:7421/api (metering proxy at /v1)
+[worker] connected (01M7Q5BPWVC2XBWYVD029WJDAX); functions: run-night, run-experiment, run-evaluator, night-stop-cleanup, run-cancelled-cleanup, distill-lessons
+Sent WORKER_READY
+{ connectionId: '01M7Q5BPWVC2XBWYVD029WJDAX' }

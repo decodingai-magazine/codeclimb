@@ -64,7 +64,7 @@ BUILD_PINS = {"inngest": "5a81c07", "langchain": "3612892"}
 # the C7 commits under them (5c7150b, 5ac7f82).
 EVERYWHERE = ("e384bb5", "bce6a16", "bab033e", "4a71177", "0c395fd", "2ab1ad3", "bcabd72", "400bd40", "9567643",
               "1452a93", "1360cb4", "9d04590", "9911231", "f76da25", "c3a1ec3", "2c8eaa7", "3f7793d",
-              "5a81c07", "3612892", "5c7150b", "5ac7f82",
+              "5a81c07", "3612892", "5c7150b", "5ac7f82", "b16f688", "87fa4a1", "bc1ab93", "5901318", "b15c8e1", "9e18335", "a755560", "9d70972", "d69493f", "df40257",
               "01-Projects", "codeclimb-eval-spec")
 # Forbidden only in the files the benchmark writes (SPEC.md, E2E.md, AGENTS.md,
 # specs/<stack>/given/). The shared given inputs are vendored unchanged, and the
@@ -248,7 +248,7 @@ class Source:
             raise ValueError(f"unknown workflow {self.workflow!r}: one of {', '.join(WORKFLOW_DROPS)}")
 
 
-def assemble_maintenance_app(src: Source, commit: str, out: Path) -> dict[str, str]:
+def assemble_maintenance_app(src: Source, commit: str, out: Path, incident: Path | None = None) -> dict[str, str]:
     """A maintenance task's /app in `out`: the `git archive` of `commit` without the reference's guidance files
     (WORKFLOW_DROPS; pocock also drops every file under docs/ outside docs/adr/ and docs/agents/),
     plus SPEC.md and the AGENTS.md stub, as a fresh repository with one commit (neither `git log` nor `git diff`
@@ -271,6 +271,8 @@ def assemble_maintenance_app(src: Source, commit: str, out: Path) -> dict[str, s
                     p.unlink()
         (stage / "SPEC.md").write_text(flatten_wikilinks((ROOT / "specs" / stack / "spec.md").read_text()))
         (stage / "AGENTS.md").write_text(AGENTS_STUB)
+        if incident is not None:
+            shutil.copytree(incident, stage / "incident")
         found = [
             f"{p.relative_to(stage).as_posix()}: {t}"
             for p in sorted(stage.rglob("*")) if p.is_file()
@@ -335,7 +337,8 @@ def _write_maintenance_task(d: Path, task_id: str, task: Maintenance, src: Sourc
     toml = re.sub(r'(?m)^description = .*$', f'description = "Maintenance task {task_id} ({task.kind}) on the {stack} reference build."', toml)
     (d / "task.toml").write_text(toml)
     app = d / "environment" / "app"
-    record = assemble_maintenance_app(src, task.commits[stack], app)
+    incident = ROOT / task.incident / stack if task.incident else None
+    record = assemble_maintenance_app(src, task.commits[stack], app, incident)
     prompt = maintenance_prompt(stack, task)
     found = forbidden_terms(prompt, authored=True)
     if found:

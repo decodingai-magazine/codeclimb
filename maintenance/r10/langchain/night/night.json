@@ -1,0 +1,83 @@
+{
+  "night_id": "v95000378-cte1",
+  "startedAt": "2026-11-18T11:17:17.676Z",
+  "deadlineMs": 1795011437676,
+  "round0": {
+    "exp_id": "v95000378-cte1-r0-starter",
+    "sha": "eff7901290f4ff923852d60e1be179f2bfca0219"
+  },
+  "seed": null,
+  "config": {
+    "gates": {
+      "schema_violations": 0,
+      "latency_query_p95_ms": 50
+    },
+    "model": "github-copilot/claude-haiku-5.5",
+    "lessons": "off",
+    "sandbox": "docker",
+    "weights": {
+      "accuracy": 1
+    },
+    "deadline": "3h",
+    "scenario": "scenarios/datenorm",
+    "timeouts": {
+      "eval_min": 3,
+      "experiment_min": 10
+    },
+    "budget_usd": {
+      "night": 0.5,
+      "experiment": 0.2
+    },
+    "max_rounds": 2,
+    "thresholds": {
+      "accuracy": 1.01
+    },
+    "noise_margin": {
+      "max": 0.005,
+      "min": 0.002,
+      "scale_by_replay": true
+    },
+    "results_path": "runs-langchain/mock/datenorm-smoke/results.jsonl",
+    "scenario_spec": {
+      "name": "datenorm",
+      "image": "codeclimb-python",
+      "bundle": "python3 scripts/export_agent.py --out {out}",
+      "stages": [
+        {
+          "run": "python3 /eval/run.py --queries {inputs} --repo /repo --out {out}",
+          "name": "answer",
+          "files": {
+            "/eval/run.py": "evaluators/run.py"
+          },
+          "score": "python3 evaluators/evaluate.py score --split {split} --predictions {out} --out {report}",
+          "inputs": "python3 evaluators/evaluate.py inputs --split {split} --out {inputs}"
+        }
+      ],
+      "headline": [],
+      "protocol": [],
+      "diagnostics": []
+    },
+    "allowed_models": [],
+    "coder_thinking": "medium",
+    "plateau_rounds": 3,
+    "primary_metric": "accuracy",
+    "reviewer_model": "github-copilot/claude-haiku-4.5",
+    "standard_metrics": {
+      "cost": true,
+      "latency": true,
+      "cost_metric": "cost_per_item_usd",
+      "latency_metric": "latency_total_s",
+      "min_efficiency_gain": 0.1
+    },
+    "reviewer_thinking": "high"
+  },
+  "metric_script_sha256": {
+    "scenarios/datenorm/scenario.yaml": "df9242e62951c4213744d4b8c8bc6bb0c38e864ce2023aa120323acda96bd560",
+    "scenarios/datenorm/evaluators/evaluate.py": "e9f8e8286d5b383d9a664e0fadaaffe31b19a90877856440f070eaa13ff9dc2f",
+    "scenarios/datenorm/evaluators/run.py": "2d1148b504d2169217a39c5b51b08fedd61b1e68cd00380052c41fec577bb93d",
+    "scenarios/datenorm/evaluators/score.py": "5b0b95e236ce83a830bd6185b4e181f338971c106083532c841552f7dddf8d40",
+    "scenarios/datenorm/gold/items.jsonl": "65dcadcc09354c5d0cf38a562667ff68a16aff6a199de42c2282a605e19f4c9d",
+    "scenarios/datenorm/gold/splits.json": "9ac10f5ccb983c9de21fe8739aa7deb3b39ed4b8404ef8e175ecd47ec4d99ac9"
+  },
+  "lessons_sha256": []
+}

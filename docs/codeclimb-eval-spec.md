@@ -616,14 +616,14 @@ Repairs, hardest first:
 
 | id | fault → symptom | target tests | tier |
 |---|---|---|---|
-| R8 | the sandbox is created outside the durable step → a kill during its creation orphans it | `crash-at-init` (26), `kill-after-row` (55), over 3 verifier runs | T4 |
+| R8 (dropped) | the sandbox is created outside the durable step → a kill during its creation orphans it | `crash-at-init` (26), `kill-after-row` (55), over 3 verifier runs | T4 |
 | R10 | R14, with only the failed night's folder and the service logs given | as R14: `crash-during-test-eval` (24) | T3 |
 | R14 | replay after a crash is broken (step ids not deterministic) → the resumed night reruns finished work or stalls | `crash-during-test-eval` (24) | T3 |
-| R11 | the runtime blinks for 20 s mid-round (Inngest: the dev server; LangChain: the Agent Server's Postgres and Redis) → the night crashes or never resumes | a new shared hidden test, a 20 s pause of the runtime's containers, which both references pass 5 of 5 first | T3 |
-| R15 | the results row and the note are written only at the end of the night → a kill mid-night loses them | `crash-mid-eval` (23), `graceful-restart` (25), `row-per-experiment`, `notes` | T3 |
-| R2 | the backstop is checked between rounds only → the evaluation sandbox outlives it | `backstop-mid-step` (53), `stop-during-eval` (20) | T3 |
-| R5 | cleanup skipped on an outside cancel → `cc-<id>` left | `outside-cancel` (51), `no-leftover-sandbox` | T3 |
-| R12 | the connection from the coder's sandbox to the metering proxy drops and is not retried → the coder's calls fail while the evaluation's work | `meter`, night 1's checks, `spend-zero` | T2 |
+| R11 (dropped) | the runtime blinks for 20 s mid-round (Inngest: the dev server; LangChain: the Agent Server's Postgres and Redis) → the night crashes or never resumes | a new shared hidden test, a 20 s pause of the runtime's containers, which both references pass 5 of 5 first | T3 |
+| R15 | the results row and the note are written only at the end of the night → a watched night shows no row until `done.json`, a stopped night loses them | `continue-after-stop` (50), `kill-after-row` (55) | T2 |
+| R2 | the backstop is checked between rounds only → the evaluation sandbox outlives it | `backstop-mid-step` (53) | T3 |
+| R5 (dropped) | cleanup skipped on an outside cancel → `cc-<id>` left | `outside-cancel` (51), `no-leftover-sandbox` | T3 |
+| R12 | the coder's sandbox is put on the metering proxy's URL instead of its network → on a metered night every experiment errors while the evaluations work | `mock-commit`, `code-state`, `send-backs`, `notes`, `graphrag-sessions`, `graphrag-notes`, `graphrag-check-json`, `rejected-diff` | T2 |
 | R3 (control) | `continue` loads a mock night as real | `continue` (18) | T1 |
 
 Changes, hardest first:
@@ -632,9 +632,9 @@ Changes, hardest first:
 |---|---|---|---|
 | C7 | a `hard_deadline` config key that aborts the running experiment | `hard-deadline-mid-step` (59), 53 driven by the new key; both references patched first | T3 |
 | C2 | `continue` again, on a base with it cut | `continue` (18), `continue-after-stop` (50); `seed` (19) unchanged | T3 |
-| C3 | the pause for credits again, on a base with it cut | `pause-timeout` (56), `pause-resume` (57) | T3 |
+| C3 (dropped) | the pause for credits again, on a base with it cut | `pause-timeout` (56), `pause-resume` (57) | T3 |
 | C4 | the cancel from outside as a hard stop again, on a base with it cut | `outside-cancel` (51) | T3 |
-| C8 | two nights at once, both ending `done` | the first table's rows on both nights. If both references already pass, C8 is replaced by C9 (the stack SDK up one minor version), which needs the operator's dependency approval | T2 |
+| C8 (dropped) | two nights at once, both ending `done` | the first table's rows on both nights. If both references already pass, C8 is replaced by C9 (the stack SDK up one minor version), which needs the operator's dependency approval | T2 |
 | C6 (control) | one more config refused at load | `config-rejects` (10) plus the new case | T1 |
 | C1 (smoke, never counted) | the test hooks, on `0c395fd` and `9567643` | `backstop-mid-step` (53), `pause-timeout` (56), `pause-resume` (57), `fail-at-init` (52: the Inngest task commit fails it too, `maintenance-c1-inngest-nop-202252`) | T2 |
 
@@ -645,6 +645,23 @@ Changes, hardest first:
 - first authored and gated: R14 and its control R3, C7 and its control C6. The others follow once a pilot reads clean
 - R14's targets narrowed to `crash-during-test-eval` (24), 2026-11-17: at one run per stack, the fault commits `f76da25` (Inngest) and `c3a1ec3` (LangChain) both fail `crash-resume` and 24, only Inngest fails 23, both pass 26 and 1 (no crash fault reaches them), and the LangChain pin passed `crash-resume` only 2 of 3, so it cannot be a target. Its symptom is what 24 saw: Inngest rewrote both rounds' `code-state.json` and recreated their coder sandboxes, LangChain rewrote `reviews/r1.json` and `reviews/r2.json`; the symptom names only the rewritten files. Gate on 24, 3 runs per side, 2026-11-17 (jobs `reference-inngest-bcabd72-190635`, `reference-inngest-f76da25-192234`, `reference-langchain-400bd40-193829`, `reference-langchain-c3a1ec3-195823`): both bases pass 24 3 of 3, both fault commits fail it 3 of 3, typecheck and unit tests green in every run; fix sizes 9 and 8 lines. Pass
 - C7 and C6, gated 2026-11-17 (`gate.py c7|c6` on the jobs `reference-inngest-bcabd72-141950`, `reference-langchain-400bd40-143159`, `reference-inngest-1452a93-145054`, `reference-langchain-9d04590-145929`, `reference-inngest-1360cb4-151501`, `reference-langchain-9911231-152722`): the task commit is the maintenance base; the base it is gated against is the reference's own patch, one commit on the maintenance base, Inngest `1452a93` (C7) and `1360cb4` (C6), LangChain `9d04590` and `9911231`. Through `job-configs/reference.sh`, `hidden` only, `CODECLIMB_VERIFIER_ONLY=hard-deadline-mid-step,config-rejects`, 3 runs each: both pins fail 59 and 10 3 of 3 (59: no `stop.json` by 90 s, the evaluation sandbox left; 10: the new case exits 0 and makes a night folder); each C7 patch passes 59 3 of 3 (`stop.json` `hard_deadline` 30 to 31 s after the start, no sandbox left), each C6 patch passes 10 3 of 3; typecheck and unit tests green in every run. Fix sizes: C7 Inngest 33 lines in 4 files (a function that sleeps until the deadline, writes `stop.json`, then sends the night stop), LangChain 23 in 6 (the backstop's timer with its own reason); C6 3 and 5 lines in 2 files each. Import hops 1, reproduce 93 s (C7) and 22 to 26 s (C6). Both pairs pass. One full run per patch (`basic` and `hidden`, `real` skipped; jobs `reference-inngest-1452a93-154613`, `reference-langchain-9d04590-162507`, `reference-inngest-1360cb4-165820`, `reference-langchain-9911231-174044`), the bases' grades for `resolved`: all four 34 of 34 and 37 of 38 hidden, the one failure the other change's test (10 on the C7 patches, 59 on the C6 patches), as on the pins; every other test passes as on the pins
+- the rest of the catalogue, authored and gated 2026-11-18 (one commit per stack on the maintenance bases, branches `maint-<id>-<stack>`). Bases graded first, 3 runs each with every candidate target (`reference-inngest-bcabd72-092546`, `reference-langchain-400bd40-092546`): every target 3 of 3 on both; the only failure LangChain's `crash-resume` (1 of 3), not a target. Then per task a full `nop` proof (`maintenance-<id>-<stack>-nop-*`, `basic` and `hidden`: `leak` 0, failing the targets plus 10 and 59, as every maintenance base does) and the 3-run gate on the task commit (`hidden`, `CODECLIMB_VERIFIER_ONLY` the targets; R12 `basic` and `hidden`). `gate.py` passes:
+
+  | task | commits (Inngest, LangChain) | fails on both stacks, 3 of 3 | fix lines (Inngest, LangChain) | gate jobs |
+  |---|---|---|---|---|
+  | R2 | `a755560`, `9d70972` | 53 | 18, 26 | `reference-inngest-a755560-121842`, `reference-langchain-9d70972-122057` |
+  | R15 | `b15c8e1`, `9e18335` | 50, 55 | 24, 25 | `reference-inngest-b15c8e1-131522`, `reference-langchain-9e18335-131535` |
+  | C4 | `b16f688`, `87fa4a1` | 51 | 40, 30 | `reference-inngest-b16f688-141149`, `reference-langchain-87fa4a1-141055` |
+  | C2 | `bc1ab93`, `5901318` | 18, 50 (19 passes) | 447, 390 | `reference-inngest-bc1ab93-150621`, `reference-langchain-5901318-150331` |
+  | R12 | `d69493f`, `df40257` | the 8 checks of its row | 6, 4 | `reference-inngest-d69493f-160835`, `reference-langchain-df40257-155759`; bases on `rejected-diff`: `reference-inngest-bcabd72-110916`, `reference-langchain-400bd40-111944` |
+  | R10 | R14's | 24 | R14's | R14's gate; incident from `reference-inngest-f76da25-110340`, `reference-langchain-c3a1ec3-111211` |
+
+  - R2 narrowed to 53: the backstop checked only between rounds leaves `run-night stop` working, so 20 passes on both task commits
+  - R15 re-targeted to 50 and 55: rows held until `done.json` are on disk whenever a check of 23, 25, `row-per-experiment` or `notes` reads them. 50 and 55 wait for round 1's row and see `done.json` first. `done-json-contract` fails too (night 5's kept row lost in the kill), on both stacks, and is not a target: it rides on night 5, which the LangChain base finishes 2 of 3
+  - R12 re-targeted: a mock coder makes no proxy call, so a dropped connection cannot be planted deterministically, and `meter` and `spend-zero` cannot fail without breaking the evaluation too. The fault breaks the coder's sandbox on the metered nights (1, 3, 7): every experiment there errors, no commit, no session, no diff
+  - R10: the incident is test 24's night on R14's commits, kept by `CODECLIMB_VERIFIER_KEEP=<dir>` (the night folder, its rows, the services' whole logs), committed under `maintenance/r10/<stack>/` and copied to the `/app` as `incident/`. No secret in it (the logs mask key values) and no benchmark word
+  - dropped: R8, R5, C3, C8. R8: neither 26 nor 55 kills during a sandbox create, so the fault never fires. R5: every Inngest fault on the outside cancel also breaks the backstop (53), which reaches the night stop the same way, and LangChain's does not, so the failing sets differ; C4 covers the outside cancel. C3: the fix is 672 lines on LangChain, 265 on Inngest (2.5×), from how the references lay out the pause. C8: both references pass two nights at once (`two-nights`, 61, 3 of 3 each, `reference-inngest-bcabd72-105259`, `reference-langchain-400bd40-105259`); C9 not taken, by the operator, 2026-11-18
+  - R11 dropped: both references pass `runtime-blink` (60) 3 of 3 in the same jobs, but no build code reaches the runtime while it is paused (Inngest: only the SDK's `connect` socket, which reconnects; LangChain: only the Agent Server talks to Postgres and Redis), so a fault would be a new health check, not a bug, and LangChain has none to match. Tests 60 and 61 stay in the hidden family, passed by both references
 - pilot: one `bare` one-shot trial per stack of C1, R14, R3, C7 and C6, on the subscription, after the operator's go-ahead (`job-configs/pilot.sh`, `basic` and `hidden`). Run 2026-11-17 (jobs `pilot-<task>-<stack>-20261117-2109`): 10 of 10 resolved, `leak` 0 in all, $9.32 in all, $0.23 to $2.74 a trial (median $0.59). Two LangChain grades failed on the verifier, not the change, and were regraded (`pilot-r14-langchain-regrade-0257`, `pilot-c7-langchain-regrade-0328`): R14's `crash-resume` night 5 never ended after the restart (its source change equals the reference fix), C7's `eval-keeps-failing` found the Agent Server down 3 s in; each regrade passed every test its base passes. Per trial ($, agent seconds, turns, diff lines against the reference fix's):
 
   | task | Inngest | LangChain |
@@ -658,6 +675,20 @@ Changes, hardest first:
   - platform task minus control, per stack: R14 − R3 Inngest +$0.18, +1556 s, +8 turns, −38 lines; LangChain +$0.16, +64 s, +3 turns, +7 lines. C7 − C6 Inngest +$1.06, +353 s, +18 turns, +218 lines; LangChain +$0.93, +966 s, +22 turns, +57 lines. Both pairs resolve on both stacks, so `resolved` does not separate them at n = 1; the effort metrics do
   - minutes from `services-up` is empty for Inngest C6 and R14 and LangChain C6: those harnesses never started the services
   - regression test added in 8 of 10 (not Inngest R14, LangChain R3)
+- pilot of the rest, 2026-11-18 (jobs `pilot-<task>-<stack>-20261118-1651`, the same setup): one `bare` one-shot trial per stack of R2, R15, C4, C2, R12 and R10. `resolved` against one full grade per base that has tests 60 and 61 (`reference-inngest-bcabd72-215632`, `reference-langchain-400bd40-222940`: 34 of 34, every hidden test but 10 and 59). Raw 11 of 12 resolved; LangChain R15 failed `crash-resume`, `done-json-contract` and `rejected-diff`, all on night 5, which never ended after its restart (the base's own 2-of-3 flake), and its regrade (`pilot-r15-langchain-regrade-2156`) passed every test its base passes: 12 of 12. `leak` 0 in all, no web call in any, $12.32 in all, $0.28 to $3.28 a trial (median $0.58). Per trial ($, agent seconds, turns, diff lines against the reference fix's):
+
+  | task | Inngest | LangChain |
+  |---|---|---|
+  | R2 | $0.48, 274 s, 18, 9 (18) | $0.58, 1017 s, 25, 19 (26) |
+  | R15 | $0.36, 485 s, 13, 13 (24) | $0.43, 293 s, 15, 20 (25) |
+  | C4 | $0.84, 430 s, 31, 32 (40) | $1.51, 1398 s, 46, 106 (30) |
+  | C2 | $3.28, 655 s, 58, 525 (447) | $2.56, 659 s, 50, 427 (390) |
+  | R12 | $0.29, 259 s, 16, 4 (6) | $0.28, 289 s, 14, 4 (4) |
+  | R10 | $0.58, 304 s, 18, 7 (9) | $1.13, 1152 s, 29, 8 (8) |
+
+  - R10 (the incident only) against R14 (the symptom written out), the same fault: Inngest −$0.06, −1461 s, −7 turns; LangChain +$0.60, +790 s, +11 turns. At n = 1 neither direction holds
+  - regression test added in 3 of 12 (C2 on both stacks, LangChain C4)
+  - the counted catalogue: R14, R3, R10, R15, R2, R12, C7, C2, C4, C6 (10 tasks; C1 the smoke). Every one resolved on both stacks in its pilot
 - later: a trace task (read-only: a resumed night's folder and logs, questions the verifier answers from the same files); the tooling arm on R2, R5, R14
 
 

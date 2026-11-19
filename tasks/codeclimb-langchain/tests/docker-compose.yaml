@@ -10,6 +10,8 @@ services:
       CODECLIMB_BENCH_PI_AUTH: ${CODECLIMB_BENCH_PI_AUTH:-}
       CODECLIMB_VERIFIER_FAMILIES: ${CODECLIMB_VERIFIER_FAMILIES:-}
       CODECLIMB_VERIFIER_ONLY: ${CODECLIMB_VERIFIER_ONLY:-}
+      # Keep each faulted night's folder and the services' logs here (a trace task's incident, R10).
+      CODECLIMB_VERIFIER_KEEP: ${CODECLIMB_VERIFIER_KEEP:-}
       # The operator's benchmark-only key (free Developer plan); test.sh puts it into /app/.env.
       LANGSMITH_API_KEY: ${CODECLIMB_BENCH_LANGSMITH_API_KEY:?set CODECLIMB_BENCH_LANGSMITH_API_KEY, the benchmark-only LangSmith key}
       # The key's region: a key from the other region gets 403 and the server exits.

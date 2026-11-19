@@ -1,0 +1,87 @@
+
+> codeclimb@0.1.0 server
+> tsx src/cli/server.ts
+
+[32minfo[39m:    [32m▪ [32mStarting LangGraph API server...[39m
+[33mwarn[39m:    [33m▪ [33mFor local dev, requires env var LANGSMITH_API_KEY with access to LangSmith Deployment.[39m
+[33mFor production use, requires a license key in env var LANGGRAPH_CLOUD_LICENSE_KEY.[39m
+[32minfo[39m:    [32m▪ [32mPruning dangling images...[39m
+[34mdebug[39m:   [34m▪ [34mRunning "docker image prune -f --filter label=com.docker.compose.project=app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3"[39m
+Total reclaimed space: 0B
+[32minfo[39m:    [32m▪ [32mPruning stale containers...[39m
+[34mdebug[39m:   [34m▪ [34mRunning "docker container prune -f --filter label=com.docker.compose.project=app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3"[39m
+Deleted Containers:
+c3dc7a86c8507c576691798e36ecfc6844746b7109c644358f0fe9a504b75a0d
+
+Total reclaimed space: 22.55MB
+[32minfo[39m:    [32m▪ [32mLaunching docker-compose...[39m
+[34mdebug[39m:   [34m▪ [34mRunning "docker compose --project-directory /app --project-name app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3 -f docker/langgraph-up.compose.yaml -f - up --remove-orphans --wait"[39m
+Compose now can delegate build to bake for better performances
+Just set COMPOSE_BAKE=true
+#0 building with "default" instance using docker driver
+
+#1 [langgraph-api internal] load build definition from Dockerfile
+#1 transferring dockerfile: 746B done
+#1 DONE 0.0s
+
+#2 [langgraph-api internal] load metadata for docker.io/langchain/langgraphjs-api:0.17.1-node24
+#2 DONE 0.5s
+
+#3 [langgraph-api internal] load .dockerignore
+#3 transferring context: 307B done
+#3 DONE 0.0s
+
+#4 [langgraph-api 1/6] FROM docker.io/langchain/langgraphjs-api:0.17.1-node24@sha256:960e590f7f6c7b1e6b221e3355341f9624dddae4da37ea4e7a8ad5b913a427bd
+#4 DONE 0.0s
+
+#5 [langgraph-api internal] load build context
+#5 transferring context: 16.33kB done
+#5 DONE 0.0s
+
+#6 [langgraph-api 3/6] ADD . /deps/app
+#6 CACHED
+
+#7 [langgraph-api 2/6] RUN apt-get update && apt-get install -y --no-install-recommends git docker-cli && rm -rf /var/lib/apt/lists/* && git config --system --add safe.directory '*'
+#7 CACHED
+
+#8 [langgraph-api 4/6] WORKDIR /deps/app
+#8 CACHED
+
+#9 [langgraph-api 5/6] RUN npm ci
+#9 CACHED
+
+#10 [langgraph-api 6/6] RUN (test ! -f /api/langgraph_api/js/build.mts && echo "Prebuild script not found, skipping") || tsx /api/langgraph_api/js/build.mts
+#10 CACHED
+
+#11 [langgraph-api] exporting to image
+#11 exporting layers done
+#11 writing image sha256:079c6120a9a4aa3bef5b378df79a242628abdd83052b8b81042a8b04b570d8ea done
+#11 naming to docker.io/library/app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api done
+#11 DONE 0.0s
+
+#12 [langgraph-api] resolving provenance for metadata file
+#12 DONE 0.0s
+ langgraph-api  Built
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-redis-1  Running
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-postgres-1  Running
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Creating
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Created
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-redis-1  Waiting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-postgres-1  Waiting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-redis-1  Healthy
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-postgres-1  Healthy
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Starting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Started
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-postgres-1  Waiting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Waiting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-redis-1  Waiting
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-redis-1  Healthy
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-postgres-1  Healthy
+[32minfo[39m:    [32m▪ [32m[39m
+[32m          Ready![39m
+[32m          - API: http://localhost:8123[39m
+[32m          - Docs: http://localhost:8123/docs[39m
+[32m          - LangGraph Studio: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123[39m
+[32m        [39m
+ Container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1  Healthy
+server: http://127.0.0.1:8123 (container app-f53b52ad6d21cceb72dfa78fb67614fe14f110c58e68412b01508d6a485501c3-langgraph-api-1); logs: npm run server:logs; stop: npm run server:stop

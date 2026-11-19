@@ -9,6 +9,8 @@ services:
       CODECLIMB_BENCH_PI_AUTH: ${CODECLIMB_BENCH_PI_AUTH:-}
       CODECLIMB_VERIFIER_FAMILIES: ${CODECLIMB_VERIFIER_FAMILIES:-}
       CODECLIMB_VERIFIER_ONLY: ${CODECLIMB_VERIFIER_ONLY:-}
+      # Keep each faulted night's folder and the services' logs here (a trace task's incident, R10).
+      CODECLIMB_VERIFIER_KEEP: ${CODECLIMB_VERIFIER_KEEP:-}
       CODECLIMB_PROXY_HOST: 172.17.0.1
     volumes:
       - app:/app

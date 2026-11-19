@@ -1,0 +1,19 @@
+
+> codeclimb@0.1.0 worker
+> INNGEST_DEV=1 tsx --import @inngest/otel/node scripts/worker.ts
+
+Connecting
+Reconnecting after failure
+{ attempt: 1, delay: 2000 }
+Connecting
+Reconnecting after failure
+{ attempt: 2, delay: 5000 }
+Connecting
+Connection established
+{ connectionId: '01M7Q5B8SW79THHD89HESVFXGW', gatewayGroup: 'gw-dev' }
+Connection active
+{ connectionId: '01M7Q5B8SW79THHD89HESVFXGW', gatewayGroup: 'gw-dev' }
+[api] http://127.0.0.1:7421/api (metering proxy at /v1)
+[worker] connected (01M7Q5B8SW79THHD89HESVFXGW); functions: run-night, run-experiment, run-evaluator, night-stop-cleanup, run-cancelled-cleanup, distill-lessons
+Sent WORKER_READY
+{ connectionId: '01M7Q5B8SW79THHD89HESVFXGW' }

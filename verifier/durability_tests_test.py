@@ -124,5 +124,38 @@ class Files(unittest.TestCase):
         self.assertFalse(D.root_parent(repo, git("rev-list", "--max-parents=0", "HEAD"))[0])
 
 
+
+class Keep(unittest.TestCase):
+    """CODECLIMB_VERIFIER_KEEP: a faulted night's folder, its rows and the services' logs (R10's incident)."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root)
+        self.nt = Night(5, "configs/datenorm-smoke.yaml", "v1-cte1", "datenorm-smoke", self.root / "runs/mock/datenorm-smoke", 0, "")
+        write(self.nt.night_dir / "done.json", "{}")
+        write(self.nt.dir / "results.jsonl", json.dumps({"night_id": "v1-cte1", "eval_id": "a"}) + "\n"
+              + json.dumps({"night_id": "other", "eval_id": "b"}) + "\n")
+
+        class Adapter:
+            def log_files(self, services):
+                return {"worker.log": "w\n", "langgraph-api.log": "s\n"}
+
+        self.ctx = type("Ctx", (), {"adapter": Adapter(), "services": None})()
+
+    def test_off_without_the_variable(self):
+        D.os.environ.pop("CODECLIMB_VERIFIER_KEEP", None)
+        D.keep(self.ctx, self.nt)
+        self.assertEqual(list(self.root.iterdir()), [self.root / "runs"])
+
+    def test_night_rows_and_logs(self):
+        out = self.root / "keep"
+        D.os.environ["CODECLIMB_VERIFIER_KEEP"] = str(out)
+        self.addCleanup(D.os.environ.pop, "CODECLIMB_VERIFIER_KEEP", None)
+        D.keep(self.ctx, self.nt)
+        k = out / "v1-cte1"
+        self.assertTrue((k / "night" / "done.json").exists())
+        self.assertEqual([json.loads(x)["eval_id"] for x in (k / "results.jsonl").read_text().splitlines()], ["a"])
+        self.assertEqual(sorted(p.name for p in (k / "logs").iterdir()), ["langgraph-api.log", "worker.log"])
+
 if __name__ == "__main__":
     unittest.main()

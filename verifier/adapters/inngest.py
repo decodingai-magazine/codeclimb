@@ -1,7 +1,9 @@
 """Inngest: the local dev server plus one worker, each a process the verifier starts."""
 
 import json
+import os
 import signal
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -40,6 +42,18 @@ class Inngest(Adapter):
         alive = worker.proc.poll() is None
         kill_group(worker, signal.SIGTERM, wait_s=GRACE_S)
         return [f"{worker.name} (pid {worker.proc.pid}, SIGTERM)"] if alive else []
+
+    def pause_runtime(self, services: Services, seconds: float) -> list[str]:
+        """The dev server's process group (the inngest binary under npm): SIGSTOP, then SIGCONT."""
+        dev = next(p for p in services.processes if p.name.startswith("dev-inngest"))
+        if dev.proc.poll() is not None:
+            return []
+        os.killpg(dev.proc.pid, signal.SIGSTOP)
+        try:
+            time.sleep(seconds)
+        finally:
+            os.killpg(dev.proc.pid, signal.SIGCONT)
+        return [f"{dev.name} (pid {dev.proc.pid}, SIGSTOP {seconds:g} s)"]
 
     def cancel_runs(self, services: Services) -> list[str]:
         """`outside-cancel`: every running or queued run the dev server lists (REST v2), cancelled through REST v1's

@@ -1,0 +1,83 @@
+{
+  "night_id": "v94999876-cte1",
+  "startedAt": 1794999954494,
+  "deadlineMs": 1795010754494,
+  "starterExpId": "v94999876-cte1-r0-starter",
+  "starterSha": "eff7901290f4ff923852d60e1be179f2bfca0219",
+  "seed": null,
+  "config": {
+    "allowed_models": [],
+    "base_dir": "/app",
+    "budget_usd": {
+      "experiment": 0.2,
+      "night": 0.5
+    },
+    "coder_thinking": "medium",
+    "deadline": "3h",
+    "gates": {
+      "latency_query_p95_ms": 50,
+      "schema_violations": 0
+    },
+    "lessons": "off",
+    "max_rounds": 2,
+    "max_tokens": null,
+    "mock": true,
+    "model": "github-copilot/claude-haiku-5.5",
+    "noise_margin": {
+      "fixed": null,
+      "max": 0.005,
+      "min": 0.002,
+      "scale_by_replay": true
+    },
+    "plateau_rounds": 3,
+    "primary_metric": "accuracy",
+    "results_path": "/app/runs-inngest/mock/datenorm-smoke/results.jsonl",
+    "reviewer_model": "github-copilot/claude-haiku-4.5",
+    "reviewer_thinking": "high",
+    "sandbox": "docker",
+    "scenario": {
+      "bundle": "python3 scripts/export_agent.py --out {out}",
+      "headline": [],
+      "image": "codeclimb-python",
+      "name": "datenorm",
+      "protocol": [],
+      "stages": [
+        {
+          "files": {
+            "/eval/run.py": "evaluators/run.py"
+          },
+          "inputs": "python3 evaluators/evaluate.py inputs --split {split} --out {inputs}",
+          "name": "answer",
+          "run": "python3 /eval/run.py --queries {inputs} --repo /repo --out {out}",
+          "score": "python3 evaluators/evaluate.py score --split {split} --predictions {out} --out {report}"
+        }
+      ]
+    },
+    "scenario_dir": "/app/scenarios/datenorm",
+    "seed": null,
+    "standard_metrics": {
+      "cost": true,
+      "cost_metric": "cost_per_item_usd",
+      "latency": true,
+      "latency_metric": "latency_total_s",
+      "min_efficiency_gain": 0.1
+    },
+    "thresholds": {
+      "accuracy": 1.01
+    },
+    "timeouts": {
+      "eval_min": 3,
+      "experiment_min": 10
+    },
+    "weights": {}
+  },
+  "metric_script_sha256": {
+    "scenarios/datenorm/scenario.yaml": "df9242e62951c4213744d4b8c8bc6bb0c38e864ce2023aa120323acda96bd560",
+    "scenarios/datenorm/evaluators/evaluate.py": "e9f8e8286d5b383d9a664e0fadaaffe31b19a90877856440f070eaa13ff9dc2f",
+    "scenarios/datenorm/evaluators/run.py": "2d1148b504d2169217a39c5b51b08fedd61b1e68cd00380052c41fec577bb93d",
+    "scenarios/datenorm/evaluators/score.py": "5b0b95e236ce83a830bd6185b4e181f338971c106083532c841552f7dddf8d40",
+    "scenarios/datenorm/gold/items.jsonl": "65dcadcc09354c5d0cf38a562667ff68a16aff6a199de42c2282a605e19f4c9d",
+    "scenarios/datenorm/gold/splits.json": "9ac10f5ccb983c9de21fe8739aa7deb3b39ed4b8404ef8e175ecd47ec4d99ac9"
+  },
+  "lessons_sha256": null
+}

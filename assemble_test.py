@@ -294,6 +294,20 @@ class AssembleMaintenanceApp(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown maintenance kind 'fix'"):
             maintenance.Maintenance(kind="fix", request="r", targets=(), commits={})
 
+    def test_an_incident_lands_in_incident_and_is_scanned(self):  # R10
+        inc = self.tmp / "inc"
+        (inc / "night").mkdir(parents=True)
+        (inc / "night" / "done.json").write_text("{}\n")
+        (inc / "logs").mkdir()
+        (inc / "logs" / "worker.log").write_text("ok\n")
+        out = self.tmp / "inc-app"
+        assemble.assemble_maintenance_app(assemble.Source("inngest", self.repo), self.commit, out, inc)
+        self.assertEqual({f for f in tree(out) if f.startswith("incident/")}, {"incident/night/done.json", "incident/logs/worker.log"})
+        self.assertIn("incident/logs/worker.log", git(out, "ls-files"))
+        (inc / "logs" / "worker.log").write_text("built at bcabd72\n")
+        with self.assertRaises(assemble.ForbiddenString):
+            assemble.assemble_maintenance_app(assemble.Source("inngest", self.repo), self.commit, self.tmp / "inc-2", inc)
+
     def test_fails_on_a_reference_sha(self):
         (self.repo / "README.md").write_text("built at bcabd72\n")
         git(self.repo, "commit", "-qam", "name a pin")

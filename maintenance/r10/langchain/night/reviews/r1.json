@@ -1,0 +1,10 @@
+{
+  "round": 1,
+  "model": "github-copilot/claude-haiku-4.5",
+  "feedback": "mock feedback",
+  "hypothesis": "mock hypothesis",
+  "verdict": "mock verdict",
+  "reviewer_usd": 0,
+  "t_review": 0.044,
+  "tokens": 5265
+}

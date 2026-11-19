@@ -1,0 +1,37 @@
+{
+  "night_id": "v95000378-cte1",
+  "stop_reason": "max_rounds",
+  "rounds": 2,
+  "kept": {
+    "exp_id": "v95000378-cte1-r1-e0",
+    "commit": "0b44b53650d08e31549bbee99403fbcf0f280dfc",
+    "dev_score": 0.125
+  },
+  "test_metrics": {
+    "output_bytes": 4649,
+    "accuracy": 0.125,
+    "acc_iso": 0,
+    "acc_numeric": 0,
+    "acc_textual_en": 0,
+    "acc_textual_intl": 0,
+    "acc_ordinal_words": 0,
+    "acc_relative": 0,
+    "acc_embedded": 0,
+    "acc_invalid": 1,
+    "null_precision": 0.125,
+    "schema_violations": 0,
+    "n_items": 72,
+    "latency_query_p50_ms": 0.048,
+    "latency_query_p95_ms": 0.083,
+    "latency_query_total_s": 0.003758,
+    "latency_total_s": 0.003758,
+    "cost_usd": 0,
+    "cost_per_item_usd": 0,
+    "model_calls": 0,
+    "model_calls_replayed": 0,
+    "model_calls_failed": 0
+  },
+  "spend_usd": 0,
+  "leftover_sandboxes_destroyed": 0,
+  "finished_at": "2026-11-18T11:19:31.754Z"
+}

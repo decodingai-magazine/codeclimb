@@ -7,7 +7,9 @@ leaves the services running: what it killed it starts again, and `ctx.ensure_ser
 """
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -180,6 +182,22 @@ def tidy(ctx: Ctx, nt: Night | None) -> None:
     ctx.ensure_services()
 
 
+def keep(ctx: Ctx, nt: Night) -> None:
+    """With `CODECLIMB_VERIFIER_KEEP=<dir>`, a faulted night's folder, its rows and the services' whole logs go to
+    `<dir>/<night id>/` (`night/`, `results.jsonl`, `logs/`): the incident a trace task is given (R10)."""
+    root = os.environ.get("CODECLIMB_VERIFIER_KEEP")
+    if not root:
+        return
+    dest = Path(root) / nt.night_id
+    if nt.night_dir.is_dir():
+        shutil.copytree(nt.night_dir, dest / "night", dirs_exist_ok=True)
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in nt.rows()))
+    for name, text in ctx.adapter.log_files(ctx.services).items():
+        (dest / "logs").mkdir(exist_ok=True)
+        (dest / "logs" / name).write_text(text)
+
+
 def faulted_night(ctx: Ctx, short: str, reach: Callable[[Night, Path], bool], fault: Fault,
                   finish_s: float = RESUME_S, setup: Callable[[], None] | None = None) -> Faulted:
     """Start a night, wait for `reach`, put `fault` in, then wait `finish_s` for done.json."""
@@ -200,6 +218,7 @@ def faulted_night(ctx: Ctx, short: str, reach: Callable[[Night, Path], bool], fa
                 tries.append(f"{nt.night_id}: got past the fault point before the fault landed")
                 continue
             finished = wait_until(lambda: nt.done() is not None, finish_s, poll_s=1)
+            keep(ctx, nt)
             return Faulted(nt, events.log, at, what, tries, finished, snap)
         finally:
             kill_group(events, wait_s=2)
@@ -466,6 +485,58 @@ def crash_at_init(ctx: Ctx) -> tuple[bool, str]:
     return ok, f"{prefix(f)}done.json within {RESUME_S}s {f.finished}; eval_ids {len(ids)}, twice {twice}; creates of cc-{nid}-r1-e0 {len(r1)}"
 
 
+BLINK_S = 20
+
+
+def blink(ctx: Ctx, nt: Night, _: Path) -> tuple[list[str], dict, bool]:
+    landed = nt.done() is None
+    return ctx.adapter.pause_runtime(ctx.services, BLINK_S), {}, landed
+
+
+@guarded_test
+def runtime_blink(ctx: Ctx) -> tuple[bool, str]:
+    """60: the runtime's own state frozen for 20 s while round 1's coder works (Inngest: the dev server; LangChain:
+    the Agent Server's Postgres and Redis), the build's processes untouched: the night ends `done` by itself, every
+    `eval_id` once, no `stop.json`, no `cc-<id>` container left."""
+    f = faulted_night(ctx, "blk", lambda nt, log: r1_mid_session(nt, log), blink)
+    nt = f.night
+    ids, twice = eval_ids(nt.rows())
+    ok_stop, d_stop = no_stop_json(nt)
+    left = leftover_containers(nt.night_id)
+    ok = f.finished and bool(ids) and not twice and ok_stop and not left
+    return ok, f"{prefix(f)}done.json within {RESUME_S}s {f.finished}; eval_ids {len(ids)}, twice {twice}; {d_stop}; left {left}"
+
+
+TWO_NIGHTS_S = 600
+
+
+@guarded_test
+def two_nights(ctx: Ctx) -> tuple[bool, str]:
+    """61: two mock nights of `datenorm-smoke` started together (`--no-wait`, a second apart): each ends `done` by
+    itself with its own rows (every `eval_id` once, one test row), no `stop.json` and no `cc-<id>` container left."""
+    a, ev_a = start(ctx, "twa")
+    b = ev_b = None
+    try:
+        b, ev_b = start(ctx, "twb")
+        both = wait_until(lambda: a.done() is not None and b.done() is not None, TWO_NIGHTS_S, poll_s=1)
+    finally:
+        for ev in (ev_a, ev_b):
+            if ev is not None:
+                kill_group(ev, wait_s=2)
+        tidy(ctx, a)
+        tidy(ctx, b)
+    parts, ok = [], both
+    for nt in (a, b):
+        ids, twice = eval_ids(nt.rows())
+        tests = sum(r.get("kind") == "test" for r in nt.rows())
+        stop = (nt.night_dir / "stop.json").exists()
+        left = leftover_containers(nt.night_id)
+        ok = ok and nt.done() is not None and bool(ids) and not twice and tests == 1 and not stop and not left
+        parts.append(f"{nt.night_id}: done {nt.done() is not None}, eval_ids {len(ids)}, twice {twice}, test rows {tests}, "
+                     f"stop.json {stop}, left {left}")
+    return ok, f"both done within {TWO_NIGHTS_S}s {both}; " + "; ".join(parts)
+
+
 def r1_exp(nt: Night) -> Path:
     return nt.night_dir / "exps" / f"{nt.night_id}-r1-e0"
 
@@ -631,6 +702,8 @@ TESTS: list[Test] = [
     Test("crash-during-test-eval", "hidden-3b", crash_during_test_eval),
     Test("graceful-restart", "hidden-3b", graceful_restart),
     Test("crash-at-init", "hidden-3b", crash_at_init),
+    Test("runtime-blink", "hidden-3b", runtime_blink),
+    Test("two-nights", "hidden-3b", two_nights),
     Test("session-reopen-after-kill", "hidden-3b", session_reopen_after_kill, INNGEST),
     Test("lost-sandbox-fresh-restart", "hidden-3b", lost_sandbox_fresh_restart, INNGEST),
     Test("double-kill", "hidden-3b", double_kill, INNGEST),

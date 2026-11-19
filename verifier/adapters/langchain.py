@@ -47,6 +47,22 @@ class LangChain(Adapter):
         _, ids = run_group(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={SERVICE}"], services.app, 60)
         return ids.split()
 
+    def pause_runtime(self, services: Services, seconds: float) -> list[str]:
+        """The server's Postgres and Redis: every other container of its compose project, `docker pause`d, then
+        unpaused. The server container keeps running."""
+        frozen = []
+        for cid in self.server_containers(services):
+            _, project = run_group(["docker", "inspect", "-f", '{{index .Config.Labels "com.docker.compose.project"}}', cid], services.app, 60)
+            _, ids = run_group(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project.strip()}"], services.app, 60)
+            frozen += [c for c in ids.split() if c != cid and c not in frozen]
+        paused = [c for c in frozen if run_group(["docker", "pause", c], services.app, 60)[0] == 0]
+        try:
+            time.sleep(seconds)
+        finally:
+            for c in paused:
+                run_group(["docker", "unpause", c], services.app, 60)
+        return [f"{c} (docker pause {seconds:g} s)" for c in paused]
+
     def stop_runtime(self, services: Services) -> list[str]:
         # `docker stop`: SIGTERM, then a kill after Docker's grace period.
         return [cid for cid in self.server_containers(services) if run_group(["docker", "stop", cid], services.app, 120)[0] == 0]
@@ -90,6 +106,14 @@ class LangChain(Adapter):
                     except urllib.error.HTTPError:
                         pass
         return cancelled
+
+    def log_files(self, services: Services) -> dict[str, str]:
+        """The service scripts' logs, and the server container's whole log (`docker logs`)."""
+        logs = super().log_files(services)
+        for cid in self.server_containers(services):
+            _, log = run_group(["docker", "logs", cid], services.app, 120)
+            logs[f"{SERVICE}.log"] = re.sub(r"\x1b\[[0-9;]*m", "", log)
+        return logs
 
     def runtime_diagnostics(self, services: Services) -> str:
         """The server container's log end, and the latest threads with their runs' statuses."""
