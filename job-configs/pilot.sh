@@ -24,10 +24,19 @@ for task in "$@"; do for stack in inngest langchain; do
   python3 assemble.py maintenance "$task" "$stack" > /dev/null || { echo "assemble $task $stack failed" >&2; exit 1; }
 done; done
 
+# The usage-limit watch (usage_watch.py): on the first usage-limit stop it writes the marker and stops every harbor run
+# of this pilot, keeping each running trial's /app and sessions; no job starts after.
+marker=jobs/pilot-$stamp-usage-limit
+if [ -z "${DRY:-}" ]; then
+  python3 usage_watch.py "$marker" "jobs/pilot-*-$stamp" "pilot-.*-$stamp" 2> "jobs/pilot-$stamp-usage-watch.log" &
+  trap "kill $! 2>/dev/null" EXIT
+fi
+
 run_stack() {
   local stack=$1; shift
   for task in "$@"; do
     local name="pilot-$task-$stack-$stamp"
+    [ -e "$marker" ] && { echo "usage limit: not started $name"; continue; }
     sed -e "s/^job_name: .*/job_name: $name/" -e "s/^n_attempts: .*/n_attempts: 1/" \
       -e "s|tasks: \[{ path: tasks/codeclimb-$stack }\]|tasks: [{ path: tasks/codeclimb-$stack-$task }]|" \
       "job-configs/$stack-bare.yaml" > "jobs/$name.yaml"
@@ -38,4 +47,5 @@ run_stack() {
     fi
   done
 }
-run_stack inngest "$@" & run_stack langchain "$@" & wait
+run_stack inngest "$@" & a=$!; run_stack langchain "$@" & b=$!; wait $a $b
+[ ! -e "$marker" ] || echo "stopped on a usage limit in: $(tr '\n' ' ' < "$marker"); rerun the tasks not started by hand" >&2

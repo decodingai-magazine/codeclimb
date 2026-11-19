@@ -9,7 +9,7 @@ CodeClimb is an optimization loop: a coding agent rewrites a program in a sandbo
 - **Benchmark tickets**: GitHub Issues, through `gh`. A benchmark ticket names its spec sections, its acceptance criteria and its blockers. Work a ticket only when every blocker is closed.
 - **Vocabulary**: `GLOSSARY.md`. Use its words in code, commits and issues: stack, build spec, build ticket, benchmark ticket, harness, trial, arm, workflow, phase, verifier, reward. CodeClimb's own words (night, round, experiment, evaluation) keep the meaning the build specs give them.
 - **Decisions already made**: `docs/adr/`. Read the ones that touch your area before you change its design.
-- **Given inputs**: `scenarios/`, `configs/` and `docker/` are copies from the `langchain` branch, shared by both stacks. Change them only when the user asks.
+- **Given inputs**: `scenarios/`, `configs/` and `docker/`, shared by both stacks: `configs/` and `scenarios/` equal `main`'s (their source of truth), `docker/` is a copy from the `langchain` branch. Change them only when the user asks.
 - **Reference builds**: on `main` (Inngest) and `langchain`, named here only by commit SHA. Never copy their source into this branch.
 - **Harbor job output**: `jobs/` (gitignored).
 - **`.claude/skills/codeclimb-e2e`**: the end-to-end procedure of the LangChain reference build, copied from `langchain`. It describes a build, not this branch: nothing here has `npm run server`.

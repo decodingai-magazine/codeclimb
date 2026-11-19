@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The pocock smoke trial (#50): the stack's `full-pocock` job file on the two-ticket dummy pile (pocock-pile/), one
+# The pocock smoke trial (#50): the stack's `full-pocock` job file on the four-ticket dummy pile (pocock-pile/), one
 # attempt, no retry, no verifier, a budget cap and a short agent timeout, so the harness works the two tickets and
 # stops instead of going on into E2E.md. Uses the operator's subscription.
 #

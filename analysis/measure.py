@@ -277,6 +277,27 @@ STRICTNESS = ("strict", "noImplicitAny", "strictNullChecks", "strictFunctionType
               "noFallthroughCasesInSwitch", "isolatedModules", "verbatimModuleSyntax")
 
 
+def hardcoded_thresholds(ctx: dict, work: Path, files: list[str]) -> dict:
+    """A code check, deterministic: lines of the build's non-test code where a metric name the night configs set under
+    `thresholds:` or `gates:` meets a number (`accuracy >= 0.9`, `accuracy: 0.97`, `0.9 <= accuracy`). The configs
+    set these values, so a hit is a threshold written into the code instead of read from the config."""
+    names = ctx.get("threshold_names") or []
+    if not names:
+        return {"hits": [], "n": 0, "names": names}
+    name = "|".join(map(re.escape, names))
+    num = r"-?\d+(?:\.\d+)?"
+    op = r"(?:[:=]|[<>]=?|[!=]==?)"
+    pattern = re.compile(rf"\b(?:{name})\b['\"]?\s*{op}\s*{num}\b|\b{num}\s*(?:[<>]=?|[!=]==?)\s*[\w.]*\b(?:{name})\b")
+    hits = []
+    for f in files:
+        if is_test(f):
+            continue
+        for i, line in enumerate((work / f).read_text(errors="replace").splitlines(), 1):
+            if pattern.search(line) and not line.lstrip().startswith(("//", "*", "/*")):
+                hits.append(f"{f}:{i}")
+    return {"hits": hits, "n": len(hits), "names": names}
+
+
 def tsconfig(ctx: dict) -> dict:
     """The given tsconfig.json against the build's: its sha256 (the spec's test), which options changed and which
     strictness options were turned off or removed."""
@@ -443,6 +464,8 @@ def main(ctx_path: str, out_path: str) -> None:
         "dead_code": dead_code(work, measured),
         "dependencies": dependencies(ctx, pkg),
         "tsconfig": tsconfig(ctx),
+        # Code checks: deterministic, read from the code; never an LLM's answer (that is the judge, judge.py).
+        "code_checks": {"hardcoded_thresholds": hardcoded_thresholds(ctx, work, measured)},
         "practices": practices(ctx, pkg, work),
         "coverage": coverage(work, pkg, measured, glued["glue_files"]),
         "flakiness": flakiness(work, pkg),

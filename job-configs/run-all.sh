@@ -3,7 +3,8 @@
 # jobs, 3 attempts each, 30 trials. At most <slots> jobs run at once, one trial each (default 3). The pocock jobs start
 # first: they are the longest (3 x about 95 min), so starting them last would leave slots idle at the end. The one-shot
 # jobs follow in shuffled order, one minute apart. Uses the operator's subscription (docs/codeclimb-eval-spec.md,
-# "Jobs, repeats, cost"). Once every job has ended, code_metrics.py measures each build trial against its stack's pin.
+# "Jobs, repeats, cost"). Once every job has ended, regrade.py regrades each trial that is not done once, and
+# code_metrics.py measures each build trial against its stack's pin.
 #
 #   job-configs/run-all.sh [slots]          # runs; writes jobs/all-<stamp>-<job file>/
 #   DRY=1 job-configs/run-all.sh [slots]    # prints the order and checks each job file with --print-config; no trial
@@ -49,20 +50,36 @@ if [ -n "${DRY:-}" ]; then
 fi
 
 mkdir -p "$logs"
+# The usage-limit watch: on the first usage-limit stop in any trial it writes the marker and sends SIGTERM to every
+# harbor run of this run, which keeps each running trial's /app and sessions (usage_watch.py). No job starts after.
+marker=$logs/usage-limit
+python3 usage_watch.py "$marker" "jobs/all-$stamp-*" "all-$stamp-" 2> "$logs/usage-watch.log" &
+watch=$!
+trap 'kill "$watch" 2>/dev/null' EXIT
 pids=()
+reap() { live=(); for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null && live+=("$p"); done; pids=("${live[@]}"); }
 for f in $queue; do
   while :; do  # wait for a free slot
-    live=(); for p in "${pids[@]}"; do kill -0 "$p" 2>/dev/null && live+=("$p"); done; pids=("${live[@]}")
-    [ "${#pids[@]}" -lt "$slots" ] && break
+    reap
+    [ -e "$marker" ] || [ "${#pids[@]}" -lt "$slots" ] && break
     sleep 30
   done
+  [ -e "$marker" ] && { echo "$(date +%H:%M) usage limit: not started $f"; continue; }
   echo "$(date +%H:%M) start $f"
   run "$f" --job-name "all-$stamp-$f" -o jobs -y > "$logs/$f.log" 2>&1 &
   pids+=($!)
   sleep 60
 done
-wait
+[ "${#pids[@]}" -eq 0 ] || wait "${pids[@]}"
+if [ -e "$marker" ]; then
+  echo "$(date +%H:%M) stopped on a usage limit in: $(tr '\n' ' ' < "$marker")" >&2
+  echo "rerun by hand after the limit resets: the jobs not started above, and the attempts the stopped jobs did not finish" >&2
+fi
+# The regrade rule: every build trial that is not done = 1 is regraded once, on both stacks, and the regrade counts
+# ($0, the recorded artifacts; regrade.py). The regrades are in jobs/all-<stamp>-regrades/.
+echo "$(date +%H:%M) regrades"
+python3 regrade.py "jobs/all-$stamp-regrades" --slots "$slots" jobs/all-$stamp-*-* > "$logs/regrades.log" 2>&1 || echo "regrades: some failed, see $logs/regrades.log" >&2
 # The code and practice metrics of every build trial, against its stack's pin ($0, the analysis container).
 echo "$(date +%H:%M) code metrics"
 python3 code_metrics.py jobs jobs/all-$stamp-*-* > "$logs/code-metrics.log" 2>&1 || echo "code metrics: some trials failed, see $logs/code-metrics.log" >&2
-echo "$(date +%H:%M) all done; analyze with: uv run python analyze.py jobs/all-$stamp-*-* "
+echo "$(date +%H:%M) all done; analyze with: uv run python analyze.py jobs/all-$stamp-*-* jobs/all-$stamp-regrades"

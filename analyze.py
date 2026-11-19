@@ -571,6 +571,8 @@ def trial_row(trial: Path) -> dict | None:
         "pile": pile_progress(app) if workflow == "pocock" and app.exists() else None,
         # The code and practice analysis step's output (code_metrics.py), when it has been run on this trial.
         "code_metrics": _json(trial / "code-metrics.json") or None,
+        # The code-quality judge's answers (judge.py), when it has been run on this trial: apart from the code checks.
+        "judge": _json(trial / "judge.json") or None,
         "skill_digests": {s["name"]: s["digest"] for s in lock.get("skills", [])},
         "task_digest": (lock.get("task") or {}).get("digest"),
         # From the task's assembled.json as it is now: task_digest shows whether the task changed since the trial.
@@ -991,6 +993,16 @@ def code_table(rows: list[dict]) -> list[str]:
             vals = [v for m in ms if (v := _at(m, path)) is not None]
             flags.append(f"{label} {sum(bool(v) for v in vals)}/{len(vals)}" if vals else f"{label} -")
         out.append("    practices: " + " ".join(flags))
+        hits = [((m.get("code_checks") or {}).get("hardcoded_thresholds") or {}).get("n") for m in ms]
+        known = [h for h in hits if h is not None]
+        out.append("    code checks (deterministic): hardcoded thresholds " + (
+            f"{_mean_of(known, len(ms), 1)} lines, in {sum(h > 0 for h in known)}/{len(known)} builds" if known else "-"))
+        judged = [r["judge"] for r in rs if (r.get("judge") or {}).get("answers")]
+        if judged:
+            items = sorted({k for j in judged for k in j["answers"]})
+            out.append("    LLM judge (Opus 5.5 high; off until it agrees with the operator on 5 builds, judge.py agree): "
+                       + " ".join(f"{k} {sum(bool((j['answers'].get(k) or {}).get('answer')) for j in judged)}/{len(judged)}"
+                                  for k in items))
     return out or ["no build trial has code metrics"]
 
 

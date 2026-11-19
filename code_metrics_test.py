@@ -165,4 +165,33 @@ class BuildTrials(unittest.TestCase):
             trial("d", "tasks/codeclimb-langchain", app=False)  # /app not collected
             trial("e", "tasks/codeclimb-inngest", done=True)  # already measured
             trial("f", "tasks/topology-check")
+            g = trial("g", "tasks/codeclimb-inngest")
+            (g / "config.json").write_text(json.dumps({"task": {"path": "tasks/codeclimb-inngest"},
+                                                      "source_trial": {"action": "regrade", "path": str(a)}}))
             self.assertEqual(build_trials([job]), [(a, "inngest"), (b, "langchain")])
+
+
+class HardcodedThresholds(unittest.TestCase):
+    """The hardcoded-thresholds code check (analysis/measure.py), on files written here; no container."""
+
+    def test_flags_a_config_metric_beside_a_number_outside_tests(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("measure", Path(__file__).resolve().parent / "analysis" / "measure.py")
+        measure_py = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(measure_py)
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "src").mkdir()
+            (work / "test").mkdir()
+            (work / "src" / "keep.ts").write_text(
+                "if (metrics.accuracy >= 0.9) keep();\n"            # 1: hit
+                "const t = { accuracy: 0.97 };\n"                    # 2: hit
+                "if (0.5 < m.latency_query_p95_ms) stop();\n"        # 3: hit
+                "const ok = metrics.accuracy >= cfg.thresholds.accuracy;\n"  # read from the config: no hit
+                "// accuracy >= 0.9 in a comment\n"                  # a comment: no hit
+                "const accuracyLabel = 'accuracy';\n")               # no number: no hit
+            (work / "test" / "keep.test.ts").write_text("assert(accuracy >= 0.9);\n")  # a test: no hit
+            got = measure_py.hardcoded_thresholds({"threshold_names": ["accuracy", "latency_query_p95_ms"]}, work,
+                                                  ["src/keep.ts", "test/keep.test.ts"])
+        self.assertEqual(got["hits"], ["src/keep.ts:1", "src/keep.ts:2", "src/keep.ts:3"])

@@ -48,6 +48,22 @@ def dependency_table(spec: str) -> dict[str, str]:
     return table
 
 
+def threshold_names() -> list[str]:
+    """The metric names the given night configs put under `thresholds:` and `gates:`: a build that writes one of them
+    beside a number in its code has a threshold the config should set (Metrics, code checks)."""
+    names = set()
+    for config in sorted((ROOT / "configs").rglob("*.yaml")):
+        block = False
+        for line in config.read_text().splitlines():
+            if re.match(r"^(thresholds|gates):\s*$", line):
+                block = True
+            elif block and (m := re.match(r"^\s+([A-Za-z_][A-Za-z0-9_]*)\s*:", line)):
+                names.add(m.group(1))
+            elif line.strip() and not line.startswith((" ", "#")):
+                block = False
+    return sorted(names)
+
+
 def context(stack: str) -> dict:
     """What the container needs from the benchmark: the given inputs, the dependency table, the SDK."""
     given_dir = ROOT / "specs" / stack / "given"
@@ -62,6 +78,7 @@ def context(stack: str) -> dict:
         "given_tsconfig_sha256": hashlib.sha256(tsconfig).hexdigest(),
         "dependency_table": dependency_table((ROOT / "specs" / stack / "spec.md").read_text()),
         "sdk": SDK[stack],
+        "threshold_names": threshold_names(),
     }
 
 
@@ -110,8 +127,10 @@ def build_trials(job_dirs: list[Path]) -> list[tuple[Path, str]]:
     out = []
     for job in job_dirs:
         for config in sorted(job.glob("*/config.json")):
-            trial = config.parent
-            task = Path((json.loads(config.read_text()).get("task") or {}).get("path") or "").name
+            trial, cfg = config.parent, json.loads(config.read_text())
+            if cfg.get("source_trial"):  # a regrade: its build is its source trial's, measured there
+                continue
+            task = Path((cfg.get("task") or {}).get("path") or "").name
             stack = task.removeprefix("codeclimb-")
             if stack in STACKS and (trial / "artifacts" / "app").is_dir() and not (trial / "code-metrics.json").exists():
                 out.append((trial, stack))
