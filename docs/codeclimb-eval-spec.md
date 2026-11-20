@@ -622,6 +622,7 @@ Developer-experience metrics (decided 2026-11-17). Report only: columns in `tria
   - equal distance across the stacks: the same set of failing tests, fix size within 2×. Also recorded: import hops from the CLI entry to the changed line, seconds to reproduce
   - a pair that fails the gate is dropped, not tuned
 - comparison: per task pair, both stacks. `resolved` is expected at the ceiling, so $ and time are the outcome. A one-sided p ≤ 0.05 needs at least 5 pairs in one direction
+- report (`analyze.py`, "maintenance trials"): a summary of `resolved` over counted attempts per task and stack, then per kind (repair, change) and over all tasks; then per task, stack and arm, each trial with its cost, time, change, the base checks it regressed and the target tests it failed. Tests: `python3 -m unittest analyze_test`
 - tiers: T1 found by reading, T2 needs one mock night, T3 needs a kill or a cancel mid-night, T4 intermittent
 
 Repairs, hardest first:

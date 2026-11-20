@@ -583,6 +583,7 @@ def trial_row(trial: Path) -> dict | None:
         "job_retries": ((_json(trial.parent / "result.json").get("stats") or {}).get("n_retries")),
         # Maintenance trials: the task, its base and target tests; `resolved` is set by collect against the base.
         "task": m[2],
+        "kind": assembled.get("kind") if m[2] else None,
         "base": assembled.get("base") if m[2] else None,
         "targets": assembled.get("targets") if m[2] else None,
         # The trial's change against the task's /app, beside the reference's own fix (assemble.py records its size).
@@ -645,7 +646,18 @@ def maintenance_table(rows: list[dict]) -> list[str]:
     for r in rows:
         if r["status"] == "counted":
             cells[(r["stack"], r["task"], r["arm"])].append(r)
-    out = []
+    # The summary: resolved / counted attempts per task and stack, then per kind (repair, change) and over all tasks.
+    def tally(rs: list[dict]) -> str:
+        return f"{sum(r['resolved'] is True for r in rs)}/{len(rs)}" if rs else "-"
+
+    counted = [r for rs in cells.values() for r in rs]
+    stacks = ("inngest", "langchain")
+    out = [f"{'task':4} {'kind':7} " + " ".join(f"{s:9}" for s in stacks)]
+    groups = [(t, k, lambda r, t=t: r["task"] == t) for t, k in sorted({(r["task"], r.get("kind") or "?") for r in counted})]
+    groups += [("all", k, lambda r, k=k: (r.get("kind") or "?") == k) for k in sorted({r.get("kind") or "?" for r in counted})]
+    groups += [("all", "all", lambda r: True)] if counted else []
+    for name, kind, keep in groups:
+        out.append(f"{name:4} {kind:7} " + " ".join(f"{tally([r for r in counted if r['stack'] == s and keep(r)]):9}" for s in stacks).rstrip())
     for (stack, task, arm), rs in sorted(cells.items()):
         out.append(f"{stack:9} {task} {arm:9} n={len(rs)} resolved {sum(r['resolved'] is True for r in rs)}/{len(rs)}"
                    + (f" (no base grade: {sum(r['resolved'] is None for r in rs)})" if any(r["resolved"] is None for r in rs) else ""))
@@ -658,7 +670,9 @@ def maintenance_table(rows: list[dict]) -> list[str]:
                 + (", regression test added" if change["test_added"] else ", no regression test"))
             out.append(f"    {r['job']}/{r['trial']} {state} ${_fmt(r['cost_usd'], 2)} {_fmt(r['agent_s'], 0)} s"
                        f" turns {r['turns']}, {_fmt(r.get('from_services_up_min'), 1)} min from services-up, {diff}"
-                       + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else ""))
+                       + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else "")
+                       + (f" targets failed {', '.join(failed)}" if (failed := [f"hidden.{t}" for t in r["targets"] or []
+                                                                                 if r["families"].get(f"hidden.{t}") != 1]) else ""))
     kept = Counter(r["status"] for r in rows if r["status"] != "counted")
     out += [f"kept out: {', '.join(f'{s} {n}' for s, n in sorted(kept.items()))}"] if kept else []
     return out or ["no maintenance trials"]

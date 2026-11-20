@@ -539,6 +539,17 @@ class MaintenanceTrials(unittest.TestCase):
         self.assertIn("5.0 min from services-up, diff 6 lines in 2 files (0.60x the reference fix, 10 lines in 2 files),"
                       " regression test added", maintenance)
 
+    def test_summary_per_task_and_stack_and_the_failed_targets(self):
+        maintenance = report(self.rows).partition("== maintenance trials")[2]
+        self.assertIn("task kind    inngest   langchain", maintenance)
+        self.assertIn("c1   change  1/3       -", maintenance)
+        self.assertIn("all  change  1/3       -", maintenance)
+        self.assertIn("all  all     1/3       -", maintenance)
+        self.assertIn("unfixed unresolved", maintenance)
+        self.assertIn("targets failed hidden.pause-resume", maintenance)
+        regressed = next(line for line in maintenance.splitlines() if "/regressed " in line)
+        self.assertNotIn("targets failed", regressed)  # its targets pass; it failed on cli-done
+
     def test_web_calls_in_the_report_for_build_and_maintenance_cells(self):
         web = report(self.rows).partition("== web calls per cell")[2].partition("\n\n")[0]
         self.assertIn("inngest   build current   one-shot bare      n=1 WebFetch 0 (0/1)", web)
