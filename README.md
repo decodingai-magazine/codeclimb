@@ -46,8 +46,6 @@ Layer by layer, the same loop becomes one you can leave unattended: the proxy, c
 
 ## Quickstart
 
-> 💻 To *test CodeClimb on Inngest Cloud for free*, **sign up through [inngest.link/dai](https://inngest.link/dai)**. Only this link unlocks the 3-month free trial (available until Nov 2027) of their Pro subscription, which includes 1M executions, 5M events, 20 workers, 100 remote sandboxes, and more.
-
 **Needs:** Node.js 20+ · Docker running · no keys for the mock night · $0 ([cost by path](guides/01_setup.md#cost)) · no GPU
 
 ```bash
