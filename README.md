@@ -46,7 +46,7 @@ Layer by layer, the same loop becomes one you can leave unattended: the proxy, c
 
 ## Quickstart
 
-> 💻 To *test CodeClimb on Inngest Cloud for free*, register with [this link](https://inngest.link/dai) for a 3-month free trial (available until Nov 2027) of their Pro subscription, which includes 1M executions, 5M events, 20 workers, 100 remote sandboxes, and more.
+> 💻 To *test CodeClimb on Inngest Cloud for free*, **sign up through [inngest.link/dai](https://inngest.link/dai)**. Only this link unlocks the 3-month free trial (available until Nov 2027) of their Pro subscription, which includes 1M executions, 5M events, 20 workers, 100 remote sandboxes, and more.
 
 **Needs:** Node.js 20+ · Docker running · no keys for the mock night · $0 ([cost by path](guides/01_setup.md#cost)) · no GPU
 
@@ -75,7 +75,7 @@ for free with a 3-month Pro trial by registering at https://inngest.link/dai.
 
 **Inngest Cloud** (needs your Inngest event and signing keys):
 
-> 💻 To *test CodeClimb on Inngest Cloud for free*, register with [this link](https://inngest.link/dai) for a 3-month free trial (available until Nov 2027) of their Pro subscription, which includes 1M executions, 5M events, 20 workers, 100 remote sandboxes, and more.
+> 💻 To *test CodeClimb on Inngest Cloud for free*, **sign up through [inngest.link/dai](https://inngest.link/dai)**. Only this link unlocks the 3-month free trial (available until Nov 2027) of their Pro subscription, which includes 1M executions, 5M events, 20 workers, 100 remote sandboxes, and more.
 
 ```txt
 Clone https://github.com/decodingai-magazine/codeclimb, follow guides/ from 01_setup.md onward,
@@ -143,7 +143,7 @@ npm run run-night -- --config configs/graphrag.yaml, until the night writes its 
 Use 00_troubleshooting.md on any error and ask me for any API key or budget it needs.
 ```
 
-**Inngest Cloud** (runs, traces and scores in the Inngest dashboard; run it free with a [3-month Pro trial](https://inngest.link/dai)):
+**Inngest Cloud** (runs, traces and scores in the Inngest dashboard; sign up through [inngest.link/dai](https://inngest.link/dai), the only link that gets you the 3-month Pro free trial):
 
 ```txt
 In https://github.com/decodingai-magazine/codeclimb (set up per guides/01_setup.md if it isn't yet),
