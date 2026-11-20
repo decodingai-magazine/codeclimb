@@ -7,7 +7,7 @@ After this guide you can match a failure's error text to its cause and fix. Each
 ### `CODECLIMB_ENV=cloud: set INNGEST_SIGNING_KEY and INNGEST_EVENT_KEY in .env`
 
 - **Cause:** a `:cloud` script ran without the [Inngest](https://inngest.link/dai-gh) Cloud keys (`codeclimb/env.ts`).
-- **Fix:** add both keys to `.env` ([01_setup.md#inngest-cloud](01_setup.md#inngest-cloud)).
+- **Fix:** add both keys to `.env` ([01_setup.md#inngest-cloud](01_setup.md#inngest-cloud)). No account yet? Sign up through [inngest.link/dai](https://inngest.link/dai), the only link that gets you the 3-month Pro free trial.
 
 ### `CODECLIMB_ENV=cloud: unset INNGEST_DEV (it points the SDK at the dev server)`
 

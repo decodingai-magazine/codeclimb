@@ -205,7 +205,7 @@ Writes `generated/datenorm-overfit` (gitignored). `configs/e2e/budget.yaml` and 
 
 ## Inngest Cloud
 
-Needs: `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` in `.env` ([01_setup.md#inngest-cloud](01_setup.md#inngest-cloud)). Entry points: `codeclimb/env.ts` (mode checks), `scripts/worker.ts`.
+Needs: `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` in `.env` ([01_setup.md#inngest-cloud](01_setup.md#inngest-cloud)). No account yet? Sign up through [inngest.link/dai](https://inngest.link/dai), the only link that gets you the 3-month Pro free trial. Entry points: `codeclimb/env.ts` (mode checks), `scripts/worker.ts`.
 
 The `:cloud` scripts set `CODECLIMB_ENV=cloud`, which requires both keys, refuses `INNGEST_DEV`, and pins the proxy port to 7422. Local nights always run on Docker; cloud nights use Docker on your machine or Inngest Sandboxes. Results land in the same `runs-inngest/` folders.
 
