@@ -113,7 +113,7 @@ npx tsx scripts/smoke-pi-sandbox.ts anthropic/claude-haiku-5-5
 
 ### Inngest Cloud
 
-Optional; local nights use the dev server. Sign up at [Inngest](https://inngest.link/dai-gh): free plan with 50k executions/month ([pricing](https://www.inngest.com/pricing?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)). Fills `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. Inngest Sandboxes (`--sandbox inngest`) need the cloud worker. How to run on it: [02_running.md#inngest-cloud](02_running.md#inngest-cloud).
+Optional; local nights use the dev server. Sign up at [Inngest](https://inngest.link/dai) for a 3-month Pro free trial (available until Nov 2027; 1M executions, 5M events, 20 workers, 100 remote sandboxes), or use the free plan with 50k executions/month ([pricing](https://www.inngest.com/pricing?utm_medium=repo&utm_source=github&utm_campaign=creator-growth-Q326&utm_content=dai)). Fills `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`. Inngest Sandboxes (`--sandbox inngest`) need the cloud worker. How to run on it: [02_running.md#inngest-cloud](02_running.md#inngest-cloud).
 
 ### OpenRouter
 
