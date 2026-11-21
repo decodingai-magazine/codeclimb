@@ -130,7 +130,7 @@ When closing issues:
 
 ### Issue tracker
 
-Issues live in GitHub Issues for decodingai-magazine/codeclimb, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for itsdecodingai/codeclimb, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

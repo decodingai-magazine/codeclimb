@@ -12,7 +12,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+The repo is `itsdecodingai/codeclimb` (https://github.com/itsdecodingai/codeclimb). `gh` infers it from `git remote -v` when run inside a clone.
 
 ## Pull requests as a triage surface
 
