@@ -447,9 +447,11 @@ def _change(app: Path) -> dict | None:
 def runtime(checks: Path) -> dict:
     """The runtime metrics of the verifier's checks.json (its `runtime` key, report only): seconds per graded night
     by night number, cold start (`services-up`'s duration) and resume latency (night 5), in seconds. Null when the
-    verifier did not record them (an older grade, or the night never ran)."""
+    verifier did not record them (an older grade, or the night never ran). `real_nights`: each real night's seconds and
+    how it ended (#70: `ended`, `cap`, `deadline`, `error`)."""
     rt = _json(checks).get("runtime") or {}
-    return {"night_s": rt.get("night_s") or None, "cold_start_s": rt.get("cold_start_s"), "resume_latency_s": rt.get("resume_latency_s")}
+    return {"night_s": rt.get("night_s") or None, "cold_start_s": rt.get("cold_start_s"), "resume_latency_s": rt.get("resume_latency_s"),
+            "real_nights": rt.get("real_nights") or None}
 
 
 # A reference job's name (`job-configs/reference.sh`: reference-<stack>-<sha>-<time>; older jobs lack the time).
@@ -950,6 +952,33 @@ def runtime_table(rows: list[dict]) -> list[str]:
     return out or ["no build trial has runtime metrics"]
 
 
+def real_night_table(rows: list[dict]) -> list[str]:
+    """#70: the real nights of the counted build trials, per cell (stack x arm): each night's median minutes over the
+    nights that ended, how many hit a limit (`cap`, the night's own; `deadline`, the verifier's) and how many trials had
+    one; then each trial's minutes, a night that did not end marked with how it stopped."""
+    keep = [r for r in rows if r["status"] == "counted" and r.get("real_nights") and r.get("task") is None
+            and (cell_arm(r) == "reference" or (r["harness"] != "nop" and r["workflow"] != "probe"))]
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in keep:
+        groups[(r["stack"], cell_arm(r))].append(r)
+    out = []
+    keys = [f"R{n}" for n in range(1, 8)]
+    for (stack, arm), rs in sorted(groups.items()):
+        cells = []
+        for k in keys:
+            got = [r["real_nights"][k] for r in rs if k in r["real_nights"]]
+            ended = [g["s"] / 60 for g in got if g["end"] == "ended"]
+            capped = sum(g["end"] in ("cap", "deadline") for g in got)
+            cells.append(f"{k} {f'{median(ended):.1f} min' if ended else '-'}" + (f" ({capped} capped)" if capped else ""))
+        hit = sum(any(g["end"] in ("cap", "deadline") for g in r["real_nights"].values()) for r in rs)
+        out.append(f"{stack:9} {arm:9} n={len(rs)} " + " ".join(cells) + f"; trials with a capped night {hit}")
+        for r in rs:
+            nights = " ".join(f"{k} {g['s'] / 60:.1f}" + ("" if g["end"] == "ended" else f" {g['end']}")
+                              for k in keys if (g := r["real_nights"].get(k)))
+            out.append(f"    {r['job']}/{r['trial']} {nights} sum {sum(g['s'] for g in r['real_nights'].values()) / 60:.1f} min")
+    return out or ["no build trial has real nights"]
+
+
 CODE = [  # (path in code-metrics.json, label, digits); a list's length where the value is a list
     ("size.code_lines", "code lines", 0), ("size.comment_lines", "comment lines", 0), ("size.files", "files", 0),
     ("size.modules", "modules", 0), ("glue.glue_lines", "glue lines", 0), ("glue.domain_lines", "domain lines", 0),
@@ -1038,6 +1067,7 @@ def report(rows: list[dict]) -> str:
               "", "== web calls per cell (WebFetch, WebSearch, curl or wget of a non-local URL; total, trials with any)",
               *web_table(rows + maintenance),
               "", "== runtime metrics per stack, from the verifier's checks.json (beside the reward, not in it)", *runtime_table(rows),
+              "", "== real nights per cell, minutes (the verifier's checks.json; beside the reward, not in it)", *real_night_table(rows),
               "", "== code and practice metrics per stack, from code_metrics.py (beside the reward, not in it)", *code_table(rows),
               "", "== kept out of every mean"]
     for status in ("leak", "infra"):

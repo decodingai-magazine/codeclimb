@@ -11,6 +11,7 @@ What you have:
 - `/app`: the given inputs `SPEC.md` lists, as a git repository with one commit
 - `/docs/pi/`: the docs of the Pi coding agent SDK
 - a Docker daemon of your own (`docker` works) and the open web
+- a GitHub Copilot login for Pi in `/root/.pi/agent/auth.json`, with fake tokens: GitHub is closed to you, so a real model call fails. A night without `--mock` passes its model check and stops at its first model call
 {services}
 
 Nothing outside `/app` is graded. Commit your work in `/app` as you go.

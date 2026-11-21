@@ -316,6 +316,21 @@ class AssembleMaintenanceApp(unittest.TestCase):
         self.assertIn("README.md: bcabd72", str(e.exception))
 
 
+class FakePiLogin(unittest.TestCase):
+    """#71: the build tasks' fake Pi Copilot login."""
+
+    def test_both_build_images_copy_it_to_pis_default_path(self):
+        for stack in assemble.STACKS:
+            self.assertIn(assemble.FAKE_PI_LOGIN, (assemble.ROOT / f"tasks/codeclimb-{stack}/environment/Dockerfile").read_text())
+
+    def test_it_names_every_copilot_model_of_the_given_configs_and_holds_no_real_token(self):
+        used = {m for f in (assemble.ROOT / "configs").rglob("*.yaml") for m in re.findall(r"github-copilot/([a-z0-9.-]+)", f.read_text())}
+        entry = assemble.FAKE_PI_AUTH["github-copilot"]
+        self.assertEqual(set(entry["availableModelIds"]), used)
+        self.assertTrue(all(entry[k].startswith("fake-") for k in ("refresh", "access")))
+        self.assertGreater(entry["expires"], 4e12)  # milliseconds, past 2096: Pi never refreshes it
+
+
 class AssembleMaintenanceTask(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -336,6 +351,9 @@ class AssembleMaintenanceTask(unittest.TestCase):
         self.assertIn('name = "codeclimb/codeclimb-inngest-t9"', (d / "task.toml").read_text())
         # The image keeps the /app it is given: its one commit is the assemble's.
         self.assertNotIn("git commit", (d / "environment/Dockerfile").read_text())
+        # #71: the fake Pi login is the build tasks' only: maintenance trials ran without it.
+        self.assertNotIn("pi-auth.json", (d / "environment/Dockerfile").read_text())
+        self.assertFalse((d / "environment/pi-auth.json").exists())
         record = json.loads((d / "assembled.json").read_text())
         self.assertEqual({k: record[k] for k in ("kind", "task", "stack", "base", "commit", "targets")},
                          {"kind": "change", "task": "t9", "stack": "inngest", "base": self.base, "commit": self.commit,

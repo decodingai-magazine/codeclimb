@@ -38,6 +38,16 @@ STACKS = ("inngest", "langchain")
 SHARED = ("scenarios", "configs", "docker")
 
 INSTRUCTION = ROOT / "tasks/shared/instruction.md"
+# The build tasks' fake Pi Copilot login (#71, docs/codeclimb-eval-spec.md, Trial environment): the shape of a real
+# `github-copilot` entry with fake tokens, the models of the given configs, and an expiry far ahead, so Pi neither
+# refreshes it nor finds it missing. A build's model check passes on it; the first model call fails (GitHub is
+# blocked in a trial, and Copilot rejects the token). Written to environment/pi-auth.json; FAKE_PI_LOGIN, in both
+# build Dockerfiles, copies it in. Maintenance tasks drop both: their trials ran without it.
+FAKE_PI_AUTH = {"github-copilot": {"type": "oauth", "refresh": "fake-refresh-token-no-login", "access": "fake-access-token-no-login",
+                                   "expires": 4102444800000, "availableModelIds": ["claude-haiku-4.5", "claude-haiku-5.5"]}}
+FAKE_PI_LOGIN = ("# A fake Pi Copilot login at Pi's default path (assemble.py, FAKE_PI_LOGIN; #71): fake tokens, so a night without\n"
+                 "# --mock passes its model check and fails at its first model call. The verifier's container gets the real login.\n"
+                 "COPY --chmod=600 pi-auth.json /root/.pi/agent/auth.json\n")
 VERIFIER = ROOT / "verifier"
 POCOCK = ROOT / "context" / "pocock"
 # One line, no guidance: every arm gets the same stub, the instruction's canary line.
@@ -331,6 +341,10 @@ def _write_maintenance_task(d: Path, task_id: str, task: Maintenance, src: Sourc
     text = dockerfile.read_text()
     if IMAGE_COMMIT not in text:
         raise RuntimeError(f"{dockerfile}: no {IMAGE_COMMIT!r} line to replace")
+    if FAKE_PI_LOGIN not in text:
+        raise RuntimeError(f"{dockerfile}: no fake Pi login block to drop")
+    text = text.replace(FAKE_PI_LOGIN, "")
+    (d / "environment" / "pi-auth.json").unlink(missing_ok=True)
     dockerfile.write_text(text.replace(IMAGE_COMMIT, "# /app arrives as a repository with one commit (assemble.py).\n"))
     toml = (build / "task.toml").read_text()
     toml = toml.replace(f'name = "codeclimb/codeclimb-{stack}"', f'name = "codeclimb/{d.name}"')
@@ -361,6 +375,7 @@ def assemble_task(stack: str, pile: Path | None = None) -> dict[str, str]:
     (task / "assembled.json").write_text(json.dumps(record, indent=2) + "\n")
     (task / "instruction.md").write_text(INSTRUCTION.read_text().replace("{services}\n", SERVICES[stack]))
     (task / "environment" / "managed-settings.json").write_text(json.dumps(managed_settings(), indent=2) + "\n")
+    (task / "environment" / "pi-auth.json").write_text(json.dumps(FAKE_PI_AUTH, indent=2) + "\n")
     if (task / "tests" / "verifier").exists():
         shutil.rmtree(task / "tests" / "verifier")
     copy_files(VERIFIER, task / "tests" / "verifier")

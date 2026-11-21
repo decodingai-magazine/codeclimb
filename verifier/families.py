@@ -26,6 +26,19 @@ REAL_MODELS = ("claude-haiku-5.5", "claude-haiku-4.5")
 # Seconds a mock night of a family may take; a real night's own limit is its test's.
 MOCK_NIGHT_S = 300
 PI_AUTH = Path("/root/.pi/agent/auth.json")
+# The verifier's own deadline, in seconds from its start (#69): below the tasks' `[verifier] timeout_sec` (21600), since
+# Harbor collects no file from a verifier it timed out, so a hung build's reward would be lost. No family test starts
+# with less than START_LEFT_S left (a hidden test's own limits fit in it), and a real night waits no longer than the
+# time left. A test cut short fails with a detail that starts with DEADLINE.
+DEADLINE_S = 19800.0
+START_LEFT_S = 900.0
+DEADLINE = "deadline:"
+STARTED = time.monotonic()
+
+
+def time_left() -> float:
+    """Seconds left before the verifier's deadline."""
+    return DEADLINE_S - (time.monotonic() - STARTED)
 
 
 class Skip(Exception):
@@ -56,6 +69,8 @@ class Ctx:
     # The seven nights of the 34, by number: 1, 2, 3, 6 and 7 as run; 4 and 5 rebuilt from their ids (None when
     # that night did not run).
     basic: dict[int, Night | None] = field(default_factory=dict)
+    # checks.json's `runtime` (report only), which the families add to: `real_nights` (real_tests.real_night).
+    runtime: dict = field(default_factory=dict)
     _seq: int = 0
 
     @property
@@ -194,7 +209,7 @@ def all_tests() -> list[Test]:
 
 def run_families(ctx: Ctx, record: Callable[[str, bool | None, str, float], None], after_tier: Callable[[], None]) -> None:
     """Run the selected tests tier by tier. `record(key, passed, detail, seconds)` gets every test that ran
-    (passed None: skipped, no key); `after_tier` writes the reward files."""
+    (passed None: skipped, no key); `after_tier` writes the reward files, after each tier and each test."""
     fams, only = selected()
     tests = [t for t in all_tests() if (t.stacks is None or ctx.stack in t.stacks) and (only is None or t.name in only)]
     for tier in TIERS:
@@ -216,6 +231,9 @@ def run_families(ctx: Ctx, record: Callable[[str, bool | None, str, float], None
             after_tier()
             continue
         for t in mine:
+            if time_left() < START_LEFT_S:
+                record(t.key, False, f"{DEADLINE} not started, {time_left():.0f} s left of the verifier's {DEADLINE_S:.0f} s", 0)
+                continue
             started = time.monotonic()
             print(f"[verifier] {t.key} ...", flush=True)
             try:
@@ -225,4 +243,5 @@ def run_families(ctx: Ctx, record: Callable[[str, bool | None, str, float], None
             except Exception:
                 passed, detail = False, traceback.format_exc()[-1500:]
             record(t.key, passed, detail, time.monotonic() - started)
+            after_tier()  # after every test: a verifier stopped from outside keeps what it graded
         after_tier()

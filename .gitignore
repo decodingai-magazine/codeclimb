@@ -10,6 +10,7 @@ tasks/*/assembled.json
 tasks/codeclimb-*/instruction.md
 tasks/codeclimb-*/tests/verifier/
 tasks/codeclimb-*/environment/managed-settings.json
+tasks/codeclimb-*/environment/pi-auth.json
 tasks/codeclimb-*/pocock/
 # assemble.py maintenance: a whole task folder per maintenance task and stack
 tasks/codeclimb-*-*/

@@ -15,6 +15,9 @@
 #
 #   job-configs/run-all.sh [slots]          # runs; writes jobs/all-<stamp>-*/
 #   DRY=1 job-configs/run-all.sh [slots]    # assembles, prints the order and checks each job with --print-config
+#   CODECLIMB_CONTINUE=jobs/all-<stamp> job-configs/run-all.sh [slots]  # continues a stopped run: each job runs only
+#      the attempts its graded trials there lack, and the regrades and the report read those trials too. A trial there
+#      counts as graded by the current task: delete the ones a task change outdated first (#71: the build trials).
 #
 # Expects CLAUDE_CODE_OAUTH_TOKEN and CLAUDE_FORCE_OAUTH=1 exported, as for any trial; the LangSmith key comes from .env
 # (job-configs/bench-env.sh) unless CODECLIMB_BENCH_LANGSMITH_API_KEY is exported.
@@ -30,6 +33,13 @@ slots=${1:-3}
 stamp=$(date +%Y%m%d-%H%M)
 logs=jobs/all-$stamp-logs
 refs=jobs/all-$stamp-references
+prev=${CODECLIMB_CONTINUE:-}
+ATTEMPTS=3  # n_attempts of every job file
+[ -z "$prev" ] || ls -d "$prev"-*-* > /dev/null 2>&1 || { echo "CODECLIMB_CONTINUE: no job folder $prev-*" >&2; exit 2; }
+graded() {  # $1 a job's name: how many of its trials in the stopped run have a reward
+  [ -n "$prev" ] || { echo 0; return; }
+  python3 -c 'import glob, json, sys; print(sum(((json.load(open(p)).get("verifier_result") or {}).get("rewards") or {}).get("reward") is not None for p in glob.glob(sys.argv[1] + "/*/result.json")))' "$prev-$1"
+}
 
 if [ -z "${DRY:-}" ]; then
   [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ "${CLAUDE_FORCE_OAUTH:-}" = 1 ] && [ -n "${CODECLIMB_BENCH_LANGSMITH_API_KEY:-}" ] \
@@ -78,7 +88,11 @@ run() {  # $1 a build job file name, or <stack>-<task id>: that maintenance task
 }
 
 if [ -n "${DRY:-}" ]; then
-  for f in $queue; do run "$f" --print-config > /dev/null && echo "ok $f" || { echo "bad $f" >&2; exit 1; }; done
+  for f in $queue; do
+    left=$((ATTEMPTS - $(graded "$f")))
+    [ "$left" -gt 0 ] || { echo "done before $f"; continue; }
+    run "$f" -k "$left" --print-config > /dev/null && echo "ok $f, $left attempts" || { echo "bad $f" >&2; exit 1; }
+  done
   rm -rf "$logs"
   exit 0
 fi
@@ -126,10 +140,12 @@ python3 usage_watch.py "$marker" "jobs/all-$stamp-*" "all-$stamp-" 2> "$logs/usa
 watch=$!
 trap 'kill "$watch" 2>/dev/null' EXIT
 for f in $queue; do
+  left=$((ATTEMPTS - $(graded "$f")))
+  [ "$left" -gt 0 ] || { echo "$(date +%H:%M) done before: $f"; continue; }
   while reap; [ ! -e "$marker" ] && [ "${#pids[@]}" -ge "$slots" ]; do sleep 30; done
   [ -e "$marker" ] && { echo "$(date +%H:%M) usage limit: not started $f"; continue; }
-  echo "$(date +%H:%M) start $f"
-  run "$f" --job-name "all-$stamp-$f" -o jobs -y > "$logs/$f.log" 2>&1 &
+  echo "$(date +%H:%M) start $f, $left attempts"
+  run "$f" -k "$left" --job-name "all-$stamp-$f" -o jobs -y > "$logs/$f.log" 2>&1 &
   pids+=($!)
   sleep 60
 done
@@ -142,7 +158,7 @@ fi
 # 3. The regrade rule: every trial that did not pass is regraded once, on both stacks, and the regrade counts ($0, the
 # recorded artifacts; regrade.py). The reference grades are passed for the maintenance bases. Then the code metrics.
 echo "$(date +%H:%M) regrades"
-python3 regrade.py "jobs/all-$stamp-regrades" --slots "$slots" jobs/all-$stamp-*-* "$refs" > "$logs/regrades.log" 2>&1 || echo "regrades: some failed, see $logs/regrades.log" >&2
+python3 regrade.py "jobs/all-$stamp-regrades" --slots "$slots" jobs/all-$stamp-*-* ${prev:+$prev-*-*} "$refs" > "$logs/regrades.log" 2>&1 || echo "regrades: some failed, see $logs/regrades.log" >&2
 echo "$(date +%H:%M) code metrics"
 python3 code_metrics.py jobs jobs/all-$stamp-*-* > "$logs/code-metrics.log" 2>&1 || echo "code metrics: some trials failed, see $logs/code-metrics.log" >&2
-echo "$(date +%H:%M) all done; analyze with: uv run python analyze.py jobs/all-$stamp-*-* $refs jobs/all-$stamp-regrades"
+echo "$(date +%H:%M) all done; analyze with: uv run python analyze.py jobs/all-$stamp-*-* ${prev:+$prev-*-*} $refs jobs/all-$stamp-regrades"

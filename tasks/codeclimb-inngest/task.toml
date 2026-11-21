@@ -11,9 +11,10 @@ version = "1.0.0"
 description = "Build CodeClimb on Inngest from its build spec until the seven mock nights of E2E.md pass."
 
 [verifier]
-# A passing reference build takes about 7 min here (measured in Harbor, 2026-11-13); a hung build runs into the
-# verifier's own limits, about 9100 s in all, and still writes reward.json before this one.
-timeout_sec = 10800.0
+# A pin's verifier, with the real family, took 54 and 68 min (the full run, 2026-11-20); a hung build's tests run
+# into their own limits, which sum past this one. The verifier stops itself at families.DEADLINE_S (19800 s), so it
+# writes reward.json and Harbor collects it before this limit (#69): on a timeout Harbor collects nothing.
+timeout_sec = 21600.0
 environment_mode = "separate"
 
 [agent]

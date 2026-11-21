@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from adapters import kill_group, run_group
-from families import Ctx, Skip, Test
+from families import DEADLINE, Ctx, Skip, Test, time_left
 from nights import RUN_NIGHT, Night, session_messages, text_of, wait_until
 
 # The proxy's own variables: a metered sandbox reaches models through them (both build specs, Metering proxy).
@@ -76,6 +76,8 @@ NIGHTS: dict[str, NightSpec] = {
 # R7: the stop comes this many seconds into the coder; the test then watches this long.
 R7_INTO_CODER_S = 60
 R7_WATCH_S = 60
+# A real night stops this long before the verifier's deadline: its `run-night stop` and the writes after it fit.
+STOP_LEFT_S = 300
 
 
 # --- small readers ------------------------------------------------------------------------------------------------
@@ -409,6 +411,7 @@ class Real:
     created: list[str] = field(default_factory=list)  # container names created during the night, in order
     r7: dict = field(default_factory=dict)
     note: str = ""
+    cut: bool = False  # stopped at the verifier's deadline, before its own limit
 
     def summary(self) -> str:
         if self.night is None:
@@ -418,6 +421,8 @@ class Real:
 
 
 _CACHE: dict[tuple[str, str], Real] = {}
+# The nights the running test read: guard() marks its fail as the deadline's when one of them was cut.
+_TOUCHED: list[Real] = []
 
 
 def real_night(ctx: Ctx, key: str) -> Real:
@@ -432,11 +437,20 @@ def real_night(ctx: Ctx, key: str) -> Real:
             real.error = real.error or traceback.format_exc()[-1500:]
         real.minutes = (time.monotonic() - started) / 60
         _CACHE[k] = real
+        # Report only (#70): how long the night took and how it ended: `ended` (done.json or stop.json), `cap` (its own
+        # limit), `deadline` (the verifier's), `error` (did not start or not run to its end otherwise).
+        end = ("ended" if not real.error else "deadline" if real.cut else
+               "cap" if real.error.startswith("neither done.json nor stop.json") else "error")
+        ctx.runtime.setdefault("real_nights", {})[key] = {"s": round(real.minutes * 60, 1), "end": end}
+    _TOUCHED.append(_CACHE[k])
     return _CACHE[k]
 
 
 def ran(ctx: Ctx, key: str) -> Real | None:
-    return _CACHE.get((ctx.tag, key))
+    r = _CACHE.get((ctx.tag, key))
+    if r is not None:
+        _TOUCHED.append(r)
+    return r
 
 
 def tokens_of_one_round(ctx: Ctx) -> tuple[int, str]:
@@ -496,14 +510,20 @@ def run_real(ctx: Ctx, key: str, real: Real) -> None:
             drive_r7(ctx, night, real)
             if real.error:
                 return
-        deadline = time.monotonic() + spec.timeout_s
+        # Never past the verifier's deadline, less STOP_LEFT_S for the stop and the writes after it.
+        wait_s = min(spec.timeout_s, max(time_left() - STOP_LEFT_S, 0))
+        real.cut = wait_s < spec.timeout_s
+        deadline = time.monotonic() + wait_s
         ended = lambda: (nd / "done.json").exists() or (nd / "stop.json").exists()  # noqa: E731
         while not ended() and time.monotonic() < deadline:
             if real.probes:
                 real.probes.tick()
             time.sleep(POLL_S if real.probes else 5)
         if not ended():
-            real.error = f"neither done.json nor stop.json within {spec.timeout_s / 60:.0f} min"
+            real.error = (f"{DEADLINE} stopped after {wait_s / 60:.0f} of its {spec.timeout_s / 60:.0f} min" if real.cut
+                          else f"neither done.json nor stop.json within {spec.timeout_s / 60:.0f} min")
+        else:
+            real.cut = False
     finally:
         if night is not None and not ((night.night_dir / "done.json").exists() or (night.night_dir / "stop.json").exists()):
             # A night past its limit must not keep spending.
@@ -556,10 +576,14 @@ class NightFailed(Exception):
 
 def guard(fn: Callable[[Ctx], tuple[bool, str]]) -> Callable[[Ctx], tuple[bool, str]]:
     def wrapped(ctx: Ctx) -> tuple[bool, str]:
+        _TOUCHED.clear()
         try:
-            return fn(ctx)
+            passed, detail = fn(ctx)
         except NightFailed as e:
-            return False, str(e)
+            passed, detail = False, str(e)
+        if not passed and any(r.cut for r in _TOUCHED):
+            detail = f"{DEADLINE} a night it reads was stopped at the verifier's deadline\n{detail}"
+        return passed, detail
 
     return wrapped
 

@@ -243,7 +243,7 @@ def families(run: Run, write: Callable[[], object]) -> None:
     n5 = [night_of(run.app, runs, 5, DATENORM, f"{tag}-n5{a}") for a in "abc"]
     basic[5] = next((nt for nt in reversed(n5) if nt.night_dir.exists()), None)
     ctx = Ctx(app=run.app, stack=run.adapter.__class__.__name__.lower(), adapter=run.adapter, services=run.services,
-              tag=tag, basic=basic)
+              tag=tag, basic=basic, runtime=run.runtime)
 
     def record(key: str, passed: bool | None, detail: str, seconds: float) -> None:
         if passed is not None:

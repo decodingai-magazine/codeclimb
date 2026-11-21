@@ -7,7 +7,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, report, runtime_table, stream_facts, web_table
+from analyze import collect, effects, family_table, full_vs_bare, interaction, interaction_p, lever_counts, permutation_p, pile_progress, process_table, real_night_table, report, runtime_table, stream_facts, web_table
 
 
 def trajectory(*calls):
@@ -344,6 +344,27 @@ class ProcessMetrics(unittest.TestCase):
     def test_never_in_the_reward(self):
         self.assertEqual(self.row["reward"], 1.0)
         self.assertEqual(self.row["checks"], {"install": 1, "cli-done": 1})
+
+
+class RealNights(unittest.TestCase):
+    """#70: each real night's minutes per build trial and per cell, with nights that hit a limit marked."""
+
+    def row(self, trial: str, nights: dict | None) -> dict:
+        return {"status": "counted", "stack": "langchain", "arm": "bare", "harness": "claude-code", "workflow": "one-shot",
+                "task": None, "job": "j", "trial": trial, "real_nights": nights}
+
+    def test_minutes_per_night_and_capped_nights(self):
+        rows = [self.row("a", {"R1": {"s": 180.0, "end": "ended"}, "R2": {"s": 192.0, "end": "ended"}}),
+                self.row("b", {"R1": {"s": 240.0, "end": "ended"}, "R2": {"s": 1800.0, "end": "cap"}}),
+                self.row("c", None)]  # graded without real nights: not in the cell
+        text = "\n".join(real_night_table(rows))
+        self.assertIn("langchain bare      n=2 R1 3.5 min R2 3.2 min (1 capped) R3 - R4 - R5 - R6 - R7 -; trials with a capped night 1", text)
+        self.assertIn("    j/a R1 3.0 R2 3.2 sum 6.2 min", text)
+        self.assertIn("    j/b R1 4.0 R2 30.0 cap sum 34.0 min", text)
+        self.assertNotIn("j/c", text)
+
+    def test_no_real_nights(self):
+        self.assertEqual(real_night_table([self.row("c", None)]), ["no build trial has real nights"])
 
 
 class ReworkScope(unittest.TestCase):
