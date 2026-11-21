@@ -34,7 +34,7 @@ from measure import GENERATED, is_test  # noqa: E402
 
 from assemble import BUILD_PINS, SHARED, STUBS
 from code_metrics import RATIOS
-from gate import resolved
+from gate import resolved, target_grade
 
 # The MCP tools that search or read docs, per server; every other tool of a server is a platform tool.
 # inngest-dev's three, measured in the #48 smoke trial (52 tools in all). A server listed with None is docs only.
@@ -668,11 +668,12 @@ def maintenance_table(rows: list[dict]) -> list[str]:
                 f"diff {change['lines']} lines in {change['files']} files"
                 + (f" ({r['fix_ratio']:.2f}x the reference fix, {fix['lines']} lines in {fix['files']} files)" if r.get("fix_ratio") is not None else "")
                 + (", regression test added" if change["test_added"] else ", no regression test"))
+            g = grade_of(r)  # a target is a basic check (`checks.<t>`) or a hidden test (`hidden.<t>`)
+            failed = [f"checks.{t}" if f"checks.{t}" in g else f"hidden.{t}" for t in r["targets"] or [] if target_grade(g, t) != 1]
             out.append(f"    {r['job']}/{r['trial']} {state} ${_fmt(r['cost_usd'], 2)} {_fmt(r['agent_s'], 0)} s"
                        f" turns {r['turns']}, {_fmt(r.get('from_services_up_min'), 1)} min from services-up, {diff}"
                        + (f" regressions {', '.join(r['regressions'])}" if r["regressions"] else "")
-                       + (f" targets failed {', '.join(failed)}" if (failed := [f"hidden.{t}" for t in r["targets"] or []
-                                                                                 if r["families"].get(f"hidden.{t}") != 1]) else ""))
+                       + (f" targets failed {', '.join(failed)}" if failed else ""))
     kept = Counter(r["status"] for r in rows if r["status"] != "counted")
     out += [f"kept out: {', '.join(f'{s} {n}' for s, n in sorted(kept.items()))}"] if kept else []
     return out or ["no maintenance trials"]

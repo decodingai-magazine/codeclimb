@@ -1,3 +1,4 @@
+import copy
 import itertools
 import json
 import subprocess
@@ -549,6 +550,16 @@ class MaintenanceTrials(unittest.TestCase):
         self.assertIn("targets failed hidden.pause-resume", maintenance)
         regressed = next(line for line in maintenance.splitlines() if "/regressed " in line)
         self.assertNotIn("targets failed", regressed)  # its targets pass; it failed on cli-done
+
+    def test_a_target_that_is_a_basic_check(self):
+        # R12's targets are basic checks (`checks.<name>`), not hidden tests: a passing one is not "targets failed".
+        def line(cli_done: int) -> str:
+            row = copy.deepcopy(self.by_trial["fixed"])
+            row["targets"], row["checks"]["cli-done"] = ["cli-done"], cli_done
+            text = report([r for r in self.rows if r["trial"] != "fixed"] + [row]).partition("== maintenance trials")[2]
+            return next(x for x in text.splitlines() if "/fixed " in x)
+        self.assertNotIn("targets failed", line(1))
+        self.assertIn("targets failed checks.cli-done", line(0))
 
     def test_web_calls_in_the_report_for_build_and_maintenance_cells(self):
         web = report(self.rows).partition("== web calls per cell")[2].partition("\n\n")[0]
